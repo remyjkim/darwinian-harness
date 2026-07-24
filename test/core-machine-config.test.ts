@@ -163,3 +163,63 @@ describe("machine config V1", () => {
     expect((await readMachineConfigFile(path))?.capabilities.skills).toEqual(["alpha"]);
   });
 });
+
+describe("legacy machine config migration (I65 Fix 2)", () => {
+  test("migrates a legacy file with authoring scope to valid v1 on read", async () => {
+    const root = await createTempRoot("machine-legacy-");
+    tempRoots.push(root);
+    const path = join(root, "machine.json");
+    await writeFile(path, `${JSON.stringify({ version: 1, optional: {}, authoring: { scope: "@x" } })}\n`);
+
+    const config = await readMachineConfigFile(path);
+
+    expect(config).toEqual({
+      schema: "drwn.machine",
+      schemaVersion: 1,
+      policy: { authoring: { scope: "@x" } },
+      capabilities: { profile: null, skills: [], mcpServers: [] },
+    });
+    // Migration persists v1 in place so every later reader sees a valid file.
+    expect(JSON.parse(await readFile(path, "utf8")).schema).toBe("drwn.machine");
+  });
+
+  test("migrates a legacy file without authoring scope to empty v1", async () => {
+    const root = await createTempRoot("machine-legacy-");
+    tempRoots.push(root);
+    const path = join(root, "machine.json");
+    await writeFile(path, `${JSON.stringify({ version: 1, optional: {} })}\n`);
+
+    expect(await readMachineConfigFile(path)).toEqual(createEmptyMachineConfig());
+  });
+
+  test("leaves an already-v1 file untouched", async () => {
+    const root = await createTempRoot("machine-v1-");
+    tempRoots.push(root);
+    const path = join(root, "machine.json");
+    await writeMachineConfigFile(path, createEmptyMachineConfig());
+    const before = await readFile(path, "utf8");
+
+    expect(await readMachineConfigFile(path)).toEqual(createEmptyMachineConfig());
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  test("unknown non-legacy shapes still throw, with a hint naming a real command", async () => {
+    const root = await createTempRoot("machine-unknown-");
+    tempRoots.push(root);
+    const path = join(root, "machine.json");
+    await writeFile(path, `${JSON.stringify({ mystery: true })}\n`);
+
+    try {
+      await readMachineConfigFile(path);
+      throw new Error("expected read to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(DrwnError);
+      const drwnError = error as DrwnError;
+      expect(drwnError.code).toBe("MACHINE_CONFIG_INVALID");
+      // I49 TC-D1: the old hint named `drwn setup`, which does not exist.
+      const hints = (drwnError.hints ?? []).join(" ");
+      expect(hints).toContain("drwn init");
+      expect(hints).not.toContain("drwn setup");
+    }
+  });
+});

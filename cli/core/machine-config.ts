@@ -90,9 +90,29 @@ function invalidMachineConfig(message: string, cause?: unknown): DrwnError {
   return new DrwnError(
     "MACHINE_CONFIG_INVALID",
     message,
-    ["Reset ~/.agents/drwn/machine.json and rerun drwn setup; prototype machine formats are not supported."],
+    ["Reset ~/.agents/drwn/machine.json and rerun drwn init; prototype machine formats are not supported."],
     cause,
   );
+}
+
+// Pre-operator-v2 prototype configs carry a bare `version` marker and no `schema` identity (I65 Fix 2).
+function isLegacyMachineConfig(value: unknown): value is { authoring?: { scope?: string } } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).schema === undefined &&
+    "version" in value
+  );
+}
+
+function migrateLegacyMachineConfig(legacy: { authoring?: { scope?: string } }): MachineConfig {
+  const config = createEmptyMachineConfig();
+  const scope = legacy.authoring?.scope;
+  if (typeof scope === "string" && scope.length > 0) {
+    config.policy.authoring = { scope };
+  }
+  return config;
 }
 
 export function createEmptyMachineConfig(): MachineConfig {
@@ -120,7 +140,13 @@ export async function readMachineConfigFile(path: string): Promise<MachineConfig
     return null;
   }
   try {
-    return parseMachineConfig(JSON.parse(await readFile(path, "utf8")), path);
+    const raw: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (isLegacyMachineConfig(raw)) {
+      const migrated = migrateLegacyMachineConfig(raw);
+      await writeMachineConfigFile(path, migrated);
+      return migrated;
+    }
+    return parseMachineConfig(raw, path);
   } catch (error) {
     if (error instanceof DrwnError) {
       throw error;

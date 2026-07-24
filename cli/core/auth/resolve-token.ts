@@ -1,6 +1,7 @@
 // ABOUTME: Resolves DAH services-audience bearer auth from env or stored credentials.
 // ABOUTME: Env-provided tokens are validated before send and are never persisted.
 
+import { NotAuthenticatedError } from "../errors";
 import { readCredentials, writeCredentials, type CliDahCredentialFile } from "./credentials";
 import { refreshToken, credentialFromTokens } from "./device-flow";
 import { drwnCliProfile, type CliAuthProfile } from "./profile";
@@ -85,8 +86,8 @@ export async function refreshStoredCredential(input: {
   fetcher?: typeof fetch;
 }): Promise<CliDahCredentialFile> {
   const current = input.credential ?? await readCredentials(input.credentialsPath);
-  if (!current) throw new Error("Not authenticated. Run `drwn login` first.");
-  if (!("version" in current)) throw new Error("Legacy credentials found. Run `drwn login` again.");
+  if (!current) throw new NotAuthenticatedError("Not authenticated. Run `drwn login` first.");
+  if (!("version" in current)) throw new NotAuthenticatedError("Legacy credentials found. Run `drwn login` again.");
   const profile = input.profile ?? drwnCliProfile();
   const tokens = await refreshToken(profile, current.refreshToken, input.fetcher ?? fetch);
   const refreshed = {

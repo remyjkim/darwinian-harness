@@ -2,7 +2,7 @@
 // ABOUTME: Ensures non-lock failures fail immediately without retry.
 
 import { describe, expect, test } from "bun:test";
-import { fetchWithLockRetry, isGitLockContentionError } from "../cli/core/git";
+import { GitRefNotFoundError, fetchWithLockRetry, isGitLockContentionError } from "../cli/core/git";
 
 describe("isGitLockContentionError", () => {
   test("matches common lock contention stderr patterns", () => {
@@ -57,8 +57,8 @@ describe("fetchWithLockRetry", () => {
 
   test("does not retry ref-not-found failures", async () => {
     let attempts = 0;
-    await expect(
-      fetchWithLockRetry("/tmp/repo.git", "origin", [], {
+    try {
+      await fetchWithLockRetry("/tmp/repo.git", "origin", [], {
         run: async () => {
           attempts += 1;
           return {
@@ -68,8 +68,13 @@ describe("fetchWithLockRetry", () => {
           };
         },
         sleep: async () => {},
-      }),
-    ).rejects.toThrow(/couldn't find remote ref/);
+      });
+      throw new Error("expected fetch to throw");
+    } catch (error) {
+      // I65 Fix 6: the message stays clean; the raw stderr lives in gitContext.
+      expect(error).toBeInstanceOf(GitRefNotFoundError);
+      expect((error as GitRefNotFoundError).gitContext?.stderr).toContain("couldn't find remote ref");
+    }
     expect(attempts).toBe(1);
   });
 });

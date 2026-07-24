@@ -554,7 +554,8 @@ function classifyGitFailure(code: string, message: string, args: string[] | unde
     return new GitNetworkError("GIT_NETWORK_FAILED", `${message}: ${stderr}`.trim(), context);
   }
   if (/unknown revision|bad revision|not a valid object name|ambiguous argument|couldn't find remote ref|not found/i.test(stderr)) {
-    return new GitRefNotFoundError("GIT_REF_NOT_FOUND", `${message}: ${stderr}`.trim(), context);
+    // Keep the ref-not-found message clean; raw git stderr stays in context for debugging (I65 Fix 6).
+    return new GitRefNotFoundError("GIT_REF_NOT_FOUND", message, context);
   }
   return new GitError(code, `${message}: ${stderr}`.trim(), context);
 }

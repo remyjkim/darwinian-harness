@@ -6,6 +6,7 @@ import { Option } from "clipanion";
 import * as t from "typanion";
 import { BaseCommand } from "../base";
 import { resolveWorkerConfig } from "../../core/worker-config";
+import { describeWorkerError } from "../../core/worker-error";
 import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
 import { defaultSecretsFileCandidates, DRWN_SECRETS_FILE, parseSecretsFile } from "../../core/worker-secrets";
 import { buildWorkerDeployPayload } from "../../core/worker-deploy";
@@ -135,7 +136,7 @@ export class WorkerDeployCommand extends BaseCommand {
         return 1;
       }
     } catch (error) {
-      this.context.stderr.write(`Cannot reach Deploy API at ${apiBaseUrl}: ${(error as Error).message}\n`);
+      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
       return 1;
     }
 

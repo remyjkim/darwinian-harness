@@ -4,6 +4,7 @@
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { resolveWorkerConfig } from "../../core/worker-config";
+import { describeWorkerError } from "../../core/worker-error";
 import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
 
 export class WorkerRollbackCommand extends BaseCommand {
@@ -44,7 +45,7 @@ export class WorkerRollbackCommand extends BaseCommand {
       this.context.stdout.write(`"${this.slug}" now serves ${body.activeDeploymentId}\n`);
       return 0;
     } catch (error) {
-      this.context.stderr.write(`Cannot reach Deploy API at ${apiBaseUrl}: ${(error as Error).message}\n`);
+      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
       return 1;
     }
   }
