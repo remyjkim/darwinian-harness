@@ -15,6 +15,7 @@ import {
   type SessionResponse,
 } from "./schemas";
 import { AuthExpiredError, ServerError } from "./errors";
+import { trimTrailingSlashes } from "../url";
 
 export type DeviceTokenPollResult =
   | { kind: "success"; token: DeviceTokenResponse }
@@ -30,7 +31,7 @@ export interface AnalyzerClient {
 }
 
 function normalizeApiUrl(apiUrl: string): string {
-  return apiUrl.replace(/\/+$/, "");
+  return trimTrailingSlashes(apiUrl);
 }
 
 async function readErrorText(response: Response): Promise<string> {
