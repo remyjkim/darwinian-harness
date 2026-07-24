@@ -15,7 +15,6 @@ CI-friendly read-only commands:
 - `drwn status --json` for a structured snapshot of effective state
 - `drwn doctor --json` for report-only diagnostics
 - `drwn card outdated --check` to fail when project cards have newer versions
-- `drwn doctor` for store integrity
 - `drwn card validate <ref>` for a single card
 
 `doctor` is report-only and does not mutate state.
@@ -27,7 +26,6 @@ Set the read-only guard to refuse any store mutation in CI:
 ```bash
 export DRWN_STORE_READONLY=1
 drwn doctor
-drwn doctor
 ```
 
 With `DRWN_STORE_READONLY=1`, inspection and dry runs still work; real
@@ -35,8 +33,10 @@ mutations fail before writing.
 
 ## Exit-Code Semantics
 
-- `drwn doctor` exits non-zero when it finds at least one issue
-- `drwn doctor` exits non-zero when integrity checks fail
+- `drwn doctor` exits non-zero for fatal ambient MCP collisions and
+  error-severity instruction-delivery or Worker-materialization issues
+- other report arrays may be non-empty without changing doctor's exit code;
+  assert the categories your CI treats as blocking
 - `drwn card validate <ref>` exits non-zero on integrity or schema failures
 - `drwn card outdated --check` exits non-zero when any project card has a newer locked version available
 
@@ -44,14 +44,23 @@ Combine these in a CI step to surface every class of drift.
 
 ## JSON Parsing Tips
 
-All four commands accept `--json`. Pipe through `jq` to assert on specific
-fields:
+Use `--json` and `jq` to assert on the specific fields your policy treats as
+blocking:
 
 ```bash
-drwn doctor --json | jq '.issues | length == 0'
+drwn doctor --json | jq -e '
+  (.brokenSymlinks | length == 0) and
+  (.staleSkillSymlinks | length == 0) and
+  (.mcpDrift | length == 0) and
+  (.projectConfigIssues | length == 0) and
+  ((.instructionDelivery.issues // []) | all(.severity != "error")) and
+  ((.orgWorkerMaterialization.issues // []) | all(.severity != "error"))
+'
 drwn card outdated --check --json | jq '.outdated | length == 0'
-drwn doctor --json | jq '.ok == true'
-drwn status --json | jq '.project.config != null'
+drwn status --json | jq -e '
+  (.orgWorkerMaterialization.state // "absent") |
+  IN("absent", "current", "removed")
+'
 ```
 
 `--json` output is the contract surface; the human-readable text format is not.
@@ -77,7 +86,6 @@ jobs:
       - run: drwn install --frozen  # resolves card.lock; exits non-zero if lock is stale
       - run: drwn doctor --json
       - run: drwn card outdated --check --json
-      - run: drwn doctor --json
 ```
 
 `drwn install --frozen` refuses to clone or rewrite `card.lock` in CI, so a
