@@ -18,6 +18,8 @@ See [`docs/maintainers/skills-repo-submodule.md`](./docs/maintainers/skills-repo
 
 ## Setup
 
+This repo is **bun-only** (see `engines.bun` and `packageManager` in `package.json`; CI pins `BUN_VERSION`). Do not run `pnpm`, `npm`, or `yarn` — they generate a second lockfile that drifts from `bun.lock`. Alternative lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`) are gitignored.
+
 Install dependencies:
 
 ```bash
