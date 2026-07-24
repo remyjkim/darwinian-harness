@@ -7,7 +7,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import type { CardLockEntry } from "./card-lock";
 import type { CardManifest } from "./card-manifest";
-import { satisfies } from "./semver-utils";
+import { resolveEffectiveInstructionConsent } from "./instruction-consent-evidence";
 
 export const MAX_INSTRUCTION_BYTES = 65_536;
 
@@ -95,11 +95,9 @@ export function isInstructionConsentValid(
   card: CardLockEntry,
   contribution: ExplicitInstructionContribution,
 ): boolean {
-  return Boolean(
-    card.instructionConsent &&
-      satisfies(card.version, card.instructionConsent.consentedRange, {
-        includePrerelease: true,
-      }) &&
-      card.instructionConsent.contentDigest === contribution.contentDigest,
-  );
+  return resolveEffectiveInstructionConsent({
+    card,
+    contribution,
+    evidence: [],
+  }).authorized;
 }

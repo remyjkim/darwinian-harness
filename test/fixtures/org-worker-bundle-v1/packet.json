@@ -1,8 +1,8 @@
 {
   "producer": "darwinian-org",
   "packetId": "organization-provisioning-v1",
-  "packetVersion": "1.0.0",
+  "packetVersion": "1.0.1",
   "fixture": "gtm.valid.json",
-  "fixtureSha256": "64b05a0965003f092f92b34f65688ae5de14a7b0b30554e5425df2fe9b22cb94",
+  "fixtureSha256": "42f5a30853351d27cddee75869c0581604ebbe01cdf8fb160357bc1d50536dc9",
   "producerSchema": "org-worker-bundle@1"
 }

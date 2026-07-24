@@ -12,6 +12,9 @@ const ALWAYS_IGNORED_ENTRIES = [
   ".agents/drwn/config.local.json",
   ".agents/drwn/card.lock.local",
   ".agents/drwn/write-record.json",
+  ".agents/drwn/org-worker-materialization.json",
+  ".agents/drwn/.org-worker-materialization-journal.json",
+  ".agents/drwn/receipts/",
   ".agents/drwn/generated/",
 ];
 

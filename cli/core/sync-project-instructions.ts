@@ -24,6 +24,7 @@ export function instructionCompositionForState(
   return composeConsentedInstructions({
     cards: state.activeCards,
     contentRootsByCard: state.contentRootsByCard,
+    organizationConsent: state.organizationInstructionConsent,
   });
 }
 
@@ -47,7 +48,9 @@ export function syncProjectInstructions(input: {
   result.warnings.push(
     ...composition.excluded.map(
       (item) =>
-        `${item.card} explicit instructions excluded: ${item.reason}. Run drwn card trust ${item.card} --instructions.`,
+        item.expectedEvidenceKind === "org_worker_bundle_consent"
+          ? `${item.card} organization instruction consent excluded: ${item.reason}. Verify Org Worker materialization evidence.`
+          : `${item.card} explicit instructions excluded: ${item.reason}. Run drwn card trust ${item.card} --instructions.`,
     ),
   );
   if (input.state.scopedOptions.strict && composition.excluded.length > 0) {

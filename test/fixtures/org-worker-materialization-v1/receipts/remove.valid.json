@@ -1,0 +1,60 @@
+{
+  "receiptVersion": "worker-materialization-receipt@1",
+  "receiptId": "fixture-remove-0001",
+  "operationId": "operation:fixture:remove",
+  "action": "remove",
+  "outcome": "removed",
+  "sourceBundle": {
+    "digest": "sha256:6597b05cdad254375332d56a23f4d052c61bae6c8836b3f24e0f80c8eb4eaa48",
+    "workerId": "worker:gtm-operator",
+    "sourceBlueprint": {
+      "id": "blueprint:gtm:1",
+      "revision": 1,
+      "digest": "sha256:82dcd59fc1a465304d8efeffe15a3213f44f2ba0b98be180e78512d287250d31"
+    }
+  },
+  "consumer": {
+    "name": "darwinian",
+    "version": "1.0.0",
+    "compatibilityProfile": "drwn-org-worker-materialization@1"
+  },
+  "artifactVerification": {
+    "verifiedPinRefs": [
+      "artifact:gtm-worker-root"
+    ],
+    "snapshotDigest": "sha256:b77d54d032c0b02e42413a720086bca5cb21dc9cf1aa5921cfa3ea699897f086"
+  },
+  "projectState": {
+    "configDigest": "sha256:140789810d5b3cd569e1de49a8eb872d34e5e354f62fe9c20f027d9b7b68a765",
+    "lockDigest": "sha256:b6ea061eebb30336734ee585c929ace762c4b84d27e67a2cb4bfe803dc340913",
+    "orderedRootNames": [],
+    "activeWorker": null
+  },
+  "instructionProjection": {
+    "state": "removed",
+    "adapterState": "absent"
+  },
+  "verifiedConsentIds": [
+    "consent:gtm-instructions"
+  ],
+  "checks": [
+    {
+      "code": "ARTIFACT_BYTES",
+      "result": "passed"
+    },
+    {
+      "code": "PROJECTION_OWNERSHIP",
+      "result": "passed"
+    },
+    {
+      "code": "PROJECT_STATE",
+      "result": "passed"
+    },
+    {
+      "code": "VENDOR_CONTENT",
+      "result": "passed"
+    }
+  ],
+  "priorReceiptDigest": "sha256:7233e7e4441f9115e5e2149f072087113d42e0fab1ae2a7f607252c84ce76c4e",
+  "observedAt": "2026-07-24T00:00:00.002Z"
+}

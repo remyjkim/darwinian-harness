@@ -1,0 +1,51 @@
+{
+  "wireVersion": "worker-materialization-release-boundary@1",
+  "producer": "darwinian-org",
+  "files": [
+    {
+      "path": "packet-root/artifacts/gtm-worker-root/card.json",
+      "sha256": "22d31a3963c4d9fbe66d1e82b6fc7b98d802f8ec739e337595ebcaeba7b59000",
+      "role": "artifact_content"
+    },
+    {
+      "path": "packet-root/artifacts/gtm-worker-root/instructions.md",
+      "sha256": "5f35dbf8972723a994b65ae1f9b2e93fd9762bfcdd4171a624b80f1620526429",
+      "role": "artifact_content"
+    },
+    {
+      "path": "packet-root/artifacts/gtm-worker-root/skills/operator/SKILL.md",
+      "sha256": "19f34ff77987601dcb7a4b7361916c2fd6504d5d2d37fbc9b0a13cc2ac87b9e5",
+      "role": "artifact_content"
+    },
+    {
+      "path": "receipt.negatives.json",
+      "sha256": "887a2be0b9db1920ef07a5a4d38ab01a11c7872331d7e08f68481ecbd0a48071",
+      "role": "negative_manifest"
+    },
+    {
+      "path": "receipts/materialize.valid.json",
+      "sha256": "2448e0557c7e6c62cb696e8f0afc67c400234eacb5263400ce9df85443968d2b",
+      "role": "positive_receipt"
+    },
+    {
+      "path": "receipts/reconcile.valid.json",
+      "sha256": "1b106384e8934ad35eac5add1059dbd422c39b6af761a39bd016d0baa445de7b",
+      "role": "positive_receipt"
+    },
+    {
+      "path": "receipts/remove.valid.json",
+      "sha256": "7b39f047dc06ca5963e711c5f7860fda440a9cfca38d3675c15fbac2de9627a3",
+      "role": "positive_receipt"
+    },
+    {
+      "path": "released/org-worker-bundle.json",
+      "sha256": "42f5a30853351d27cddee75869c0581604ebbe01cdf8fb160357bc1d50536dc9",
+      "role": "org_worker_bundle"
+    },
+    {
+      "path": "snapshot.valid.json",
+      "sha256": "70e6700c10c8107352a589d06dad14b7849622b0f830b325679aa2394e219067",
+      "role": "artifact_snapshot"
+    }
+  ]
+}

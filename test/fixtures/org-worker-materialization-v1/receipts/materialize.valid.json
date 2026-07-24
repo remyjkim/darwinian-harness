@@ -1,0 +1,64 @@
+{
+  "receiptVersion": "worker-materialization-receipt@1",
+  "receiptId": "fixture-materialize-0001",
+  "operationId": "operation:fixture:materialize",
+  "action": "materialize",
+  "outcome": "verified",
+  "sourceBundle": {
+    "digest": "sha256:6597b05cdad254375332d56a23f4d052c61bae6c8836b3f24e0f80c8eb4eaa48",
+    "workerId": "worker:gtm-operator",
+    "sourceBlueprint": {
+      "id": "blueprint:gtm:1",
+      "revision": 1,
+      "digest": "sha256:82dcd59fc1a465304d8efeffe15a3213f44f2ba0b98be180e78512d287250d31"
+    }
+  },
+  "consumer": {
+    "name": "darwinian",
+    "version": "1.0.0",
+    "compatibilityProfile": "drwn-org-worker-materialization@1"
+  },
+  "artifactVerification": {
+    "verifiedPinRefs": [
+      "artifact:gtm-worker-root"
+    ],
+    "snapshotDigest": "sha256:b77d54d032c0b02e42413a720086bca5cb21dc9cf1aa5921cfa3ea699897f086"
+  },
+  "projectState": {
+    "configDigest": "sha256:2f2658bca2bbf2ad7b7cb89bfa822379315b8d0a7f3b7bb44b381b2228c660d1",
+    "lockDigest": "sha256:23e761ad01cb0e3b970ec353b65b18d36f76782fb41423575ac738836f011edf",
+    "orderedRootNames": [
+      "gtm-worker"
+    ],
+    "activeWorker": "gtm-worker"
+  },
+  "instructionProjection": {
+    "state": "current",
+    "instructionId": "worker:gtm-worker",
+    "contentDigest": "sha256-5f35dbf8972723a994b65ae1f9b2e93fd9762bfcdd4171a624b80f1620526429",
+    "ownershipHash": "sha256-d8d8acb890c9397ae8bc0238b5b20d4a4f90149fab8fbfb371dbdc5d4764b783",
+    "adapterState": "owned"
+  },
+  "verifiedConsentIds": [
+    "consent:gtm-instructions"
+  ],
+  "checks": [
+    {
+      "code": "ARTIFACT_BYTES",
+      "result": "passed"
+    },
+    {
+      "code": "PROJECTION_OWNERSHIP",
+      "result": "passed"
+    },
+    {
+      "code": "PROJECT_STATE",
+      "result": "passed"
+    },
+    {
+      "code": "VENDOR_CONTENT",
+      "result": "passed"
+    }
+  ],
+  "observedAt": "2026-07-24T00:00:00.000Z"
+}

@@ -1,4 +1,4 @@
-// ABOUTME: Verifies release readiness pins the drwn 0.9.0 semantic Worker Mind contract.
+// ABOUTME: Verifies release readiness preserves the semantic Worker Mind contract in the current drwn release.
 // ABOUTME: Rejects numbered-memory readers, weak indexes, and version-floor regression.
 
 import { describe, expect, test } from "bun:test";
@@ -27,7 +27,7 @@ describe("semantic Worker Mind release gate", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.details).toContain("package version must be 0.9.0");
+    expect(result.details).toContain("package version must be 1.0.0");
     expect(result.details).toContain("numbered-memory reader");
     expect(result.details).toContain("strict mind index schema");
   });

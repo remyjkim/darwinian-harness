@@ -67,6 +67,11 @@ export class DoctorCommand extends BaseCommand {
         projectStatus?.instructionDelivery.issues.some(
           (issue) => issue.severity === "error",
         ),
+      ) ||
+      Boolean(
+        projectStatus?.orgWorkerMaterialization?.issues.some(
+          (issue) => issue.severity === "error",
+        ),
       );
 
     if (this.json) {
@@ -74,7 +79,14 @@ export class DoctorCommand extends BaseCommand {
       return unhealthy ? 1 : 0;
     }
 
-    this.context.stdout.write(renderDoctorReport(report));
+    let output = renderDoctorReport(report);
+    if (projectStatus?.orgWorkerMaterialization) {
+      output += `\nWorker materialization: ${projectStatus.orgWorkerMaterialization.state}\n`;
+      for (const issue of projectStatus.orgWorkerMaterialization.issues) {
+        output += `  - ${issue.code} (${issue.severity})\n`;
+      }
+    }
+    this.context.stdout.write(output);
     return unhealthy ? 1 : 0;
   }
 }

@@ -12,7 +12,7 @@ describe("drwn version reconciliation", () => {
   test("DRWN_VERSION matches package.json version", () => {
     const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string };
     expect(DRWN_VERSION).toBe(pkg.version);
-    expect(DRWN_VERSION).toBe("0.9.0");
+    expect(DRWN_VERSION).toBe("1.0.0");
   });
 
   test("running version is at least the highest floor drwn can emit", () => {

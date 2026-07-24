@@ -42,6 +42,17 @@ describe("Worker contract release gate", () => {
     expect(result.details).toContain("prototype migration adapter");
   });
 
+  test("requires the 1.0.0 Worker materialization candidate identity", () => {
+    const result = verifyWorkerContract(repoRoot, {
+      "package.json": JSON.stringify({ version: "0.9.0" }),
+      "cli/core/version.ts": 'export const DRWN_VERSION = "0.9.0";\n',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("package version must be 1.0.0");
+    expect(result.details).toContain("runtime version must be 1.0.0");
+  });
+
   test("release JSON includes the Worker contract gate", async () => {
     const proc = Bun.spawn(["bun", "run", "verify:release", "--json"], {
       cwd: repoRoot,

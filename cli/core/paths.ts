@@ -30,6 +30,28 @@ export function resolveCredentialsPath(agentsDir: string) {
   return join(resolveUserDrwnDir(agentsDir), "credentials.json");
 }
 
+export function resolveOrgWorkerMaterializationRecordPath(
+  projectRoot: string,
+) {
+  return join(
+    projectRoot,
+    ".agents",
+    "drwn",
+    "org-worker-materialization.json",
+  );
+}
+
+export function resolveOrgWorkerMaterializationJournalPath(
+  projectRoot: string,
+) {
+  return join(
+    projectRoot,
+    ".agents",
+    "drwn",
+    ".org-worker-materialization-journal.json",
+  );
+}
+
 export function resolveLibraryDir(agentsDir: string) {
   return join(agentsDir, "library");
 }
@@ -126,5 +148,7 @@ export function normalizeSyncPathOptions(
     strict: options.strict ?? false,
     applyClaudeAdapter: options.applyClaudeAdapter ?? false,
     forceMachineScope: options.forceMachineScope ?? false,
+    organizationInstructionConsent:
+      options.organizationInstructionConsent,
   };
 }

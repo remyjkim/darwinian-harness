@@ -1006,9 +1006,9 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
   }
 
   const pkg = JSON.parse(source("package.json")) as { version?: string };
-  if (pkg.version !== "0.9.0") issues.push("package version must be 0.9.0");
-  if (!source("cli/core/version.ts").includes('DRWN_VERSION = "0.9.0"')) {
-    issues.push("runtime version must be 0.9.0");
+  if (pkg.version !== "1.0.0") issues.push("package version must be 1.0.0");
+  if (!source("cli/core/version.ts").includes('DRWN_VERSION = "1.0.0"')) {
+    issues.push("runtime version must be 1.0.0");
   }
 
   return {
@@ -1042,10 +1042,10 @@ export function verifySemanticMindContract(root = repoRoot, overrides: SourceOve
   } catch {
     issues.push("package.json must be valid JSON");
   }
-  if (packageVersion !== "0.9.0") issues.push("package version must be 0.9.0");
+  if (packageVersion !== "1.0.0") issues.push("package version must be 1.0.0");
 
   requireTokens("cli/core/version.ts", [
-    ['DRWN_VERSION = "0.9.0"', "runtime version must be 0.9.0"],
+    ['DRWN_VERSION = "1.0.0"', "runtime version must be 1.0.0"],
   ]);
   requireTokens("cli/core/mind-capability.ts", [
     ['PROJECT_WORKER_MIN_DRWN_VERSION = "0.8.0"', "base project Worker floor must remain 0.8.0"],

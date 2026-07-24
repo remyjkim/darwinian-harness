@@ -1,0 +1,105 @@
+{
+  "wireVersion": "worker-artifact-snapshot-negative-fixtures@1",
+  "fixtures": [
+    {
+      "id": "wrong-wire-version",
+      "mutation": "wrong_wire_version",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "wrong-source-bundle-digest",
+      "mutation": "wrong_source_bundle_digest",
+      "expectedCode": "ORG_WORKER_BUNDLE_DIGEST_MISMATCH"
+    },
+    {
+      "id": "missing-artifact",
+      "mutation": "missing_artifact",
+      "expectedCode": "ORG_WORKER_ARTIFACT_BYTES_MISSING"
+    },
+    {
+      "id": "duplicate-artifact",
+      "mutation": "duplicate_artifact",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "extra-artifact",
+      "mutation": "extra_artifact",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "wrong-kind",
+      "mutation": "wrong_kind",
+      "expectedCode": "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH"
+    },
+    {
+      "id": "wrong-name",
+      "mutation": "wrong_name",
+      "expectedCode": "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH"
+    },
+    {
+      "id": "wrong-version",
+      "mutation": "wrong_version",
+      "expectedCode": "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH"
+    },
+    {
+      "id": "wrong-integrity",
+      "mutation": "wrong_integrity",
+      "expectedCode": "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH"
+    },
+    {
+      "id": "uppercase-tree-sha",
+      "mutation": "uppercase_tree_sha",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "short-tree-sha",
+      "mutation": "short_tree_sha",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "wrong-tree-sha",
+      "mutation": "wrong_tree_sha",
+      "expectedCode": "ORG_WORKER_ARTIFACT_TREE_SHA_MISMATCH"
+    },
+    {
+      "id": "uppercase-git-commit",
+      "mutation": "uppercase_git_commit",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "short-git-commit",
+      "mutation": "short_git_commit",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "wrong-content-format",
+      "mutation": "wrong_content_format",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    },
+    {
+      "id": "absolute-content-path",
+      "mutation": "absolute_content_path",
+      "expectedCode": "ORG_WORKER_ARTIFACT_PATH_INVALID"
+    },
+    {
+      "id": "traversal-content-path",
+      "mutation": "traversal_content_path",
+      "expectedCode": "ORG_WORKER_ARTIFACT_PATH_INVALID"
+    },
+    {
+      "id": "missing-content-directory",
+      "mutation": "missing_content_directory",
+      "expectedCode": "ORG_WORKER_ARTIFACT_BYTES_MISSING"
+    },
+    {
+      "id": "wrong-tree-digest",
+      "mutation": "wrong_tree_digest",
+      "expectedCode": "ORG_WORKER_ARTIFACT_TREE_DIGEST_MISMATCH"
+    },
+    {
+      "id": "unknown-mutable-source",
+      "mutation": "unknown_mutable_source",
+      "expectedCode": "ORG_WORKER_ARTIFACT_SNAPSHOT_INVALID"
+    }
+  ]
+}
