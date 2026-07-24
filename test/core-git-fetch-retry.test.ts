@@ -58,7 +58,7 @@ describe("fetchWithLockRetry", () => {
   test("does not retry ref-not-found failures", async () => {
     let attempts = 0;
     try {
-      await fetchWithLockRetry("/tmp/repo.git", "origin", [], {
+      await fetchWithLockRetry("/tmp/repo.git", "origin", ["refs/heads/missing"], {
         run: async () => {
           attempts += 1;
           return {
@@ -73,6 +73,8 @@ describe("fetchWithLockRetry", () => {
     } catch (error) {
       // I65 Fix 6: the message stays clean; the raw stderr lives in gitContext.
       expect(error).toBeInstanceOf(GitRefNotFoundError);
+      // I100: the clean message still names the refspec the fetch was asked for.
+      expect((error as GitRefNotFoundError).message).toContain("refs/heads/missing");
       expect((error as GitRefNotFoundError).gitContext?.stderr).toContain("couldn't find remote ref");
     }
     expect(attempts).toBe(1);
