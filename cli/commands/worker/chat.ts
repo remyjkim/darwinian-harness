@@ -3,6 +3,8 @@
 
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
+import { JwtAudienceError } from "../../core/auth/jwt";
+import { DrwnError, NotAuthenticatedError } from "../../core/errors";
 import { resolveWorkerConfig } from "../../core/worker-config";
 import { describeWorkerError } from "../../core/worker-error";
 import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
@@ -10,6 +12,7 @@ import {
   describeRunFailure,
   isSettledRunStatus,
   pollRunOnce,
+  renderError,
   runWebUrl,
   transcriptEventText,
   type RunTranscriptEvent,
@@ -18,14 +21,7 @@ import { renderJson } from "../../core/output";
 
 const DEFAULT_POLL_MS = 1500;
 const DEFAULT_CHAT_TIMEOUT_MS = 120_000;
-
-function renderError(body: unknown): string {
-  if (body && typeof body === "object" && "error" in body) {
-    return String((body as { error: unknown }).error);
-  }
-  if (typeof body === "string" && body.trim()) return body;
-  return "unknown error";
-}
+const MAX_CONSECUTIVE_POLL_FAILURES = 3;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -84,7 +80,7 @@ export class WorkerChatCommand extends BaseCommand {
       }
       const runId = body && typeof body === "object" ? (body as { runId?: unknown }).runId : undefined;
       if (typeof runId !== "string" || runId.length === 0) {
-        // Legacy/unknown API shape: preserve the raw passthrough behavior.
+        // A response without a runId has no run to wait on; print the raw body.
         this.context.stdout.write(renderJson(body));
         return 0;
       }
@@ -115,33 +111,63 @@ export class WorkerChatCommand extends BaseCommand {
     const events: RunTranscriptEvent[] = [];
     let since = 0;
 
+    let consecutivePollFailures = 0;
     for (;;) {
-      const { response, body } = await pollRunOnce(this.context, apiBaseUrl, runId, since);
-      if (!response.ok) {
-        this.context.stderr.write(`Run poll failed (${response.status}): ${renderError(body)}\n`);
-        return 1;
+      let poll: Awaited<ReturnType<typeof pollRunOnce>> | null = null;
+      let failureDetail = "";
+      try {
+        poll = await pollRunOnce(this.context, apiBaseUrl, runId, since);
+      } catch (error) {
+        // Typed errors (auth, config) are terminal; only network blips retry.
+        if (error instanceof DrwnError || error instanceof NotAuthenticatedError || error instanceof JwtAudienceError) {
+          throw error;
+        }
+        failureDetail = error instanceof Error ? error.message : String(error);
       }
-      for (const event of body.events ?? []) {
-        events.push(event);
-        if (!this.json) {
-          const text = transcriptEventText(event);
-          if (text) this.context.stdout.write(`${text}\n`);
-        }
+      if (poll && !poll.response.ok) {
+        failureDetail = `HTTP ${poll.response.status}: ${renderError(poll.body)}`;
+        poll = null;
       }
-      since = body.lastSeq ?? since;
-      if (isSettledRunStatus(body.status)) {
-        if (body.status === "not_found") {
-          this.context.stderr.write(`Run ${runId} not found.\n`);
-          return 1;
+      if (!poll) {
+        consecutivePollFailures += 1;
+        if (consecutivePollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+          this.context.stderr.write(
+            `Run poll failed ${consecutivePollFailures} times (last: ${failureDetail}); run status unknown.\n`,
+          );
+          if (this.json) {
+            this.context.stdout.write(renderJson({ runId, url, status: "unknown", result: null, events }));
+          } else {
+            this.context.stdout.write(
+              `Check later with \`drwn worker run status ${runId}\` or open ${url}\n`,
+            );
+          }
+          return 0;
         }
-        if (body.status === "failed") {
-          this.context.stderr.write(`Run failed: ${describeRunFailure(body.result)}\n`);
-          return 1;
+      } else {
+        consecutivePollFailures = 0;
+        const body = poll.body;
+        for (const event of body.events ?? []) {
+          events.push(event);
+          if (!this.json) {
+            const text = transcriptEventText(event);
+            if (text) this.context.stdout.write(`${text}\n`);
+          }
         }
-        if (this.json) {
-          this.context.stdout.write(renderJson({ runId, url, status: body.status, result: body.result ?? null, events }));
+        since = body.lastSeq ?? since;
+        if (isSettledRunStatus(body.status)) {
+          if (this.json) {
+            this.context.stdout.write(renderJson({ runId, url, status: body.status, result: body.result ?? null, events }));
+          }
+          if (body.status === "not_found") {
+            this.context.stderr.write(`Run ${runId} not found.\n`);
+            return 1;
+          }
+          if (body.status === "failed") {
+            this.context.stderr.write(`Run failed: ${describeRunFailure(body.result)}\n`);
+            return 1;
+          }
+          return 0;
         }
-        return 0;
       }
       if (Date.now() >= deadline) {
         if (this.json) {

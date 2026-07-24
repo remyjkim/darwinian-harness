@@ -78,6 +78,15 @@ export async function pollRunOnce(
   );
 }
 
+/** Human-readable error text from a non-ok Deploy API response body. */
+export function renderError(body: unknown): string {
+  if (body && typeof body === "object" && "error" in body) {
+    return String((body as { error: unknown }).error);
+  }
+  if (typeof body === "string" && body.trim()) return body;
+  return "unknown error";
+}
+
 /** Human-readable failure text from a terminal `result` payload. */
 export function describeRunFailure(result: unknown): string {
   if (result && typeof result === "object" && typeof (result as { error?: unknown }).error === "string") {

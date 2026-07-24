@@ -6,6 +6,7 @@ import { Cli } from "clipanion";
 import { Writable } from "node:stream";
 import { WorkerChatCommand } from "../cli/commands/worker/chat";
 import type { AgentsContext } from "../cli/context";
+import { NotAuthenticatedError } from "../cli/core/errors";
 import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
@@ -74,8 +75,13 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
+type PollFrame =
+  | { status: string; result?: unknown; lastSeq: number; events: unknown[] }
+  | { httpStatus: number; body?: unknown }
+  | { reject: Error };
+
 /** Fake fetch: POST chat -> runId; poll advances through the given frames. */
-function stubRunLifecycle(frames: Array<{ status: string; result?: unknown; lastSeq: number; events: unknown[] }>) {
+function stubRunLifecycle(frames: PollFrame[]) {
   const calls: string[] = [];
   let poll = 0;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -84,8 +90,10 @@ function stubRunLifecycle(frames: Array<{ status: string; result?: unknown; last
     calls.push(`${init?.method ?? "GET"} ${path}`);
     if (path === "/api/minds/harari/chat") return json({ runId: "run_42" });
     if (path === "/api/chat/run_42/poll") {
-      const frame = frames[Math.min(poll, frames.length - 1)];
+      const frame = frames[Math.min(poll, frames.length - 1)]!;
       poll += 1;
+      if ("reject" in frame) throw frame.reject;
+      if ("httpStatus" in frame) return json(frame.body ?? {}, frame.httpStatus);
       return json(frame);
     }
     return json({ error: `unexpected path ${path}` }, 404);
@@ -194,12 +202,98 @@ describe("worker chat wait (I65 Fix 4)", () => {
     expect(calls.filter((c) => c.includes("/poll"))).toHaveLength(0);
   });
 
-  test("a response without a runId is printed raw (legacy behavior)", async () => {
+  test("a response without a runId is printed raw", async () => {
     globalThis.fetch = (async () => json({ output: "hello back", metered: true })) as unknown as typeof fetch;
 
     const result = await runChat(["worker", "chat", "harari", "--message", "hello"]);
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({ output: "hello back", metered: true });
+  });
+});
+
+describe("worker chat poll resilience and --json contract (I100)", () => {
+  test("--json prints the machine object for a failed run and exits 1", async () => {
+    stubRunLifecycle([{ status: "failed", result: { error: "model exploded" }, lastSeq: 0, events: [] }]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      runId: "run_42",
+      status: "failed",
+      result: { error: "model exploded" },
+    });
+    expect(result.stderr).toContain("model exploded");
+  });
+
+  test("--json prints the machine object for a not_found run and exits 1", async () => {
+    stubRunLifecycle([{ status: "not_found", lastSeq: 0, events: [] }]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({ runId: "run_42", status: "not_found" });
+  });
+
+  test("a transient poll error is retried until the reply arrives", async () => {
+    stubRunLifecycle([
+      { httpStatus: 502, body: { error: "proxy hiccup" } },
+      {
+        status: "yielded",
+        lastSeq: 1,
+        events: [{ seq: 1, kind: "orchestrator_turn", turn: 1, thought: "recovered reply", actions: [] }],
+      },
+    ]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("recovered reply");
+  });
+
+  test("a thrown poll fetch is retried until the reply arrives", async () => {
+    stubRunLifecycle([
+      { reject: new TypeError("network down") },
+      {
+        status: "yielded",
+        lastSeq: 1,
+        events: [{ seq: 1, kind: "orchestrator_turn", turn: 1, thought: "back online", actions: [] }],
+      },
+    ]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("back online");
+  });
+
+  test("persistent poll failures give up with the run-status hint", async () => {
+    stubRunLifecycle([{ httpStatus: 500, body: { error: "api down" } }]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("api down");
+    expect(result.stdout).toContain("drwn worker run status run_42");
+  });
+
+  test("persistent poll failures with --json emit one object with unknown status", async () => {
+    stubRunLifecycle([{ httpStatus: 500, body: { error: "api down" } }]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ runId: "run_42", status: "unknown" });
+  });
+
+  test("auth errors during polling are not retried", async () => {
+    const calls = stubRunLifecycle([{ reject: new NotAuthenticatedError("Not logged in. Run `drwn login` first.") }]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("drwn login");
+    expect(calls.filter((c) => c.includes("/poll"))).toHaveLength(1);
   });
 });
