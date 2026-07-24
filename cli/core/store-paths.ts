@@ -40,8 +40,10 @@ export function resolveInventoryLockPath(agentsDir: string) {
   return join(resolveStoreRoot(agentsDir), ".inventory-transaction.lock");
 }
 
+export const MACHINE_LOCK_FILENAME = ".machine-transaction.lock";
+
 export function resolveMachineLockPath(agentsDir: string) {
-  return join(resolveStoreRoot(agentsDir), ".machine-transaction.lock");
+  return join(resolveStoreRoot(agentsDir), MACHINE_LOCK_FILENAME);
 }
 
 export function resolveCardsRoot(agentsDir: string) {
