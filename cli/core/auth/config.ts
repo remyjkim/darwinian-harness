@@ -5,6 +5,7 @@ import type { AgentsContext } from "../../context";
 import { loadConfig } from "../config";
 import { resolveMachineConfigPath } from "../store-paths";
 import { loadEffectiveConfig } from "../user-config";
+import { trimTrailingSlashes } from "../url";
 
 export interface AnalyzerConfig {
   apiUrl?: string;
@@ -19,9 +20,9 @@ type AnalyzerEnv = Partial<Record<"DRWN_ANALYZER_URL" | "DRWN_ANALYZER_WEB_URL",
 const DEFAULT_CLIENT_ID = "drwn-cli";
 const DEFAULT_MAX_ARCHIVE_BYTES = 104857600;
 
-function trimTrailingSlashes(value: string | undefined): string | undefined {
+function trimOptionalTrailingSlashes(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  return value.replace(/\/+$/, "");
+  return trimTrailingSlashes(value);
 }
 
 export async function loadAnalyzerConfig(
@@ -33,10 +34,10 @@ export async function loadAnalyzerConfig(
   const effectiveAnalyzer = loaded.config.analyzer ?? {};
   const packagedAnalyzer = repoConfig.analyzer ?? {};
 
-  const apiUrl = trimTrailingSlashes(
+  const apiUrl = trimOptionalTrailingSlashes(
     env.DRWN_ANALYZER_URL ?? effectiveAnalyzer.apiUrl ?? packagedAnalyzer.apiUrl,
   );
-  const webBaseUrl = trimTrailingSlashes(
+  const webBaseUrl = trimOptionalTrailingSlashes(
     env.DRWN_ANALYZER_WEB_URL ?? effectiveAnalyzer.webBaseUrl ?? packagedAnalyzer.webBaseUrl,
   );
 

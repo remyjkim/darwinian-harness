@@ -3,7 +3,8 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { DrwnError } from "../cli/core/errors";
 import {
@@ -203,6 +204,44 @@ describe("legacy machine config migration (I65 Fix 2)", () => {
     expect(await readFile(path, "utf8")).toBe(before);
   });
 
+  test("a migration persist failure surfaces accurately, not as invalid JSON", async () => {
+    const root = await createTempRoot("machine-readonly-");
+    tempRoots.push(root);
+    const dir = join(root, "drwn");
+    await mkdir(dir, { recursive: true });
+    const path = join(dir, "machine.json");
+    await writeFile(path, `${JSON.stringify({ version: 1, optional: {} })}\n`);
+    const before = await readFile(path, "utf8");
+    await chmod(dir, 0o555);
+
+    try {
+      await expect(readMachineConfigFile(path)).rejects.toMatchObject({
+        code: "MACHINE_CONFIG_MIGRATION_WRITE_FAILED",
+      });
+    } finally {
+      await chmod(dir, 0o755);
+    }
+    expect(await readFile(path, "utf8")).toBe(before);
+  });
+
+  test("a held machine lock skips the migration persist instead of racing it", async () => {
+    const root = await createTempRoot("machine-locked-");
+    tempRoots.push(root);
+    const dir = join(root, "drwn");
+    await mkdir(dir, { recursive: true });
+    const path = join(dir, "machine.json");
+    const legacy = `${JSON.stringify({ version: 1, optional: {}, authoring: { scope: "@x" } })}\n`;
+    await writeFile(path, legacy);
+    const owner = { version: 1, id: "test-op", hostname: hostname(), pid: process.pid, startedAt: new Date().toISOString() };
+    await writeFile(join(dir, ".machine-transaction.lock"), `${JSON.stringify(owner, null, 2)}\n`);
+
+    const config = await readMachineConfigFile(path);
+
+    expect(config?.policy.authoring?.scope).toBe("@x");
+    // The persist is the lock holder's to make; the read must not race it.
+    expect(await readFile(path, "utf8")).toBe(legacy);
+  });
+
   test("unknown non-legacy shapes still throw, with a hint naming a real command", async () => {
     const root = await createTempRoot("machine-unknown-");
     tempRoots.push(root);
@@ -216,7 +255,7 @@ describe("legacy machine config migration (I65 Fix 2)", () => {
       expect(error).toBeInstanceOf(DrwnError);
       const drwnError = error as DrwnError;
       expect(drwnError.code).toBe("MACHINE_CONFIG_INVALID");
-      // I49 TC-D1: the old hint named `drwn setup`, which does not exist.
+      // I49 TC-D1: the hint must name a command that exists (`drwn setup` is not one).
       const hints = (drwnError.hints ?? []).join(" ");
       expect(hints).toContain("drwn init");
       expect(hints).not.toContain("drwn setup");

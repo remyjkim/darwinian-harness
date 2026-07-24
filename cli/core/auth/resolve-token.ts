@@ -6,6 +6,7 @@ import { readCredentials, writeCredentials, type CliDahCredentialFile } from "./
 import { refreshToken, credentialFromTokens } from "./device-flow";
 import { drwnCliProfile, type CliAuthProfile } from "./profile";
 import { assertJwtAudience, tokenExpiresWithin } from "./jwt";
+import { trimTrailingSlashes } from "../url";
 
 export interface ResolveTokenInput {
   credentialsPath: string;
@@ -22,10 +23,6 @@ export interface ResolvedAuth {
 }
 
 const REFRESH_SKEW_MS = 120_000;
-
-function trimTrailingSlashes(value: string): string {
-  return value.replace(/\/+$/, "");
-}
 
 function analyzerApiUrl(env: Record<string, string | undefined>): string | undefined {
   return env.DRWN_ANALYZER_URL ? trimTrailingSlashes(env.DRWN_ANALYZER_URL) : undefined;

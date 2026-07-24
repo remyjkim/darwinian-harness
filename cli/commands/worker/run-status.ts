@@ -5,16 +5,8 @@ import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { resolveWorkerConfig } from "../../core/worker-config";
 import { describeWorkerError } from "../../core/worker-error";
-import { describeRunFailure, pollRunOnce, runWebUrl, transcriptEventText } from "../../core/worker-run";
+import { describeRunFailure, pollRunOnce, renderError, runWebUrl, transcriptEventText } from "../../core/worker-run";
 import { renderJson } from "../../core/output";
-
-function renderError(body: unknown): string {
-  if (body && typeof body === "object" && "error" in body) {
-    return String((body as { error: unknown }).error);
-  }
-  if (typeof body === "string" && body.trim()) return body;
-  return "unknown error";
-}
 
 export class WorkerRunStatusCommand extends BaseCommand {
   static override paths = [["worker", "run", "status"]];

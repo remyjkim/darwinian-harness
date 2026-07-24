@@ -3,7 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { JwtAudienceError } from "../cli/core/auth/jwt";
-import { NotAuthenticatedError } from "../cli/core/worker-http";
+import { NotAuthenticatedError } from "../cli/core/errors";
 import { describeWorkerError } from "../cli/core/worker-error";
 
 const API = "https://studio.darwiniantools.com";
@@ -41,7 +41,7 @@ describe("describeWorkerError", () => {
     expect(described).toBe(`Cannot reach Deploy API at ${API}: fetch failed: getaddrinfo ENOTFOUND studio.darwiniantools.com`);
   });
 
-  test("labels unknown errors as connectivity (existing behavior)", () => {
+  test("labels unknown errors as connectivity", () => {
     expect(describeWorkerError(new Error("boom"), API)).toBe(`Cannot reach Deploy API at ${API}: boom`);
     expect(describeWorkerError("boom", API)).toBe(`Cannot reach Deploy API at ${API}: boom`);
   });

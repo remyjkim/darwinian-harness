@@ -7,10 +7,6 @@ import { resolveCredentialsPath } from "./paths";
 import { resolveToken, refreshStoredCredential } from "./auth/resolve-token";
 import { drwnCliProfile } from "./auth/profile";
 
-// Re-exported for existing importers; the class lives in core/errors to stay
-// import-cycle-free with the auth modules (I65 Fix 3).
-export { NotAuthenticatedError };
-
 function withBearer(init: RequestInit | undefined, token: string): RequestInit {
   const headers = new Headers(init?.headers);
   headers.set("authorization", `Bearer ${token}`);
