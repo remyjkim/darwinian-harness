@@ -1,6 +1,8 @@
 // ABOUTME: Central DAH profile selection for the drwn CLI.
 // ABOUTME: Keeps hub, issuer, resource, client id, and scope out of command files.
 
+import { trimTrailingSlashes } from "../url";
+
 export interface CliAuthProfile {
   clientId: "drwn-cli";
   resource: string;
@@ -22,10 +24,6 @@ export const DAH_SCOPES = "openid email offline_access" as const;
 
 export function dahIssuerFor(origin: string): string {
   return new URL("/api/auth", origin).href;
-}
-
-function trimTrailingSlashes(value: string): string {
-  return value.replace(/\/+$/, "");
 }
 
 export function drwnCliProfile(

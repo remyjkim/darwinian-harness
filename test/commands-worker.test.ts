@@ -303,6 +303,49 @@ describe("worker API commands", () => {
     expect(JSON.parse(result.stdout)).toEqual({ output: "hello back", metered: true });
   });
 
+  test("expired token reads as a token error, not connectivity (I65 Fix 3)", async () => {
+    process.env.DRWN_TOKEN = `${b64({ alg: "none" })}.${b64({
+      iss: "https://auth.darwiniantools.com/api/auth",
+      aud: "https://api.darwiniantools.com",
+      sub: "user_123",
+      email: "worker@example.com",
+      exp: Math.floor(Date.now() / 1000) - 60,
+    })}.sig`;
+    stubFetch(async () => {
+      throw new Error("fetch should not be called with an expired token");
+    });
+
+    const result = await runWorkerCommand(["worker", "list"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Token is expired.");
+    expect(result.stderr).not.toContain("Cannot reach Deploy API");
+  });
+
+  test("missing auth reads as not-authenticated, not connectivity (I65 Fix 3)", async () => {
+    process.env.DRWN_TOKEN = "";
+    stubFetch(async () => {
+      throw new Error("fetch should not be called without auth");
+    });
+
+    const result = await runWorkerCommand(["worker", "list"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Not authenticated");
+    expect(result.stderr).not.toContain("Cannot reach Deploy API");
+  });
+
+  test("network failures still read as connectivity (I65 Fix 3)", async () => {
+    stubFetch(async () => {
+      throw new TypeError("fetch failed: getaddrinfo ENOTFOUND studio.darwiniantools.com");
+    });
+
+    const result = await runWorkerCommand(["worker", "list"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Cannot reach Deploy API at https://studio.darwiniantools.com");
+  });
+
   test("deployments marks the active deployment and supports JSON", async () => {
     const body = {
       active_deployment_id: "dep_a",

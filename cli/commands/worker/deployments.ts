@@ -4,6 +4,7 @@
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { resolveWorkerConfig } from "../../core/worker-config";
+import { describeWorkerError } from "../../core/worker-error";
 import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
 import { renderJson, renderTable } from "../../core/output";
 import type { DeploymentsResponse } from "./types";
@@ -47,7 +48,7 @@ export class WorkerDeploymentsCommand extends BaseCommand {
       }
       body = result.body;
     } catch (error) {
-      this.context.stderr.write(`Cannot reach Deploy API at ${apiBaseUrl}: ${(error as Error).message}\n`);
+      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
       return 1;
     }
 

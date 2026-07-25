@@ -274,7 +274,14 @@ export async function revParseWorktree(cwd: string, ref: string): Promise<string
 export async function fetch(repoPath: string, remote: string, refspecs: string[] = []): Promise<void> {
   const args = ["fetch", remote, ...refspecs];
   const result = await runInRepo(repoPath, args);
-  throwForFailure(result, "GIT_FETCH_FAILED", `git fetch failed from ${remote}`, args);
+  throwForFailure(result, "GIT_FETCH_FAILED", describeFetchFailure(remote, refspecs), args);
+}
+
+// Ref-not-found messages drop raw git stderr, so the refspec is the one detail
+// the clean message must carry for the user to act on.
+function describeFetchFailure(remote: string, refspecs: string[]): string {
+  const target = refspecs.length > 0 ? ` for ${refspecs.join(", ")}` : "";
+  return `git fetch failed from ${remote}${target}`;
 }
 
 export function isGitLockContentionError(stderr: string) {
@@ -305,7 +312,7 @@ export async function fetchWithLockRetry(
     }
     const stderr = `${result.stderr}\n${result.stdout}`;
     try {
-      throwForFailure(result, "GIT_FETCH_FAILED", `git fetch failed from ${remote}`, args);
+      throwForFailure(result, "GIT_FETCH_FAILED", describeFetchFailure(remote, refspecs), args);
     } catch (error) {
       lastError = error;
       if (!isGitLockContentionError(stderr) || attempt === maxAttempts - 1) {
@@ -554,7 +561,8 @@ function classifyGitFailure(code: string, message: string, args: string[] | unde
     return new GitNetworkError("GIT_NETWORK_FAILED", `${message}: ${stderr}`.trim(), context);
   }
   if (/unknown revision|bad revision|not a valid object name|ambiguous argument|couldn't find remote ref|not found/i.test(stderr)) {
-    return new GitRefNotFoundError("GIT_REF_NOT_FOUND", `${message}: ${stderr}`.trim(), context);
+    // Keep the ref-not-found message clean; raw git stderr stays in context for debugging (I65 Fix 6).
+    return new GitRefNotFoundError("GIT_REF_NOT_FOUND", message, context);
   }
   return new GitError(code, `${message}: ${stderr}`.trim(), context);
 }

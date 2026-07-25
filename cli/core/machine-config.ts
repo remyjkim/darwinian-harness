@@ -3,12 +3,14 @@
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import { DrwnError } from "./errors";
 import { writeAtomically } from "./fs";
 import { withInventoryLock, withMachineLock } from "./inventory-lock";
 import { DARWINIAN_OPERATOR_SKILL_IDS, operatorProfilePinSchema } from "./operator-profile-contract";
-import { resolveMachineConfigPath } from "./store-paths";
+import { withOwnerLock } from "./owner-lock";
+import { MACHINE_LOCK_FILENAME, resolveMachineConfigPath } from "./store-paths";
 import type { MachineConfig } from "./types";
 
 export { DARWINIAN_OPERATOR_SKILL_IDS } from "./operator-profile-contract";
@@ -90,9 +92,29 @@ function invalidMachineConfig(message: string, cause?: unknown): DrwnError {
   return new DrwnError(
     "MACHINE_CONFIG_INVALID",
     message,
-    ["Reset ~/.agents/drwn/machine.json and rerun drwn setup; prototype machine formats are not supported."],
+    ["Reset ~/.agents/drwn/machine.json and rerun drwn init; prototype machine formats are not supported."],
     cause,
   );
+}
+
+// Pre-operator-v2 prototype configs carry a bare `version` marker and no `schema` identity (I65 Fix 2).
+function isLegacyMachineConfig(value: unknown): value is { authoring?: { scope?: string } } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    (value as Record<string, unknown>).schema === undefined &&
+    "version" in value
+  );
+}
+
+function migrateLegacyMachineConfig(legacy: { authoring?: { scope?: string } }): MachineConfig {
+  const config = createEmptyMachineConfig();
+  const scope = legacy.authoring?.scope;
+  if (typeof scope === "string" && scope.length > 0) {
+    config.policy.authoring = { scope };
+  }
+  return config;
 }
 
 export function createEmptyMachineConfig(): MachineConfig {
@@ -115,12 +137,48 @@ export function parseMachineConfig(value: unknown, path = "machine.json"): Machi
   return parsed.data as MachineConfig;
 }
 
+// Persists a migrated config under the machine lock so a read never clobbers a
+// concurrent locked mutation. A busy lock means a writer is active and will
+// persist its own migrated view, so the read returns without writing.
+async function persistMigratedMachineConfig(path: string, migrated: MachineConfig): Promise<void> {
+  try {
+    await withOwnerLock({
+      path: join(dirname(path), MACHINE_LOCK_FILENAME),
+      label: "Machine config transaction",
+      busyCode: "MACHINE_TRANSACTION_BUSY",
+      unrecoverableCode: "MACHINE_TRANSACTION_LOCK_UNRECOVERABLE",
+    }, async () => {
+      const raw: unknown = JSON.parse(await readFile(path, "utf8"));
+      if (isLegacyMachineConfig(raw)) {
+        await writeMachineConfigFile(path, migrated);
+      }
+    });
+  } catch (error) {
+    if (error instanceof DrwnError) {
+      if (error.code === "MACHINE_TRANSACTION_BUSY") return;
+      throw error;
+    }
+    throw new DrwnError(
+      "MACHINE_CONFIG_MIGRATION_WRITE_FAILED",
+      `Failed to persist migrated machine config at ${path}`,
+      ["Check write permission on the machine config directory."],
+      error,
+    );
+  }
+}
+
 export async function readMachineConfigFile(path: string): Promise<MachineConfig | null> {
   if (!existsSync(path)) {
     return null;
   }
   try {
-    return parseMachineConfig(JSON.parse(await readFile(path, "utf8")), path);
+    const raw: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (isLegacyMachineConfig(raw)) {
+      const migrated = migrateLegacyMachineConfig(raw);
+      await persistMigratedMachineConfig(path, migrated);
+      return migrated;
+    }
+    return parseMachineConfig(raw, path);
   } catch (error) {
     if (error instanceof DrwnError) {
       throw error;

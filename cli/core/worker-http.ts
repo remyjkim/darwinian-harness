@@ -2,6 +2,7 @@
 // ABOUTME: Adds DAH bearer tokens and retries once after a 401 by refreshing stored credentials.
 
 import type { AgentsContext } from "../context";
+import { NotAuthenticatedError } from "./errors";
 import { resolveCredentialsPath } from "./paths";
 import { resolveToken, refreshStoredCredential } from "./auth/resolve-token";
 import { drwnCliProfile } from "./auth/profile";
@@ -30,7 +31,7 @@ export async function fetchWithWorkerAuth(
   const credentialsPath = resolveCredentialsPath(context.agentsDir);
   const auth = await resolveToken({ credentialsPath, env, fetcher, profile });
   if (!auth) {
-    throw new Error("Not authenticated. Run `drwn login` first, or set DRWN_TOKEN for headless execution.");
+    throw new NotAuthenticatedError("Not authenticated. Run `drwn login` first, or set DRWN_TOKEN for headless execution.");
   }
 
   const first = await fetcher(input, withBearer(init, auth.token));
