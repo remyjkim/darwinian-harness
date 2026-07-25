@@ -8,9 +8,15 @@
 > `verification-before-completion`. Execute each task in order and stop at every
 > cross-owner freeze gate.
 
-**Issue:** CL0024 / I24
+**Issue:** I104 — Worker-local materialization of accepted Org Worker bundles
+(split from CL0024 / I24 on 2026-07-24; genealogically an addendum to the CL0024
+architecture, hence the filename)
 **Program:** `ARCH-PROV-REM-2026-07-23`
-**Status:** Draft for Darwinian Worker and Foundry contract-owner review
+**Status:** Implementation complete and independently verified (Review 01,
+`cl0024_addendum01_review01_worker-materialization-execution-readiness.md`: conditional
+go — 1717/6/0, all release gates green). **Not yet frozen:** the cross-owner freeze this
+plan's §12/§13 require is still self-attested and awaits durable, independent
+ratification by the Darwinian Worker and Foundry contract owners (Review 01 finding B1).
 **Created:** 2026-07-23
 **Repository:** `/Users/pureicis/dev/darwinian-minds`
 **Goal:** Complete the deterministic boundary from an accepted

@@ -4,6 +4,7 @@
 # CL0024 Addendum 01 — Worker Materialization Documentation Audit
 
 **Date:** 2026-07-24
+**Issue:** I104 (split from CL0024 / I24 on 2026-07-24)
 **Code base:** `fbcd4089fe4cbea8c4db8cd93c91f1e6262aed7d` plus scoped, uncommitted addendum work
 
 ## Executive summary
