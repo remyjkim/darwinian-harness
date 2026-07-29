@@ -13,7 +13,7 @@
   },
   "type": "module",
   "description": "Local Darwinian Worker CLI for composing Cards, selecting one project Worker, and managing machine capabilities.",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "license": "Apache-2.0",
   "author": "remyjkim <jkkim123@gmail.com>",
   "homepage": "https://github.com/remyjkim/darwinian-worker",
