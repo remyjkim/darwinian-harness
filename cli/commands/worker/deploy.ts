@@ -28,8 +28,7 @@ export class WorkerDeployCommand extends BaseCommand {
       sends the deploy request, uploads optional MCP token values from a local
       secrets file, and polls until the deployment is ready or failed.
 
-      By default, secrets are read from .drwn.secrets, with .iminds.secrets kept
-      as a one-release fallback when the new file is absent.
+      By default, secrets are read from .drwn.secrets.
     `,
     examples: [
       ["Deploy a card from GitHub", "drwn worker deploy github:curation-labs/harari-worker#v1.4.0 --name harari"],
@@ -141,7 +140,7 @@ export class WorkerDeployCommand extends BaseCommand {
     }
 
     const depId = created.deploymentId;
-    const pollMs = Number(process.env.DRWN_POLL_MS ?? process.env.IMINDS_POLL_MS ?? 4000);
+    const pollMs = Number(process.env.DRWN_POLL_MS ?? 4000);
     const deadline = Date.now() + 5 * 60_000;
     let lastStatus = "";
     while (Date.now() < deadline) {
