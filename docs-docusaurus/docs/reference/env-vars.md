@@ -50,17 +50,17 @@ Path to a pre-seeded credential archive. When set, `drwn` initializes the creden
 Overrides the Deploy API origin used by `drwn worker` commands. The default is
 `https://api.darwinian.dev`.
 
-During the I80 migration grace window, the verified legacy deployment API remains
-available at `https://studio.darwiniantools.com`:
+Use this only for an explicitly provisioned staging, development, or custom Deploy API:
 
 ```bash
-DRWN_STUDIO_API_URL=https://studio.darwiniantools.com \
-DRWN_DAH_RESOURCE=https://api.darwiniantools.com \
+DRWN_STUDIO_API_URL=https://api-staging-main.darwinian.dev \
+DRWN_DAH_RESOURCE=https://api-staging-main.darwinian.dev \
 drwn worker status <slug>
 ```
 
-The API override and token-resource override are separate by design. Set both when
-testing the complete legacy path.
+The API override and token-resource override are separate by design. The retired
+production endpoint `https://studio.darwiniantools.com` is not a supported compatibility
+route.
 
 ### `DRWN_STUDIO_WEB_URL`
 
@@ -81,9 +81,9 @@ tests must name their intended hub explicitly.
 ### `DRWN_DAH_RESOURCE`
 
 Overrides the OAuth resource/audience requested and validated by the CLI. The default
-is `https://api.darwinian.dev`. Set it to `https://api.darwiniantools.com` only for the
-temporary legacy-grace path. If stored credentials target a different resource, sign
-in again with `drwn login` under the intended setting.
+is `https://api.darwinian.dev`. Set it only when an explicitly provisioned non-production
+environment uses a different resource. If stored credentials target a different resource,
+sign in again with `drwn login` under the intended setting.
 
 ### `DRWN_TOKEN`
 
