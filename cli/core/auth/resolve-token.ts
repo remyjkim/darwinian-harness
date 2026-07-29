@@ -30,7 +30,7 @@ function analyzerApiUrl(env: Record<string, string | undefined>): string | undef
 
 export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAuth | null> {
   const profile = input.profile ?? drwnCliProfile(input.env);
-  const envToken = input.env.DRWN_TOKEN ?? input.env.IMINDS_TOKEN;
+  const envToken = input.env.DRWN_TOKEN;
   if (envToken) {
     assertJwtAudience(envToken, profile.resource, { requireUnexpired: true });
     return {
@@ -55,7 +55,16 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
       apiUrl,
     };
   }
-  if (creds.resource !== profile.resource || creds.clientId !== profile.clientId) return null;
+  if (creds.resource !== profile.resource) {
+    throw new NotAuthenticatedError(
+      `Stored credentials target ${creds.resource}; run \`drwn login\` again for ${profile.resource}.`,
+    );
+  }
+  if (creds.clientId !== profile.clientId) {
+    throw new NotAuthenticatedError(
+      `Stored credentials target client ${creds.clientId}; run \`drwn login\` again for ${profile.clientId}.`,
+    );
+  }
 
   if (!tokenExpiresWithin(creds.expiresAt, REFRESH_SKEW_MS)) {
     assertJwtAudience(creds.accessToken, profile.resource, { issuer: creds.issuer, requireUnexpired: true });

@@ -19,7 +19,6 @@ import { resolveWorkerConfig } from "../cli/core/worker-config";
 import {
   defaultSecretsFileCandidates,
   DRWN_SECRETS_FILE,
-  LEGACY_IMINDS_SECRETS_FILE,
   parseSecretsFile,
 } from "../cli/core/worker-secrets";
 import type { AgentsContext } from "../cli/context";
@@ -37,7 +36,7 @@ function b64(value: unknown): string {
 function fakeJwt(): string {
   return `${b64({ alg: "none" })}.${b64({
     iss: "https://auth.darwiniantools.com/api/auth",
-    aud: "https://api.darwiniantools.com",
+    aud: "https://api.darwinian.dev",
     sub: "user_123",
     email: "worker@example.com",
     exp: Math.floor(Date.now() / 1000) + 900,
@@ -104,36 +103,36 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Promise<Respons
 }
 
 describe("worker config and secrets", () => {
-  test("uses DRWN studio env values before one-release IMINDS fallbacks", () => {
+  test("uses new defaults and DRWN studio endpoint overrides", () => {
     expect(resolveWorkerConfig({})).toEqual({
-      apiBaseUrl: "https://studio.darwiniantools.com",
-      gatewayBaseUrl: "https://minds.darwiniantools.com",
+      apiBaseUrl: "https://api.darwinian.dev",
+      webBaseUrl: "https://foundry.darwinian.dev",
     });
     expect(resolveWorkerConfig({
       IMINDS_API_URL: "https://old-api.example",
       IMINDS_GATEWAY_URL: "https://old-gw.example",
     })).toEqual({
-      apiBaseUrl: "https://old-api.example",
-      gatewayBaseUrl: "https://old-gw.example",
+      apiBaseUrl: "https://api.darwinian.dev",
+      webBaseUrl: "https://foundry.darwinian.dev",
     });
     expect(resolveWorkerConfig({
       DRWN_STUDIO_API_URL: "https://new-api.example",
-      DRWN_STUDIO_GATEWAY_URL: "https://new-gw.example",
+      DRWN_STUDIO_WEB_URL: "https://new-web.example",
       IMINDS_API_URL: "https://old-api.example",
       IMINDS_GATEWAY_URL: "https://old-gw.example",
     })).toEqual({
       apiBaseUrl: "https://new-api.example",
-      gatewayBaseUrl: "https://new-gw.example",
+      webBaseUrl: "https://new-web.example",
     });
   });
 
-  test("parses secrets and tries .drwn.secrets before .iminds.secrets", () => {
+  test("parses secrets and only tries .drwn.secrets by default", () => {
     expect(parseSecretsFile("# c\nnotion=secret_abc\n\n  search = tok2 \nk=a=b=c\n")).toEqual({
       notion: "secret_abc",
       search: "tok2",
       k: "a=b=c",
     });
-    expect(defaultSecretsFileCandidates()).toEqual([DRWN_SECRETS_FILE, LEGACY_IMINDS_SECRETS_FILE]);
+    expect(defaultSecretsFileCandidates()).toEqual([DRWN_SECRETS_FILE]);
   });
 });
 
@@ -165,6 +164,7 @@ describe("worker command routing", () => {
       expect(stdout).toContain(command);
     }
     expect(stdout).not.toContain("drwn worker login");
+    expect(stdout).not.toContain("drwn cloud status");
   });
 
   test("worker command-group help lists deploy/list/status/deployments/chat/rollback/delete", async () => {
@@ -178,6 +178,11 @@ describe("worker command routing", () => {
 
   test("worker login is not registered", async () => {
     const result = await runWorkerCommand(["worker", "login"]);
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  test("the retired cloud status path is not registered", async () => {
+    const result = await runWorkerCommand(["cloud", "status", "harari"]);
     expect(result.exitCode).not.toBe(0);
   });
 });
@@ -242,7 +247,6 @@ describe("worker API commands", () => {
 
   test("status reports the metered chat API URL for a ready active deployment", async () => {
     process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
-    process.env.DRWN_STUDIO_GATEWAY_URL = "http://gw.test.local";
 
     stubFetch(async (url) => {
       const path = new URL(url).pathname;
@@ -306,7 +310,7 @@ describe("worker API commands", () => {
   test("expired token reads as a token error, not connectivity (I65 Fix 3)", async () => {
     process.env.DRWN_TOKEN = `${b64({ alg: "none" })}.${b64({
       iss: "https://auth.darwiniantools.com/api/auth",
-      aud: "https://api.darwiniantools.com",
+      aud: "https://api.darwinian.dev",
       sub: "user_123",
       email: "worker@example.com",
       exp: Math.floor(Date.now() / 1000) - 60,
@@ -337,13 +341,13 @@ describe("worker API commands", () => {
 
   test("network failures still read as connectivity (I65 Fix 3)", async () => {
     stubFetch(async () => {
-      throw new TypeError("fetch failed: getaddrinfo ENOTFOUND studio.darwiniantools.com");
+      throw new TypeError("fetch failed: getaddrinfo ENOTFOUND api.darwinian.dev");
     });
 
     const result = await runWorkerCommand(["worker", "list"]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Cannot reach Deploy API at https://studio.darwiniantools.com");
+    expect(result.stderr).toContain("Cannot reach Deploy API at https://api.darwinian.dev");
   });
 
   test("deployments marks the active deployment and supports JSON", async () => {
@@ -395,7 +399,6 @@ describe("worker API commands", () => {
   test("deploy captures the mind id, caches the binding, and notes a missing bgdb-token endpoint", async () => {
     process.env.DRWN_POLL_MS = "1";
     process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
-    process.env.DRWN_STUDIO_GATEWAY_URL = "http://gw.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
@@ -428,7 +431,6 @@ describe("worker API commands", () => {
   test("deploy stores binding coordinates when the bgdb-token endpoint responds, without persisting the token", async () => {
     process.env.DRWN_POLL_MS = "1";
     process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
-    process.env.DRWN_STUDIO_GATEWAY_URL = "http://gw.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
@@ -468,7 +470,6 @@ describe("worker API commands", () => {
   test("deploy reads .drwn.secrets, redacts tokens, and reports ready output", async () => {
     process.env.DRWN_POLL_MS = "1";
     process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
-    process.env.DRWN_STUDIO_GATEWAY_URL = "http://gw.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });

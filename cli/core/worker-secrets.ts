@@ -1,11 +1,10 @@
 // ABOUTME: Parses local drwn worker secrets files for deployment-time MCP tokens.
-// ABOUTME: Supports the .iminds.secrets fallback for one compatibility release.
+// ABOUTME: Keeps implicit secret discovery on the current .drwn.secrets filename.
 
 export const DRWN_SECRETS_FILE = ".drwn.secrets";
-export const LEGACY_IMINDS_SECRETS_FILE = ".iminds.secrets";
 
 export function defaultSecretsFileCandidates(): string[] {
-  return [DRWN_SECRETS_FILE, LEGACY_IMINDS_SECRETS_FILE];
+  return [DRWN_SECRETS_FILE];
 }
 
 export function parseSecretsFile(content: string): Record<string, string> {

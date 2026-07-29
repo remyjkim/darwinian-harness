@@ -24,8 +24,8 @@ export interface RunPollResponse {
 }
 
 /** The console page for a conversation — same-origin with the Deploy API. */
-export function runWebUrl(apiBaseUrl: string, runId: string): string {
-  return `${apiBaseUrl}/c/${encodeURIComponent(runId)}`;
+export function runWebUrl(webBaseUrl: string, runId: string): string {
+  return `${webBaseUrl}/c/${encodeURIComponent(runId)}`;
 }
 
 /** A run no longer making progress: done, failed, or unknown (mirrors engine isTerminalRunStatus + yielded). */

@@ -1,11 +1,11 @@
 // ABOUTME: Resolves Deployment endpoints for drwn worker commands.
-// ABOUTME: Keeps one-release IMINDS env fallbacks while preferring DRWN names.
+// ABOUTME: Keeps API calls and browser handoffs on independently configurable origins.
 
 import { trimTrailingSlashes } from "./url";
 
 export type WorkerConfig = {
   apiBaseUrl: string;
-  gatewayBaseUrl: string;
+  webBaseUrl: string;
 };
 
 export function resolveWorkerConfig(
@@ -14,13 +14,11 @@ export function resolveWorkerConfig(
   return {
     apiBaseUrl: trimTrailingSlashes(
       env.DRWN_STUDIO_API_URL ??
-      env.IMINDS_API_URL ??
-      "https://studio.darwiniantools.com",
+      "https://api.darwinian.dev",
     ),
-    gatewayBaseUrl: trimTrailingSlashes(
-      env.DRWN_STUDIO_GATEWAY_URL ??
-      env.IMINDS_GATEWAY_URL ??
-      "https://minds.darwiniantools.com",
+    webBaseUrl: trimTrailingSlashes(
+      env.DRWN_STUDIO_WEB_URL ??
+      "https://foundry.darwinian.dev",
     ),
   };
 }
