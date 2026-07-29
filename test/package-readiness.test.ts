@@ -146,9 +146,15 @@ describe("package readiness", () => {
     expect(workflow).toContain("name: Dry run complete");
     expect(workflow).toContain("if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}");
     expect(workflow).toContain("for attempt in $(seq 1 12); do");
-    expect(workflow).toContain("npm install -g \"darwinian@$VERSION\"");
+    expect(workflow).toContain("id: publication");
+    expect(workflow).toContain("already_published=true");
+    expect(workflow).toContain("steps.publication.outputs.already_published != 'true'");
+    expect(workflow).toContain("--cache \"$RUNNER_TEMP/npm-release-probe\"");
+    expect(workflow).toContain("npm install -g \"darwinian@$VERSION\" \\");
+    expect(workflow).toContain("--cache \"$RUNNER_TEMP/npm-smoke-$attempt\"");
     expect(workflow).toContain("did not propagate to npm within two minutes");
     expect(workflow).toContain("runs-on: macos-latest");
+    expect(workflow).toContain("gh release view \"$TAG\"");
     expect(workflow).toContain("gh release create \"$TAG\"");
     expect(workflow).toContain("--generate-notes");
   });
