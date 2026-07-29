@@ -265,6 +265,11 @@ The first supported contract does not read prototype project state. Follow [`doc
 | `DRWN_FETCH_CONCURRENCY` | Concurrent Card/skill fetch limit. |
 | `DRWN_GIT_TIMEOUT_MS` | Git operation timeout. |
 
+During the domain grace window, setting
+`DRWN_STUDIO_API_URL=https://studio.darwiniantools.com` also selects the matching legacy
+resource `https://api.darwiniantools.com`. An explicit `DRWN_DAH_RESOURCE` remains
+higher priority for nonstandard environments.
+
 ## References
 
 - [`docs/contracts/project-worker-v1.md`](docs/contracts/project-worker-v1.md)
