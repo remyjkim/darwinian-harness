@@ -103,47 +103,47 @@ describe("resolveToken", () => {
     expect(result).toBeNull();
   });
 
-  test("asks for a fresh login when stored credentials target the previous resource", async () => {
+  test("asks for a fresh login when stored credentials target another resource", async () => {
     tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
     const credentialsPath = join(tmp, "credentials.json");
     await writeCredentials(credentialsPath, {
       version: 2,
       issuer: "https://auth.darwiniantools.com/api/auth",
       clientId: "drwn-cli",
-      resource: "https://api.darwiniantools.com",
-      accessToken: fakeJwt("old@example.com", undefined, "https://api.darwiniantools.com"),
-      refreshToken: "refresh-old",
+      resource: "https://api-staging-main.darwinian.dev",
+      accessToken: fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev"),
+      refreshToken: "refresh-staging",
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "old@example.com",
+      user_email: "staging@example.com",
       saved_at: "2026-06-03T00:00:00Z",
     });
 
     await expect(resolveToken({ credentialsPath, env: {} }))
-      .rejects.toThrow("Stored credentials target https://api.darwiniantools.com; run `drwn login` again for https://api.darwinian.dev.");
+      .rejects.toThrow("Stored credentials target https://api-staging-main.darwinian.dev; run `drwn login` again for https://api.darwinian.dev.");
   });
 
-  test("uses an old-resource credential when the grace override names that resource", async () => {
+  test("uses a non-production credential when the explicit resource override matches", async () => {
     tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
     const credentialsPath = join(tmp, "credentials.json");
-    const oldToken = fakeJwt("old@example.com", undefined, "https://api.darwiniantools.com");
+    const stagingToken = fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev");
     await writeCredentials(credentialsPath, {
       version: 2,
       issuer: "https://auth.darwiniantools.com/api/auth",
       clientId: "drwn-cli",
-      resource: "https://api.darwiniantools.com",
-      accessToken: oldToken,
-      refreshToken: "refresh-old",
+      resource: "https://api-staging-main.darwinian.dev",
+      accessToken: stagingToken,
+      refreshToken: "refresh-staging",
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "old@example.com",
+      user_email: "staging@example.com",
       saved_at: "2026-06-03T00:00:00Z",
     });
 
     const result = await resolveToken({
       credentialsPath,
-      env: { DRWN_DAH_RESOURCE: "https://api.darwiniantools.com" },
+      env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
     });
 
-    expect(result).toMatchObject({ token: oldToken, source: "stored" });
+    expect(result).toMatchObject({ token: stagingToken, source: "stored" });
   });
 
   test("does not honor the retired IMINDS_TOKEN name", async () => {

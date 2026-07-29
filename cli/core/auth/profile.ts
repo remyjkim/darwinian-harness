@@ -14,10 +14,7 @@ export interface CliAuthProfile {
 
 export const DAH_API_ORIGINS = {
   services: "https://api.darwinian.dev",
-  legacyServices: "https://api.darwiniantools.com",
 } as const;
-
-const LEGACY_STUDIO_API_ORIGIN = "https://studio.darwiniantools.com";
 
 export const DAH_CLIENT_IDS = {
   drwnCli: "drwn-cli",
@@ -33,13 +30,7 @@ export function drwnCliProfile(
   env: Record<string, string | undefined> = process.env,
 ): CliAuthProfile {
   const hubOrigin = trimTrailingSlashes(env.DRWN_DAH_HUB_URL ?? "https://auth.darwiniantools.com");
-  const selectedApiOrigin = env.DRWN_STUDIO_API_URL
-    ? trimTrailingSlashes(env.DRWN_STUDIO_API_URL)
-    : undefined;
-  const defaultResource = selectedApiOrigin === LEGACY_STUDIO_API_ORIGIN
-    ? DAH_API_ORIGINS.legacyServices
-    : DAH_API_ORIGINS.services;
-  const resource = trimTrailingSlashes(env.DRWN_DAH_RESOURCE ?? defaultResource);
+  const resource = trimTrailingSlashes(env.DRWN_DAH_RESOURCE ?? DAH_API_ORIGINS.services);
   return {
     clientId: DAH_CLIENT_IDS.drwnCli,
     resource,

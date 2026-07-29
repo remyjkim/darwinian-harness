@@ -15,11 +15,11 @@ DRWN_DAH_HUB_URL=https://darwinian-auth-hub-staging.dev-726.workers.dev drwn log
 ```
 
 Use `DRWN_DAH_RESOURCE` when the target environment requires a different services
-audience. During the migration grace window, a previous-resource login can be
-created explicitly:
+audience. For example, an explicitly provisioned staging environment can request its
+matching resource:
 
 ```bash
-DRWN_DAH_RESOURCE=https://api.darwiniantools.com drwn login
+DRWN_DAH_RESOURCE=https://api-staging-main.darwinian.dev drwn login
 ```
 
 Changing the resource intentionally invalidates a stored credential for the other

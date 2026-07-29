@@ -1,5 +1,5 @@
-// ABOUTME: Verifies the drwn CLI Auth Hub profile during the I80 dual-accept window.
-// ABOUTME: Pins the new audience while preserving the paired legacy-host grace override and explicit overrides.
+// ABOUTME: Verifies the drwn CLI Auth Hub profile during the I80 migration.
+// ABOUTME: Keeps API routing independent from explicit Auth Hub resource selection.
 
 import { describe, expect, test } from "bun:test";
 import { drwnCliProfile } from "../cli/core/auth/profile";
@@ -16,26 +16,26 @@ describe("drwnCliProfile", () => {
   test("honors and normalizes explicit hub and resource overrides", () => {
     expect(drwnCliProfile({
       DRWN_DAH_HUB_URL: "https://darwinian-auth-hub-staging.dev-726.workers.dev/",
-      DRWN_DAH_RESOURCE: "https://api.darwiniantools.com/",
+      DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev/",
     })).toMatchObject({
       hubOrigin: "https://darwinian-auth-hub-staging.dev-726.workers.dev",
       issuer: "https://darwinian-auth-hub-staging.dev-726.workers.dev/api/auth",
-      resource: "https://api.darwiniantools.com",
+      resource: "https://api-staging-main.darwinian.dev",
     });
   });
 
-  test("pairs the exact legacy API override with its legacy resource", () => {
+  test("does not infer a token resource from the API routing override", () => {
     expect(drwnCliProfile({
       DRWN_STUDIO_API_URL: "https://studio.darwiniantools.com/",
     })).toMatchObject({
       hubOrigin: "https://auth.darwiniantools.com",
-      resource: "https://api.darwiniantools.com",
+      resource: "https://api.darwinian.dev",
     });
   });
 
-  test("keeps an explicit resource higher priority than the legacy API pairing", () => {
+  test("honors an explicit resource independently of the API routing override", () => {
     expect(drwnCliProfile({
-      DRWN_STUDIO_API_URL: "https://studio.darwiniantools.com",
+      DRWN_STUDIO_API_URL: "https://api-staging-main.darwinian.dev",
       DRWN_DAH_RESOURCE: "https://custom-resource.example/",
     })).toMatchObject({
       resource: "https://custom-resource.example",
