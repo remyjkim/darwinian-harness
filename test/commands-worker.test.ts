@@ -15,6 +15,7 @@ import { WorkerChatCommand } from "../cli/commands/worker/chat";
 import { WorkerListCommand } from "../cli/commands/worker/list";
 import { WorkerRollbackCommand } from "../cli/commands/worker/rollback";
 import { WorkerStatusCommand } from "../cli/commands/worker/status";
+import { WorkerRoutineCommand } from "../cli/commands/worker/routine";
 import { resolveWorkerConfig } from "../cli/core/worker-config";
 import {
   defaultSecretsFileCandidates,
@@ -88,6 +89,7 @@ async function runWorkerCommand(args: string[], fixture?: Awaited<ReturnType<typ
   cli.register(WorkerStatusCommand);
   cli.register(WorkerDeploymentsCommand);
   cli.register(WorkerChatCommand);
+  cli.register(WorkerRoutineCommand);
   cli.register(WorkerRollbackCommand);
   cli.register(WorkerDeleteCommand);
   const exitCode = await cli.run(args, context);
@@ -153,6 +155,7 @@ describe("worker command routing", () => {
       "drwn worker status",
       "drwn worker deployments",
       "drwn worker chat",
+      "drwn worker routine create",
       "drwn worker rollback",
       "drwn worker delete",
       "drwn login",
@@ -168,11 +171,12 @@ describe("worker command routing", () => {
     expect(stdout).not.toContain("drwn cloud status");
   });
 
-  test("worker command-group help lists deploy/list/status/deployments/chat/rollback/delete", async () => {
+  test("worker command-group help lists deploy/list/status/deployments/chat/routine/rollback/delete", async () => {
     const result = await runWorkerCommand(["worker", "--help"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("drwn worker deployments");
     expect(result.stdout).toContain("drwn worker chat");
+    expect(result.stdout).toContain("drwn worker routine");
     expect(result.stdout).toContain("<slug>");
     expect(result.stdout).not.toContain("worker login");
   });
