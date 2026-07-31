@@ -12,11 +12,16 @@
 (split from CL0024 / I24 on 2026-07-24; genealogically an addendum to the CL0024
 architecture, hence the filename)
 **Program:** `ARCH-PROV-REM-2026-07-23`
-**Status:** Implementation complete and independently verified (Review 01,
-`cl0024_addendum01_review01_worker-materialization-execution-readiness.md`: conditional
-go — 1717/6/0, all release gates green). **Not yet frozen:** the cross-owner freeze this
-plan's §12/§13 require is still self-attested and awaits durable, independent
-ratification by the Darwinian Worker and Foundry contract owners (Review 01 finding B1).
+**Status:** Implementation complete, independently verified, and **cross-owner
+ratified (2026-07-28)**. Review 01
+(`cl0024_addendum01_review01_worker-materialization-execution-readiness.md`) returned a
+conditional go — 1717/6/0, all release gates green — gated on Review findings B1–B4. The
+cross-owner freeze this plan's §12/§13 require was **ratified verbally on 2026-07-28 by
+the Foundry/contract owner (Minseung Lee)** to the Darwinian Worker owner (Remy Kim),
+covering the frozen receipt schema (`a638b578…`), negative matrix (`887a2be0…`), the
+`organization-receipt@1` envelope mapping, and the artifact-transfer/snapshot contract.
+That ratification resolves Review finding B1; B2 (status contradiction) is resolved by
+this status line itself; B3 and B4 are reconciled below (2026-07-28 dispositions).
 **Created:** 2026-07-23
 **Repository:** `/Users/pureicis/dev/darwinian-minds`
 **Goal:** Complete the deterministic boundary from an accepted
@@ -97,9 +102,9 @@ Worker-side execution bindings appended 2026-07-24:
 | Worker released-boundary manifest | `sha256:fc9632d346fd85e4931100f157052d47a2721fc59c4fa0fdfd1f6b36ab4bc0f2` | checksum-pinned Worker-side qualification boundary |
 | Worker released GTM bundle copy | `sha256:42f5a30853351d27cddee75869c0581604ebbe01cdf8fb160357bc1d50536dc9` | exact bundle bytes consumed by the fresh-process scenario |
 | Worker artifact snapshot | `sha256:70e6700c10c8107352a589d06dad14b7849622b0f830b325679aa2394e219067` | exact snapshot bytes consumed by the scenario |
-| Org packet | `organization-provisioning-v1@1.0.1` | frozen producer packet matching the Worker receipt vectors |
-| Org packet descriptor SHA-256 | `9be2e3855f5d955726dcf268edc515f8752308cdd4a8365c0bbeffd42d1394f3` | digest of frozen `packet.json` bytes |
-| Org packet manifest file SHA-256 | `d1a0cc18801ca187b9f40ecfaf1bcd8b2e199b943c02a8c2f47758b39f24380e` | digest of frozen `manifest.sha256` bytes |
+| Org packet | `organization-provisioning-v1@1.0.1` | frozen producer packet matching the Worker receipt vectors; pinned to org commit `cdb2b73` (the freeze point — see disposition below) |
+| Org packet descriptor SHA-256 | `9be2e3855f5d955726dcf268edc515f8752308cdd4a8365c0bbeffd42d1394f3` | digest of frozen `packet.json` bytes at org `cdb2b73` (reproducible: `git -C darwinian-org show cdb2b73:.ai/contracts/organization-provisioning-v1/packet.json \| shasum -a 256`) |
+| Org packet manifest file SHA-256 | `d1a0cc18801ca187b9f40ecfaf1bcd8b2e199b943c02a8c2f47758b39f24380e` | digest of frozen `manifest.sha256` bytes at org `cdb2b73` (reproducible via the same `git show … \| shasum -a 256`) |
 | Worker receipt schema SHA-256 | `a638b578e794527cabbc8fc833136c7952228dc47d77a0f968dc086b41960979` | standalone schema shipped by the Org packet |
 | Receipt negative matrix SHA-256 | `887a2be0b9db1920ef07a5a4d38ab01a11c7872331d7e08f68481ecbd0a48071` | exact shared negative manifest |
 
@@ -118,6 +123,23 @@ Contract bytes and schemas win over stale narrative status text. In particular, 
 target architecture still contains historical statements that CL0024 is merely planned;
 those statements must be corrected, but they do not override the frozen packet.
 
+> **Freeze-commit pinning (Review 01 B3 disposition, 2026-07-28).** The `1.0.1`
+> binding digests above are frozen to org commit `cdb2b73` ("bind exact V1
+> materialization artifacts", 2026-07-24) — the freeze point the Worker recorded
+> against. They are byte-reproducible from git at that commit (commands inline in the
+> table). Review 01 observed that the *live* org `packet.json`/`manifest.sha256` no
+> longer matched these digests; re-investigation confirms the live org packet has
+> since advanced to `1.2.0` (org HEAD `0524ad4`, descriptor `3cabf231…`, manifest
+> `372c3365…`), with an intermediate drift at org `7dad3b8` where bytes moved under
+> the same `1.0.1` label. None of this touches the runtime: the Worker CLI consumes
+> bundle/snapshot/content closure paths, never the outer packet descriptor (§5 scopes
+> `ORG_WORKER_PACKET_IDENTITY_MISMATCH` out of the runtime). The consumed bytes are
+> cross-verified byte-for-byte against the producer (Review 01 Confirmed Assumption
+> C6). The drift is therefore a freeze-discipline smell now closed by (a) pinning the
+> binding to a git-recoverable commit and (b) recording that the live packet is ahead
+> at `1.2.0`; a future re-binding to `1.2.0` is a separate, version-bumped freeze, not
+> a correction to this one.
+
 ## 3. Current divergence record
 
 | ID | Current behavior or plan | Required target behavior | Severity |
@@ -128,7 +150,7 @@ those statements must be corrected, but they do not override the frozen packet.
 | A04 | receipt is written before `syncRepository` | success receipt follows apply, read-back, and ownership verification | blocker |
 | A05 | bundle digest is plain canonical JSON SHA-256 | use the producer's frozen canonicalization and `darwinian:org-worker-bundle:v1` domain | high |
 | A06 | `minimumWorkerVersion` is parsed but not enforced | reject incompatible Worker versions before mutation | blocker |
-| A07 | current Worker is `0.9.0`; producer fixture requires `1.0.0` | contract owner must bump Worker or amend/reissue the packet | blocker |
+| A07 | current Worker is `0.9.0`; producer fixture requires `1.0.0` | contract owner must bump Worker or amend/reissue the packet | blocker — **resolved 2026-07-28:** Worker bumped to `1.0.0` (`cli/core/version.ts`, `package.json`), owner-ratified as the intended A07 resolution (not a packet re-issue) and as the intended first stable major release (Review 01 B4; see Status line). |
 | A08 | `projectOverlay` and `logicalEnvironmentClass` are parsed but ignored | advertise an exact supported profile and fail closed otherwise | high |
 | A09 | non-Card/non-root artifact pins are silently skipped | materialize or return an explicit compatibility rejection; never ignore | high |
 | A10 | ordered roots are checked but do not derive fresh project state | preserve root order and exact active-root selection in config/lock | blocker |
@@ -1103,3 +1125,4 @@ Append; do not rewrite prior evidence.
 |---|---|---|---|---|---|---|---|
 | 2026-07-23 | Addendum draft | `57b8721` | Org `c636cb9`; packet `organization-provisioning-v1@1.0.0` | Document audit found A01–A14, including version, consent, receipt, artifact-transfer, and reconciliation gaps | Draft only; no product code or external system mutation | `.ai/tasks/cl0024_addendum01_org-worker-bundle-materialization-alignment.md` | Codex |
 | 2026-07-24 | Worker Tasks 1–10 implementation and qualification | `fbcd4089fe4cbea8c4db8cd93c91f1e6262aed7d` plus scoped uncommitted changes | Org packet `organization-provisioning-v1@1.0.1`; packet `9be2e385...94f3`; manifest file `d1a0cc18...380e`; Worker boundary manifest `fc9632d3...c0f2` | Focused RED tests exposed missing compatibility/artifact/plan/record/journal/receipt/materializer/diagnostic modules, premature or incomplete success evidence, unsafe recovery/removal/diagnostic receipt reads, missing stable semantic codes, and missing fresh-process lifecycle coverage | Focused suites green; fresh-process scenario 2/2 (157 expects); full `bun test ./test/` 1,717 pass · 6 environment/live skip · 0 fail (7,680 expects, 296 files); typecheck, docs build, release verifier, and diff check green | Immutable bundle/snapshot/content and materialize/reconcile/remove receipt fixtures are checksum-pinned. Task 48 owner reports Org packet checksum verification and Node contract 11/11 green. Live deployment/provider/authorization/readiness gates not implied. No commit. | Codex |
+| 2026-07-28 | Review 01 B1–B4 reconciliation | `6d6e5d1` (release branch HEAD) | Org packet `1.0.1` frozen at org `cdb2b73`; live org now `1.2.0` at `0524ad4` | Review 01 returned conditional go gated on B1 (self-attested freeze), B2 (status contradiction), B3 (outer-packet byte drift), B4 (`1.0.0` bump ratification) | B1 ratified verbally 2026-07-28 by Foundry/contract owner (Minseung Lee) to Worker owner (Remy Kim); B2 resolved by Status-line rewrite; B3 resolved by freeze-commit pinning (`cdb2b73`) + live-packet disposition; B4 resolved by A07 owner-ratification | All four findings closed; no code change required. Outer-packet drift is out of runtime scope (§5). This evidence log records the verbal ratification; a durable written artifact should follow. | Remy |
