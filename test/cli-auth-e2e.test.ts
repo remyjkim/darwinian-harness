@@ -166,7 +166,7 @@ describe("auth CLI E2E", () => {
     expect(JSON.parse(whoami.stdout)).toMatchObject({
       email: "cli-e2e@example.com",
       issuer: `${apiUrl}/api/auth`,
-      audience: "https://api.darwiniantools.com",
+      audience: "https://api.darwinian.dev",
       user_id: "user_123",
       expires_at: credentials && "version" in credentials ? credentials.expiresAt : undefined,
       source: "stored",
@@ -211,7 +211,7 @@ describe("auth CLI E2E", () => {
       DRWN_DAH_HUB_URL: apiUrl,
     });
     expect(wrongAudience.exitCode).toBe(1);
-    expect(wrongAudience.stderr).toContain("Token audience does not include https://api.darwiniantools.com.");
+    expect(wrongAudience.stderr).toContain("Token audience does not include https://api.darwinian.dev.");
 
     const expired = await runAgentsCli(["whoami"], {
       ...baseEnv,

@@ -63,7 +63,7 @@ export class WorkerChatCommand extends BaseCommand {
   });
 
   async execute(): Promise<number> {
-    const { apiBaseUrl } = resolveWorkerConfig();
+    const { apiBaseUrl, webBaseUrl } = resolveWorkerConfig();
     try {
       const { response, body } = await fetchJsonWithWorkerAuth<unknown>(
         this.context,
@@ -84,7 +84,7 @@ export class WorkerChatCommand extends BaseCommand {
         this.context.stdout.write(renderJson(body));
         return 0;
       }
-      const url = runWebUrl(apiBaseUrl, runId);
+      const url = runWebUrl(webBaseUrl, runId);
       if (this.noWait) {
         if (this.json) {
           this.context.stdout.write(renderJson({ runId, url }));

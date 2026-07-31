@@ -5,6 +5,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-07-29
+
+### Fixed
+
+- Production worker authentication no longer infers the retired
+  `https://api.darwiniantools.com` audience from an API URL override. Deploy API
+  routing and Auth Hub resource overrides remain independent for explicitly
+  provisioned staging and development environments.
+- Documentation no longer promises compatibility through the retired
+  `https://studio.darwiniantools.com` production endpoint.
+
+## [0.10.0] - 2026-07-28
+
 ### Added
 
 - Explicit Worker-instructions V1 projection. Cards can author inline or

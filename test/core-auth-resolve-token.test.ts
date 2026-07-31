@@ -14,10 +14,14 @@ function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): string {
+function fakeJwt(
+  email = "x@y.z",
+  exp = Math.floor(Date.now() / 1000) + 900,
+  audience = "https://api.darwinian.dev",
+): string {
   return `${b64({ alg: "none" })}.${b64({
     iss: "https://auth.darwiniantools.com/api/auth",
-    aud: "https://api.darwiniantools.com",
+    aud: audience,
     sub: "user_123",
     email,
     exp,
@@ -53,7 +57,7 @@ describe("resolveToken", () => {
       version: 2,
       issuer: "https://auth.darwiniantools.com/api/auth",
       clientId: "drwn-cli",
-      resource: "https://api.darwiniantools.com",
+      resource: "https://api.darwinian.dev",
       accessToken: fakeJwt(),
       refreshToken: "refresh-1",
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
@@ -96,6 +100,58 @@ describe("resolveToken", () => {
 
   test("returns null when no env vars and no credentials", async () => {
     const result = await resolveToken({ credentialsPath: "/no/such/path", env: {} });
+    expect(result).toBeNull();
+  });
+
+  test("asks for a fresh login when stored credentials target another resource", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    await writeCredentials(credentialsPath, {
+      version: 2,
+      issuer: "https://auth.darwiniantools.com/api/auth",
+      clientId: "drwn-cli",
+      resource: "https://api-staging-main.darwinian.dev",
+      accessToken: fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev"),
+      refreshToken: "refresh-staging",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      user_email: "staging@example.com",
+      saved_at: "2026-06-03T00:00:00Z",
+    });
+
+    await expect(resolveToken({ credentialsPath, env: {} }))
+      .rejects.toThrow("Stored credentials target https://api-staging-main.darwinian.dev; run `drwn login` again for https://api.darwinian.dev.");
+  });
+
+  test("uses a non-production credential when the explicit resource override matches", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const stagingToken = fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev");
+    await writeCredentials(credentialsPath, {
+      version: 2,
+      issuer: "https://auth.darwiniantools.com/api/auth",
+      clientId: "drwn-cli",
+      resource: "https://api-staging-main.darwinian.dev",
+      accessToken: stagingToken,
+      refreshToken: "refresh-staging",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      user_email: "staging@example.com",
+      saved_at: "2026-06-03T00:00:00Z",
+    });
+
+    const result = await resolveToken({
+      credentialsPath,
+      env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+    });
+
+    expect(result).toMatchObject({ token: stagingToken, source: "stored" });
+  });
+
+  test("does not honor the retired IMINDS_TOKEN name", async () => {
+    const result = await resolveToken({
+      credentialsPath: "/no/such/path",
+      env: { IMINDS_TOKEN: fakeJwt() },
+    });
+
     expect(result).toBeNull();
   });
 });

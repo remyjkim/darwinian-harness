@@ -258,8 +258,17 @@ The first supported contract does not read prototype project state. Follow [`doc
 | `AGENTS_HOME_DIR` | Override user-home resolution for isolated tests. |
 | `DRWN_STORE_READONLY=1` | Reject Store mutation while allowing reads/dry-runs. |
 | `DRWN_TOKEN` | Headless Darwinian API authentication. |
+| `DRWN_STUDIO_API_URL` | Override the worker Deploy API (default `https://api.darwinian.dev`). |
+| `DRWN_STUDIO_WEB_URL` | Override worker browser links (default `https://foundry.darwinian.dev`). |
+| `DRWN_DAH_HUB_URL` | Override the Auth Hub origin. |
+| `DRWN_DAH_RESOURCE` | Override the requested/validated services audience. |
 | `DRWN_FETCH_CONCURRENCY` | Concurrent Card/skill fetch limit. |
 | `DRWN_GIT_TIMEOUT_MS` | Git operation timeout. |
+
+`DRWN_STUDIO_API_URL` and `DRWN_DAH_RESOURCE` are independent overrides for staging,
+development, and other nonstandard environments. The retired production endpoint
+`https://studio.darwiniantools.com` is not a supported compatibility route; production
+worker commands use `https://api.darwinian.dev`.
 
 ## References
 

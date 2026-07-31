@@ -6,7 +6,7 @@ import { JwtAudienceError } from "../cli/core/auth/jwt";
 import { NotAuthenticatedError } from "../cli/core/errors";
 import { describeWorkerError } from "../cli/core/worker-error";
 
-const API = "https://studio.darwiniantools.com";
+const API = "https://api.darwinian.dev";
 
 describe("describeWorkerError", () => {
   test("surfaces not-authenticated errors without the connectivity banner", () => {
@@ -37,8 +37,8 @@ describe("describeWorkerError", () => {
   });
 
   test("labels network failures as connectivity", () => {
-    const described = describeWorkerError(new TypeError("fetch failed: getaddrinfo ENOTFOUND studio.darwiniantools.com"), API);
-    expect(described).toBe(`Cannot reach Deploy API at ${API}: fetch failed: getaddrinfo ENOTFOUND studio.darwiniantools.com`);
+    const described = describeWorkerError(new TypeError("fetch failed: getaddrinfo ENOTFOUND api.darwinian.dev"), API);
+    expect(described).toBe(`Cannot reach Deploy API at ${API}: fetch failed: getaddrinfo ENOTFOUND api.darwinian.dev`);
   });
 
   test("labels unknown errors as connectivity", () => {

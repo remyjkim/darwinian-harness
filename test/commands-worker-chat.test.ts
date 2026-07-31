@@ -20,7 +20,7 @@ function b64(value: unknown): string {
 function fakeJwt(): string {
   return `${b64({ alg: "none" })}.${b64({
     iss: "https://auth.darwiniantools.com/api/auth",
-    aud: "https://api.darwiniantools.com",
+    aud: "https://api.darwinian.dev",
     sub: "user_123",
     email: "worker@example.com",
     exp: Math.floor(Date.now() / 1000) + 900,
@@ -118,7 +118,7 @@ describe("worker chat wait (I65 Fix 4)", () => {
     const result = await runChat(["worker", "chat", "harari", "--message", "hello"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Open in browser: https://studio.darwiniantools.com/c/run_42");
+    expect(result.stdout).toContain("Open in browser: https://foundry.darwinian.dev/c/run_42");
     expect(result.stdout).toContain("hello back from the mind");
     // The user's own message is not echoed back.
     const replyAt = result.stdout.indexOf("hello back");
@@ -188,7 +188,7 @@ describe("worker chat wait (I65 Fix 4)", () => {
 
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout);
-    expect(parsed).toMatchObject({ runId: "run_42", status: "yielded", url: "https://studio.darwiniantools.com/c/run_42" });
+    expect(parsed).toMatchObject({ runId: "run_42", status: "yielded", url: "https://foundry.darwinian.dev/c/run_42" });
     expect(parsed.events).toHaveLength(1);
   });
 
@@ -200,6 +200,21 @@ describe("worker chat wait (I65 Fix 4)", () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({ runId: "run_42" });
     expect(calls.filter((c) => c.includes("/poll"))).toHaveLength(0);
+  });
+
+  test("uses DRWN_STUDIO_WEB_URL for browser handoff without changing API calls", async () => {
+    process.env.DRWN_STUDIO_API_URL = "https://api-override.example";
+    process.env.DRWN_STUDIO_WEB_URL = "https://web-override.example/";
+    const calls = stubRunLifecycle([{ status: "running", lastSeq: 0, events: [] }]);
+
+    const result = await runChat(["worker", "chat", "harari", "--message", "hello", "--no-wait", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      runId: "run_42",
+      url: "https://web-override.example/c/run_42",
+    });
+    expect(calls).toEqual(["POST /api/minds/harari/chat"]);
   });
 
   test("a response without a runId is printed raw", async () => {

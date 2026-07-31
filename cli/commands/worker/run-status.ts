@@ -32,7 +32,7 @@ export class WorkerRunStatusCommand extends BaseCommand {
   });
 
   async execute(): Promise<number> {
-    const { apiBaseUrl } = resolveWorkerConfig();
+    const { apiBaseUrl, webBaseUrl } = resolveWorkerConfig();
     try {
       const { response, body } = await pollRunOnce(this.context, apiBaseUrl, this.runId, 0);
       if (!response.ok) {
@@ -48,7 +48,7 @@ export class WorkerRunStatusCommand extends BaseCommand {
       }
       if (!this.json) {
         this.context.stdout.write(`Status: ${body.status}\n`);
-        this.context.stdout.write(`Open in browser: ${runWebUrl(apiBaseUrl, this.runId)}\n`);
+        this.context.stdout.write(`Open in browser: ${runWebUrl(webBaseUrl, this.runId)}\n`);
         for (const event of body.events ?? []) {
           const text = transcriptEventText(event);
           if (text) this.context.stdout.write(`${text}\n`);
