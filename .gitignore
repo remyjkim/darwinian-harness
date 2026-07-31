@@ -17,3 +17,17 @@ docs-docusaurus/build/
 docs-docusaurus/.docusaurus/
 docs-docusaurus/.wrangler/
 docs/presentations/
+# drwn
+.agents/drwn/config.local.json
+.agents/drwn/card.lock.local
+.agents/drwn/write-record.json
+.agents/drwn/org-worker-materialization.json
+.agents/drwn/.org-worker-materialization-journal.json
+.agents/drwn/receipts/
+.agents/drwn/generated/
+.claude/skills/
+.codex/skills/
+.cursor/
+.mcp.json
+.cursor/mcp.json
+.opencode/plugins/drwn-hooks.js
