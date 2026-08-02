@@ -952,4 +952,27 @@ describe("Org Worker fresh-project materializer", () => {
       }),
     ).resolves.toMatchObject({ replayed: true });
   });
+
+  test("each entrypoint enforces the Worker version floor directly, not only via the snapshot verifier", async () => {
+    // A bundle whose minimumWorkerVersion exceeds the running DRWN_VERSION must be
+    // rejected at the entrypoint. This pins the A06/A07 contract directly to
+    // materialize/reconcile/remove so a future refactor of the snapshot verifier
+    // (which also calls assertOrgWorkerCompatibility today) cannot silently drop it.
+    type EntryOptions = Parameters<typeof materializeOrgWorkerProject>[0];
+    const entrypoints: Array<(options: EntryOptions) => Promise<unknown>> = [
+      (options) => materializeOrgWorkerProject(options),
+      (options) => reconcileOrgWorkerProject(options),
+      (options) => removeOrgWorkerProject(options),
+    ];
+    for (const run of entrypoints) {
+      const input = await inputs();
+      const aboveRunning = parseOrgWorkerBundleV1({
+        ...input.bundle,
+        minimumWorkerVersion: "99.0.0",
+      });
+      await expect(
+        run({ ...operationOptions(input), bundle: aboveRunning }),
+      ).rejects.toThrow(/does not satisfy minimum version 99\.0\.0/);
+    }
+  });
 });

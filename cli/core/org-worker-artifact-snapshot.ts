@@ -96,7 +96,11 @@ export interface VerifiedWorkerArtifactSnapshotV1 {
   }>;
 }
 
-function canonicalJson(value: unknown): string {
+/** Deterministic JSON serialization: keys sorted recursively, stable across
+ *  engines and property-insertion order. Shared by the snapshot, bundle, and
+ *  materialization-request digest domains so every hash in this boundary is
+ *  canonical, not `JSON.stringify`-order-dependent. */
+export function canonicalJson(value: unknown): string {
   if (
     value === null ||
     typeof value === "boolean" ||

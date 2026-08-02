@@ -870,6 +870,20 @@ bun test ./test/commands-install-org-worker-materialization.test.ts
 - Create: `test/commands-org-worker-reconcile.test.ts`
 - Create: `test/commands-org-worker-remove.test.ts`
 
+> **Task 7 test-file consolidation (2026-08-01).** The two separate
+> `commands-org-worker-reconcile.test.ts` / `commands-org-worker-remove.test.ts`
+> files originally scoped here were **not** created as standalone files.
+> Reconcile and remove shipped as flags on the `install` command (`--reconcile`,
+> `--remove`), not separate commands, so their command-surface coverage was
+> consolidated into `test/commands-install-org-worker-materialization.test.ts`
+> (fresh-CLI tests: "fresh reconcile process repairs record-owned vendor drift",
+> "fresh remove process retains a durable removed-state record", plus the
+> `--reconcile`/`--remove` mutual-exclusivity assertion). The deeper
+> materialize/reconcile/remove lifecycle, ownership-drift, and crash-recovery
+> coverage lives in `test/core-org-worker-materializer.test.ts`. The two
+> originally-named files are therefore redundant; this note records the
+> consolidation so the spec and the tree agree.
+
 **RED**
 
 - repeated application makes changes;

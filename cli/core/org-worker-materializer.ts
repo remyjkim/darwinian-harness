@@ -29,6 +29,7 @@ import {
   type OrgWorkerMaterializationRecordV1,
 } from "./org-worker-materialization-record";
 import {
+  canonicalJson,
   computeWorkerArtifactGitTreeSha,
   computeWorkerArtifactSnapshotDigest,
   computeWorkerArtifactTreeDigest,
@@ -41,6 +42,7 @@ import {
   type OrgWorkerBundleV1,
   verifyOrgWorkerBundleInstructions,
 } from "./org-worker-bundle-v1";
+import { assertOrgWorkerCompatibility } from "./org-worker-compatibility";
 import { parseManagedBlock } from "./managed-block";
 import {
   serializeCardLock,
@@ -165,7 +167,7 @@ function requestDigest(input: {
   action: "materialize" | "reconcile" | "remove";
 }): `sha256:${string}` {
   return digest(
-    `darwinian:org-worker-materialization-request:v1\n${JSON.stringify({
+    `darwinian:org-worker-materialization-request:v1\n${canonicalJson({
       action: input.action,
       sourceBundleDigest: input.bundleDigest,
       artifactSnapshotDigest: input.snapshotDigest,
@@ -652,6 +654,10 @@ export async function materializeOrgWorkerProject(
       "Org Worker hook consent cannot be materialized until hook projection evidence is supported",
     );
   }
+  // Enforce the Worker version / environment compatibility floor directly at the
+  // entrypoint, so the A06/A07 contract cannot be silently dropped by a future
+  // refactor of the snapshot verifier (which also calls it today). Fails closed.
+  assertOrgWorkerCompatibility({ bundle: input.bundle });
   const verifiedSnapshot = await verifyWorkerArtifactSnapshot({
     bundle: input.bundle,
     snapshot: input.snapshot,
@@ -1238,6 +1244,10 @@ export async function removeOrgWorkerProject(
       "Org Worker operation ID is malformed or unsupported",
     );
   }
+  // Enforce the compatibility floor directly at the entrypoint (same rationale
+  // as materializeOrgWorkerProject): the A06/A07 contract must not depend on the
+  // snapshot verifier continuing to call assertOrgWorkerCompatibility.
+  assertOrgWorkerCompatibility({ bundle: input.bundle });
   const verifiedSnapshot = await verifyWorkerArtifactSnapshot({
     bundle: input.bundle,
     snapshot: input.snapshot,
