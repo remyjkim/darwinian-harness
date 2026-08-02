@@ -205,6 +205,33 @@ export async function listRegisteredProjects(agentsDir: string) {
   return (await loadProjectsIndex(agentsDir)).projects;
 }
 
+/**
+ * Removes registered project roots whose `.agents/drwn/config.json` no longer
+ * exists. Returns the removed roots. Designed for cleaning up stale
+ * registrations left by deleted or moved checkouts.
+ */
+export async function pruneStaleProjects(
+  agentsDir: string,
+  options: { dryRun?: boolean } = {},
+): Promise<{ pruned: string[]; remaining: number }> {
+  const projects = await listRegisteredProjects(agentsDir);
+  const stale: string[] = [];
+  for (const projectRoot of projects) {
+    const configPath = join(projectRoot, ".agents", "drwn", "config.json");
+    if (!existsSync(configPath)) {
+      stale.push(projectRoot);
+    }
+  }
+  if (options.dryRun || stale.length === 0) {
+    return { pruned: stale, remaining: projects.length - stale.length };
+  }
+  const staleSet = new Set(stale.map((p) => resolve(p)));
+  const changed = await mutateProjectsIndex(agentsDir, (projects) =>
+    projects.filter((project) => !staleSet.has(resolve(project))),
+  );
+  return { pruned: changed ? stale : [], remaining: projects.length - (changed ? stale.length : 0) };
+}
+
 export async function updateAllRegisteredProjects(options: {
   agentsDir: string;
   homeDir: string;
@@ -252,7 +279,7 @@ export async function updateAllRegisteredProjects(options: {
       });
       continue;
     }
-    await updateProjectCardLock(projectRoot, options.agentsDir, {
+    const lockResult = await updateProjectCardLock(projectRoot, options.agentsDir, {
       repoRoot: options.repoRoot,
       cwd: projectRoot,
     });
@@ -262,10 +289,11 @@ export async function updateAllRegisteredProjects(options: {
       homeDir: options.homeDir,
       cwd: projectRoot,
     });
+    const consentMessages = (lockResult.warnings ?? []).filter((w) => w.includes("consent"));
     results.push({
       projectRoot,
       updated: true,
-      message: `Updated: ${outdated.map((entry) => entry.name).join(", ")}`,
+      message: `Updated: ${outdated.map((entry) => entry.name).join(", ")}${consentMessages.length ? `; ${consentMessages.join("; ")}` : ""}`,
     });
   }
   return results;

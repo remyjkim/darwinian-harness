@@ -122,3 +122,41 @@ test("projects unregister refuses to hide a valid standalone inventory reference
   expect(`${result.stdout}\n${result.stderr}`).toContain("referenced-skill");
   expect(await listRegisteredProjects(fixture.agentsDir)).toEqual([projectDir]);
 });
+
+test("projects prune removes stale registrations and preserves live ones", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+
+  // Register a live project (has config.json)
+  const liveDir = join(fixture.root, "live-project");
+  await writeSupportedProjectConfig(liveDir);
+  await registerProject(fixture.agentsDir, liveDir);
+
+  // Register a stale project (config.json will be removed)
+  const staleDir = join(fixture.root, "stale-project");
+  await writeSupportedProjectConfig(staleDir);
+  await registerProject(fixture.agentsDir, staleDir);
+
+  // Remove the stale project's config to simulate a deleted checkout
+  const { rm } = await import("node:fs/promises");
+  await rm(join(staleDir, ".agents", "drwn", "config.json"));
+
+  // Dry-run first
+  const dryRun = await runAgentsCli(["projects", "prune", "--dry-run", "--json"], envFor(fixture));
+  expect(dryRun.exitCode).toBe(0);
+  const dryParsed = JSON.parse(dryRun.stdout);
+  expect(dryParsed.pruned).toContain(staleDir);
+  expect(dryParsed.pruned).not.toContain(liveDir);
+  expect(await listRegisteredProjects(fixture.agentsDir)).toHaveLength(2); // dry-run didn't remove
+
+  // Real prune
+  const result = await runAgentsCli(["projects", "prune", "--json"], envFor(fixture));
+  expect(result.exitCode).toBe(0);
+  const parsed = JSON.parse(result.stdout);
+  expect(parsed.pruned).toContain(staleDir);
+  expect(parsed.remaining).toBe(1);
+  const remaining = await listRegisteredProjects(fixture.agentsDir);
+  expect(remaining).toContain(liveDir);
+  expect(remaining).not.toContain(staleDir);
+});
+

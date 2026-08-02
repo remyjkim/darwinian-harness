@@ -23,6 +23,7 @@ import type { ProjectConfig } from "./types";
 import { satisfies, validRange } from "./semver-utils";
 import { resolveWorkerGraph } from "./worker-graph";
 import { resolveExplicitInstructionContribution } from "./instruction-contribution";
+import { computeHookPolicyDigest } from "./hook-consent-ack";
 
 export interface CardProjectMutation {
   projectConfigPath: string;
@@ -97,6 +98,90 @@ export function mergeCardManifestsIntoProjectConfig(project: ProjectConfig, mani
   return next;
 }
 
+/**
+ * Carries hook/instruction consent forward from a previous lock entry onto a
+ * newly-resolved card entry. When the consented range still covers the new
+ * version, consent is preserved — and if the content digest changed within
+ * range, it is **re-granted** (the digest is updated, the range stays). When the
+ * version exits the consented range, consent is dropped with a fail-loud warning
+ * naming the exact `drwn card trust` command.
+ *
+ * Shared by `writeProjectCards` (the `up` path) and `preserveConsent` in
+ * `worker-project.ts` (the `update` path) so the two cannot diverge. This is
+ * the single place to change consent-on-version-change behavior.
+ */
+export async function carryCardConsent(
+  card: CardLockEntry,
+  previous: CardLockEntry | undefined,
+  warnings: string[],
+): Promise<CardLockEntry> {
+  if (!previous) return card;
+  let next = card;
+  if (previous.hookConsent) {
+    const inRange = satisfies(card.version, previous.hookConsent.consentedRange, { includePrerelease: true });
+    if (inRange) {
+      // Compute the current hook policy digest and compare to the previous one.
+      // If content changed within range, re-grant (update the timestamp; the range
+      // already authorized this version). The hookPolicyDigest isn't stored on
+      // hookConsent (only on the ack), so we detect change by comparing the
+      // computed digest to the previous card's computed digest.
+      const newDigest = card.hooks.length > 0 ? await computeHookPolicyDigest(card, card.path) : undefined;
+      const prevDigest = previous.hooks.length > 0 ? await computeHookPolicyDigest(previous, previous.path) : undefined;
+      if (newDigest !== prevDigest && card.hooks.length > 0) {
+        // Content changed within range — re-grant with a fresh timestamp.
+        next = {
+          ...next,
+          hookConsent: {
+            consentedAt: new Date().toISOString(),
+            consentedRange: previous.hookConsent.consentedRange,
+          },
+        };
+        warnings.push(
+          `${card.name} hook consent re-granted: range ${previous.hookConsent.consentedRange} covers ${card.version}; digest updated.`,
+        );
+      } else {
+        next = { ...next, hookConsent: previous.hookConsent };
+      }
+    } else if (card.hooks.length > 0) {
+      warnings.push(
+        `${card.name} hook consent dropped: locked ${card.version} is outside consent range ${previous.hookConsent.consentedRange}. Run drwn card trust ${card.name} --hooks to re-consent.`,
+      );
+    }
+  }
+  if (previous.instructionConsent) {
+    const contribution = resolveExplicitInstructionContribution(card, card.path);
+    const versionAllowed = satisfies(
+      card.version,
+      previous.instructionConsent.consentedRange,
+      { includePrerelease: true },
+    );
+    if (contribution && versionAllowed) {
+      if (contribution.contentDigest === previous.instructionConsent.contentDigest) {
+        // Exact same content within range — preserve as-is.
+        next = { ...next, instructionConsent: previous.instructionConsent };
+      } else {
+        // Content changed but version is still in range — re-grant with the new digest.
+        next = {
+          ...next,
+          instructionConsent: {
+            consentedAt: new Date().toISOString(),
+            consentedRange: previous.instructionConsent.consentedRange,
+            contentDigest: contribution.contentDigest,
+          },
+        };
+        warnings.push(
+          `${card.name} instruction consent re-granted: range ${previous.instructionConsent.consentedRange} covers ${card.version}; digest updated.`,
+        );
+      }
+    } else {
+      warnings.push(
+        `${card.name} instruction consent dropped: version or explicit instruction content changed. Run drwn card trust ${card.name} --instructions to re-consent.`,
+      );
+    }
+  }
+  return next;
+}
+
 export async function writeProjectCards(
   projectRoot: string,
   agentsDir: string,
@@ -110,39 +195,9 @@ export async function writeProjectCards(
   const graph = await resolveWorkerGraph(agentsDir, config.workers, options);
   const warnings: string[] = [];
   const previousByName = new Map((previousLock?.cards ?? []).map((card) => [card.name, card]));
-  const locked = graph.cards.map((card) => {
-    const previous = previousByName.get(card.name);
-    let next = card;
-    if (previous?.hookConsent) {
-      if (satisfies(card.version, previous.hookConsent.consentedRange, { includePrerelease: true })) {
-        next = { ...next, hookConsent: previous.hookConsent };
-      } else if (card.hooks.length > 0) {
-        warnings.push(
-          `${card.name} hook consent dropped: locked ${card.version} is outside consent range ${previous.hookConsent.consentedRange}. Run drwn card trust ${card.name} --hooks to re-consent.`,
-        );
-      }
-    }
-    if (previous?.instructionConsent) {
-      const contribution = resolveExplicitInstructionContribution(card, card.path);
-      const versionAllowed = satisfies(
-        card.version,
-        previous.instructionConsent.consentedRange,
-        { includePrerelease: true },
-      );
-      if (
-        contribution &&
-        versionAllowed &&
-        contribution.contentDigest === previous.instructionConsent.contentDigest
-      ) {
-        next = { ...next, instructionConsent: previous.instructionConsent };
-      } else {
-        warnings.push(
-          `${card.name} instruction consent dropped: version or explicit instruction content changed. Run drwn card trust ${card.name} --instructions to re-consent.`,
-        );
-      }
-    }
-    return next;
-  });
+  const locked = await Promise.all(
+    graph.cards.map((card) => carryCardConsent(card, previousByName.get(card.name), warnings)),
+  );
   warnings.push(...await collectCardMetaWarnings(agentsDir, await backfillLockTreeShas(agentsDir, locked), options));
   const lockPath = await persistCardLock(projectRoot, agentsDir, { workerRoots: graph.roots, cards: locked });
   const lockedWithTreeSha = (await loadCardLock(projectRoot))?.cards ?? locked;

@@ -9,7 +9,9 @@ import { assertValidCardManifest, isCardScopeName, isCardUnscopedName, type Card
 import { bumpOverrideConfigKey, assertSemverBumpMatchesClassification } from "./card-publish-guardrail";
 import { diffCards } from "./card-diff";
 import { computeIntegrityFromDir } from "./content-manifest";
-import type { CardOrigin, GitLockInfo } from "./card-lock";
+import { computeHookPolicyDigest } from "./hook-consent-ack";
+import { resolveManifestInstructionContribution } from "./instruction-contribution";
+import type { CardLockEntry, CardOrigin, GitLockInfo } from "./card-lock";
 import { compareVersions, gt, isStrictSemver, maxSatisfying, validRange } from "./semver-utils";
 import { writeAtomically } from "./fs";
 import { createEmptyMachineConfig, initializeMachineConfig, readMachineConfigFile, writeMachineConfigFile } from "./machine-config";
@@ -83,6 +85,80 @@ export interface CardPackageIndex {
 
 export interface PublishCardOptions {
   forceBumpMismatch?: boolean;
+}
+
+export interface ConsentImpact {
+  hooks: { changed: boolean; from?: string; to?: string };
+  instructions: { changed: boolean; from?: string; to?: string };
+  skills: { changed: boolean; fromCount: number; toCount: number };
+  servers: { changed: boolean };
+}
+
+async function computeConsentImpact(
+  previousManifest: CardManifest,
+  previousDir: string,
+  newManifest: CardManifest,
+  newDir: string,
+  diff: { changes: { kind: string; path: string }[] },
+): Promise<ConsentImpact> {
+  // Hook policy content digest
+  const prevHookPolicies = previousManifest.hooks?.include ?? [];
+  const newHookPolicies = newManifest.hooks?.include ?? [];
+  let hooksChanged = false;
+  let hookFrom: string | undefined;
+  let hookTo: string | undefined;
+  if (prevHookPolicies.length > 0 || newHookPolicies.length > 0) {
+    const prevPseudo: CardLockEntry = {
+      name: previousManifest.name,
+      version: previousManifest.version,
+      requested: `${previousManifest.name}@${previousManifest.version}`,
+      path: previousDir,
+      integrity: "",
+      manifest: previousManifest,
+      skills: [],
+      hooks: prevHookPolicies,
+    } as unknown as CardLockEntry;
+    const newPseudo: CardLockEntry = {
+      name: newManifest.name,
+      version: newManifest.version,
+      requested: `${newManifest.name}@${newManifest.version}`,
+      path: newDir,
+      integrity: "",
+      manifest: newManifest,
+      skills: [],
+      hooks: newHookPolicies,
+    } as unknown as CardLockEntry;
+    hookFrom = prevHookPolicies.length > 0 ? await computeHookPolicyDigest(prevPseudo, previousDir) : undefined;
+    hookTo = newHookPolicies.length > 0 ? await computeHookPolicyDigest(newPseudo, newDir) : undefined;
+    hooksChanged = hookFrom !== hookTo;
+  }
+
+  // Instruction content digest
+  const prevInstr = resolveManifestInstructionContribution(previousManifest, previousDir);
+  const newInstr = resolveManifestInstructionContribution(newManifest, newDir);
+  const instructionsChanged =
+    (!!prevInstr || !!newInstr) && (prevInstr?.contentDigest ?? "") !== (newInstr?.contentDigest ?? "");
+
+  // Skill set change (from diffCards — name-set only)
+  const skillsChanged = diff.changes.some((c) => c.path.startsWith("skills.include."));
+
+  // Server set change (from diffCards — key-set only)
+  const serversChanged = diff.changes.some((c) => c.path.startsWith("servers."));
+
+  return {
+    hooks: { changed: hooksChanged, from: hookFrom, to: hookTo },
+    instructions: {
+      changed: instructionsChanged,
+      from: prevInstr?.contentDigest,
+      to: newInstr?.contentDigest,
+    },
+    skills: {
+      changed: skillsChanged,
+      fromCount: previousManifest.skills?.include?.length ?? 0,
+      toCount: newManifest.skills?.include?.length ?? 0,
+    },
+    servers: { changed: serversChanged },
+  };
 }
 
 function nowIso() {
@@ -424,7 +500,7 @@ async function readHistoricalManifestForDiff(
   agentsDir: string,
   name: string,
   version: string,
-): Promise<CardManifest> {
+): Promise<{ manifest: CardManifest; dir: string }> {
   const barePath = resolveCardBareRepoPath(agentsDir, name);
   const commit = await git.revParse(barePath, `refs/tags/v${version}^{commit}`);
   const treeSha = await git.getCommitTree(barePath, commit);
@@ -444,7 +520,7 @@ async function readHistoricalManifestForDiff(
   if (manifest.version !== version) {
     throw new Error(`Historical Card version mismatch: expected ${version}, got ${String(manifest.version)}`);
   }
-  return manifest;
+  return { manifest, dir };
 }
 
 async function revParseOptional(repoPath: string, ref: string): Promise<string | null> {
@@ -749,11 +825,17 @@ export async function publishCard(agentsDir: string, name: string, options: Publ
   }
   const existingVersions = versionsFromTags(tags);
   const previousVersion = existingVersions.at(-1);
+  let consentImpact: ConsentImpact | undefined;
   if (previousVersion) {
     // Historical tags are immutable diff inputs and may predate the current schema.
     // The new source above remains fully validated before this compatibility read.
-    const previousManifest = await readHistoricalManifestForDiff(agentsDir, manifest.name, previousVersion);
-    const classification = diffCards(previousManifest, manifest).classification;
+    const { manifest: previousManifest, dir: previousDir } = await readHistoricalManifestForDiff(
+      agentsDir,
+      manifest.name,
+      previousVersion,
+    );
+    const diff = diffCards(previousManifest, manifest);
+    const classification = diff.classification;
     if (!options.forceBumpMismatch) {
       assertSemverBumpMatchesClassification({
         previousVersion,
@@ -763,6 +845,7 @@ export async function publishCard(agentsDir: string, name: string, options: Publ
     } else {
       await git.configSet(barePath, bumpOverrideConfigKey(manifest.version), classification);
     }
+    consentImpact = await computeConsentImpact(previousManifest, previousDir, manifest, sourceDir, diff);
   }
 
   const treeSha = await git.writeTreeFromDir(barePath, sourceDir);
@@ -780,7 +863,7 @@ export async function publishCard(agentsDir: string, name: string, options: Publ
   );
   await git.updateRef(barePath, "refs/heads/main", commit);
   await git.createAnnotatedTag(barePath, tag, commit, `Publish ${manifest.name}@${manifest.version}`);
-  return { name: manifest.name, version: manifest.version, versionDir, integrity, manifest, git: { commit } };
+  return { name: manifest.name, version: manifest.version, versionDir, integrity, manifest, git: { commit }, consentImpact };
 }
 
 async function listPublishedVersions(agentsDir: string, name: string) {

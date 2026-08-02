@@ -54,10 +54,15 @@ export class UpCommand extends BaseCommand {
       this.context.stdout.write(`Would update: ${outdated.map((entry) => entry.name).join(", ")}\n`);
       return 0;
     }
-    await updateProjectCardLock(projectRoot, this.context.agentsDir, {
+    const lockResult = await updateProjectCardLock(projectRoot, this.context.agentsDir, {
       repoRoot: this.context.repoRoot,
       cwd: this.context.cwd,
     });
+    if (lockResult.warnings?.length) {
+      for (const warning of lockResult.warnings) {
+        this.context.stdout.write(`${warning}\n`);
+      }
+    }
     const result = await syncRepository({
       repoRoot: this.context.repoRoot,
       agentsDir: this.context.agentsDir,
