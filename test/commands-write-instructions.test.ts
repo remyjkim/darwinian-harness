@@ -9,6 +9,7 @@ import { join } from "node:path";
 
 import {
   cleanupTempRoots,
+  createCatalogCardSource,
   envFor,
   runAgentsCli,
   scaffoldCliFixture,
@@ -29,14 +30,7 @@ afterEach(async () => {
 async function setupInstructionProject() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect(
-    (
-      await runAgentsCli(
-        ["card", "new", "@me/operator", "--no-git"],
-        envFor(fixture),
-      )
-    ).exitCode,
-  ).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/operator");
   expect(
     (
       await runAgentsCli(
@@ -61,14 +55,7 @@ async function setupInstructionProject() {
     ).exitCode,
   ).toBe(0);
 
-  const sourcePath = join(
-    fixture.agentsDir,
-    "drwn",
-    "sources",
-    "@me",
-    "operator",
-    "card.json",
-  );
+  const sourcePath = join(sourceDir, "card.json");
   const manifest = JSON.parse(await readFile(sourcePath, "utf8"));
   const projectDir = join(fixture.root, "project");
   await writeSupportedProjectConfig(projectDir);

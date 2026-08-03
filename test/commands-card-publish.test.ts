@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { bumpOverrideConfigKey } from "../cli/core/card-publish-guardrail";
 import { resolveCardBareRepoPath } from "../cli/core/store-paths";
 import * as git from "../cli/core/git";
-import { cleanupTempRoots, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -19,7 +19,7 @@ async function updateCardSource(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   options: { version: string; skills: string[] },
 ) {
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "backend");
+  const sourceRoot = join(fixture.root, "card-catalog", "cards", "backend");
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.version = options.version;
@@ -40,9 +40,9 @@ async function publishCardWithHookAndInstructions(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   options: { version: string; hookContent: string; instructionText: string },
 ): Promise<void> {
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
+  const sourceRoot = join(fixture.root, "card-catalog", "cards", "policy");
   if (!await Bun.file(join(sourceRoot, "card.json")).exists()) {
-    expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    await createCatalogCardSource(fixture, "@me/policy");
   }
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());
@@ -63,7 +63,7 @@ async function mutatePolicyCardSource(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   options: { version: string; hookContent: string; instructionText: string },
 ): Promise<void> {
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
+  const sourceRoot = join(fixture.root, "card-catalog", "cards", "policy");
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());
   manifest.version = options.version;
@@ -104,7 +104,7 @@ test("card publish can diff against an immutable version that predates the curre
   tempRoots.push(fixture.root);
   await publishCardWithSkills(fixture, { name: "@me/backend", version: "0.1.0", skills: ["alpha"] });
 
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "backend");
+  const sourceRoot = join(fixture.root, "card-catalog", "cards", "backend");
   const manifestPath = join(sourceRoot, "card.json");
   const legacyManifest = JSON.parse(await readFile(manifestPath, "utf8"));
   legacyManifest.memory = { l4: { format: "md" }, l5: { format: "jsonl" } };
@@ -192,7 +192,7 @@ test("card publish reports no consent impact when only description changes", asy
   });
 
   // Same hook + instruction content, only bump version + description
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
+  const sourceRoot = join(fixture.root, "card-catalog", "cards", "policy");
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.version = "1.0.1";
@@ -206,4 +206,3 @@ test("card publish reports no consent impact when only description changes", asy
   expect(parsed.consentImpact.hooks.changed).toBe(false);
   expect(parsed.consentImpact.instructions.changed).toBe(false);
 });
-

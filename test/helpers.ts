@@ -180,6 +180,25 @@ export function envFor(fixture: { repoRoot: string; homeDir: string; agentsDir: 
   };
 }
 
+export async function createCatalogCardSource(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  name: string,
+  options: { kind?: "card" | "blueprint"; noGit?: boolean } = {},
+) {
+  const catalogRoot = join(fixture.root, "card-catalog");
+  const cardsDir = join(catalogRoot, "cards");
+  const command = options.kind === "blueprint" ? "worker" : "card";
+  const result = await runAgentsCli(
+    [command, "new", name, "--into", cardsDir, ...(options.noGit === false ? [] : ["--no-git"])],
+    envFor(fixture),
+  );
+  expect(result.exitCode).toBe(0);
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
+  const baseName = name.split("/").at(-1);
+  if (!baseName) throw new Error(`Invalid Card name: ${name}`);
+  return join(cardsDir, baseName);
+}
+
 export async function publishCardWithSkills(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   options: {
