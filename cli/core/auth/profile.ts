@@ -1,6 +1,8 @@
 // ABOUTME: Central DAH profile selection for the drwn CLI.
 // ABOUTME: Keeps hub, issuer, resource, client id, and scope out of command files.
 
+import { trimTrailingSlashes } from "../url";
+
 export interface CliAuthProfile {
   clientId: "drwn-cli";
   resource: string;
@@ -11,7 +13,7 @@ export interface CliAuthProfile {
 }
 
 export const DAH_API_ORIGINS = {
-  services: "https://api.darwiniantools.com",
+  services: "https://api.darwinian.dev",
 } as const;
 
 export const DAH_CLIENT_IDS = {
@@ -24,17 +26,14 @@ export function dahIssuerFor(origin: string): string {
   return new URL("/api/auth", origin).href;
 }
 
-function trimTrailingSlashes(value: string): string {
-  return value.replace(/\/+$/, "");
-}
-
 export function drwnCliProfile(
   env: Record<string, string | undefined> = process.env,
 ): CliAuthProfile {
   const hubOrigin = trimTrailingSlashes(env.DRWN_DAH_HUB_URL ?? "https://auth.darwiniantools.com");
+  const resource = trimTrailingSlashes(env.DRWN_DAH_RESOURCE ?? DAH_API_ORIGINS.services);
   return {
     clientId: DAH_CLIENT_IDS.drwnCli,
-    resource: DAH_API_ORIGINS.services,
+    resource,
     scope: DAH_SCOPES,
     hubOrigin,
     issuer: dahIssuerFor(hubOrigin),

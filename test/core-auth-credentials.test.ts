@@ -30,7 +30,7 @@ const dahSample = {
   version: 2 as const,
   issuer: "https://auth.darwiniantools.com/api/auth",
   clientId: "drwn-cli" as const,
-  resource: "https://api.darwiniantools.com",
+  resource: "https://api.darwinian.dev",
   accessToken: "h.payload.s",
   refreshToken: "refresh",
   expiresAt: "2026-06-03T00:15:00Z",

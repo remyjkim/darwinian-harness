@@ -130,22 +130,33 @@ jobs:
       - name: Re-run release-readiness gate
         run: bun run verify:release
 
-      - name: Verify package not already published
+      - name: Check package publication state
+        id: publication
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
-          if npm view "darwinian@${VERSION}" version >/dev/null 2>&1; then
-            echo "darwinian@${VERSION} already exists on npm" >&2
-            exit 1
+          PUBLISHED="$(
+            npm view "darwinian@${VERSION}" version \
+              --prefer-online \
+              --cache "$RUNNER_TEMP/npm-release-probe" 2>/dev/null || true
+          )"
+          if [ "$PUBLISHED" = "$VERSION" ]; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "darwinian@${VERSION} is already published; continuing with qualification"
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish to npm
+        if: ${{ steps.publication.outputs.already_published != 'true' }}
         run: npm publish --access public
 
       - name: Smoke install (ubuntu)
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           for attempt in $(seq 1 12); do
-            if npm install -g "darwinian@$VERSION"; then
+            if npm install -g "darwinian@$VERSION" \
+              --prefer-online \
+              --cache "$RUNNER_TEMP/npm-smoke-$attempt"; then
               break
             fi
             if [ "$attempt" -eq 12 ]; then
@@ -199,7 +210,9 @@ jobs:
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           for attempt in $(seq 1 12); do
-            if npm install -g "darwinian@$VERSION"; then
+            if npm install -g "darwinian@$VERSION" \
+              --prefer-online \
+              --cache "$RUNNER_TEMP/npm-smoke-$attempt"; then
               break
             fi
             if [ "$attempt" -eq 12 ]; then
@@ -215,7 +228,7 @@ jobs:
   github_release:
     name: GitHub Release
     needs: [validate, publish, smoke_macos]
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -231,6 +244,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ needs.validate.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "GitHub Release $TAG already exists; qualification is complete"
+            exit 0
+          fi
           ANNOTATION=""
           if [ "$(git cat-file -t "$TAG")" = "tag" ]; then
             ANNOTATION="$(git tag -l --format='%(contents)' "$TAG")"

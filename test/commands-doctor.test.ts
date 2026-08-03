@@ -17,16 +17,17 @@ afterEach(async () => {
 });
 
 describe("drwn doctor", () => {
-  test("rejects prototype machine state with the stable schema error", async () => {
+  test("migrates prototype machine state instead of failing (I65 Fix 2)", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
-    await writeFile(join(fixture.agentsDir, "drwn", "machine.json"), `${JSON.stringify({ version: 2, defaults: {} }, null, 2)}\n`);
+    const machinePath = join(fixture.agentsDir, "drwn", "machine.json");
+    await writeFile(machinePath, `${JSON.stringify({ version: 2, defaults: {} }, null, 2)}\n`);
 
     const result = await runAgentsCli(["doctor", "--json"], envFor(fixture));
 
-    expect(result.exitCode).toBe(1);
-    expect(JSON.parse(result.stdout)).toMatchObject({ code: "MACHINE_CONFIG_INVALID" });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(await readFile(machinePath, "utf8")).schema).toBe("drwn.machine");
   });
 
   test("reports missing pinned profile bytes without fetching or repairing", async () => {

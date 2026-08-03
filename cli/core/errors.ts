@@ -21,3 +21,12 @@ export class DrwnError extends Error {
     };
   }
 }
+
+// Typed so worker-error presenters can distinguish missing/failed auth from
+// connectivity without string matching (I65 Fix 3 + GATE 2 review note 1).
+export class NotAuthenticatedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotAuthenticatedError";
+  }
+}

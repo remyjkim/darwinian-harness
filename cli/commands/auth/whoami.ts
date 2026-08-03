@@ -23,8 +23,8 @@ export class WhoamiCommand extends BaseCommand {
     category: "Auth",
     description: "Print the current DAH identity.",
     details: `
-      Resolves auth from DRWN_TOKEN, the one-release IMINDS_TOKEN fallback, or
-      ~/.agents/drwn/credentials.json. The token must be JWT-shaped and valid for
+      Resolves auth from DRWN_TOKEN or ~/.agents/drwn/credentials.json. The token
+      must be JWT-shaped and valid for
       the Darwinian services audience.
 
       Use --json when scripting identity checks.

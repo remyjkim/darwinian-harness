@@ -4,6 +4,7 @@
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { resolveWorkerConfig } from "../../core/worker-config";
+import { describeWorkerError } from "../../core/worker-error";
 import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
 import { renderJson } from "../../core/output";
 import type { DeploymentsResponse, WorkerSummary } from "./types";
@@ -48,7 +49,7 @@ export class WorkerStatusCommand extends BaseCommand {
       const { minds } = body;
       worker = minds.find((candidate) => candidate.slug === this.slug);
     } catch (error) {
-      this.context.stderr.write(`Cannot reach Deploy API at ${apiBaseUrl}: ${(error as Error).message}\n`);
+      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
       return 1;
     }
     if (!worker) {
@@ -68,7 +69,7 @@ export class WorkerStatusCommand extends BaseCommand {
       }
       history = body;
     } catch (error) {
-      this.context.stderr.write(`Cannot reach Deploy API at ${apiBaseUrl}: ${(error as Error).message}\n`);
+      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
       return 1;
     }
 

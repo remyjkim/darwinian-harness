@@ -95,16 +95,21 @@ describe("package readiness", () => {
     expect(workflow).not.toContain("paths-ignore:");
   });
 
-  test("CLI validation and release gates check out the pinned skills submodule", () => {
+  test("CLI and docs release gates check out the pinned skills submodule", () => {
     const ciWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "ci.yml"), "utf8");
     const docsPreviewWorkflow = readFileSync(
       join(process.cwd(), ".github", "workflows", "docs-pr-preview.yml"),
+      "utf8",
+    );
+    const docsProductionWorkflow = readFileSync(
+      join(process.cwd(), ".github", "workflows", "docs-deploy-production.yml"),
       "utf8",
     );
     const releaseWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "release.yml"), "utf8");
 
     expect(ciWorkflow.match(/submodules: true/g)).toHaveLength(1);
     expect(docsPreviewWorkflow.match(/submodules: true/g)).toHaveLength(1);
+    expect(docsProductionWorkflow.match(/submodules: true/g)).toHaveLength(1);
     expect(releaseWorkflow.match(/submodules: true/g)).toHaveLength(2);
   });
 
@@ -141,9 +146,15 @@ describe("package readiness", () => {
     expect(workflow).toContain("name: Dry run complete");
     expect(workflow).toContain("if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}");
     expect(workflow).toContain("for attempt in $(seq 1 12); do");
-    expect(workflow).toContain("npm install -g \"darwinian@$VERSION\"");
+    expect(workflow).toContain("id: publication");
+    expect(workflow).toContain("already_published=true");
+    expect(workflow).toContain("steps.publication.outputs.already_published != 'true'");
+    expect(workflow).toContain("--cache \"$RUNNER_TEMP/npm-release-probe\"");
+    expect(workflow).toContain("npm install -g \"darwinian@$VERSION\" \\");
+    expect(workflow).toContain("--cache \"$RUNNER_TEMP/npm-smoke-$attempt\"");
     expect(workflow).toContain("did not propagate to npm within two minutes");
     expect(workflow).toContain("runs-on: macos-latest");
+    expect(workflow).toContain("gh release view \"$TAG\"");
     expect(workflow).toContain("gh release create \"$TAG\"");
     expect(workflow).toContain("--generate-notes");
   });

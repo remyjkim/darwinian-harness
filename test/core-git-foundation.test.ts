@@ -91,4 +91,24 @@ describe("git foundation primitives", () => {
 
     await expect(revParse(repo, "refs/heads/missing")).rejects.toThrow(GitRefNotFoundError);
   });
+
+  test("ref-not-found message is clean and keeps raw stderr in context", async () => {
+    const tmp = await mkdtemp(join(tmpdir(), "drwn-test-"));
+    cleanups.push(tmp);
+    const repo = join(tmp, "test.git");
+    await initBare(repo);
+
+    try {
+      await revParse(repo, "v9.9.9^{commit}");
+      throw new Error("expected revParse to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(GitRefNotFoundError);
+      const refError = error as GitRefNotFoundError;
+      // I49 TC-D8: the message must not leak raw git plumbing advice.
+      expect(refError.message).toBe("git rev-parse failed for v9.9.9^{commit}");
+      expect(refError.message).not.toContain("Use '--'");
+      // The raw stderr stays available for debugging.
+      expect(refError.gitContext?.stderr ?? "").toContain("v9.9.9");
+    }
+  });
 });

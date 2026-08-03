@@ -6,6 +6,7 @@ import { Option } from "clipanion";
 import * as t from "typanion";
 import { BaseCommand } from "../base";
 import { resolveWorkerConfig } from "../../core/worker-config";
+import { describeWorkerError } from "../../core/worker-error";
 import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
 import { defaultSecretsFileCandidates, DRWN_SECRETS_FILE, parseSecretsFile } from "../../core/worker-secrets";
 import { buildWorkerDeployPayload } from "../../core/worker-deploy";
@@ -27,8 +28,7 @@ export class WorkerDeployCommand extends BaseCommand {
       sends the deploy request, uploads optional MCP token values from a local
       secrets file, and polls until the deployment is ready or failed.
 
-      By default, secrets are read from .drwn.secrets, with .iminds.secrets kept
-      as a one-release fallback when the new file is absent.
+      By default, secrets are read from .drwn.secrets.
     `,
     examples: [
       ["Deploy a card from GitHub", "drwn worker deploy github:curation-labs/harari-worker#v1.4.0 --name harari"],
@@ -135,12 +135,12 @@ export class WorkerDeployCommand extends BaseCommand {
         return 1;
       }
     } catch (error) {
-      this.context.stderr.write(`Cannot reach Deploy API at ${apiBaseUrl}: ${(error as Error).message}\n`);
+      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
       return 1;
     }
 
     const depId = created.deploymentId;
-    const pollMs = Number(process.env.DRWN_POLL_MS ?? process.env.IMINDS_POLL_MS ?? 4000);
+    const pollMs = Number(process.env.DRWN_POLL_MS ?? 4000);
     const deadline = Date.now() + 5 * 60_000;
     let lastStatus = "";
     while (Date.now() < deadline) {

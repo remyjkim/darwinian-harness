@@ -23,7 +23,7 @@ function b64(value: unknown): string {
 function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): string {
   return `${b64({ alg: "none" })}.${b64({
     iss: "https://auth.darwiniantools.com/api/auth",
-    aud: "https://api.darwiniantools.com",
+    aud: "https://api.darwinian.dev",
     sub: "user_123",
     email,
     exp,
@@ -186,7 +186,7 @@ describe("auth commands", () => {
       version: 2,
       issuer: "https://auth.darwiniantools.com/api/auth",
       clientId: "drwn-cli",
-      resource: "https://api.darwiniantools.com",
+      resource: "https://api.darwinian.dev",
       accessToken: fakeJwt(),
       refreshToken: "refresh-1",
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
@@ -200,6 +200,62 @@ describe("auth commands", () => {
     expect(result.stdout).toContain("Logged out. Credentials removed.");
     expect(await Bun.file(credentialsPath).exists()).toBe(false);
     expect(called).toEqual(["https://auth.darwiniantools.com/api/auth/oauth2/revoke"]);
+  });
+
+  test("logout deletes credentials and exits 0 when the revoke returns 400", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    LogoutCommand.testDeps = {
+      fetch: (async () => new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })) as unknown as typeof fetch,
+    };
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    await writeCredentials(credentialsPath, {
+      version: 2,
+      issuer: "https://auth.darwiniantools.com/api/auth",
+      clientId: "drwn-cli",
+      resource: "https://api.darwinian.dev",
+      accessToken: fakeJwt(),
+      refreshToken: "refresh-1",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      user_email: "x@y.z",
+      saved_at: "2026-06-03T00:00:00Z",
+    });
+
+    const result = await runAuthCommand(["logout"], { fixture });
+
+    // I49 TC-A6: a failed remote revoke must not strand local credentials.
+    expect(result.exitCode).toBe(0);
+    expect(await Bun.file(credentialsPath).exists()).toBe(false);
+    expect(result.stderr).toContain("revoke failed");
+    expect(result.stdout).toContain("Logged out. Credentials removed.");
+  });
+
+  test("logout deletes credentials and exits 0 when the revoke throws", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    LogoutCommand.testDeps = {
+      fetch: (async () => {
+        throw new TypeError("fetch failed: getaddrinfo ENOTFOUND auth.darwiniantools.com");
+      }) as unknown as typeof fetch,
+    };
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    await writeCredentials(credentialsPath, {
+      version: 2,
+      issuer: "https://auth.darwiniantools.com/api/auth",
+      clientId: "drwn-cli",
+      resource: "https://api.darwinian.dev",
+      accessToken: fakeJwt(),
+      refreshToken: "refresh-1",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      user_email: "x@y.z",
+      saved_at: "2026-06-03T00:00:00Z",
+    });
+
+    const result = await runAuthCommand(["logout"], { fixture });
+
+    expect(result.exitCode).toBe(0);
+    expect(await Bun.file(credentialsPath).exists()).toBe(false);
+    expect(result.stderr).toContain("revoke failed");
   });
 
   test("logout reports not logged in when credentials are absent", async () => {

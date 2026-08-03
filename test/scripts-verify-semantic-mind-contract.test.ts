@@ -27,7 +27,7 @@ describe("semantic Worker Mind release gate", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.details).toContain("package version must be 0.9.0");
+    expect(result.details).toContain("package version must be at least 0.9.0");
     expect(result.details).toContain("numbered-memory reader");
     expect(result.details).toContain("strict mind index schema");
   });
