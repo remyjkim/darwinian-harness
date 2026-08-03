@@ -93,10 +93,13 @@ The only CLI-repo work is **documentation + tests**:
 
 ### Fix 5 — publish + re-apply the four projects
 
-- Publish `@curation-labs/workflow-skills@1.2.0` (sync source → `drwn card source doctor` → `drwn card publish`).
-- The blueprint `@curation-labs/ai-narratives-worker` member ref is `^1.0.0`, which covers 1.2.0 — **no blueprint republish needed**; just `drwn install --reconcile` in each of the four projects to move the lock to 1.2.0.
-- In each project: `drwn install --reconcile` → `drwn write --dry-run` (verify AGENTS.md still carries the v0.4 block; verify the new card version is in the lock) → `drwn write`.
-- Re-run `drwn card trust @curation-labs/workflow-skills --instructions` if the instruction digest changed (it will, since instructions.md is canonical) — `drwn write --dry-run` will warn if consent needs refreshing.
+- From the workflow-skills source repository, run
+  `drwn card source sync .` → `drwn card source doctor .` →
+  `drwn card publish --from .` to publish
+  `@curation-labs/workflow-skills@1.2.0`.
+- The blueprint `@curation-labs/ai-narratives-worker` member ref is `^1.0.0`, which covers 1.2.0 — **no blueprint republish needed**. In each project, run `drwn update --dry-run`, then `drwn update --write`; for an all-Card refresh use `drwn up --dry-run`, then `drwn up` instead.
+- Verify AGENTS.md still carries the v0.4 block and the lock records 1.2.0. Do not add a second `drwn write` after `update --write` or `up`; those commands already materialize.
+- I175 automatically refreshes an existing instructions consent when the new version remains inside its consented range. Run `drwn card trust @curation-labs/workflow-skills --instructions` only when consent is missing or the new version is outside that range.
 
 ---
 
@@ -127,7 +130,7 @@ The only CLI-repo work is **documentation + tests**:
 
 ### Phase 4 — Publish + re-apply
 - [ ] Publish `@curation-labs/workflow-skills@1.2.0`.
-- [ ] For each of the four projects: `drwn install --reconcile` → `drwn write --dry-run` → (refresh `--instructions` consent if warned) → `drwn write`. Confirm `drwn status` healthy + AGENTS.md carries v0.4.
+- [ ] For each of the four projects: `drwn update --dry-run` → `drwn update --write` (or `drwn up --dry-run` → `drwn up`). Confirm `drwn status` healthy + AGENTS.md carries v0.4; manually trust instructions only when consent is missing or out of range.
 - [ ] **Acceptance:** all four projects on 1.2.0, healthy, v0.4 in AGENTS.md.
 
 ### Phase 5 — Verify + record

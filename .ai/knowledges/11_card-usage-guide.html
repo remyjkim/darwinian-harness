@@ -36,18 +36,20 @@
   </table>
 
   <h2>Author And Publish Cards</h2>
-  <pre><code>drwn card new @team/notion --no-git
-drwn card source add-skill @team/notion notion-knowledge
-drwn card source add-mcp @team/notion notion
-drwn card source doctor @team/notion --json
-drwn card publish @team/notion</code></pre>
-  <p>Editable sources live under <code>~/.agents/drwn/sources</code>. Published versions are immutable Store artifacts. Credentials never belong in a Card source or manifest.</p>
+  <pre><code>drwn card new @team/notion --into ~/dev/darwinian-cards/cards --no-git
+NOTION_SOURCE=~/dev/darwinian-cards/cards/notion
+drwn card source add-skill "$NOTION_SOURCE" notion-knowledge
+drwn card source add-mcp "$NOTION_SOURCE" notion
+drwn card source doctor "$NOTION_SOURCE" --json
+drwn card publish --from "$NOTION_SOURCE"</code></pre>
+  <p>Editable sources are ordinary repositories selected by path or a unique configured catalog match. Published versions are immutable Store artifacts. Credentials never belong in a Card source or manifest.</p>
 
   <h2>Compose One Blueprint</h2>
-  <pre><code>drwn worker new @team/operator --no-git
-drwn worker compose @team/operator --add @team/notion@^1.0.0
-drwn worker compose @team/operator --add @team/fal@^1.0.0
-drwn worker publish @team/operator</code></pre>
+  <pre><code>drwn worker new @team/operator --into ~/dev/darwinian-cards/cards --no-git
+OPERATOR_SOURCE=~/dev/darwinian-cards/cards/operator
+drwn worker compose "$OPERATOR_SOURCE" --add @team/notion@^1.0.0
+drwn worker compose "$OPERATOR_SOURCE" --add @team/fal@^1.0.0
+drwn worker publish --from "$OPERATOR_SOURCE"</code></pre>
   <p>Member order is capability precedence and provenance order. Members must be plain Cards in this contract.</p>
 
   <h2>Initialize A Project</h2>
@@ -108,7 +110,7 @@ drwn install</code></pre>
   <p>Install hydrates the exact lock and writes by default. It does not change root requirements or selection.</p>
 
   <h2>Capture And Deploy</h2>
-  <pre><code>drwn card new @team/captured --from-project .
+  <pre><code>drwn card new @team/captured --from-project . --into ~/dev/darwinian-cards/cards
 drwn worker deploy @team/operator@1.0.0 --name team-operator</code></pre>
   <p>Capture includes the selected closure and explicit overlays, excluding inactive roots, machine/ambient capabilities, generated output, platform connectors, and secrets. Project-aware deploy sends one root plus pinned closure through the unchanged remote contract. Member and inactive-root deploy attempts fail locally.</p>
 

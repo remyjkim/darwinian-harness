@@ -8,7 +8,16 @@
 **Created**: 2026-08-01
 **Scope**: Pre-submission review of `.ai/analyses/cl0153_cursor_opencode_integration_target_architecture.md` (G1 v3) and `.ai/tasks/cl0153_cursor_opencode_integration_task_plan.md` (G2 v3, sub-PR 1)
 **Method**: every load-bearing factual claim traced to a command output, file:line, or fresh test run — no claim accepted from memory or narrative; then an adversarial cross-doc consistency pass over the post-patch texts
-**Verdict**: **Go for G1 packaging after the five findings below** (all fixed same-day; fix dispositions inline)
+**Verdict**: **Historical 2026-08-01 readiness result; superseded for execution by the post-I175/I176 re-audit below.** The five findings below were fixed same-day, but later command and consent contracts changed.
+
+## Post-I175/I176 re-audit (2026-08-03)
+
+The original evidence remains useful as historical G1/G2 review, but its rollout
+commands are no longer operational authority. The active task plan now publishes
+from the canonical Card repository, refreshes projects with `drwn update` or
+`drwn up`, and relies on I175's in-range consent auto-regrant. Manual trust is
+reserved for missing or out-of-range consent. Re-verify those current commands
+at execution time; do not use the historical `install --reconcile` procedure.
 
 ---
 
