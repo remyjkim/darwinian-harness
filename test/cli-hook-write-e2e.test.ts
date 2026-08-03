@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import { cleanupTempRoots, envFor, installProjectWorkers, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, installProjectWorkers, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 import { loadWriteRecord, resolveProjectWriteRecordPath } from "../cli/core/write-record";
 
 const tempRoots: string[] = [];
@@ -31,9 +31,8 @@ async function runComposer(path: string, payload: unknown) {
 }
 
 async function publishHookPolicyCard(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   const policyPath = join(sourceDir, "hooks", "guard", "policy.ts");
   await writeFile(policyPath, `
     import { defineToolPolicy } from "darwinian/hook-policy";
@@ -60,9 +59,8 @@ async function createProjectWithTrustedHookCard(fixture: Awaited<ReturnType<type
 test("drwn write materializes card hook composers and runtime settings", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   const policyPath = join(sourceDir, "hooks", "guard", "policy.ts");
   await writeFile(policyPath, `
     import { defineToolPolicy } from "darwinian/hook-policy";
@@ -185,9 +183,8 @@ test("drwn write leaves a foreign cursor hooks.json untouched with a warning", a
 test("drwn write skips untrusted hooks and --strict-hooks fails", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   await writeFile(join(sourceDir, "hooks", "guard", "policy.ts"), `
     import { defineToolPolicy } from "darwinian/hook-policy";
     export default defineToolPolicy({
@@ -338,9 +335,8 @@ test("drwn write composes and removes session signals without disturbing card or
 test("drwn write honors project hooks.exclude entries", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   await writeFile(join(sourceDir, "hooks", "guard", "policy.ts"), `
     import { defineToolPolicy } from "darwinian/hook-policy";
     export default defineToolPolicy({

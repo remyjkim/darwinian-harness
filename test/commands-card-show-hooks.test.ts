@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -15,9 +15,8 @@ afterEach(async () => {
 async function publishHookCard() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   await writeFile(join(sourceDir, "hooks", "guard", "policy.ts"), `
     import { defineToolPolicy } from "darwinian/hook-policy";
     export default defineToolPolicy({

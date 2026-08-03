@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { syncSkills } from "../cli/core/skills";
 import { normalizeSyncPathOptions } from "../cli/core/paths";
 import { applyProjectCardSpecs } from "../cli/core/card-project";
-import { cleanupTempRoots, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 import { assertWorkerCapabilityCompatibility } from "../cli/core/card-skill-resolver";
 
 const tempRoots: string[] = [];
@@ -69,13 +69,11 @@ async function publishCardWithSharedSkill(
   options: { name: string; skillName: string; marker: string },
 ) {
   const { runAgentsCli, envFor } = await import("./helpers");
-  expect((await runAgentsCli(["card", "new", options.name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceRoot = await createCatalogCardSource(fixture, options.name);
   const match = options.name.match(/^(@[^/]+)\/(.+)$/);
   if (!match) {
     throw new Error(`Use a scoped card name: ${options.name}`);
   }
-  const [, scope, cardName] = match;
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", scope!, cardName!);
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.skills = { include: [options.skillName] };

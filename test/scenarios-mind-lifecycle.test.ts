@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 import { startFakeBgdb, type FakeBgdb } from "./fixtures/fake-bgdb";
 
 const tempRoots: string[] = [];
@@ -23,7 +23,7 @@ test("mind lifecycle: provision, DB-first edit, drift-preserving sync, checkpoin
   const server = startFakeBgdb();
   servers.push(server);
 
-  expect((await runAgentsCli(["card", "new", "@me/mind", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/mind");
   expect(
     (await runAgentsCli(["card", "source", "add-persona", "@me/mind", "voice", "--visibility", "internal"], envFor(fixture)))
       .exitCode,
@@ -62,7 +62,7 @@ test("mind lifecycle: provision, DB-first edit, drift-preserving sync, checkpoin
   expect(checkpoint.written).toHaveLength(1);
 
   const sourcePersona = await readFile(
-    join(fixture.agentsDir, "drwn", "sources", "@me", "mind", "persona", "voice", "PERSONA.md"),
+    join(sourceDir, "persona", "voice", "PERSONA.md"),
     "utf8",
   );
   expect(sourcePersona).toContain("dry wit");

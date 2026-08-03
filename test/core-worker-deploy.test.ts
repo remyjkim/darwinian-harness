@@ -11,6 +11,7 @@ import { buildWorkerDeployPayload, type WorkerDeployPayload } from "../cli/core/
 import { WORKER_MIND_MIN_DRWN_VERSION } from "../cli/core/card-lock";
 import {
   cleanupTempRoots,
+  createCatalogCardSource,
   envFor,
   installProjectWorkers,
   publishCardWithSkills,
@@ -35,9 +36,7 @@ async function publishBlueprint(
   composedFrom: string[],
   extra: Record<string, unknown> = {},
 ) {
-  const match = name.match(/^(@[^/]+)\/(.+)$/)!;
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", match[1]!, match[2]!);
-  expect((await runAgentsCli(["card", "new", name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceRoot = await createCatalogCardSource(fixture, name);
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());
   Object.assign(manifest, { kind: "blueprint", composedFrom }, extra);
