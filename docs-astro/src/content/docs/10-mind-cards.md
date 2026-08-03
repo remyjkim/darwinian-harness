@@ -31,14 +31,14 @@ Claude, Codex, and Cursor files.
 Create an editable source:
 
 ```bash
-drwn card new @me/backend --no-git
-drwn card new backend --scope @me --no-git
+drwn card new @me/backend --into <card-collection> --no-git
+drwn card new backend --scope @me --into <card-collection> --no-git
 ```
 
-Card sources live under:
+Card sources are independent repositories under an explicit collection:
 
 ```text
-~/.agents/drwn/sources/
+<card-collection>/
 ```
 
 Each source contains `card.json`, `skills/`, and `mcp-servers/`.
@@ -58,7 +58,7 @@ the card.
 Publish a version:
 
 ```bash
-drwn card publish @me/backend
+drwn card publish --from <card-collection>/backend
 ```
 
 Published card versions are immutable Git tags in per-card bare repos under:

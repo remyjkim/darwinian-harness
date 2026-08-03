@@ -108,7 +108,9 @@ This writes:
 }
 ```
 
-Interactive `drwn init` can guide current extension setup. The Recommended Darwinian Operator machine profile is future Task 80 behavior and is not part of this project contract.
+Interactive `drwn init` can offer the recommended machine-defaults Worker
+Blueprint and guide project extension setup. Machine V2 remains separate from
+this project contract; project declarations never inherit its selected closure.
 
 Commit `.agents/drwn/config.json` and `.agents/drwn/card.lock`. Keep local overlay files ignored.
 
@@ -218,18 +220,20 @@ These mutate only project intent. They do not make capabilities machine defaults
 
 ## Machine Capabilities
 
-Current machine-scope selections are managed separately:
+Machine scope selects one immutable Worker Blueprint separately:
 
 ```bash
-drwn library list
-drwn library defaults add skill <skill-name>
-drwn library defaults add mcp <server-name>
-drwn library defaults list
-drwn write --scope machine --dry-run
-drwn write --scope machine
+drwn apply --root <worker-blueprint-ref>
+drwn card trust <card-name> --hooks --scope machine
+drwn card trust <card-name> --instructions --scope machine
+drwn write --root --dry-run
+drwn write --root
 ```
 
-Machine capabilities may be ambient to downstream project sessions because the downstream tool reads user-home configuration. Project status and doctor distinguish that ambient visibility from project declarations.
+Standalone skill/MCP inventory is not machine activation. Machine capabilities
+may be ambient to downstream project sessions because the downstream tool reads
+user-home configuration. Project status and doctor distinguish that ambient
+visibility from project declarations.
 
 ## Notion, `ntn`, And Momentic
 

@@ -15,20 +15,22 @@ A mind card contributes beliefs, personas, memory, and hook policies to the agen
 ## 1. Create a card source
 
 ```bash
-drwn card new @your-handle/mind --no-git
+drwn card new @your-handle/mind --into <card-collection> --no-git
 ```
 
-This scaffolds a card source at `~/.agents/drwn/sources/@your-handle/mind/` with a minimal `card.json`. Use `drwn card source show @your-handle/mind` to inspect the initial state.
+This scaffolds an independent source repository at
+`<card-collection>/mind/` with a minimal `card.json`. Use
+`drwn card source show <card-collection>/mind` to inspect the initial state.
 
 ## 2. Add a belief
 
 Beliefs are factual assertions the card author wants the agent to treat as given.
 
 ```bash
-drwn card source add-belief @your-handle/mind engineering --visibility public
+drwn card source add-belief <card-collection>/mind engineering --visibility public
 ```
 
-Edit the scaffolded file at `~/.agents/drwn/sources/@your-handle/mind/beliefs/engineering/BELIEF.md`:
+Edit the scaffolded file at `<card-collection>/mind/beliefs/engineering/BELIEF.md`:
 
 ```markdown
 - Prefer functional patterns over mutable state when the trade-off is neutral.
@@ -43,7 +45,7 @@ Use `--visibility public` for beliefs you want any consumer to receive, `--visib
 The persona shapes the agent's voice and engagement style.
 
 ```bash
-drwn card source add-persona @your-handle/mind voice --visibility internal
+drwn card source add-persona <card-collection>/mind voice --visibility internal
 ```
 
 Edit `persona/voice/PERSONA.md`:
@@ -60,10 +62,10 @@ Memory accumulates team or project knowledge across sessions.
 
 ```bash
 # Short-term markdown memory (l4)
-drwn card source add-memory @your-handle/mind context --layer l4 --visibility private --format md
+drwn card source add-memory <card-collection>/mind context --layer l4 --visibility private --format md
 
 # Long-term structured memory (l6)
-drwn card source add-memory @your-handle/mind team-facts --layer l6 --visibility private --format jsonl
+drwn card source add-memory <card-collection>/mind team-facts --layer l6 --visibility private --format jsonl
 ```
 
 Edit the scaffolded files to populate initial content. L4 `md` files are plain markdown; L6 `jsonl` files are newline-delimited JSON objects.
@@ -73,7 +75,7 @@ Edit the scaffolded files to populate initial content. L4 `md` files are plain m
 Hook policies intercept tool calls at runtime.
 
 ```bash
-drwn card source add-hook @your-handle/mind audit-tool-calls
+drwn card source add-hook <card-collection>/mind audit-tool-calls
 ```
 
 Edit the generated `hooks/audit-tool-calls/policy.ts`. The scaffold is an observer stub:

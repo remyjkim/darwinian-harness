@@ -24,7 +24,7 @@ order: 3
 |---------|-------------|
 | `drwn apply <refs...>` | Alias for `drwn card apply` |
 | `drwn update` | Alias for `drwn card update` |
-| `drwn card new <name>` | Create an editable card source under `~/.agents/drwn/sources` |
+| `drwn card new <name> --into <collection>` | Create an independent editable Card source repository |
 | `drwn card new <name> --from-project [path]` | Capture a project's effective harness as a card source |
 | `drwn card publish <name>` | Publish a card source into the Git-backed local store |
 | `drwn card show <ref>` | Show one resolved card version |
@@ -66,19 +66,17 @@ order: 3
 | `drwn search skill <query>` | Search for skills in the library and online catalogs |
 | `drwn search mcp <query>` | Search for MCP servers |
 
-## Library Commands
+## Machine Inventory Commands
 
 | Command | Description |
 |---------|-------------|
-| `drwn library list [skills\|mcp\|tools]` | List library contents |
-| `drwn library show <id>` | Show details for a library item |
-| `drwn library add skill <packageSpec>` | Add a package-backed skill bundle |
-| `drwn library add mcp <jsonFile> --as <serverId>` | Register a user MCP server |
-| `drwn library defaults list` | List machine-wide defaults |
-| `drwn library defaults add skill <skillName>` | Add a skill to defaults |
-| `drwn library defaults remove skill <skillName>` | Remove a skill from defaults |
-| `drwn library defaults add mcp <serverName>` | Add an MCP server to defaults |
-| `drwn library defaults remove mcp <serverName>` | Remove an MCP server from defaults |
+| `drwn machine skill list` | List standalone skill inventory |
+| `drwn machine skill show <id>` | Show skill/package details |
+| `drwn machine skill install <packageSpec>` | Install a package-backed skill bundle |
+| `drwn machine mcp list` | List standalone MCP records |
+| `drwn machine mcp add <jsonFile> --as <serverId>` | Register a user MCP record |
+| `drwn apply --root <workerRef>` | Replace/select the machine Worker Blueprint |
+| `drwn use --root <nameOrRef>` | Switch the selected machine Worker |
 
 ## Extension Commands
 
@@ -104,13 +102,12 @@ order: 3
 
 | Command | Description |
 |---------|-------------|
-| `drwn skills list` | List available skills |
-| `drwn skills packages add <packageSpec>` | Add a package-backed skill bundle |
-| `drwn skills packages list` | List installed skill packages |
-| `drwn skills packages show <packageName>` | Show package details |
+| `drwn machine skill list` | List available skill inventory |
+| `drwn machine skill install <packageSpec>` | Add a package-backed skill bundle |
+| `drwn machine skill show --package <packageName>` | Show package details |
 
-Use `drwn library defaults add skill <skillName>` for an explicit machine
-selection or `drwn add skill <skillName>` for the current project.
+Use a published Card in the selected machine Blueprint for machine activation,
+or `drwn add skill <skillName>` for the current project.
 
 ## Common Flags
 
@@ -127,9 +124,9 @@ drwn card --help
 drwn store --help
 drwn status --help
 drwn add skill --help
-drwn library list --help
+drwn machine skill list --help
 drwn search skill --help
 drwn extensions setup beads --help
 drwn extensions setup markitdown --help
-drwn skills packages add --help
+drwn machine skill install --help
 ```

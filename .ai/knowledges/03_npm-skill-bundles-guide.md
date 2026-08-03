@@ -1,5 +1,5 @@
-# ABOUTME: Explains the npm package-backed skill bundle model — ingestion, storage, explicit selection, and downstream write.
-# ABOUTME: Covers bundle shape, boundary with drwn, local storage layout, and supported commands.
+# ABOUTME: Explains npm package-backed skill inventory, project selection, and Card-governed machine activation.
+# ABOUTME: Covers bundle shape, ingestion, storage, lifecycle, and the Worker Blueprint boundary.
 
 # NPM Skill Bundles Guide
 
@@ -22,7 +22,7 @@ In this model:
 
 - npm is the distribution and versioning layer
 - the bundle provides skill files plus metadata
-- `drwn` remains the only supported local meta-harness control plane for explicit selection and downstream write
+- `drwn` remains the only supported local meta-harness control plane for project selection, Card authoring, and downstream write
 
 Bundles are extension sources. They do not replace the built-in first-party skill tree in the repo.
 
@@ -59,7 +59,7 @@ Specifically, the package contributes:
 - ingestion
 - validation
 - inventory
-- explicit machine or project selection
+- project selection and Card authoring inputs
 - downstream write
 
 ## Required Bundle Shape
@@ -183,7 +183,7 @@ drwn machine skill uninstall <package-name>
 ```
 
 These operations are package-scoped. They enumerate every exported skill ID and
-report known machine and project references. Package versions are immutable;
+report known Card-lock and project references. Package versions are immutable;
 update compares complete-tree digests before atomically changing `current`.
 Referenced inventory cannot be uninstalled through a force bypass.
 
@@ -204,44 +204,48 @@ Important distinction:
 
 - available: the bundle exists in the active bundle cache, normally `~/.agents/drwn/skills`
 - project-selected: the project declares the skill through `skills.include`, an extension, or its selected Worker closure
-- machine-selected: `~/.agents/drwn/machine.json` lists the ID under `capabilities.skills`, either directly or through the pinned profile
+- Card-sourced: reviewed skill bytes have been copied into a Card source and published as an immutable Card release
+- machine-active: the released Card belongs to the selected machine Worker Blueprint closure
 - written: a project or machine write copies the selected bytes into recorded owned downstream paths
 
-Machine selection and projection are separate:
+There is no bare-ID machine selection. To make bundle content machine-active,
+put the reviewed bytes in a Card, compose that Card into a Blueprint, publish an
+immutable release, and select the Blueprint:
 
 ```bash
-drwn machine skill enable <skill-name>
-drwn write --scope machine --skills-only --dry-run
-drwn write --scope machine --skills-only
+drwn card source add-skill <card-source> <skill-name> --from <skill-directory>
+drwn worker compose <blueprint-source> --add <published-card-ref>
+drwn apply --root <published-blueprint-ref>
+drwn write --root --skills-only --dry-run
+drwn write --root --skills-only
 ```
 
-The machine file uses strict `drwn.machine` V1:
+The machine file uses strict `drwn.machine` V2:
 
 ```json
 {
   "schema": "drwn.machine",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "policy": {},
   "capabilities": {
-    "profile": null,
-    "skills": ["skill-name"],
-    "mcpServers": []
+    "activeWorker": null,
+    "workerLock": null
   }
 }
 ```
 
-The Recommended Darwinian Operator profile is an immutable
-`@darwinian/operator@1.0.2` pin that supplies 17 approved machine-safe skills
-and zero MCP servers. Package installation does not alter that profile or add a
-skill to its allowlist.
+An active state embeds a validated `drwn.project-lock` V1 value containing a
+matching canonical root and complete Card entries. The versioned source is kept
+in `workerRoots[].requested`. Package installation never mutates this lock or
+the active closure. V1 profile/skills/MCP arrays are rejected, not migrated.
 
 ## Current Constraints
 
 ### Supported machine scopes
 
-Explicit machine selections may resolve shared, Claude-only, or Codex-only
-skills. Projection writes only to targets supported by that skill's scope.
-Ambient compatibility directories are not activation authority.
+Machine closure skills may be shared, Claude-only, or Codex-only. Projection
+writes only to targets supported by each Card-owned skill's scope. Standalone
+inventory and ambient compatibility directories are not activation authority.
 
 ### Unique skill names assumed
 
@@ -253,8 +257,9 @@ If a bundle introduces a colliding skill name, ingestion should fail.
 
 Use `drwn machine skill references <skill-id>` or `--package <package-name>`
 before lifecycle changes. Repeated `--project` roots widen the known scan scope.
-Reference-sensitive operations use `inventory -> machine -> project` locking.
-Interrupted removal uses tombstone recovery. `drwn machine inventory gc` is a
+Reference-sensitive operations account for supported Card-lock/project
+references; authoring copies are independent bytes, not live links. Interrupted
+removal uses tombstone recovery. `drwn machine inventory gc` is a
 dry-run by default and never removes a current package because it has zero known
 references.
 
@@ -274,8 +279,8 @@ drwn machine skill install /path/to/skill-directory
 ```
 
 A loose skill directory must contain a `SKILL.md` file. The skill is copied into
-the managed skill tree and becomes available for explicit selection like any
-other skill. Ingestion does not activate or project it.
+the managed skill tree and becomes available for project selection or Card
+authoring like any other skill. Ingestion does not activate or project it.
 
 This is useful for:
 
@@ -285,10 +290,13 @@ This is useful for:
 
 Related commands:
 
-- `drwn machine skill enable <name>` — select an available skill for machine scope
-- `drwn machine skill disable <name>` — remove the explicit machine selection
 - `drwn add skill <name>` — declare an available skill in the current project
+- `drwn card source add-skill ...` — copy reviewed bytes into an editable Card source
+- `drwn apply --root <blueprint-ref>` — select the immutable machine closure that contains the Card
 - `drwn search skill <query>` — search available skills by name or keyword
+
+The retired `drwn machine skill enable|disable` commands fail nonzero with
+Blueprint guidance.
 
 ## How Bundles Relate To Built-In Skills
 

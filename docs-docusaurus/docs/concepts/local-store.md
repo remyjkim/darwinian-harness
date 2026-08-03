@@ -5,19 +5,24 @@ sidebar_position: 3
 # Machine State
 
 The machine state root is `~/.agents/drwn`. It contains strict machine intent,
-standalone inventory, Card sources, published Cards, catalogs, extracted Card
+standalone inventory, published Cards, catalogs, extracted Card
 trees, registrations, write records, and credentials. Those categories do not
 share one portability policy.
 
 Important paths:
 
-- `~/.agents/drwn/machine.json`: explicit machine capability intent
+- `~/.agents/drwn/machine.json`: strict V2 selected Worker and embedded closure lock
+- `~/.agents/drwn/config.json`: non-secret authoring preferences
 - `~/.agents/drwn/skills`: installed package-backed skill bundles
 - `~/.agents/drwn/mcp-servers`: user-registered MCP server definitions
-- `~/.agents/drwn/sources`: editable card sources
 - `~/.agents/drwn/cards`: Git-backed published card repositories
 - `~/.agents/drwn/extracted`: immutable extracted card trees
 - `~/.agents/drwn/catalogs`: local card catalog clones
+
+Editable Card sources live in user-owned repositories, commonly beneath a
+configured Card collection such as `~/dev/darwinian-cards/cards/`. The
+`catalogCheckouts` preference helps authoring commands find them; runtime
+selection never treats those mutable paths as immutable Card content.
 
 Inspect state and plan scoped inventory cleanup:
 

@@ -64,7 +64,7 @@ drwn init --non-interactive
 ```
 
 Non-interactive and minimal setup initialize explicit empty machine intent.
-Guided setup preselects an opt-out Recommended Darwinian Operator profile.
+Guided setup offers the opt-out recommended machine-defaults Blueprint.
 
 ## Machine Capability Contract
 
@@ -73,41 +73,45 @@ Machine intent lives only in `~/.agents/drwn/machine.json`:
 ```json
 {
   "schema": "drwn.machine",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "policy": {},
   "capabilities": {
-    "profile": null,
-    "skills": [],
-    "mcpServers": []
+    "activeWorker": null,
+    "workerLock": null
   }
 }
 ```
 
-This is the first supported machine schema. Prototype shapes are rejected, not
-migrated. `drwn init --non-interactive` and `--minimal` create the exact empty
-intent above. Interactive guided setup offers **Recommended Darwinian
-Operator** as `[Y/n]`; declining leaves the explicit empty intent.
+Only V2 is supported. V1 and prototype shapes are rejected without migration
+or dual read. `drwn init --non-interactive` and `--minimal` create the exact
+empty intent above. Guided setup offers
+`@curation-labs/machine-defaults`; declining leaves it empty.
 
-The profile is the immutable `@darwinian/operator@1.0.2` Card at
-`git+https://github.com/curation-labs/darwinian-operator.git#v1.0.2`. Its pin
-records commit, tree SHA, and content integrity. It projects an approved subset
-of 17 machine-safe skills and zero MCP servers. It never projects Worker
-identity, instructions, hooks, permissions, governance, or project state.
+When selected, `activeWorker` contains the canonical Blueprint Card name and
+`workerLock` embeds a validated `drwn.project-lock` V1 value. Its root
+`requested` field preserves the versioned Store/pinned Git ref or explicit
+integrity-locked file source. File-origin bytes are re-hashed before projection.
+The active closure supplies skills, MCP definitions, a generated aggregate
+Worker, and consented hooks and instructions. Inactive roots and standalone
+inventory do not contribute.
 
-Available machine inventory becomes active only through explicit selections:
+Select or replace the machine Worker, grant Card consent, then project:
 
 ```bash
-drwn machine skill enable <skillName>
-drwn machine mcp enable <serverName>
-drwn machine skill disable <skillName>
-drwn machine mcp disable <serverName>
-drwn write --scope machine --dry-run
-drwn write --scope machine
+drwn apply --root <worker-blueprint-ref>
+drwn use --root <worker-name-or-ref> --no-write
+drwn card trust <card-name> --hooks --scope machine
+drwn card trust <card-name> --instructions --scope machine
+drwn write --root --dry-run
+drwn write --root
 ```
 
-Selection and projection are separate. Adding or removing a selection edits
-only machine intent. Packaged optional flags, Parallel flags,
-`~/.agents/skills`, and existing target files are not activation authority.
+`drwn use --root --none --no-write` clears selection while retaining installed
+alternative roots. `apply --root <refs> --none` replaces the root set but keeps
+those refs unselected; `apply --root --none` with no refs clears all roots.
+The legacy `drwn machine skill|mcp enable|disable` commands fail nonzero with
+Blueprint guidance. Inventory and authoring checkouts are not activation
+authority, and mutable `catalogCheckouts` are never searched at runtime.
 
 Machine projection is ownership-recorded. A destination or same-ID MCP field
 absent from the global write record is foreign and fails with
@@ -116,10 +120,10 @@ present. Force repairs drift only for prior drwn-owned state. Removal deletes
 only unchanged prior-owned bytes or fields; foreign and drifted state is
 preserved and reported by `drwn doctor`.
 
-For a controlled prelaunch reset, record non-secret selections, back up
+For a controlled prelaunch reset, record non-secret intent, back up
 `machine.json` and `global-write-record.json` outside the state root, remove the
-unsupported prototype files, run setup, reselect capabilities, preview with
-`drwn write --scope machine --dry-run`, and resolve ownership findings without
+unsupported V1/prototype files deliberately, run setup, select a Blueprint,
+preview with `drwn write --root --dry-run`, and resolve ownership findings without
 claiming foreign paths.
 
 ## What it changes on disk
@@ -198,16 +202,12 @@ General commands:
 - `drwn machine skill install <packageSpec|SKILL.md|skillDir>`
 - `drwn machine skill update <packageName> --from <source>`
 - `drwn machine skill uninstall <packageName>`
-- `drwn machine skill enable <skillName>`
-- `drwn machine skill disable <skillName>`
 - `drwn machine mcp list`
 - `drwn machine mcp show <serverName>`
 - `drwn machine mcp references <serverName> [--project <root>]`
 - `drwn machine mcp add <jsonFile> --as <serverName>`
 - `drwn machine mcp update <serverName> --from <jsonFile>`
 - `drwn machine mcp remove <serverName>`
-- `drwn machine mcp enable <serverName>`
-- `drwn machine mcp disable <serverName>`
 - `drwn machine inventory gc [--prune] [--json]`
 - `drwn write`
 - `drwn extensions list`
@@ -224,6 +224,9 @@ General commands:
 - `drwn pin <rootRef> [--dry-run] [--write]`
 - `drwn update [rootName] [--dry-run] [--write]`
 - `drwn use <rootNameOrRef>|--none [--no-write] [--dry-run]`
+- `drwn apply --root <rootRef>... [--active <root>|--none] [--write] [--dry-run]`
+- `drwn use --root <rootNameOrRef>|--none [--no-write] [--dry-run]`
+- `drwn card trust <cardName> --hooks|--instructions --scope machine`
 - `drwn install [--frozen] [--no-write] [--json]`
 - `drwn install --frozen --org-worker-bundle <json> --worker-artifact-snapshot <json> --operation-id <id> [--dry-run] [--no-write] [--reconcile|--remove] [--json]`
 - `drwn projects list`
@@ -421,7 +424,7 @@ extras are preserved and reported. A fresh sync creates standalone inventory
 infrastructure but no `machine.json`; `--dry-run` creates no managed state.
 
 Portable inventory artifacts are not a backup or restore. They exclude machine
-intent, profiles, projects, Cards, credentials, generated output, caches,
+intent, Worker locks, projects, Cards, credentials, generated output, caches,
 inactive package versions, and tombstones. Repeated unchanged exports and
 bundles are byte-identical, but a checksum is not authenticity. The secret scan
 for known environment values, private-key markers, and credential filenames is
@@ -459,7 +462,7 @@ The core model has five layers:
 
 - packaged harness policy and available built-in skill/MCP definitions
 - standalone machine inventory: package-backed skills, synthetic local skill snapshots, and user MCP records under `~/.agents/drwn/skills` and `~/.agents/drwn/mcp-servers`
-- explicit machine intent: one pinned profile plus explicit skill and MCP selections under `~/.agents/drwn/machine.json`
+- explicit machine intent: one selected Worker Blueprint and embedded immutable closure lock under `~/.agents/drwn/machine.json`
 - project overlay: current-project overrides under `<project>/.agents/drwn/config.json`
 - downstream state: Claude, Codex, Cursor, and generated MCP config files
 
@@ -620,8 +623,9 @@ Reusable MCP servers are defined in [`registry/mcp-servers.json`](../registry/mc
 
 User-registered MCP servers live as record-level atomic files under
 `~/.agents/drwn/mcp-servers`. Stored environment and header values remain
-secret references. Records become active at machine scope only when selected
-under `capabilities.mcpServers` through `drwn machine mcp enable`.
+secret references. Records are standalone inventory; they do not become active
+machine capabilities by ID. Machine MCP definitions come from the active
+Worker Blueprint closure.
 
 Card-declared MCP definitions are merged into the effective registry for projects that consume those cards. They do not need to exist in bundled registry or standalone inventory. If a card-declared server has `optional: true`, it is off by default and can be enabled in that project with:
 
@@ -669,12 +673,11 @@ timeouts, and initialize handshakes are runtime-readiness concerns. The ambient
 collision preflight validates target configuration composition; it does not
 claim that an MCP server can authenticate or start.
 
-The Recommended Darwinian Operator profile is a pinned machine capability
-profile, not a Worker. Guided setup preselects it with opt-out; non-interactive
-setup remains explicitly empty. The `@darwinian/operator@1.0.2` pin provides 17
-approved skills and zero MCP servers. Machine capabilities remain ambient to
-project sessions and are never project declarations. A reproducible project
-that depends on Operator includes the Operator Card in its selected Blueprint.
+The recommended machine defaults are a pinned Worker Blueprint, not a special
+profile. Guided setup offers it with opt-out; non-interactive setup remains
+explicitly empty. Operator is a normal member Card in that closure. Machine
+capabilities remain independent of project declarations. A project that needs
+Operator includes the Operator Card in its own selected Blueprint.
 
 ## Machine inventory
 
@@ -685,17 +688,17 @@ Built-in skills live in:
 - `skills/codex-only`
 - `skills/experimental`
 
-Typical machine skill flow:
+Typical machine capability flow:
 
 ```bash
-drwn machine skill list
-drwn machine skill enable <skillName>
-drwn write --scope machine --skills-only --dry-run
-drwn write --scope machine --skills-only
+drwn apply --root <worker-blueprint-ref>
+drwn write --root --skills-only --dry-run
+drwn write --root --skills-only
 ```
 
-The explicit selection resolves from repo-native or installed package-backed
-inventory. Ambient compatibility directories do not activate a skill.
+Machine skills resolve from Cards in the active, integrity-verified closure.
+Standalone inventory and ambient compatibility directories do not activate a
+skill.
 
 Portable transfer operates only on active drwn-managed standalone package and
 MCP records. Use `drwn machine inventory export` as a metadata requirements
@@ -728,12 +731,15 @@ drwn add skill import-mcp-from-claude
 drwn write --dry-run
 ```
 
-To make an installed shared skill available in machine sessions:
+To make an installed skill part of a machine Worker, author or update a Card
+and include that Card in the selected Blueprint. Installing the bundle alone is
+not activation:
 
 ```bash
 drwn machine skill install <npm-package-or-local-path>
-drwn machine skill enable <skillName>
-drwn write --scope machine --skills-only
+drwn worker new @me/machine-defaults --into <card-collection>
+drwn worker compose <card-source> --add <card-ref-containing-the-skill>
+drwn apply --root <published-blueprint-ref>
 ```
 
 For editable Card sources, copy the same loose skill into the Card source
@@ -749,15 +755,15 @@ The distinction matters:
 - **added** means the bundle is available under `~/.agents/drwn/skills`
 - **loose-imported** means a local `SKILL.md` was normalized into a synthetic package-backed snapshot
 - **card-sourced** means the skill files were copied into an editable card source
-- **machine-selected** means its ID is explicit machine intent
+- **machine-active** means a released Card containing it belongs to the active machine Blueprint closure
 - **written** means selected bytes are copied into owned downstream tool directories
 
 Skill update and uninstall are package-scoped. They enumerate every exported
 skill ID and disclose known machine and project references. Package versions
 are immutable; `current` is an atomic regular pointer. Referenced inventory
 cannot be removed with a force bypass. Removal and GC use tombstone recovery,
-and GC is a dry-run by default. Reference-sensitive writes follow
-`inventory -> machine -> project`; stale registered roots are repaired with
+and GC is a dry-run by default. Reference-sensitive writes account for active
+Card locks and registered projects; stale registered roots are repaired with
 `drwn projects unregister <root>` or removed in bulk with
 `drwn projects prune` (which removes entries whose `.agents/drwn/config.json`
 no longer exists).
@@ -969,7 +975,7 @@ Project config can:
 
 Project config is used by `drwn write`, `drwn mcp list`, `drwn mcp write`, `drwn status`, `drwn doctor`, and extension status/doctor/setup commands.
 
-Project declarations do not inherit machine capability selections. User-home
+Project declarations do not inherit the machine Worker. User-home
 capabilities may remain ambient to downstream tools and are reported separately.
 
 Discovery walks upward from the current working directory and uses the nearest config file.
@@ -1063,7 +1069,8 @@ It reports:
 - broken symlinks
 - stale downstream skill links
 - MCP drift
-- machine schema, profile, capability provenance, and projection ownership issues
+- machine V2 schema, Worker lock/integrity, closure capability provenance,
+  consent, and projection ownership issues
 - missing generated config files
 - project config issues
 - local Worker materialization state, stable identities, receipt evidence,

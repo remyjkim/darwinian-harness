@@ -18,8 +18,8 @@
   </style>
 </head>
 <body>
-  <!-- ABOUTME: Browser-readable operator guide for the first supported Card and Worker contract. -->
-  <!-- ABOUTME: Covers authoring, Blueprint composition, singular selection, projection, and runtime state. -->
+  <!-- ABOUTME: Browser-readable operator guide for project and machine Worker Blueprint contracts. -->
+  <!-- ABOUTME: Covers authoring, immutable closure selection, consent, projection, isolation, and runtime state. -->
   <h1>drwn Cards and Workers</h1>
   <p class="flow">Author Cards &rarr; compose one Blueprint &rarr; add roots &rarr; select one Worker &rarr; write.</p>
 
@@ -93,7 +93,7 @@ drwn use --none</code></pre>
   <p>A Blueprint root receives one aggregate generated directory. Its member Cards do not receive sibling Worker directories unless they were separately installed as roots.</p>
 
   <h2>Project Capabilities</h2>
-  <p>Project declarations come from the selected closure and explicit project overlays. The machine profile and explicit machine inventory selections are a separate machine-write authority. User-home skills and MCP entries may still be visible to downstream tools; status and doctor report those as ambient, never as project declarations.</p>
+  <p>Project declarations come from the selected closure and explicit project overlays. The selected machine Worker is a separate machine-write authority and is never inherited. User-home skills and MCP entries may still be visible to downstream tools; status and doctor report those as ambient, never as project declarations.</p>
   <pre><code>drwn status --json
 drwn status --why skill:notion-knowledge
 drwn doctor --json</code></pre>
@@ -112,13 +112,31 @@ drwn install</code></pre>
   <h2>Capture And Deploy</h2>
   <pre><code>drwn card new @team/captured --from-project . --into ~/dev/darwinian-cards/cards
 drwn worker deploy @team/operator@1.0.0 --name team-operator</code></pre>
-  <p>Capture includes the selected closure and explicit overlays, excluding inactive roots, machine/ambient capabilities, generated output, platform connectors, and secrets. Project-aware deploy sends one root plus pinned closure through the unchanged remote contract. Member and inactive-root deploy attempts fail locally.</p>
+  <p>Project capture includes the selected closure and explicit overlays, excluding inactive roots, machine/ambient capabilities, generated output, platform connectors, and secrets. <code>--from-defaults</code> separately flattens only the active machine closure into a plain Card. Project-aware deploy sends one root plus pinned closure through the unchanged remote contract. Member and inactive-root deploy attempts fail locally.</p>
+
+  <h2>Machine Worker Blueprint</h2>
+  <p>Machine intent uses strict <code>drwn.machine</code> V2. It selects one canonical Worker name and embeds the immutable closure lock. V1 profile and bare skill/MCP selections are rejected, not migrated or dual-read.</p>
+  <pre><code>{
+  "schema": "drwn.machine",
+  "schemaVersion": 2,
+  "policy": {},
+  "capabilities": {
+    "activeWorker": null,
+    "workerLock": null
+  }
+}</code></pre>
+  <pre><code>drwn apply --root &lt;published-blueprint-ref&gt;
+drwn use --root &lt;installed-name-or-ref&gt; --no-write
+drwn card trust &lt;card&gt; --hooks --scope machine
+drwn card trust &lt;card&gt; --instructions --scope machine
+drwn write --root --dry-run
+drwn write --root</code></pre>
+  <p><code>activeWorker</code> stores the canonical Card name; <code>workerLock.workerRoots[].requested</code> stores the versioned Store/pinned Git ref or an explicit integrity-locked file ref. File-origin bytes are re-hashed before projection. Runtime resolution never searches mutable authoring checkouts. Guided init may offer the recommended <code>@curation-labs/machine-defaults</code> Blueprint; non-interactive or declined setup remains empty.</p>
+  <p>The active closure can project skills, MCP definitions, one generated aggregate Worker, consented hooks, and consented instructions. Machine instruction adapters are <code>~/.claude/CLAUDE.md</code> and <code>~/.codex/AGENTS.md</code>; drwn never creates <code>~/AGENTS.md</code>.</p>
+  <p>Standalone skill packages and MCP records remain inventory. The retired <code>drwn machine skill|mcp enable|disable</code> commands fail with Blueprint guidance. Inventory lifecycle and portable transfer commands remain available.</p>
 
   <h2>Safety</h2>
   <p><code>drwn write</code> is a pure projection and supports <code>--dry-run</code>. It never changes project root requirements, selection, or lock state.</p>
-  <p>There is no public whole-Store archive command. Use the controlled reset runbook for unsupported development project state; there is no automated migration. Portable machine inventory transfer remains a separate Task 82 contract.</p>
-
-  <h2>Future Machine Profile</h2>
-  <p>The Recommended Darwinian Operator profile is an immutable <code>@darwinian/operator@1.0.2</code> machine capability pin selected by opt-out guided setup. It projects 17 approved machine-safe skills and zero MCP servers, and it never creates Worker identity, hooks, permissions, governance, or project intent.</p>
+  <p>There is no public whole-Store archive command. Use controlled reset for unsupported V1/prototype machine or development project state; drwn does not infer provenance or migrate it. Portable inventory transfer excludes machine intent, Worker locks, Cards, credentials, generated output, and write records.</p>
 </body>
 </html>

@@ -12,9 +12,10 @@ Bootstrap a project from an interactive shell:
 drwn init
 ```
 
-When machine state is missing, guided init first offers the opt-out Recommended
-Darwinian Operator profile. It then prompts for project extensions such as
-Parallel and Beads. Project extension answers affect project config only.
+When machine state is missing, guided init first offers the opt-out recommended
+`@curation-labs/machine-defaults` Worker Blueprint. It then prompts for project
+extensions such as Parallel and Beads. Project extension answers affect project
+config only.
 
 For scripts and CI:
 
@@ -70,7 +71,7 @@ The default catalog URL is configured in the packaged registry at `defaults.comm
 ## Side effects
 
 - Writes `<project>/.agents/drwn/config.json`.
-- Initializes missing strict `drwn.machine` V1 state. Prompt-free modes write explicit empty machine intent; guided mode may select the pinned Operator profile.
+- Initializes missing strict `drwn.machine` V2 state. Prompt-free modes write `activeWorker: null` and `workerLock: null`; guided mode may pin the recommended Worker closure.
 - In guided mode, may add `extensions.parallel` and/or `extensions.beads` blocks based on prompt answers.
 - Registers the default `@community` card catalog under `~/.agents/drwn/` unless `--no-default-catalogs` is passed.
 - Reads `<project>/.gitignore` if present and warns when it appears to exclude `.agents`. The file is never mutated.
@@ -88,7 +89,9 @@ The project overlay can:
 
 See [Per-project configuration](../../guides/per-project-patterns) and `.ai/knowledges/02_per-project-config-guide.md` for the full overlay model.
 
-The Recommended Darwinian Operator profile pins
-`@darwinian/operator@1.0.2` for machine-safe capability projection. It is not
-part of the project scaffold and is not a Worker. Machine capability output may
-remain ambient to project sessions, but project declarations never inherit it.
+The recommended machine defaults are a normal, immutable Worker Blueprint. Its
+canonical name is stored in machine intent and its versioned source plus Card
+closure are stored in the embedded lock. It is not part of the project scaffold.
+Machine output may remain ambient to project sessions, but project declarations
+never inherit it. Existing V1/prototype machine state is rejected without
+migration or mutation.

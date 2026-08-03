@@ -20,16 +20,17 @@ ls -la ~/.claude/settings.json.bak*
 ```
 
 **Resolution.** Restore the user-owned field from your own versioned config or
-backup. Machine MCP selection belongs in `capabilities.mcpServers` through
-`drwn machine mcp enable`; project MCP intent belongs in project
-`mcpServers`. drwn preserves unrelated siblings but does not own their backup
-lifecycle.
+backup. Machine MCP intent belongs in a Card within the active Worker Blueprint;
+project MCP intent belongs in project `mcpServers`. drwn preserves unrelated
+siblings but does not own their backup lifecycle.
 
 ## Installed bundles that are not selected
 
 **Symptom.** A skill bundle is present in the local store but never shows up under `~/.claude/skills/` or `~/.codex/skills/` after `drwn write`. `drwn machine skill list` shows it.
 
-**Likely cause.** The bundle is available but not selected by machine intent or any project's `skills.include`. Availability and activation are separate steps by design.
+**Likely cause.** The bundle is available but is neither selected by a project's
+`skills.include` nor copied into a Card in the active machine Worker closure.
+Availability, Card authoring, selection, and projection are separate by design.
 
 **Diagnostic.**
 
@@ -44,12 +45,11 @@ is available but not selected.
 
 **Resolution.** Add it to the layer that should own it.
 
-```bash
-drwn machine skill enable <name>
-drwn add skill <name>
-drwn write --scope machine --dry-run  # machine selection
-drwn write                            # project selection, from the project
-```
+For a project, run `drwn add skill <name>` and preview `drwn write`. For machine
+scope, copy/review the bytes in a Card source, publish it, compose it into a
+Blueprint, then run `drwn apply --root <blueprint-ref>` and
+`drwn write --root --dry-run`. The retired machine skill enable/disable commands
+cannot create unversioned machine intent.
 
 ## Stale project registrations block inventory removal
 

@@ -60,10 +60,14 @@ Somebody (often you) hand-edited `mcpServers` to add or change a server. The rig
 
 ```bash
 drwn machine mcp add ./my-server.json --as my-server
-drwn machine mcp enable my-server
-drwn write --dry-run
-drwn write
+drwn card source add-mcp <card-source> my-server --from ./my-server.json
+drwn apply --root <published-blueprint-ref>
+drwn write --root --dry-run
+drwn write --root
 ```
+
+For one project, put the definition in its Card or project `mcpServers` overlay
+instead. Standalone inventory alone is not machine activation.
 
 If you do not want to migrate the intent and you want drwn to publish over the manual edit, use `--force` after reading the diff:
 

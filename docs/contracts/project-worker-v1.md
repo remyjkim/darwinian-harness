@@ -56,21 +56,17 @@ drwn write
 
 `.agents/drwn/card.lock` is the immutable resolved graph:
 
-```json
-{
-  "schema": "drwn.project-lock",
-  "schemaVersion": 1,
-  "store": { "minDrwnVersion": "0.8.0" },
-  "workerRoots": [
-    {
-      "name": "@team/operator",
-      "requested": "@team/operator@^1.0.0",
-      "kind": "blueprint",
-      "members": ["@team/notion", "@team/fal"]
-    }
-  ],
-  "cards": []
-}
+```text
+drwn.project-lock V1
+store.minDrwnVersion = 0.8.0
+workerRoots:
+  - @team/operator requested as @team/operator@^1.0.0
+    kind = blueprint
+    members = [@team/notion, @team/fal]
+cards:
+  - exact CardLockEntry for @team/operator
+  - exact CardLockEntry for @team/notion
+  - exact CardLockEntry for @team/fal
 ```
 
 `workerRoots` preserves root and member order. `cards` contains each root and reachable member once, with exact version, integrity, manifest, origin, requested ref, and tree SHA/Git provenance where required. Config and lock are prepared and committed as one project-state transaction.
@@ -91,9 +87,11 @@ A Card may also carry independent, explicit consent records:
 }
 ```
 
-Instruction consent is valid only while the locked version remains in range and
-the canonical explicit instruction bytes retain the exact content digest. An
-update that changes either drops instruction consent and requires a new
+Instruction consent remains valid while the locked version stays within the
+consented range. Exact content preserves the existing record. Changed explicit
+instruction content within that range is re-granted with a fresh timestamp and
+the current digest, with a warning. A version outside the range, or removal of
+the consent-relevant contribution, drops consent and requires a new
 `drwn card trust <name> --instructions`.
 
 ## Local Overlay
@@ -163,7 +161,7 @@ Declared project capabilities come only from the selected root closure and expli
 
 ## Pure Projection
 
-`drwn write` is a pure projection of committed project state plus an explicit local overlay. Dry-run, target selection, skills-only, MCP-only, and full writes do not change config, lock, requirements, or selection. Project writes do not read machine capability selections as project capabilities.
+`drwn write` is a pure projection of committed project state plus an explicit local overlay. Dry-run, target selection, skills-only, MCP-only, and full writes do not change config, lock, requirements, or selection. Project writes do not read the selected machine Worker as project capabilities.
 
 Normal writes exclude unconsented or stale explicit instruction contributions
 and warn with Card IDs. `drwn write --strict` fails before instruction
@@ -270,14 +268,17 @@ Cards may declare MCP definitions, but runtime installation and credentials rema
 - External stdio tools such as Momentic must be installed and authenticated separately on the machine.
 - Missing OAuth, API keys, executables, or initialize handshakes are readiness diagnostics, not Worker graph failures.
 
-## Machine Profiles
+## Machine Worker Boundary
 
-The **Recommended Darwinian Operator** machine profile is shipped separately
-from this project contract. Guided machine setup preselects the opt-out,
-immutable `@darwinian/operator@1.0.2` profile; non-interactive setup writes
-explicit empty machine intent. The profile projects only 17 approved
-machine-safe skills and zero MCP servers. It does not project Worker identity,
-instructions, hooks, permissions, governance, or project intent.
+Machine scope uses a separate strict `drwn.machine` V2 contract. Guided setup
+may select the opt-out recommended `@curation-labs/machine-defaults` Blueprint;
+non-interactive setup writes `activeWorker: null` and `workerLock: null`. Its
+embedded immutable closure may project skills, MCP definitions, a generated
+Worker, consented hooks, and consented instructions to user-home targets.
+
+This does not alter the project V1 contract. Project evaluation never inherits
+the machine Worker, and machine evaluation never reads the current project.
+V1/prototype machine state is rejected without migration.
 
 ## Machine State Safety
 

@@ -44,9 +44,10 @@ drwn card untrust @your-handle/operator --instructions
 ```
 
 The lock records the consent time, semver range, and exact canonical content
-digest. The range must include the current locked version. A later update keeps
-consent only when the new version remains in range and the content digest is
-unchanged; otherwise consent is dropped.
+digest. The range must include the current locked version. A later update
+preserves identical content inside the range; changed instruction content
+inside the range is explicitly re-granted with a fresh timestamp/current digest
+and warning. A version outside the range or removed contribution drops consent.
 
 When a consented lock arrives from another machine, the first local write emits
 one notice and records a machine-local acknowledgement keyed by project, Card,

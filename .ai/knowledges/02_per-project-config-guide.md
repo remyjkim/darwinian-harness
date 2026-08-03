@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Use project state when a repository needs an explicit, reproducible agent harness. Project capabilities come from one selected Worker closure plus project-owned overlays. They do not inherit machine capability selections.
+Use project state when a repository needs an explicit, reproducible agent harness. Project capabilities come from one selected Worker closure plus project-owned overlays. They do not inherit the machine Worker.
 
 The complete contract is in [`docs/contracts/project-worker-v1.md`](../../docs/contracts/project-worker-v1.md).
 
@@ -40,10 +40,17 @@ Prompt-free setup writes:
 ```
 
 Machine setup is a separate contract. Prompt-free initialization creates
-explicit empty `drwn.machine` V1 intent, while guided initialization preselects
-the opt-out Recommended Darwinian Operator profile. Neither choice adds a
-project Worker. A project that depends on Operator includes
-`@darwinian/operator@1.0.2` in its selected Blueprint.
+explicit empty `drwn.machine` V2 intent (`activeWorker: null`,
+`workerLock: null`), while guided initialization offers the opt-out recommended
+`@curation-labs/machine-defaults` Blueprint. Neither choice adds a project
+Worker. A project that depends on Operator includes the current Operator Card
+release in its own selected Blueprint.
+
+Machine V2 embeds a project-lock-shaped value for its own selected closure, but
+that does not make it project state. `drwn write` uses the nearest project;
+`drwn write --root` uses only machine intent and user-home targets. V1 and
+prototype machine configurations are rejected rather than inherited or
+migrated.
 
 ## Supported Config
 
@@ -175,7 +182,7 @@ Card-bundled content takes precedence within the selected closure according to r
 Notion OAuth, an `ntn` API key, and external stdio installations such as Momentic remain operator state. Definitions may reference environment variables, but project files must not contain resolved secrets.
 
 User-home target MCP entries remain ambient in project sessions. They are not
-Worker, Card, project, lockfile, or generated state. `status`, `doctor`, and
+part of the project Worker, Card, lockfile, or generated state. `status`, `doctor`, and
 `mcp list` report declared and ambient provenance through redacted references;
 definition payloads and secret-bearing values are never emitted.
 

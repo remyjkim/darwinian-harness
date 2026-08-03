@@ -12,12 +12,12 @@ Every materialization run composes effective harness state from up to five surfa
 
 - packaged policy and available built-in skills/MCP definitions
 - standalone inventory: package-backed skill bundles under `~/.agents/drwn/skills` and user MCP definitions under `~/.agents/drwn/mcp-servers`
-- explicit machine intent: one pinned profile plus explicit skill/MCP IDs in strict `drwn.machine` V1
+- explicit machine intent: one selected immutable Worker closure in strict `drwn.machine` V2
 - project intent: one selected Worker closure plus explicit overlays in strict project V1
 - downstream state: Claude, Codex, Cursor config files plus generated MCP configs
 
 Machine and project evaluation are separate. Inside a configured project,
-machine capability IDs never contribute to declared state. User-home output can
+the machine Worker never contributes to declared state. User-home output can
 remain ambient in a downstream session and is diagnosed separately.
 
 ## The Resolved-State Engine
@@ -30,15 +30,18 @@ remain ambient in a downstream session and is diagnosed separately.
 
 The separation between as-written and as-active is load-bearing. Every command renders one or the other and never re-derives the merge itself. That keeps `status`, `doctor`, and `write` consistent about what they call "effective."
 
-## The Three Materialization Mechanisms
+## Materialization Mechanisms
 
-`drwn write` writes to disk through exactly three mechanisms, chosen per target:
+`drwn write` uses mechanisms chosen per target:
 
 - **Copied directories** for selected skills. Each copied directory is recorded as a `managed-directory` entry.
 - **Per-server managed fields** for machine MCP projection. Claude, Codex, and Cursor record hashes for only the server IDs drwn owns, preserving unrelated fields and siblings.
 - **Project-owned target files** for project projection, with target-specific merge behavior and a project write record.
+- **Generated aggregate Workers** for the selected root closure.
+- **Managed instruction blocks** in project or harness-specific machine adapters.
+- **Managed hook/settings fields** for consented hook projection.
 
-See [Ownership and Write Records](./ownership-and-write-records) for how these three variants are recorded and cleaned up.
+See [Ownership and Write Records](./ownership-and-write-records) for how these variants are recorded and cleaned up.
 
 ## Common Flags
 

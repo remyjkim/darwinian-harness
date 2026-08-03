@@ -43,8 +43,8 @@ The shape is documented in the [project config schema](../../reference/schemas/p
 
 **Machine capability isolation inside configured projects.** When a project
 config is present, project-safe packaged policy combines with the selected
-Worker closure and explicit project overlays. The profile and explicit
-capability IDs in `~/.agents/drwn/machine.json` do not become project intent.
+Worker closure and explicit project overlays. The separate machine Worker in
+`~/.agents/drwn/machine.json` does not become project intent.
 User-home output may remain ambient in the downstream client and is reported
 separately. A different teammate can reproduce the declared project state from
 the project files plus immutable Card content.

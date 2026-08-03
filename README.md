@@ -4,7 +4,7 @@
 
 # darwinian
 
-`darwinian` is a local meta-harness for AI agent tools — a CLI that organizes skills, MCP servers, extensions, explicit machine capabilities, project overlays, and downstream tool state surrounding the agents you already use.
+`darwinian` is a local meta-harness for AI agent tools — a CLI that organizes Cards, Worker Blueprints, skills, MCP servers, extensions, project overlays, and downstream tool state surrounding the agents you already use.
 
 The package is `darwinian`. The command is `drwn`.
 
@@ -40,47 +40,56 @@ drwn write
 Cards compose capabilities into one Blueprint. A project may install alternative
 Worker roots but selects at most one; `drwn write` projects only the selected
 root closure plus explicit project overlays. Project declarations do not inherit
-machine capability selections.
+the machine Worker.
 
-Machine intent uses the first supported namespaced contract:
+Machine intent uses the V2 namespaced contract and the same immutable closure
+model:
 
 ```json
 {
   "schema": "drwn.machine",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "policy": {},
   "capabilities": {
-    "profile": null,
-    "skills": [],
-    "mcpServers": []
+    "activeWorker": null,
+    "workerLock": null
   }
 }
 ```
 
 `drwn init --non-interactive` and `--minimal` initialize this explicit empty
-intent. Guided `drwn init` preselects the opt-out **Recommended Darwinian
-Operator** profile. The immutable `@darwinian/operator@1.0.2` pin contributes
-exactly 17 approved machine-safe skills and zero MCP servers; it contributes no
-Worker identity, instructions, hooks, permissions, or governance.
+intent. Guided `drwn init` offers the opt-out recommended
+`@curation-labs/machine-defaults` Blueprint. If accepted, `activeWorker` stores
+the canonical Card name while `workerLock.workerRoots[].requested` preserves the
+immutable versioned source. The selected closure can contribute skills, MCP
+definitions, a generated Worker, consented hooks, and consented instructions.
 
-Add other machine capabilities explicitly, then project them in a separate
-step:
+Select or replace the machine Worker, grant Card consent where required, then
+preview user-home projection:
 
 ```bash
-drwn machine skill enable <skill-id>
-drwn machine mcp enable <server-id>
-drwn write --scope machine --dry-run
-drwn write --scope machine
+drwn apply --root <worker-blueprint-ref>
+drwn card trust <card-name> --hooks --scope machine
+drwn card trust <card-name> --instructions --scope machine
+drwn write --root --dry-run
+drwn write --root
 ```
+
+`drwn use --root <worker-name-or-ref>` switches among installed roots;
+`drwn use --root --none` leaves them installed but selects none. The legacy
+`drwn machine skill|mcp enable|disable` commands fail with guidance because
+machine activation is now Card-governed, not a list of bare inventory IDs.
 
 Machine writes claim only paths or MCP fields they create and record. Foreign
 destinations fail with `MACHINE_PROJECTION_CONFLICT`, including under
 `--force`; force can repair only drift in prior drwn-owned state. For a
 controlled prelaunch reset, back up the non-secret machine intent and global
-write record outside the machine state root, remove unsupported prototype state, rerun
-setup, and reselect capabilities explicitly.
+write record outside the machine state root, remove unsupported V1/prototype
+state deliberately, rerun setup, and select a Blueprint explicitly. V1 is
+rejected; it is not migrated or dual-read.
 
-Standalone machine inventory is inactive until explicitly selected. Manage
+Standalone machine inventory is inactive until referenced by supported project
+or Card workflows. Manage
 package-scoped skills and record-level MCP definitions with `drwn machine
 skill|mcp`; inspect references before removal and use `drwn machine inventory
 gc` for dry-run garbage collection.

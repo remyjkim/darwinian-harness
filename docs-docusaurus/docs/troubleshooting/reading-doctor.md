@@ -70,7 +70,10 @@ drwn doctor --json
 drwn write --dry-run
 ```
 
-Re-running `drwn write` re-points drwn-owned links to the correct source if the underlying skill is still resolved. If the skill itself is gone, remove it with `drwn machine skill disable` (machine) or from `skills.include` (project).
+Re-running `drwn write` re-points drwn-owned links to the correct source if the
+underlying skill is still resolved. If a machine skill is no longer desired,
+publish/select a Blueprint without its owning Card; for a project overlay,
+remove it from `skills.include`.
 
 ### Stale skill symlinks
 
@@ -156,8 +159,9 @@ A single category that aggregates problems with `<project>/.agents/drwn/config.j
 - **Unknown extension reference** — `extensions["<name>"]` references an extension the registry does not know about.
 - **Stale target override** — `targets["<name>"].enabled` matches packaged project policy; the override is a no-op.
 - **Card references unavailable skills** — a Card in the selected root closure lists a skill name the project's available inventory cannot satisfy.
-- **Unresolved machine capability** — an explicit machine skill or MCP ID is unavailable in machine inventory.
-- **Invalid profile bytes** — the pinned profile extraction is missing or no longer matches its recorded integrity.
+- **Invalid machine Worker lock** — active root, topology, version floor, or Card entries are inconsistent.
+- **Invalid locked Card bytes** — a machine-closure extraction is missing or no longer matches recorded integrity.
+- **Machine consent gap** — an active locked Card requires reviewed hook or instruction consent.
 - **Machine projection conflict** — a destination is foreign or prior-owned state has drifted. Doctor reports it without repair.
 
 At write time these would each abort `drwn write` before mutation. At doctor time they collect into `projectConfigIssues` and the run continues so the rest of the report still renders.
@@ -168,9 +172,10 @@ drwn status --why skill:<name>
 drwn status --why server:<name>
 ```
 
-Fix by editing the offending config file, removing the reference, or installing
-the missing package/record with `drwn machine skill install` or `drwn machine
-mcp add`.
+Fix project overlays by editing the offending project config or installing the
+missing project-safe package/record. Fix machine state by selecting a valid
+immutable Blueprint or repairing its Store content; do not hand-edit the
+embedded lock or infer provenance from standalone inventory.
 
 ## Cross-References
 

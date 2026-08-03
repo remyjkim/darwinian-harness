@@ -21,7 +21,7 @@ That one decision controls both the effective state and the write destination.
 Outside a configured project, effective state is:
 
 ```text
-packaged policy + Library inventory + strict drwn.machine V1 intent
+packaged policy + one selected, verified Worker closure in strict drwn.machine V2
 ```
 
 Machine-scope writes materialize into:
@@ -35,8 +35,8 @@ Machine-scope writes materialize into:
 ~/.agents/drwn/global-write-record.json
 ```
 
-Use explicit machine selections for user-home sessions. Projects never inherit
-them as declarations, though downstream tools may expose user-home state
+Use the selected machine Worker for user-home sessions. Projects never inherit
+it as a declaration, though downstream tools may expose user-home state
 ambiently.
 
 ## Project-Scope Writes

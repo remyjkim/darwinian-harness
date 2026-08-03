@@ -21,26 +21,30 @@ Scope limits projection targets. It does not activate a skill.
 
 `drwn` resolves a skill name against these layers, in this order:
 
-1. **Selected Card closure** — a Card in the active project Worker whose manifest declares the skill. Card-bundled skills always win at project write time.
+1. **Selected Card closure** — a Card in the active project or machine Worker whose manifest declares the skill. Card-bundled skills are authoritative for that closure.
 2. **Repo-native** — the four scope directories above, in order `shared` → `claude-only` → `codex-only` → `experimental`.
 3. **Package-backed bundles** — installed via `drwn machine skill install`; live under `~/.agents/drwn/skills/<package>/<version>/` with a regular `current` pointer file naming the active version.
 4. **Missing** — surfaces as a typed write-time hard fail before any downstream mutation.
 
 There is no scope-based promotion between repo-native and bundle sources; first match wins. Cards are the only layer that can shadow other sources at write time.
 
-## Explicit Selection
+## Selection
 
-Machine activation comes only from the selected immutable profile plus explicit `capabilities.skills` IDs in strict `drwn.machine` V1. Select an available skill with:
+Machine activation comes only from Cards in the selected immutable Worker
+closure under strict `drwn.machine` V2:
 
 ```bash
-drwn machine skill enable <name>
-drwn write --scope machine --skills-only --dry-run
-drwn write --scope machine --skills-only
+drwn apply --root <worker-blueprint-ref>
+drwn write --root --skills-only --dry-run
+drwn write --root --skills-only
 ```
 
 Project selection comes from the selected Worker closure plus explicit project overlays. Use `drwn add skill <name>` for a project-only declaration.
 
-Ambient directories and existing target output are never activation authority.
+Standalone inventory, mutable authoring checkouts, ambient directories, and
+existing target output are never machine activation authority. To use installed
+bundle bytes in a machine Worker, review/copy them into a Card source, publish
+the Card, and compose it into the Blueprint.
 
 ## Materialization to downstream tools
 
@@ -52,5 +56,5 @@ Per-write-record cleanup applies: drwn-owned stale skill directories (recorded i
 
 - [Materialization](./materialization) — the write-time pipeline
 - [Extensions, bundles, and cards](./extensions-bundles-cards) — the add vs select vs write model
-- [Machine Inventory](../reference/cli/machine) — lifecycle and selection commands
+- [Machine Inventory](../reference/cli/machine) — standalone inventory lifecycle and Blueprint activation boundary
 - `.ai/knowledges/10_drwn-cli-architecture.md` §4 — full architectural reference

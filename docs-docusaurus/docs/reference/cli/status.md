@@ -17,7 +17,7 @@ drwn doctor
 ```
 
 `--machine` ignores an in-scope project config and returns the
-`drwn.machine-status` V1 payload. Use it for explicit machine-state inspection
+`drwn.machine-status` V2 payload. Use it for explicit machine-state inspection
 from any working directory.
 
 Project JSON includes additive `instructionDelivery` and
@@ -49,7 +49,7 @@ Materialization issues use bounded codes:
 | `ORG_WORKER_PROJECTION_DRIFT` | Instruction delivery no longer matches. |
 | `ORG_WORKER_REMOVAL_DRIFT` | Removed-state tombstone postconditions differ. |
 
-`--explain` adds a human-readable explanation of every active item and its provenance — which layer (Card, project overlay, machine profile or explicit selection, packaged registry) is making each skill, server, extension, or Card active. That is useful before a write:
+`--explain` adds a human-readable explanation of every active item and its provenance — which selected Card closure, project overlay, standalone inventory, or packaged registry explains each skill, server, extension, or Card. Machine activation comes only from its selected closure. That is useful before a write:
 
 ```bash
 drwn status --explain

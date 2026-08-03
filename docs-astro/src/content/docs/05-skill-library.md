@@ -1,6 +1,6 @@
 ---
 title: "Skill Library"
-description: "Built-in skills, explicit selection, and package-backed skill bundles."
+description: "Built-in skills, project selection, machine Worker closures, and package-backed bundles."
 date: 2026-04-28
 order: 5
 ---
@@ -14,18 +14,20 @@ Built-in skills live in four directories:
 - `skills/codex-only` — applied only to Codex
 - `skills/experimental` — not applied by default
 
-## Machine Selection
+## Machine Worker Selection
 
 Typical flow:
 
 ```bash
-drwn skills list
-drwn library defaults add skill <skillName>
-drwn write --scope machine --skills-only --dry-run
-drwn write --scope machine --skills-only
+drwn machine skill list
+drwn apply --root <worker-blueprint-ref>
+drwn write --root --skills-only --dry-run
+drwn write --root --skills-only
 ```
 
-Selection writes strict machine intent. Projection is a separate, ownership-recorded step.
+The selected immutable Card closure writes strict machine intent. Projection is
+a separate, ownership-recorded step; standalone inventory IDs are never machine
+activation authority.
 
 ## Package-Backed Skill Bundles
 
@@ -34,20 +36,21 @@ Selection writes strict machine intent. Projection is a separate, ownership-reco
 Typical flow:
 
 ```bash
-drwn library add skill <npm-package-or-local-path>
-drwn library list skills
-drwn library show <skillName>
+drwn machine skill install <npm-package-or-local-path>
+drwn machine skill list
+drwn machine skill show <skillName>
 drwn add skill <skillName>
 drwn write --dry-run
 drwn write
 ```
 
-To select an installed skill for machine sessions:
+To use installed bytes in machine sessions, copy/review them into a Card source,
+publish it, and select a Blueprint containing that Card:
 
 ```bash
-drwn skills packages add <npm-package-or-local-path>
-drwn library defaults add skill <skillName>
-drwn write --scope machine --skills-only
+drwn machine skill install <npm-package-or-local-path>
+drwn card source add-skill <card-source> <skillName> --from <skill-directory>
+drwn apply --root <published-blueprint-ref>
 ```
 
 ## Added vs. Selected vs. Written
@@ -55,7 +58,8 @@ drwn write --scope machine --skills-only
 The distinction matters:
 
 - **Added** — the bundle is available under `~/.agents/drwn/skills` in the cards-era store
-- **Selected** — machine or project intent names the skill
+- **Project-selected** — project intent names the skill or its selected closure owns it
+- **Machine-active** — the selected machine Blueprint closure owns it
 - **Written** — selected bytes are copied into owned downstream tool directories
 
 Package-backed bundles use the current `~/.agents/drwn/skills` store path.
