@@ -1,220 +1,307 @@
-# ABOUTME: Handoff-ready implementation plan for eliminating ~/.agents/drwn/sources/ — making card sources path-addressable directories (drwn card publish --from <path>), collapsing the three-location scatter to one.
-# ABOUTME: Pre-launch hard cut. All call sites, tests, docs, and the bootstrap path accounted for. Grounded in the three-way investigation (call-surface + bootstrap/config + tests/docs).
+# ABOUTME: Approved implementation plan for eliminating ~/.agents/drwn/sources/ in favor of path-addressable card source repositories.
+# ABOUTME: Incorporates the 2026-08-03 execution-readiness audit, TDD contract, CI baseline repair, migration safety, and cross-repository documentation work.
 
-# [I176] Card Source Path Reform — Task Plan (GATE 2)
+# [I176] Card Source Path Reform — Implementation Plan (GATE 2)
 
-**Status**: Ready for execution.
-**Created**: 2026-07-31 · **Issue**: [I176] (tracker row created 2026-08-03)
-**Owner**: Remy K · **Reviewer**: Minseung Lee
-**Architecture**: [`../analyses/cl0176_card_source_path_reform_target_architecture.md`](../analyses/cl0176_card_source_path_reform_target_architecture.md)
-**Branch**: `remy/I176-card-source-path-reform`
-**Scope**: Breaking change to the drwn CLI card-authoring/publish lifecycle. Pre-launch; no external consumers to break.
-**Downstream**: [I177] machine-scope blueprint hard-depends on this landing (shared `machine-config.ts` + `types.ts`).
+> Execute via the plan-execution skill (`executing-plans`) with `test-driven-development`, `incremental-commits`, and `verification-before-completion`.
 
----
+**Goal:** Make every editable Card source an ordinary path-addressable directory and remove all runtime dependence on `~/.agents/drwn/sources/`.
 
-## Objective
+**Architecture:** One source-input resolver normalizes explicit plain, `file:`, relative, absolute, and `~` paths, or resolves a bare card name through configured catalog collection checkouts. Core authoring APIs accept explicit source directories; the store contains immutable published versions and machine state only. Existing machine policy remains separate from a new strict user-preferences file, with lossless authoring-scope migration.
 
-Eliminate the `~/.agents/drwn/sources/` directory. A card source becomes a path-addressable directory (typically a git repo) that the user controls. `drwn card publish --from <path>` snapshots it. The store holds only immutable published versions — never editable sources.
-
-## Mental model change
-
-**Before** (4 concepts): card sources live in `sources/`; publish reads from there; keep your git repo in sync manually; projects consume via `card.lock`.
-
-**After** (2 concepts): a card is a directory with `card.json`; publish it with `drwn card publish --from <path>`; projects consume published immutable versions via `card.lock`.
+**Tech Stack:** TypeScript 6, Bun 1.2.21, Clipanion, Zod 4, Node filesystem/path primitives, Bun test, Git-backed immutable Card store.
 
 ---
 
-## Implementation surface (from investigation)
+**Status:** Approved for execution 2026-08-03 after readiness amendments.
+**Issue:** I176 · **Owner:** Remy K · **Reviewer:** Minseung Lee
+**Branch:** `remy/I176-card-source-path-reform`
+**Architecture:** `../analyses/cl0176_card_source_path_reform_target_architecture.md`
+**PR:** #71
+**Downstream:** I177 remains blocked from merge until I176 lands because both touch `machine-config.ts` and `types.ts`.
 
-- **6 core modules** with direct resolver calls (`card-store.ts`, `card-source.ts`, `card-source-sync.ts`, `diagnostics.ts`, `store-paths.ts`, `release-pipeline.ts`)
-- **2 indirect core callers** (`card-capture.ts`, `card-from-defaults.ts`)
-- **3 direct-resolver commands** (`fork.ts`, `link.ts`, `worker/mind/checkpoint.ts`)
-- **15 `card source/*` command files** (thin wrappers — inherit fix from core)
-- **4 publish/new/compose command files** (`card/publish.ts`, `card/new.ts`, `worker/new.ts`, `worker/compose.ts`, `worker/publish.ts`)
-- **~45 test files** (centralized in `test/helpers.ts` — fixing 2 helpers heals ~30 tests)
-- **5 knowledge/reference docs** + **2 SKILL.md files** + **1 sibling-repo runbook**
-- **1 new user-config file** (`~/.agents/drwn/config.json` with `catalogCheckouts` + `defaultAuthorScope`)
-- **1 new command** (`drwn config` — get/set user config)
-- **1 init prompt addition** (catalog-checkout path in guided init)
+## Decisions and supersessions
 
----
+- D7 supersedes the old instruction to land cl0153 sub-PR1 first. Execute I176 now; rewrite cl0153's publish instructions afterward.
+- Incremental commits govern. The obsolete “leave all changes uncommitted” instruction is removed.
+- `cli/core/user-config.ts` remains the machine-policy/effective-config loader. New preferences live in a separate module.
+- The source resolver is asynchronous and returns a validated source record, not a nullable path passed blindly to `existsSync`.
+- `card source list` is deprecated with guidance; `doctor` without an argument no longer scans the retired store directory.
+- No blanket deletion of the operator's real `~/.agents/drwn/sources/` occurs in this issue. Migration is inventory-driven and deletion requires separate confirmation.
+- `darwinian-cards` is a collection checkout containing independent Card source repositories under `cards/`.
+- Manual CLI probes always use a disposable `AGENTS_DIR`.
 
-## Phased plan
+## Target contracts
 
-### Phase 0 — Prerequisites
+### Source input
 
-- [x] **Baseline recorded 2026-08-03** on post-stack `main` (`ab060ff`): `bun run typecheck` 0 errors; `bun run test` **1773 pass / 6 skip / 0 fail** (300 files). This is the regression floor — Phase 7 must match or exceed it.
-- [x] Prerequisite stack landed: I24 (`65d94c7`), I104 (`77c7364`), I175 consent (`4522bef`). The plan's file:line citations were verified line-exact against this tree.
-- [ ] **Execute on the issue branch `remy/I176-card-source-path-reform` with incremental commits** (one logical commit per phase, `[[prefix]]` per `.ai/rules/01_git.md`). Superseded the original "no branch, no commits" note: that instruction predates the v0.4 issue-branch model this work now follows.
-- [ ] **Coordination — land cl0153 sub-PR1 first.** It publishes `@curation-labs/workflow-skills` via the sync-then-publish flow this task deletes (`cl0153_cursor_opencode_integration_task_plan.md` Phase 4). It is cheap card housekeeping; landing it first avoids rewriting its steps.
-- [ ] Verify with the submodule-initialized recipe — a bare worktree without `darwinian-worker-skills` produces ~31 phantom ENOENT failures in the operator/release cluster:
-  ```bash
-  git submodule update --init darwinian-worker-skills && bun install && bun run typecheck && bun run test
-  ```
+Create `cli/core/card-source-input.ts` with a single public resolver:
 
-### Phase 1 — Core: path-parameterize the source functions (highest leverage)
+```ts
+export interface ResolvedCardSource {
+  sourceDir: string;
+  manifest: CardManifest;
+  resolution: "explicit" | "catalog";
+}
 
-**Goal**: make every function that currently resolves a source dir from `agentsDir + name` accept an explicit `sourceDir` instead. This is the load-bearing change — everything downstream inherits it.
+export async function resolveCardSourceInput(options: {
+  input?: string;
+  from?: string;
+  agentsDir: string;
+  homeDir: string;
+  cwd: string;
+}): Promise<ResolvedCardSource>;
+```
 
-**Edit order** (by leverage, per the investigation's recommendation):
+Rules:
 
-- [ ] **1a. `card-source.ts: readCardSourceState` (line 426)** + **`readSourceManifestForMutation` (line 239)** — change from `(agentsDir, name)` to `(sourceDir)`. This silently fixes all 12 mutation wrappers (`addCardSource{Persona,Belief,Hook,Skill,Mcp}`, `removeCardSource*`, `patchCardSourceManifest`, `composeCardSourceBlueprint`) because they all funnel through these two functions.
-  - The manifest-name check at line 451 (`manifest.name !== name`) becomes a no-op (or warns instead of throws — the manifest IS the source of truth for the name now).
-  - Return `state.sourceDir` as-is (already correct).
+1. `from` is an explicit path and wins only when `input` is absent or matches the resolved manifest name.
+2. Plain paths, `file:` paths, relative paths, absolute paths, and `~` paths normalize to a real directory containing `card.json`.
+3. A non-path card name searches every configured catalog checkout's immediate `cards/*/card.json` entries by manifest `name`.
+4. Zero catalog matches fail with `--from`/`drwn config set catalogCheckouts` guidance.
+5. Multiple matches fail as ambiguous and list the matching directories.
+6. `card.json.name` is authoritative; optional positional names must match it.
 
-- [ ] **1b. `card-store.ts: createCardSource` (line 321)** — accept `{ sourceDir, name, scope?, noGit?, kind? }` instead of `{ agentsDir, name, ... }`. Create the dir at the passed `sourceDir` (not `resolveCardSourceDir`). Steps 1, 7–13 of the current trace stay (assertStoreWritable, existence guard, mkdir, manifest write, git init). Steps 4 (`ensureStoreInitialized`) and 6 (`resolveCardSourceDir`) drop. Step 5 (machine.json scope write) moves to Phase 4 (user config).
+### User preferences
 
-- [ ] **1c. `card-store.ts: readCardSourceManifest` (line 364)** — change from `(agentsDir, name)` to `(sourceDir)`. Read `join(sourceDir, "card.json")`.
+Create `cli/core/user-preferences.ts` with strict schema identity:
 
-- [ ] **1d. `card-store.ts: publishCard` (line 774)** — change from `(agentsDir, name, options)` to `(agentsDir, { sourceDir, ...options })`. Keep `agentsDir` (needed for `resolveCardBareRepoPath` + `ensureExtracted`). Lines 778 + 806 become `sourceDir` directly.
+```ts
+{
+  schema: "drwn.user-preferences",
+  schemaVersion: 1,
+  catalogCheckouts: string[],
+  defaultAuthorScope?: string
+}
+```
 
-- [ ] **1e. `card-source-sync.ts: syncCardSource` (line 126)** + **`checkCardSourceUpstream` (line 181)** — accept `sourceDir` alongside `agentsDir` (agentsDir still needed for `ensureUpstreamBareRepo` at line 145).
+The reader ignores the retired prototype `{ version: 1, ... }` shape, validates unknown keys strictly, and expands checkout paths only at use time. A first read/write migrates legacy `machine.json policy.authoring.scope` by writing preferences successfully before removing the legacy field. The migration is idempotent and covered by failure-order tests.
 
-- [ ] **1f. `release-pipeline.ts` (line 22, 32)** — update `syncCardSource` + `doctorCardSource` calls to pass `sourceDir`.
+### CLI grammar
 
-- [ ] **1g. `card-store.ts: ensureStoreInitialized` (line 188-197)** — remove `resolveSourcesRoot(agentsDir)` from the mkdir loop (line 190). `sources/` is no longer created.
+- `drwn card publish [name] --from <path>`
+- `drwn worker publish [name] --from <path>`
+- `drwn card release [name] --from <path>`
+- `drwn card source <command> <path-or-name>`
+- `drwn card new <name> [--into <directory>]` creates `<directory>/<basename>`; default directory is command `cwd`.
+- `drwn worker new` follows the same destination contract.
+- `drwn config get catalogCheckouts|defaultAuthorScope`
+- `drwn config set catalogCheckouts <json-array>`
+- `drwn config set defaultAuthorScope <@scope>`
 
-- [ ] **1h. `diagnostics.ts: sourceCount` (line 1339)** — remove the `countMarkedDirectories(resolveSourcesRoot(...))` field. Either drop `sourceCount` from the diagnostic output or set it to `null`.
+## Testing strategy (TDD contract)
 
-- [ ] **1i. `store-paths.ts`** — delete `resolveSourcesRoot` (line 136) and `resolveCardSourceDir` (line 140). `splitCardName` (line 70) stays.
+### Behaviors & invariants
 
-**Acceptance**: `bun run tsc --noEmit` passes (types compile). No runtime test yet — commands haven't been updated.
+- Every new public behavior begins with a failing test observed under Bun 1.2.21.
+- Explicit paths never depend on the machine store's `sources/` directory.
+- Bare-name resolution is deterministic, validates manifests, and fails on ambiguity.
+- Publishing derives identity from `card.json` and retains immutable store/tag semantics.
+- Existing machine policy remains effective; preference migration never loses authoring scope.
+- Store initialization never creates `sources/`.
+- No automated test or manual probe touches the real machine store.
+- Existing tracked-suite count never decreases without an explicit documented deletion rationale.
 
-### Phase 2 — Commands: update all command call sites
+### Layer ownership (unit / integration / smoke / E2E)
 
-**Goal**: every command that calls the changed core functions passes `sourceDir` instead of `agentsDir + name`.
+- **Unit:** preference schema/migration, path classification/normalization, catalog matching, ambiguity and error messages.
+- **Integration:** core source mutation, publish, release, diagnostics, store initialization, capture/default flows.
+- **CLI:** command grammar, config get/set, new/publish/release, all source subcommands, Worker equivalents.
+- **Scenario/E2E:** author → mutate → publish → consume; catalog-name publish; mind checkpoint source resolution; no `sources/` recreation.
+- **Manual smoke:** disposable-store commands listed in Phase 7.
 
-- [ ] **2a. `card/publish.ts`** — add `--from <path>` Option.String. Resolve `sourceDir` from `--from` or from catalog-checkout name resolution (Phase 4). Pass `{ sourceDir }` to `publishCard`.
-- [ ] **2b. `card/new.ts`** — derive `sourceDir` as `join(process.cwd(), basename(name))` (or a `--into <dir>` flag). Pass to `createCardSource`.
-- [ ] **2c. `worker/new.ts`** — same as 2b for blueprints.
-- [ ] **2d. `worker/publish.ts`** — add `--from <path>`. Same as 2a.
-- [ ] **2e. `worker/compose.ts`** — pass `{ sourceDir }` to `composeCardSourceBlueprint`.
-- [ ] **2f. All 15 `card source/*.ts` commands** — change the first positional from a card name to a path (or accept `--from <path>`). Resolve `sourceDir`, pass to the core wrapper. The wrapper signatures already accept `sourceDir` from Phase 1a. Commands: `show`, `doctor`, `set`, `list`*, `sync`, `add-skill`, `remove-skill`, `add-hook`, `remove-hook`, `add-mcp`, `remove-mcp`, `add-persona`, `remove-persona`, `add-belief`, `remove-belief`.
-  - **`list.ts` special case**: with no `sources/` to scan, `list` either scans catalog checkouts (Phase 4) or is deprecated in favor of `drwn card list --type source`. **Decision for execution**: deprecate `source list` (print "use `drwn card list` or `ls <catalog-checkout>/cards/`"); do not implement a new scan.
-- [ ] **2g. `card/fork.ts`** — accept source as a path; destination defaults to CWD (or `--into <dir>`). Drop both resolver imports.
-- [ ] **2h. `card/link.ts`** — delete the resolver comparison at line 57 (dead validation). The `--all-from` logic (lines 35-47) is already path-based and stays.
-- [ ] **2i. `worker/mind/checkpoint.ts`** — the source-dir lookup from a mind card ref is the trickiest. Resolve via the project's `card.lock` (which records the card's extracted path) or accept an explicit `--source-dir <path>` flag. Investigate the exact resolution path during execution.
-- [ ] **2j. `card-capture.ts` (line 56)** — pass `sourceDir` (derived from project path) to `createCardSource`.
-- [ ] **2k. `card-from-defaults.ts` (line 30)** — pass `sourceDir` to `createCardSource`.
+### TDD sequence (ordered red → green increments)
 
-**Acceptance**: `bun run tsc --noEmit` passes. Commands are invocable with `--from <path>`.
+1. Legacy-wrapper CI regression.
+2. Preference schema/read/write and authoring-scope migration.
+3. Explicit path normalization and manifest validation.
+4. Catalog name resolution, not-found, and ambiguity.
+5. Core read/mutate/create/publish APIs.
+6. Store initialization and diagnostics contract.
+7. Publish/release/new CLI grammar and Worker equivalents.
+8. Source subcommands, fork/link, capture/defaults, and checkpoint resolution.
+9. Shared fixture migration followed by semantic audit of remaining tests.
+10. Documentation contract and manual smoke probes.
 
-### Phase 3 — New user config + catalog-checkout resolution
+For every increment: write one failing test, run it and record the expected failure, implement the minimum behavior, rerun the focused test, refactor only while green, then run the affected subsystem tests before committing.
 
-**Goal**: introduce `~/.agents/drwn/config.json` with `catalogCheckouts` + `defaultAuthorScope`, enabling bare-name resolution and replacing `machine.json policy.authoring.scope`.
+### Case catalog
 
-- [ ] **3a. New module `cli/core/user-config.ts`** (rewrite the existing misnamed file): Zod schema for `{ catalogCheckouts: string[], defaultAuthorScope: string?, schemaVersion: 1 }`. Reader (`readUserConfig(agentsDir)`) + writer (`writeUserConfig(agentsDir, config)`) following the `mutateMachineConfig` pattern. Path: `resolveUserConfigPath` (already defined at `paths.ts:25`, currently dead code — wire it up).
+- Explicit relative, absolute, `file:`, and `~` source paths.
+- Missing path, non-directory path, missing/invalid `card.json`, and manifest-name mismatch.
+- Bare-name success, no configured checkout, missing card, duplicate manifests, malformed checkout entry.
+- Optional name only, `--from` only, matching name plus `--from`, mismatching name plus `--from`, and neither.
+- Existing preference file, missing file, retired prototype file, invalid strict file, legacy authoring scope migration, interrupted migration retry.
+- Card and Worker new destinations; capture/from-defaults destinations.
+- Source show/doctor/set/sync/add/remove operations on explicit and catalog-resolved sources.
+- Release dry-run and publish path.
+- Checkpoint project override, catalog fallback, and changed content with no source.
+- Store initialization/seed/doctor with legacy `sources/` present and absent.
 
-- [ ] **3b. Catalog-checkout name resolver**: a function `resolveSourceDirByName(agentsDir, name)` that:
-  1. Reads `catalogCheckouts` from user config.
-  2. For each checkout path, walks `cards/` for a `card.json` whose `name` field matches.
-  3. Returns the `sourceDir` if found; `null` if not.
-  4. Factored from `link.ts:35-47` (the `@scope/card` walk logic), generalized to match by manifest name (not just dir name).
+### Harness, fixtures & test data
 
-- [ ] **3c. Move `authoring.scope`** from `machine.json policy.authoring` to user config `defaultAuthorScope`:
-  - `card-store.ts:334-337` (writer): write to user config instead of machine.json.
-  - `card/new.ts:67,71` (reader): read from user config.
-  - `card-from-defaults.ts:33` (reader): read from user config.
-  - `machine-config.ts:78` (schema): remove `authoring` from the machine schema.
-  - `types.ts:111-112` (type): remove `authoring` from `MachinePolicy`.
+- Update `test/helpers.ts` so helpers create sources under each fixture's temp root, never under `<agentsDir>/drwn/sources`.
+- Preserve fixture `AGENTS_DIR`, `AGENTS_HOME_DIR`, and `AGENTS_REPO_ROOT` isolation.
+- Use independent temporary catalog collection directories whose `cards/*` entries contain test manifests.
+- Keep the parked untracked scenario file out of commits and tracked-suite counts.
 
-- [ ] **3d. New `drwn config` command** (`cli/commands/config.ts`): `drwn config get <key>`, `drwn config set <key> <value>`. Modeled on `mutateMachineConfig`. Supports `catalogCheckouts` and `defaultAuthorScope`.
+### Commands & environment
 
-- [ ] **3e. Init prompt**: add a catalog-checkout question to `executeGuided` (init.ts, after the Beads block):
-  ```
-  Path to your darwinian-cards checkout? [~/dev/darwinian-cards]:
-  ```
-  Write to user config. Non-interactive/minimal init skips it (user can set later via `drwn config set`).
+```bash
+git submodule update --init darwinian-worker-skills
+bun install --frozen-lockfile
+bunx bun@1.2.21 run typecheck
+bunx bun@1.2.21 test --timeout 30000 <focused-test-files>
+bunx bun@1.2.21 run verify:release
+bunx bun@1.2.21 test --timeout 30000 ./test/
+```
 
-**Acceptance**: `drwn config set catalogCheckouts '["~/dev/darwinian-cards"]'` works; `drwn card publish @scope/name` (no `--from`) resolves via catalog checkout.
+Manual commands use a fresh `mktemp -d` path assigned to `AGENTS_DIR`; never use `/tmp/drwn-i176-scratch` without first ensuring it is a newly created directory.
 
-### Phase 4 — Tests (fix the ~45 test files)
+### Required CI jobs / definition of green
 
-**Strategy**: fix the 2 centralized helpers first (heals ~30 tests), then fix the remaining ~15 individually.
+- Ubuntu Validate passes the full suite with zero failures under Bun 1.2.21.
+- Windows Validate passes.
+- Command bridge passes on Ubuntu, macOS, and Windows.
+- Linux secret-tool backend passes.
+- Typecheck and `verify:release` exit zero.
+- Tracked test-suite count is at least the repaired baseline and any count change is explained in the PR.
 
-- [ ] **4a. `test/helpers.ts:198,227`** — `publishCardWithSkills` and `publishExactOperatorProfile` hardcode `join(agentsDir, "drwn", "sources", ...)`. Change to create the source in a temp dir within the fixture, pass `sourceDir` to `publishCard`. This is the single highest-leverage test fix.
+### Non-goals, manual checks & residual risk
 
-- [ ] **4b. `test/core-card-source.test.ts`** — the canonical spec for the source model. Rewrite to use path-based `createCardSource({ sourceDir })`, `readCardSourceState(sourceDir)`, etc. This defines the new contract.
+- No deletion of the real operator source store.
+- No I177 machine-scope implementation.
+- No redesign of `sourceOverrides`; it remains the project-local first checkpoint lookup.
+- Cross-repository documentation commits may require their own PRs and cannot be hidden inside the parent repository commit.
+- Residual risk centers on legacy source inventory and external consumers; pre-launch status permits the CLI break, but migration guidance remains mandatory.
 
-- [ ] **4c. `test/core-card-store-git.test.ts`** — fix `createCardSource` + `publishCard` calls.
+## Execution phases
 
-- [ ] **4d. `test/core-card-capture.test.ts`** — fix the direct `resolveCardSourceDir` import/calls.
+### Phase 0 — Establish a trustworthy baseline
 
-- [ ] **4e. Remaining ~40 test files** — mechanical: replace `join(agentsDir, "drwn", "sources", ...)` with the new temp-dir-based source creation. Most use `helpers.ts` (fixed in 4a). The rest are individual `card source *` command tests that need their source-dir setup updated. Group by subsystem:
-  - Authoring command tests (3 files)
-  - Source mutation tests (6 files)
-  - Publish pipeline tests (7 files)
-  - Trust/doctor/diagnostics tests (3 files)
-  - Card-meta/capture/vendor tests (~8 files)
-  - E2E/scenario tests (5 files)
-  - Other command tests (~8 files)
+- [x] Create the prescribed global worktree and initialize `darwinian-worker-skills`.
+- [x] Run typecheck and the full tracked suite under Bun 1.2.21.
+- [x] Reproduce the inherited Ubuntu-equivalent legacy-wrapper failure.
+- [x] Add a RED regression proving explicit `repoRoot` must also drive project discovery.
+- [x] Fix `sync-mcp.ts`, rerun compatibility + journey tests, and commit separately.
+- [ ] Rerun the full tracked suite after the fix and record the new floor.
 
-**Acceptance**: `bun test` passes with 0 failures, at **≥ 1773 pass / 6 skip / 0 fail** (the Phase 0 baseline on `ab060ff`). Test *count* may rise as cases are added; it must never fall without a stated reason.
+### Phase 1 — Preferences and unified source resolution
 
-### Phase 5 — Documentation
+1. RED: add `test/core-user-preferences.test.ts` for strict read/write/defaults and migration ordering.
+2. GREEN: create `cli/core/user-preferences.ts`; preserve all exports in `cli/core/user-config.ts`.
+3. RED: extend release-readiness tests to define the approved preference path rather than rejecting `resolveUserConfigPath` categorically.
+4. GREEN: update `scripts/verify-release-readiness.ts` narrowly for the strict preference schema.
+5. RED: add `test/core-card-source-input.test.ts` for every source-input and catalog case.
+6. GREEN: create `cli/core/card-source-input.ts` using `expandHomePath` and manifest validation.
+7. RED/GREEN: add `drwn config` command tests, implement `cli/commands/config.ts`, and register it in `cli/index.ts`.
+8. Commit preferences/config and source resolution as separate logical increments.
 
-- [ ] **5a. `docs/cli-quickref.md`** — update the `card source` section (lines 237-258): remove `~/.agents/drwn/sources/` references; document `--from <path>` for publish; update `card source *` command signatures to path-based.
-- [ ] **5b. `INSTALL.md`** — remove `sources/` from the State Locations tree (line 51); update `card source` examples (lines 148-163).
-- [ ] **5c. `.ai/knowledges/01_agents-cli-usage-guide.md`** — update the card-source command reference (lines 283-347, 1204).
-- [ ] **5d. `.ai/knowledges/10_drwn-cli-architecture.md`** — remove `sources/` from the store layout tree (line 40).
-- [ ] **5e. `.ai/knowledges/09_cards-manual-test-guide.md`** — update manual test recipe (lines 55-74, 231).
-- [ ] **5f. `docs/prelaunch-project-reset.md`** — remove the "do not remove sources/" line (line 17).
-- [ ] **5g. `~/.agents/skills/author-mind-card/SKILL.md`** — substantive rewrite: update all `~/.agents/drwn/sources/` references to path-based authoring; update the "Wraps" command list (lines 183-195) and procedure steps (29-45, 83-134).
-- [ ] **5h. `darwinian-worker-skills/skills/author-card/SKILL.md`** — same: update `card source *` workflow references.
-- [ ] **5i. `darwinian-cards/cards/workflow-skills/docs/maintenance-runbook.md`** — update hardcoded source paths (lines 13,46,49,53,55,59,84) to path-based publish.
-- [ ] **5j. `.ai/knowledges/11_card-usage-guide.html`** — update the HTML doc (if it references sources/).
+### Phase 2 — Explicit-path core APIs and store contract
 
-### Phase 6 — Migration + cleanup
+1. RED/GREEN: change `readCardSourceState` and `readSourceManifestForMutation` to accept `sourceDir`; convert every public mutation wrapper option from `{ agentsDir, cardName }` to `{ sourceDir }`.
+2. RED/GREEN: convert `createCardSource`, `readCardSourceManifest`, and `publishCard` to explicit directories with manifest-authoritative identity.
+3. RED/GREEN: convert `syncCardSource`, `checkCardSourceUpstream`, `doctorCardSource`, and `runRelease`.
+4. RED/GREEN: remove source creation from `ensureStoreInitialized`; replace diagnostics `sourceCount` with `legacySourceCount` or a migration note, including its type and tests.
+5. Decide with tests whether `store-seed.ts` retains `sources` only as legacy non-empty detection. It must never create or require the directory.
+6. Convert or remove `removeCardSourceForTests`.
+7. Delete `resolveSourcesRoot` and `resolveCardSourceDir` only after `rg` proves no production consumers remain.
+8. Commit by vertical core behavior, keeping tests with implementation.
 
-- [ ] **6a. Remove `sources/` from existing machines** — the consolidation already moved all card sources to `darwinian-cards/cards/`. Delete `~/.agents/drwn/sources/` (or provide a `drwn sources migrate` one-shot that copies each source to a user-chosen location and records the catalog checkout). For this machine: just delete it (the submodules are the sources now).
-- [ ] **6b. Update `ensureStoreInitialized`** — already done in Phase 1g; confirm `sources/` is not recreated on any code path.
-- [ ] **6c. Update the drwn-lab knowledge docs** — `05_card_version_bump_guide.md` Stage 1 (remove the `rsync` step — publish directly from the catalog checkout); `02_drwn_lab_operations.md` (update any source-dir references).
+### Phase 3 — Command conversion
+
+1. RED/GREEN: `card publish`, `worker publish`, and `card release` optional-name/`--from` grammar.
+2. RED/GREEN: `card new`, `worker new`, `card-capture`, and `card-from-defaults` explicit destinations and updated next-step output.
+3. RED/GREEN: `worker compose` explicit source directory.
+4. RED/GREEN: all 15 `card source/*` commands; deprecate `source list`, require an input for `doctor`, and retain JSON/human output contracts.
+5. RED/GREEN: convert `card fork` and remove the dead source-root comparison from `card link`.
+6. RED/GREEN: checkpoint resolution order = project `sourceOverrides`, then catalog checkouts; preserve `MIND_CHECKPOINT_NO_SOURCE` for changed unmapped content.
+7. Update help-shape and runtime-command-guidance tests with every grammar change.
+8. Commit command families separately to keep reviewable diffs.
+
+### Phase 4 — Regression convergence
+
+1. Change `publishCardWithSkills` and `publishExactOperatorProfile` in `test/helpers.ts` to fixture-local source directories and path-based publish.
+2. Rewrite the canonical source model in `test/core-card-source.test.ts`.
+3. Convert direct resolver users such as `test/core-card-capture.test.ts` and `test/core-card-store-git.test.ts`.
+4. Semantically audit all candidate tests found by:
+
+   ```bash
+   rg -l 'resolveCardSourceDir|resolveSourcesRoot|"sources"|/sources/' test --glob '*.ts'
+   ```
+
+   Preserve intentional legacy/migration assertions; replace only assumptions that editable sources live in the store.
+5. Run subsystem groups after each conversion and the full suite before leaving the phase.
+
+### Phase 5 — Documentation and canonical skill sources
+
+Update in this repository:
+
+- `docs/cli-quickref.md`
+- `INSTALL.md`
+- `.ai/knowledges/01_agents-cli-usage-guide.md`
+- `.ai/knowledges/09_cards-manual-test-guide.md`
+- `.ai/knowledges/10_drwn-cli-architecture.md`
+- `.ai/knowledges/11_card-usage-guide.html` when applicable
+- `docs/prelaunch-project-reset.md`
+- active plans/runbooks that prescribe sync-then-publish, including cl0153
+
+Update canonical external sources without overwriting unrelated dirty work:
+
+- `darwinian-worker-skills/skills/author-card/SKILL.md` in its own repository, then update the submodule pointer deliberately.
+- `/Users/pureicis/dev/darwinian-cards/cards/workflow-skills/docs/maintenance-runbook.md` in the workflow-skills source repository. The `darwinian-cards` collection already has unrelated staged changes; preserve them and commit inside the card repository, not the collection root.
+- `/Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/.ai/knowledges/05_card_version_bump_guide.md`.
+- `/Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/.ai/knowledges/02_drwn_lab_operations.md`.
+- Locate the authoritative source for installed `author-mind-card`; do not edit `~/.agents/skills/author-mind-card` as if it were canonical. Record a follow-up if its source repository is unavailable.
+
+### Phase 6 — Legacy migration and cleanup behavior
+
+1. Add a read-only legacy-source inventory function/report with tests.
+2. Confirm no normal command recreates `sources/`.
+3. Run the inventory against a disposable store containing representative registered, unregistered, and deferred sources.
+4. Produce guidance classifying canonical collection sources versus unresolved legacy sources.
+5. Do not delete the real machine store in this issue. If deletion is later requested, re-inventory and ask for explicit confirmation with the exact target path.
 
 ### Phase 7 — Final verification
 
-- [ ] `bun run tsc --noEmit` — clean.
-- [ ] `bun test` — all pass.
-- [ ] `bun run drwn -- card new @test/temp-card` → creates `./temp-card/` in CWD (not in `sources/`).
-- [ ] `bun run drwn -- card publish --from ./temp-card/` → publishes successfully.
-- [ ] `bun run drwn -- card source doctor ./temp-card/` → works on the path.
-- [ ] `bun run drwn -- config set catalogCheckouts '["~/dev/darwinian-cards"]'` → persists.
-- [ ] `bun run drwn -- card publish @curation-labs/workflow-skills` → resolves via catalog checkout.
-- [ ] No `sources/` dir created by any `drwn` command.
-- [ ] Leave all changes uncommitted for operator review.
+```bash
+git submodule update --init darwinian-worker-skills
+bun install --frozen-lockfile
+bunx bun@1.2.21 run typecheck
+bunx bun@1.2.21 run verify:release
+bunx bun@1.2.21 test --timeout 30000 ./test/
+```
 
----
+With a newly created disposable store:
 
-## Alternatives considered
+```bash
+scratch_dir=$(mktemp -d)
+AGENTS_DIR="$scratch_dir/.agents" bunx bun@1.2.21 run drwn -- card new @test/temp-card
+AGENTS_DIR="$scratch_dir/.agents" bunx bun@1.2.21 run drwn -- card publish --from ./temp-card
+AGENTS_DIR="$scratch_dir/.agents" bunx bun@1.2.21 run drwn -- card source doctor ./temp-card
+AGENTS_DIR="$scratch_dir/.agents" bunx bun@1.2.21 run drwn -- config set catalogCheckouts '["/path/to/catalog"]'
+AGENTS_DIR="$scratch_dir/.agents" bunx bun@1.2.21 run drwn -- card publish @curation-labs/workflow-skills
+```
 
-(See architecture doc §2 for the three options. Summary:)
+Verify no `sources/` directory was created. Remove only the disposable scratch directory after validating its resolved path.
 
-- **Architecture A (publish accepts a path)** — what this plan implements. Eliminates `sources/`. Simplest mental model.
-- **Architecture B (sources/ IS the git repos via managed checkouts)** — rejected: reimplements git submodules; still has a `sources/` dir to explain.
-- **Architecture C (symlinks)** — rejected: machine-local, fragile, not a CLI-level solution.
+### Phase 8 — Review, PR, and workflow state
 
-## Risks
+1. Request code review against the amended architecture and this plan; fix every Critical/Important finding.
+2. Update PR #71 from docs-only to implementation scope, including breaking-change and migration disclosure.
+3. Add mandatory `Testing & CI evidence`: plan→test map, RED/GREEN tests, exact rerun commands, CI interpretation, and residual risk.
+4. Push the branch and wait for all required checks.
+5. Record G3 Review in the tracker through the complete property + Issue Status table + Issue Thread transaction.
+6. Draft the Slack alert for Remy; do not send it.
+7. Do not merge until ordered G1→G2→G3 workflow evidence is complete.
 
-| Risk | Likelihood | Mitigation |
-|---|---|---|
-| Missed call site breaks at runtime | Medium | Phase 1 edit order fixes the funnel functions first; tsc catches type breaks; Phase 4 tests catch runtime breaks. |
-| `checkpoint.ts` mind-source-dir resolution is complex | Medium | Phase 2i: investigate the exact resolution during execution; may need a `--source-dir` flag fallback. |
-| `card source list` removal surprises users | Low | Pre-launch; deprecation message points to alternatives. |
-| ~45 test files is a large surface | Medium | Phase 4a (fix 2 helpers) heals ~30 tests; remaining ~15 are mechanical. |
-| User-config schema needs forward compatibility | Low | Zod schema with `schemaVersion: 1`; extendable. |
+## Success criteria
 
-## Notes for the operator
-
-- **Execute on `remy/I176-card-source-path-reform` with incremental commits**, one logical commit per phase. (The original plan said "no branch, no commits" — that predates the v0.4 issue-branch model and is superseded.)
-- **Test command**: `bun run test` (full suite) — after `git submodule update --init darwinian-worker-skills`, or the operator/release-gate tests ENOENT spuriously.
-- **Land cl0153 sub-PR1 before starting** (see Phase 0).
-- **The highest-leverage single edit**: Phase 1a (`readCardSourceState` + `readSourceManifestForMutation`) — fixes 12 wrappers at once.
-- **The highest-leverage test fix**: Phase 4a (`test/helpers.ts`) — heals ~30 tests.
-- **The trickiest conversion**: Phase 2i (`checkpoint.ts`) — mind-source-dir resolution from a live mind index.
-
-## Out of scope
-
-- The `darwinian-cards` catalog registry mechanics (already consolidated — 17 cards registered).
-- The machine-default skill-shadowing problem (analysis 03 — separate concern).
-- Cursor/OpenCode hook delivery (experiment 04 — separate upstream concern).
-- The `AGENTS_DIR` env var (unchanged — it redirects the whole store, which is correct).
+- No production import or call of `resolveSourcesRoot` or `resolveCardSourceDir` remains.
+- Store initialization and every supported command work without creating `sources/`.
+- Card source mutation, publish, release, Worker authoring, capture, and checkpoint use explicit or catalog-resolved source directories.
+- Preference migration preserves existing authoring scope and passes release readiness.
+- All supported path forms and ambiguity/error cases are tested.
+- Repository and canonical external documentation teach the path-addressable model.
+- Typecheck, release readiness, full local suite, and all required CI jobs pass under the pinned toolchain.
+- The real machine-global store remains unchanged unless a separately confirmed migration is performed.
