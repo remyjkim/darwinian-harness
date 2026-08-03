@@ -53,15 +53,23 @@ export class DoctorCommand extends BaseCommand {
       this.context.homeDir,
       this.context.projectConfigPath,
     );
-    const unhealthy = report.ambientMcpCollisions.some((collision) => collision.disposition === "fatal");
+    const projectStatus = await buildProjectStatusV1({
+      repoRoot: this.context.repoRoot,
+      agentsDir: this.context.agentsDir,
+      homeDir: this.context.homeDir,
+      projectConfigPath: this.context.projectConfigPath,
+    });
+    const unhealthy =
+      report.ambientMcpCollisions.some(
+        (collision) => collision.disposition === "fatal",
+      ) ||
+      Boolean(
+        projectStatus?.instructionDelivery.issues.some(
+          (issue) => issue.severity === "error",
+        ),
+      );
 
     if (this.json) {
-      const projectStatus = await buildProjectStatusV1({
-        repoRoot: this.context.repoRoot,
-        agentsDir: this.context.agentsDir,
-        homeDir: this.context.homeDir,
-        projectConfigPath: this.context.projectConfigPath,
-      });
       this.context.stdout.write(renderJson({ ...report, ...(projectStatus ?? {}) }));
       return unhealthy ? 1 : 0;
     }

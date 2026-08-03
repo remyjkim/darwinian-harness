@@ -38,6 +38,7 @@ const sidebars: SidebarsConfig = {
         'concepts/cards',
         'concepts/materialization',
         'concepts/diagnostics-model',
+        'concepts/worker-instructions',
         'concepts/minds',
         'concepts/beliefs-memories-personas',
         'concepts/hook-policies',

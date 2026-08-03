@@ -62,7 +62,22 @@ test("card status surfaces hook consent state", async () => {
   const granted = await runAgentsCli(["card", "status"], envFor(fixture), projectDir);
   expect(granted.stdout).toContain("hook-consent: granted (^1.0.0)");
 
-  expect((await runAgentsCli(["card", "trust", "@me/policy", "--hooks", "--range", "^0.1.0"], envFor(fixture), projectDir)).exitCode).toBe(0);
+  const rejected = await runAgentsCli(
+    ["card", "trust", "@me/policy", "--hooks", "--range", "^0.1.0"],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(rejected.exitCode).toBe(1);
+  expect(rejected.stderr).toContain("include locked version 1.0.0");
+
+  // Preserve coverage for legacy/stale locks that predate the range-at-grant
+  // invariant. The command must reject creating this state, while status must
+  // still diagnose it when it already exists on disk.
+  const lockPath = join(projectDir, ".agents", "drwn", "card.lock");
+  const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  lock.cards[0].hookConsent.consentedRange = "^0.1.0";
+  await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+
   const outOfRange = await runAgentsCli(["card", "status"], envFor(fixture), projectDir);
   const json = await runAgentsCli(["card", "status", "--json"], envFor(fixture), projectDir);
   expect(outOfRange.stdout).toContain("hook-consent: out-of-range (consented: ^0.1.0, locked: 1.0.0)");

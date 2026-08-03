@@ -29,7 +29,7 @@ export interface WriteRecord {
 }
 
 export type WriteRecordScope = "project" | "machine";
-export type ProjectionSurface = "worker" | "mcp" | "skill" | "hook";
+export type ProjectionSurface = "worker" | "mcp" | "skill" | "hook" | "instructions";
 export type ProjectionTarget = "claude" | "codex" | "cursor" | "opencode" | "mastra";
 
 export interface ManagedOwnership {
@@ -63,7 +63,7 @@ const safeRelativePath = z.string().min(1).superRefine((value, context) => {
 });
 const hash = z.string().regex(/^sha256-[a-f0-9]{64}$/);
 const ownership = {
-  surface: z.enum(["worker", "mcp", "skill", "hook"]),
+  surface: z.enum(["worker", "mcp", "skill", "hook", "instructions"]),
   target: z.enum(["claude", "codex", "cursor", "opencode", "mastra"]).optional(),
 };
 const managedPathSchema = z.discriminatedUnion("kind", [
@@ -81,6 +81,8 @@ const managedPathSchema = z.discriminatedUnion("kind", [
 ]).superRefine((entry, context) => {
   const valid = entry.surface === "worker"
     ? entry.target === undefined
+    : entry.surface === "instructions"
+      ? entry.target === undefined
     : entry.surface === "mcp"
       ? entry.target === "claude" || entry.target === "codex" || entry.target === "cursor" || entry.target === "opencode"
       : entry.surface === "skill"

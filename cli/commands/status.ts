@@ -178,6 +178,15 @@ export class StatusCommand extends BaseCommand {
         cwd: projectRoot,
       });
       output += `  Active Worker:      ${state.workerSelection?.activeWorker ?? "none"}\n`;
+      const projectStatus = await buildProjectStatusV1({
+        repoRoot: this.context.repoRoot,
+        agentsDir: this.context.agentsDir,
+        homeDir: this.context.homeDir,
+        projectConfigPath: status.project.configPath,
+      });
+      if (projectStatus) {
+        output += `  Instruction delivery: ${projectStatus.instructionDelivery.state} (Claude adapter: ${projectStatus.instructionDelivery.adapter})\n`;
+      }
       if (state.ambientCollisions.length > 0) {
         output += "\nAmbient MCP collisions:\n";
         output += `${state.ambientCollisions.map((collision) => `  - ${formatAmbientCollision(collision)}`).join("\n")}\n`;

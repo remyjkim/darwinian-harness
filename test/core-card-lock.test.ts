@@ -245,10 +245,16 @@ test("lock metadata preserves skills, hooks, consent, and mind sections", async 
       persona: { include: ["voice"], visibility: "internal" },
       beliefs: { include: ["engineering"], visibility: "public" },
       memory: { observations: { format: "jsonl" } },
+      instructions: { text: "Reviewed instructions." },
     },
     skills: ["alpha"],
     hooks: ["audit"],
     hookConsent: { consentedAt: "2026-06-12T00:00:00.000Z", consentedRange: "^1.0.0" },
+    instructionConsent: {
+      consentedAt: "2026-06-12T00:00:00.000Z",
+      consentedRange: "^1.0.0",
+      contentDigest: `sha256-${"a".repeat(64)}`,
+    },
   });
   const graph = lock({
     workerRoots: [{ name: entry.name, requested: entry.requested, kind: "card", members: [] }],
@@ -262,6 +268,9 @@ test("lock metadata preserves skills, hooks, consent, and mind sections", async 
   expect(loaded?.cards[0]?.skills).toEqual(["alpha"]);
   expect(loaded?.cards[0]?.hooks).toEqual(["audit"]);
   expect(loaded?.cards[0]?.hookConsent?.consentedRange).toBe("^1.0.0");
+  expect(loaded?.cards[0]?.instructionConsent?.contentDigest).toBe(
+    `sha256-${"a".repeat(64)}`,
+  );
   expect(loaded?.cards[0]?.memory?.observations).toEqual({ format: "jsonl" });
 });
 

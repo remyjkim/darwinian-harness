@@ -20,6 +20,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Explicit Worker-instructions V1 projection. Cards can author inline or
+  Card-relative instructions, consumers grant exact-content/version-range
+  consent, and full project writes compose consented bytes into a
+  byte-preserving managed block in root `AGENTS.md`.
+- Claude instruction adapter management for `.claude/CLAUDE.md`, including
+  foreign valid-import preservation, opt-in managed-block insertion, ownership
+  drift protection, and owned-only cleanup.
+- Stable `instructionDelivery` status/doctor evidence, machine-local
+  cross-machine consent acknowledgement, and strict frozen
+  `OrgWorkerBundleV1` consumer conformance.
 - OpenCode target (disabled by default). `drwn write` merges managed MCP servers
   into `opencode.json` (project) and `~/.config/opencode/opencode.json`
   (machine) under the `mcp` key with per-server ownership, foreign-key

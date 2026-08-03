@@ -123,6 +123,8 @@ export function normalizeSyncPathOptions(
     target: options.target,
     force: options.force ?? false,
     strictHooks: options.strictHooks ?? false,
+    strict: options.strict ?? false,
+    applyClaudeAdapter: options.applyClaudeAdapter ?? false,
     forceMachineScope: options.forceMachineScope ?? false,
   };
 }

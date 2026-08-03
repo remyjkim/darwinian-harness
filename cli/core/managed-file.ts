@@ -34,7 +34,7 @@ function bestEffortFsync(fd: number) {
   }
 }
 
-function atomicWriteFile(pathValue: string, content: string) {
+function atomicWriteFile(pathValue: string, content: string | Uint8Array) {
   const tmpPath = `${pathValue}.tmp`;
   const fd = openSync(tmpPath, "w");
   try {
@@ -74,4 +74,21 @@ export function writeManagedFile(pathValue: string, nextContent: string, dryRun:
   if (!dryRun) {
     atomicWriteFile(pathValue, nextContent);
   }
+}
+
+export function writeManagedBytes(
+  pathValue: string,
+  nextContent: Uint8Array,
+  dryRun: boolean,
+  result: SyncResult,
+) {
+  const exists = existsSync(pathValue);
+  const currentContent = exists ? readFileSync(pathValue) : undefined;
+  if (currentContent && Buffer.from(currentContent).equals(Buffer.from(nextContent))) {
+    return;
+  }
+  ensureParentDir(pathValue, dryRun);
+  if (exists) backupExistingPath(pathValue, dryRun, result);
+  result.changes.push(`write ${pathValue}`);
+  if (!dryRun) atomicWriteFile(pathValue, nextContent);
 }

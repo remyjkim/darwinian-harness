@@ -1,0 +1,46 @@
+{
+  "wireVersion": "org-worker-bundle@1",
+  "sourceBlueprint": {
+    "id": "blueprint:gtm:1",
+    "revision": 1,
+    "digest": "sha256:69dd4d2b40c23c38e122289d2273cc80793ed1875527f63c778344e64c5b169b"
+  },
+  "workerId": "worker:gtm-operator",
+  "artifactPins": [
+    {
+      "artifactId": "artifact:gtm-worker-root",
+      "kind": "worker_root",
+      "name": "gtm-worker",
+      "version": "1.0.0",
+      "integrity": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "origin": "git:approved/gtm-worker",
+      "provenanceRefs": [
+        "provenance:gtm-worker-root"
+      ],
+      "resolutionSnapshotRef": "resolution:gtm-worker-root"
+    }
+  ],
+  "orderedWorkerRoots": [
+    "artifact:gtm-worker-root"
+  ],
+  "activeWorkerRoot": "artifact:gtm-worker-root",
+  "projectOverlay": {},
+  "contributionConsents": [
+    {
+      "consentId": "consent:gtm-instructions",
+      "workerId": "worker:gtm-operator",
+      "artifactPinRef": "artifact:gtm-worker-root",
+      "contributionKind": "instructions",
+      "contentDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "consentedVersionRange": ">=1.0.0 <2.0.0",
+      "ratifierRef": "actor:gtm-owner",
+      "evidenceRefs": [
+        "evidence:gtm-instruction-consent"
+      ],
+      "projectionSurface": "worker_instructions"
+    }
+  ],
+  "minimumWorkerVersion": "1.0.0",
+  "logicalEnvironmentClass": "project_workspace",
+  "materializationReceiptVersion": "worker-materialization-receipt@1"
+}

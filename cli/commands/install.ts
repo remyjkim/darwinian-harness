@@ -2,11 +2,19 @@
 // ABOUTME: Fetches missing Git-backed Cards and optionally writes downstream agent state.
 
 import { Option, UsageError } from "clipanion";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ensureCardPresentFromLock } from "../core/card-install";
 import { serializeCardLock, validateCardLockfile } from "../core/card-lock";
 import { pMap, resolveFetchConcurrency } from "../core/concurrency";
 import { selectProjectWorker } from "../core/effective-state";
 import { DrwnError } from "../core/errors";
+import { writeAtomically } from "../core/fs";
+import {
+  parseOrgWorkerBundleV1,
+  verifyFrozenOrgWorkerBundleInstall,
+  type OrgWorkerBundleV1,
+} from "../core/org-worker-bundle-v1";
 import { renderJson, renderSyncResult } from "../core/output";
 import { validateProjectConfig } from "../core/project";
 import { mutateProjectState, readProjectStateSnapshot } from "../core/project-state-transaction";
@@ -40,12 +48,37 @@ export class InstallCommand extends BaseCommand {
     description: "Fetch and verify cards without writing downstream files.",
   });
 
+  orgWorkerBundle = Option.String("--org-worker-bundle", {
+    description:
+      "Verify an immutable OrgWorkerBundleV1 against the frozen project lock.",
+  });
+
   json = Option.Boolean("--json", false, {
     description: "Emit machine-readable JSON output.",
   });
 
   async execute() {
     const projectRoot = requireProjectRoot(this);
+    if (this.orgWorkerBundle && !this.frozen) {
+      throw new UsageError(
+        "OrgWorkerBundleV1 installation requires --frozen.",
+      );
+    }
+    let bundle: OrgWorkerBundleV1 | null = null;
+    if (this.orgWorkerBundle) {
+      try {
+        bundle = parseOrgWorkerBundleV1(
+          JSON.parse(await readFile(this.orgWorkerBundle, "utf8")),
+        );
+      } catch (error) {
+        throw new DrwnError(
+          "ORG_WORKER_BUNDLE_INVALID",
+          "OrgWorkerBundleV1 is malformed or cannot be read",
+          undefined,
+          error,
+        );
+      }
+    }
     const initial = await readProjectStateSnapshot(projectRoot);
     if (!initial.lockBytes) {
       throw new UsageError("No card.lock found. Did you mean `drwn apply`?");
@@ -53,10 +86,12 @@ export class InstallCommand extends BaseCommand {
     if (!initial.configBytes) throw new UsageError("No project config found. Run `drwn init` first.");
 
     let lock;
+    let activeWorker: string | null = null;
     try {
       const config = validateProjectConfig(JSON.parse(initial.configBytes), `${projectRoot}/.agents/drwn/config.json`);
       lock = validateCardLockfile(JSON.parse(initial.lockBytes), `${projectRoot}/.agents/drwn/card.lock`);
       selectProjectWorker({ projectConfig: config, committedLock: lock, configLocal: null, localLock: null });
+      activeWorker = config.activeWorker;
     } catch (error) {
       const normalized = error instanceof DrwnError
         ? error
@@ -102,6 +137,33 @@ export class InstallCommand extends BaseCommand {
           value: undefined,
         };
       });
+    }
+
+    if (bundle) {
+      if (!activeWorker) {
+        throw new DrwnError(
+          "ORG_WORKER_BUNDLE_ACTIVE_WORKER_REQUIRED",
+          "OrgWorkerBundleV1 installation requires a selected project Worker",
+        );
+      }
+      const receipt = verifyFrozenOrgWorkerBundleInstall({
+        bundle,
+        activeWorker,
+        resolvedCards: lock.cards.map((card) => ({
+          card,
+          contentRoot: card.path,
+        })),
+      });
+      await writeAtomically(
+        join(
+          projectRoot,
+          ".agents",
+          "drwn",
+          "receipts",
+          "org-worker-bundle-install.json",
+        ),
+        `${JSON.stringify(receipt, null, 2)}\n`,
+      );
     }
 
     if (this.noWrite) {

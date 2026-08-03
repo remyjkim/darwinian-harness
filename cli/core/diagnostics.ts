@@ -43,7 +43,7 @@ import {
   resolveStoreRoot,
   resolveStoreSkillsRoot,
 } from "./store-paths";
-import { diffWriteRecord, loadWriteRecord, resolveProjectWriteRecordPath } from "./write-record";
+import { diffWriteRecord, hashManagedContent, loadWriteRecord, resolveProjectWriteRecordPath } from "./write-record";
 import { isHookConsentValid } from "./hook-consent";
 import { DRWN_VERSION } from "./version";
 import type { CanonicalConfig, RegistryServer } from "./types";
@@ -56,6 +56,12 @@ import {
 import { readMachineConfig } from "./card-store";
 import { DrwnError } from "./errors";
 import { verifyMachineProfilePin } from "./machine-profiles";
+import { parseManagedBlock } from "./managed-block";
+import {
+  CLAUDE_ADAPTER_BLOCK_MARKERS,
+  INSTRUCTION_BLOCK_MARKERS,
+} from "./sync-instructions";
+import { instructionCompositionForState } from "./sync-project-instructions";
 
 export interface PlatformCheck {
   name: string;
@@ -175,6 +181,24 @@ export interface ProjectStatusV1 {
     enforcement: "target-native";
   };
   projection: { current: boolean; issues: string[] };
+  instructionDelivery: {
+    state: "absent" | "current" | "drifted" | "blocked";
+    instructionId?: string;
+    contentDigest?: string;
+    ownershipHash?: string;
+    adapter: "absent" | "owned" | "foreign-valid" | "foreign-missing" | "drifted";
+    issues: Array<{
+      code:
+        | "INSTRUCTIONS_BLOCK_MALFORMED"
+        | "INSTRUCTIONS_CONTENT_STALE"
+        | "INSTRUCTIONS_OWNERSHIP_DRIFT"
+        | "INSTRUCTIONS_ID_STALE"
+        | "INSTRUCTIONS_CONSENT_REQUIRED"
+        | "CLAUDE_ADAPTER_MISSING"
+        | "CLAUDE_ADAPTER_DRIFT";
+      severity: "error" | "warning" | "advisory";
+    }>;
+  };
 }
 
 export interface MachineStatusCapability {
@@ -361,6 +385,118 @@ function projectItem(
   return { id, sourceKind, sourceId, sourcePath, target, health };
 }
 
+function inspectInstructionDelivery(
+  state: EffectiveState,
+): ProjectStatusV1["instructionDelivery"] {
+  const issues: ProjectStatusV1["instructionDelivery"]["issues"] = [];
+  const composition = instructionCompositionForState(state);
+  for (const _excluded of composition.excluded) {
+    issues.push({ code: "INSTRUCTIONS_CONSENT_REQUIRED", severity: "error" });
+  }
+  let record: ReturnType<typeof loadWriteRecord> = null;
+  try {
+    record = loadWriteRecord(state.recordPath, "project");
+  } catch (error) {
+    if (!(error instanceof DrwnError) || error.code !== "WRITE_RECORD_INVALID") {
+      throw error;
+    }
+  }
+  const instructionEntry = record?.managedPaths.find(
+    (entry) => entry.surface === "instructions" && entry.path === "AGENTS.md",
+  );
+  const expectedOwnership =
+    instructionEntry?.kind === "managed-fields"
+      ? instructionEntry.fieldHashes["drwn:instructions"]
+      : undefined;
+  const agentsPath = join(state.projectRoot!, "AGENTS.md");
+  const agentsBytes = existsSync(agentsPath)
+    ? new Uint8Array(readFileSync(agentsPath))
+    : new Uint8Array();
+  const parsed = parseManagedBlock(agentsBytes, INSTRUCTION_BLOCK_MARKERS);
+  let ownershipHash: string | undefined;
+  let instructionId: string | undefined;
+  let stateValue: ProjectStatusV1["instructionDelivery"]["state"] = "absent";
+  if (parsed.state === "malformed") {
+    issues.push({ code: "INSTRUCTIONS_BLOCK_MALFORMED", severity: "error" });
+    stateValue = "blocked";
+  } else if (parsed.state === "present") {
+    ownershipHash = hashManagedContent(parsed.block);
+    const blockText = new TextDecoder().decode(parsed.block);
+    instructionId = blockText.match(/^Instruction-ID:\s*(.+)$/m)?.[1];
+    const expectedId = `worker:${state.workerSelection?.selectedRoot?.name ?? "none"}`;
+    if (instructionId !== expectedId) {
+      issues.push({ code: "INSTRUCTIONS_ID_STALE", severity: "error" });
+    }
+    if (!expectedOwnership || ownershipHash !== expectedOwnership) {
+      issues.push({ code: "INSTRUCTIONS_OWNERSHIP_DRIFT", severity: "error" });
+    }
+    if (
+      composition.contentDigest &&
+      !blockText.includes(`Content-Digest: ${composition.contentDigest}`)
+    ) {
+      issues.push({ code: "INSTRUCTIONS_CONTENT_STALE", severity: "error" });
+    }
+    stateValue = issues.some((issue) => issue.severity === "error")
+      ? "drifted"
+      : "current";
+  } else if (composition.bytes) {
+    issues.push({ code: "INSTRUCTIONS_CONTENT_STALE", severity: "error" });
+    stateValue = "drifted";
+  }
+
+  const adapterPath = join(state.projectRoot!, ".claude", "CLAUDE.md");
+  let adapter: ProjectStatusV1["instructionDelivery"]["adapter"] = "absent";
+  if (existsSync(adapterPath)) {
+    const bytes = new Uint8Array(readFileSync(adapterPath));
+    const text = new TextDecoder().decode(bytes);
+    const adapterEntry = record?.managedPaths.find(
+      (entry) =>
+        entry.surface === "instructions" &&
+        entry.path === ".claude/CLAUDE.md",
+    );
+    const adapterBlock = parseManagedBlock(bytes, CLAUDE_ADAPTER_BLOCK_MARKERS);
+    if (adapterBlock.state === "malformed") {
+      adapter = "drifted";
+      issues.push({ code: "CLAUDE_ADAPTER_DRIFT", severity: "warning" });
+    } else if (
+      adapterEntry?.kind === "managed-content" &&
+      hashManagedContent(bytes) === adapterEntry.contentHash
+    ) {
+      adapter = "owned";
+    } else if (
+      adapterEntry?.kind === "managed-fields" &&
+      adapterBlock.state === "present" &&
+      hashManagedContent(adapterBlock.block) ===
+        adapterEntry.fieldHashes["drwn:claude-adapter"]
+    ) {
+      adapter = "owned";
+    } else if (/^\s*@\.\.\/AGENTS\.md\s*$/m.test(text)) {
+      adapter = "foreign-valid";
+    } else if (adapterEntry) {
+      adapter = "drifted";
+      issues.push({ code: "CLAUDE_ADAPTER_DRIFT", severity: "warning" });
+    } else {
+      adapter = "foreign-missing";
+      if (composition.bytes) {
+        issues.push({ code: "CLAUDE_ADAPTER_MISSING", severity: "advisory" });
+      }
+    }
+  } else if (composition.bytes) {
+    issues.push({ code: "CLAUDE_ADAPTER_MISSING", severity: "advisory" });
+  }
+
+  return {
+    state: stateValue,
+    ...(instructionId ? { instructionId } : {}),
+    ...(composition.contentDigest
+      ? { contentDigest: composition.contentDigest }
+      : {}),
+    ...(ownershipHash ? { ownershipHash } : {}),
+    adapter,
+    issues,
+  };
+}
+
 export async function buildProjectStatusV1(options: {
   repoRoot: string;
   agentsDir: string;
@@ -474,6 +610,7 @@ export async function buildProjectStatusV1(options: {
       enforcement: "target-native",
     },
     projection: { current: projection.current, issues: projection.issues },
+    instructionDelivery: inspectInstructionDelivery(state),
   };
 }
 

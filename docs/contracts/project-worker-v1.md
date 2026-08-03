@@ -75,6 +75,27 @@ drwn write
 
 `workerRoots` preserves root and member order. `cards` contains each root and reachable member once, with exact version, integrity, manifest, origin, requested ref, and tree SHA/Git provenance where required. Config and lock are prepared and committed as one project-state transaction.
 
+A Card may also carry independent, explicit consent records:
+
+```json
+{
+  "hookConsent": {
+    "consentedAt": "2026-07-23T00:00:00.000Z",
+    "consentedRange": "^1.0.0"
+  },
+  "instructionConsent": {
+    "consentedAt": "2026-07-23T00:00:00.000Z",
+    "consentedRange": "^1.0.0",
+    "contentDigest": "sha256-..."
+  }
+}
+```
+
+Instruction consent is valid only while the locked version remains in range and
+the canonical explicit instruction bytes retain the exact content digest. An
+update that changes either drops instruction consent and requires a new
+`drwn card trust <name> --instructions`.
+
 ## Local Overlay
 
 `.agents/drwn/config.local.json` is ignored machine-local intent:
@@ -107,15 +128,55 @@ Its companion `.agents/drwn/card.lock.local` uses `drwn.project-lock` V1. Local-
 
 There is one aggregate directory per installed root. A Blueprint root's aggregate contains its entire ordered Card closure, merged skills, MCP definitions, approved hooks, instructions, and provenance. Member Cards do not receive sibling Worker directories. The selected root also produces the active aggregate instructions used for projection.
 
+Only `manifest.instructions.text` or `manifest.instructions.path` contributes to
+the aggregate instructions. Skills, hooks, READMEs, Card identity, and generated
+model output are never fallback instructions. Every contributing Card requires
+explicit instruction consent regardless of origin.
+
+## Instruction Projection
+
+A full project `drwn write` composes consented explicit contributions in the
+selected closure and writes those exact composed bytes inside one drwn-owned
+block in repository-root `AGENTS.md`. Content outside that block is preserved
+byte-for-byte. Duplicate, partial, nested, reversed, malformed, or unrecorded
+reserved markers fail closed. `--force` may repair drift only when the prior
+write record proves ownership.
+
+The Card/content digest identifies canonical instruction content. The separate
+ownership hash identifies the exact rendered block, including markers and
+headers. These hashes are not interchangeable.
+
+When instructions are desired, an absent `.claude/CLAUDE.md` is created as the
+exact adapter `@../AGENTS.md`. A foreign file already containing that import is
+accepted without ownership. A foreign file without it is preserved with an
+advisory; `--apply-claude-adapter` adds only a managed import block. Cleanup
+removes only unchanged, previously owned bytes.
+
+`--mcp-only`, `--skills-only`, `--target`, and machine-scope writes retain but do
+not rewrite instruction projection or its ownership.
+
 ## Status Contract
 
-Project JSON status uses `schema: "drwn.project-status"` and `schemaVersion: 1`. It reports installed roots, one `activeWorker`, active closure Cards, local overrides, project overlays, declared capabilities, ambient observations, and projection health.
+Project JSON status uses `schema: "drwn.project-status"` and `schemaVersion: 1`. It reports installed roots, one `activeWorker`, active closure Cards, local overrides, project overlays, declared capabilities, ambient observations, projection health, and an additive `instructionDelivery` section. Instruction delivery reports block state, content and ownership identities, Claude adapter state, and stable issue codes without exposing instruction content.
 
 Declared project capabilities come only from the selected root closure and explicit project overlays. Machine capabilities and user-home target files may remain visible to an agent runtime, but they are **ambient**, diagnostic-only observations. They are not added to project intent or lock state.
 
 ## Pure Projection
 
 `drwn write` is a pure projection of committed project state plus an explicit local overlay. Dry-run, target selection, skills-only, MCP-only, and full writes do not change config, lock, requirements, or selection. Project writes do not read machine capability selections as project capabilities.
+
+Normal writes exclude unconsented or stale explicit instruction contributions
+and warn with Card IDs. `drwn write --strict` fails before instruction
+projection when any selected contributor lacks valid instruction consent.
+
+## Organization Worker Bundle Boundary
+
+`OrgWorkerBundleV1` is a frozen downstream handoff from organization
+provisioning. The Worker consumer verifies the bundle's blueprint identity,
+pinned Card identity, exact explicit instruction digest, and consent range
+without network resolution or local-source substitution. Organization grants,
+protocols, and provenance references remain opaque evidence. The bundle cannot
+claim credentials, harness files, applied state, or current readiness.
 
 ## Runtime And Authentication State
 

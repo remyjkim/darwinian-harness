@@ -17,6 +17,7 @@ import { projectConfigPath } from "./project-writes";
 import { satisfies } from "./semver-utils";
 import type { ProjectConfig } from "./types";
 import { resolveWorkerGraph, type ResolvedWorkerGraph } from "./worker-graph";
+import { resolveExplicitInstructionContribution } from "./instruction-contribution";
 
 export interface WorkerProjectMutation {
   projectConfigPath: string;
@@ -73,20 +74,37 @@ function parseSnapshot(snapshot: ProjectStateSnapshot): CurrentProjectState {
   return { config, graph: { roots: lock.workerRoots, cards: lock.cards } };
 }
 
-function preserveHookConsent(previousCards: CardLockEntry[], nextCards: CardLockEntry[], warnings: string[]) {
+function preserveConsent(previousCards: CardLockEntry[], nextCards: CardLockEntry[], warnings: string[]) {
   const previousByName = new Map(previousCards.map((card) => [card.name, card]));
   return nextCards.map((card) => {
     const previous = previousByName.get(card.name);
-    if (!previous?.hookConsent) return card;
-    if (satisfies(card.version, previous.hookConsent.consentedRange, { includePrerelease: true })) {
-      return { ...card, hookConsent: previous.hookConsent };
+    let next = card;
+    if (previous?.hookConsent) {
+      if (satisfies(card.version, previous.hookConsent.consentedRange, { includePrerelease: true })) {
+        next = { ...next, hookConsent: previous.hookConsent };
+      } else if (card.hooks.length > 0) {
+        warnings.push(
+          `${card.name} hook consent dropped: locked ${card.version} is outside consent range ${previous.hookConsent.consentedRange}. Run drwn card trust ${card.name} --hooks to re-consent.`,
+        );
+      }
     }
-    if (card.hooks.length > 0) {
-      warnings.push(
-        `${card.name} hook consent dropped: locked ${card.version} is outside consent range ${previous.hookConsent.consentedRange}. Run drwn card trust ${card.name} --hooks to re-consent.`,
-      );
+    if (previous?.instructionConsent) {
+      const contribution = resolveExplicitInstructionContribution(card, card.path);
+      if (
+        contribution &&
+        contribution.contentDigest === previous.instructionConsent.contentDigest &&
+        satisfies(card.version, previous.instructionConsent.consentedRange, {
+          includePrerelease: true,
+        })
+      ) {
+        next = { ...next, instructionConsent: previous.instructionConsent };
+      } else {
+        warnings.push(
+          `${card.name} instruction consent dropped: version or explicit instruction content changed. Run drwn card trust ${card.name} --instructions to re-consent.`,
+        );
+      }
     }
-    return card;
+    return next;
   });
 }
 
@@ -107,7 +125,7 @@ async function prepareMutation(
   const current = parseSnapshot(snapshot);
   const resolved = await resolveWorkerGraph(agentsDir, nextSpecs, options);
   const warnings: string[] = [];
-  const cardsWithConsent = preserveHookConsent(current.graph.cards, resolved.cards, warnings);
+  const cardsWithConsent = preserveConsent(current.graph.cards, resolved.cards, warnings);
   const locked = await backfillLockTreeShas(agentsDir, cardsWithConsent);
   warnings.push(...await collectCardMetaWarnings(agentsDir, locked, options));
   const graph = { roots: resolved.roots, cards: locked };

@@ -240,15 +240,15 @@ Card commands:
 - `drwn card source remove-skill <name> <skillName>`
 - `drwn card source add-hook <name> <policyName>`
 - `drwn card source remove-hook <name> <policyName>`
-- `drwn card source set <name> [options]`
+- `drwn card source set <name> [--instructions-text <text>|--instructions-path <relative-path>|--clear-instructions] [options]`
 - `drwn card source add-mcp <name> <serverName>`
 - `drwn card source remove-mcp <name> <serverName>`
 - `drwn card outdated [--check]`
 - `drwn card list`
 - `drwn card show <cardRef>`
 - `drwn card status [--explain]`
-- `drwn card trust <name> --hooks [--range <semverRange>]`
-- `drwn card untrust <name> --hooks`
+- `drwn card trust <name> (--hooks|--instructions) [--range <semverRange>]`
+- `drwn card untrust <name> (--hooks|--instructions)`
 - `drwn card audit`
 - `drwn card diff <beforeRef> <afterRef>`
 - `drwn card deprecate <cardRef>`
@@ -277,6 +277,23 @@ Card hooks:
 - Mastra hook generation is opt-in per project with `hooks.runtimes.mastra.enabled: true` in `<project>/.agents/drwn/config.json`.
 - `hooks.exclude` can skip a policy by bare policy name or by `@scope/card:policy-name`.
 - drwn hook consent only gates drwn materialization. Codex project-local hooks may still require Codex's own `/hooks` review/trust flow before they run.
+
+Card instructions:
+
+- Authors declare exactly one explicit source with `--instructions-text` or
+  `--instructions-path`; `--clear-instructions` removes it. A path must be a
+  readable regular UTF-8 file inside the Card source.
+- Consumers review and grant exact-content consent with
+  `drwn card trust <card> --instructions`. The lock records a semver range and
+  canonical content digest. Version-range or content changes drop consent.
+- A normal `drwn write` excludes unconsented contributions and warns.
+  `drwn write --strict` fails before instruction projection.
+- Consented contributions compose into one owned block in root `AGENTS.md`.
+  User bytes outside the block are preserved exactly. Unrecorded or malformed
+  reserved markers and ownership drift fail closed.
+- Claude reads the canonical file through `.claude/CLAUDE.md`. An absent adapter
+  is created; a foreign valid import is preserved; a foreign missing import is
+  advisory unless `--apply-claude-adapter` is supplied.
 
 Typical source authoring:
 
@@ -427,6 +444,9 @@ Run only one side when needed:
 drwn write --mcp-only
 drwn write --skills-only
 ```
+
+These partial writes retain instruction files and instruction ownership
+unchanged. Instruction projection is project-only and target-agnostic.
 
 Limit write to one target:
 

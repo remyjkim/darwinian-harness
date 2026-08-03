@@ -8,6 +8,10 @@ import { isHookConsentValid } from "../../core/hook-consent";
 import { renderJson } from "../../core/output";
 import { BaseCommand } from "../base";
 import type { CardLockEntry } from "../../core/card-lock";
+import {
+  isInstructionConsentValid,
+  resolveExplicitInstructionContribution,
+} from "../../core/instruction-contribution";
 
 function formatHookConsent(card: CardLockEntry) {
   if (!card.hookConsent) {
@@ -17,6 +21,19 @@ function formatHookConsent(card: CardLockEntry) {
     return `granted (${card.hookConsent.consentedRange})`;
   }
   return `out-of-range (consented: ${card.hookConsent.consentedRange}, locked: ${card.version})`;
+}
+
+function formatInstructionConsent(card: CardLockEntry) {
+  if (!card.instructionConsent) return "absent";
+  try {
+    const contribution = resolveExplicitInstructionContribution(card, card.path);
+    if (contribution && isInstructionConsentValid(card, contribution)) {
+      return `granted (${card.instructionConsent.consentedRange})`;
+    }
+  } catch {
+    // Status reports stale/invalid rather than leaking source content or failing.
+  }
+  return "stale";
 }
 
 export class CardStatusCommand extends BaseCommand {
@@ -61,6 +78,7 @@ export class CardStatusCommand extends BaseCommand {
         locked: status.locked.map((card) => ({
           ...card,
           hookConsent: card.hookConsent ?? null,
+          instructionConsent: card.instructionConsent ?? null,
           mode: status.modes[card.name] ?? null,
         })),
         modes: status.modes,
@@ -78,7 +96,7 @@ export class CardStatusCommand extends BaseCommand {
               const modeLine = mode
                 ? ` mode=${mode.mode} reason=${mode.reason} lane=${mode.lane}${mode.sourcePath ? ` source=${mode.sourcePath}` : ""}`
                 : "";
-              return `- ${card.name}@${card.version} (${card.requested}) hook-consent: ${formatHookConsent(card)}${modeLine}`;
+              return `- ${card.name}@${card.version} (${card.requested}) hook-consent: ${formatHookConsent(card)} instruction-consent: ${formatInstructionConsent(card)}${modeLine}`;
             }).join("\n")}`,
         status.outdated.length === 0
           ? "Outdated: none"

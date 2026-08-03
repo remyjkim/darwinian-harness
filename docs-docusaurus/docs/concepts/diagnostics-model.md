@@ -21,6 +21,7 @@ The categories surfaced:
 - **Stale downstream skill entries** — drwn-owned skill entries that no longer correspond to any active skill
 - **MCP drift** in Claude `settings.json`, Codex `config.toml`, or Cursor `mcp.json` — the managed content has been modified outside drwn
 - **Hook issues** — a locked card declares hook policies but no hook consent has been recorded via `drwn card trust`. `drwn write` will not materialize hooks until consent is granted.
+- **Instruction delivery** — consent, root `AGENTS.md` block state and ownership, and Claude adapter state without exposing instruction text.
 - **Project config issues** — invalid Worker roots or selection, unknown `mcpServers`, unknown skills in `skills.include`, unknown extensions, stale target overrides, and unavailable selected-closure skills
 
 `doctor` reports issues. It never fixes them. The intent is that an operator (or an agent following a skill) reads doctor output, decides what to do, and then runs the right command (`drwn write`, `drwn update`, `drwn machine skill disable`, and so on).
@@ -39,6 +40,25 @@ drwn write
 ```
 
 Use `--range` to scope consent to a specific semver range. `drwn card untrust @your-handle/backend` revokes consent.
+
+### Instruction delivery
+
+Project status adds `instructionDelivery` with `absent`, `current`, `drifted`,
+or `blocked` state; content/ownership identities; Claude adapter state; and
+stable issue codes. Errors make `drwn doctor` unhealthy. Adapter warnings and
+advisories remain non-fatal.
+
+Resolve missing consent by reviewing the exact explicit contribution and
+running:
+
+```bash
+drwn card trust @your-handle/backend --instructions
+drwn write
+```
+
+Do not repair ownership drift by deleting user content. Inspect the marked
+region and write record first; `--force` can replace only a recorded owned
+block.
 
 ## Status: As-Written vs As-Active, Plus Provenance
 

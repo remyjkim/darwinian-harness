@@ -1,7 +1,7 @@
 // ABOUTME: Materializes installed cards as isolated generated worker bundles.
 // ABOUTME: Writes workers.json plus per-worker skills, hooks, and MCP indexes.
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { CardLockEntry, WorkerRootLockEntry } from "../card-lock";
 import { isRegistryServerDefinition } from "../card-mcp";
@@ -21,6 +21,7 @@ import {
 import type { RegistryServer, SyncResult } from "../types";
 import { hashManagedContent, hashManagedDirectory, ownManagedPath, type ManagedPath } from "../write-record";
 import { assertWorkerCapabilityCompatibility } from "../card-skill-resolver";
+import { composeConsentedInstructions } from "../sync-instructions";
 
 function managedPath(scopeRoot: string, absolutePath: string) {
   return relative(scopeRoot, absolutePath).replace(/\\/g, "/");
@@ -73,106 +74,25 @@ function writeJson(pathValue: string, value: unknown, state: EffectiveState, res
   result.managedPaths?.push(recordManagedContent(state.scopeRoot, pathValue, content));
 }
 
-function ensureTrailingNewline(text: string) {
-  return text.endsWith("\n") ? text : `${text}\n`;
-}
-
-function isSafeRelativeInstructionPath(pathValue: string) {
-  const normalized = pathValue.replace(/\\/g, "/");
-  return (
-    normalized.length > 0 &&
-    !normalized.startsWith("/") &&
-    !/^[A-Za-z]:\//.test(normalized) &&
-    !normalized.split("/").includes("..")
-  );
-}
-
-function stripYamlFrontmatter(text: string) {
-  return text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
-}
-
-function explicitInstructionsForCard(card: CardLockEntry, contentRoot: string): string | null {
-  const instructions = card.manifest.instructions;
-  if (!instructions) {
-    return null;
-  }
-  if (typeof instructions.text === "string") {
-    const text = instructions.text.trimEnd();
-    if (text.trim().length === 0) {
-      throw new Error(`instructions.text for ${card.name} must be non-empty`);
-    }
-    return ensureTrailingNewline(text);
-  }
-  if (typeof instructions.path === "string") {
-    if (!isSafeRelativeInstructionPath(instructions.path)) {
-      throw new Error(`instructions.path for ${card.name} must stay inside the card content root`);
-    }
-    const text = readFileSync(join(contentRoot, instructions.path), "utf8").trimEnd();
-    if (text.trim().length === 0) {
-      throw new Error(`instructions.path for ${card.name} produced empty instructions`);
-    }
-    return ensureTrailingNewline(text);
-  }
-  return null;
-}
-
-function identityInstructionsForCard(card: CardLockEntry): string | null {
-  if (card.manifest.kind !== "blueprint") {
-    return null;
-  }
-  const text = card.manifest.identity?.instructions;
-  if (typeof text !== "string" || text.trim().length === 0) {
-    return null;
-  }
-  return ensureTrailingNewline(text.trimEnd());
-}
-
-function aggregateSkillInstructions(state: EffectiveState, cards: CardLockEntry[]) {
-  const sections: string[] = [];
-  for (const card of cards) {
-    const contentRoot = state.contentRootsByCard[card.name] ?? card.path;
-    for (const skill of card.skills) {
-      const skillPath = join(contentRoot, "skills", skill, "SKILL.md");
-      if (!existsSync(skillPath)) {
-        continue;
-      }
-      const body = stripYamlFrontmatter(readFileSync(skillPath, "utf8")).trim();
-      if (body.length === 0) {
-        continue;
-      }
-      sections.push(`## ${card.name} / ${skill}\n\n${body}`);
-    }
-  }
-  if (sections.length === 0) {
-    return "No Worker capability instructions declared.\n";
-  }
-  return ensureTrailingNewline(`# Worker Capability Instructions\n\n${sections.join("\n\n")}`);
-}
-
-function buildInstructionsArtifact(state: EffectiveState, cards: CardLockEntry[]) {
-  const root = cards[0];
-  if (root?.manifest.kind === "blueprint") {
-    const rootContent = state.contentRootsByCard[root.name] ?? root.path;
-    const workerInstructions = explicitInstructionsForCard(root, rootContent) ?? identityInstructionsForCard(root);
-    const capabilityInstructions = aggregateSkillInstructions(state, cards);
-    return workerInstructions
-      ? ensureTrailingNewline(`${workerInstructions.trimEnd()}\n\n${capabilityInstructions.trimEnd()}`)
-      : capabilityInstructions;
-  }
-  for (const card of cards) {
-    const contentRoot = state.contentRootsByCard[card.name] ?? card.path;
-    const explicit = explicitInstructionsForCard(card, contentRoot);
-    if (explicit) return explicit;
-  }
-  for (const card of cards) {
-    const identity = identityInstructionsForCard(card);
-    if (identity) return identity;
-  }
-  return aggregateSkillInstructions(state, cards);
-}
-
 function writeInstructionsArtifact(pathValue: string, state: EffectiveState, cards: CardLockEntry[], result: SyncResult) {
-  const content = buildInstructionsArtifact(state, cards);
+  const composition = composeConsentedInstructions({
+    cards,
+    contentRootsByCard: state.contentRootsByCard,
+  });
+  result.warnings.push(
+    ...composition.excluded.map(
+      (item) =>
+        `${item.card} explicit instructions excluded: ${item.reason}. Run drwn card trust ${item.card} --instructions.`,
+    ),
+  );
+  if (!composition.bytes) {
+    if (existsSync(pathValue)) {
+      result.changes.push(`remove ${pathValue}`);
+      if (!state.scopedOptions.dryRun) rmSync(pathValue, { force: true });
+    }
+    return;
+  }
+  const content = new TextDecoder().decode(composition.bytes);
   writeManagedFile(pathValue, content, state.scopedOptions.dryRun, result);
   result.managedPaths?.push(recordManagedContent(state.scopeRoot, pathValue, content));
 }

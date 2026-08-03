@@ -35,6 +35,45 @@ async function scaffoldLockedGitProject(options?: { vendor?: boolean }) {
   return { fixture, remote, projectDir };
 }
 
+async function writeOrgWorkerBundle(
+  projectDir: string,
+  card: NonNullable<Awaited<ReturnType<typeof loadCardLock>>>["cards"][number],
+) {
+  const path = join(projectDir, "org-worker-bundle.json");
+  await writeFile(
+    path,
+    JSON.stringify({
+      wireVersion: "org-worker-bundle@1",
+      sourceBlueprint: {
+        id: "blueprint:test:1",
+        revision: 1,
+        digest: `sha256:${"1".repeat(64)}`,
+      },
+      workerId: "worker:test",
+      artifactPins: [
+        {
+          artifactId: "artifact:test-worker-root",
+          kind: "worker_root",
+          name: card.name,
+          version: card.version,
+          integrity: card.integrity.replace("sha256-", "sha256:"),
+          origin: card.requested,
+          provenanceRefs: ["provenance:test-worker-root"],
+          resolutionSnapshotRef: "resolution:test-worker-root",
+        },
+      ],
+      orderedWorkerRoots: ["artifact:test-worker-root"],
+      activeWorkerRoot: "artifact:test-worker-root",
+      projectOverlay: {},
+      contributionConsents: [],
+      minimumWorkerVersion: "1.0.0",
+      logicalEnvironmentClass: "project_workspace",
+      materializationReceiptVersion: "worker-materialization-receipt@1",
+    }),
+  );
+  return path;
+}
+
 test("install --no-write bootstraps missing git-origin Cards without projection", async () => {
   const { fixture, projectDir } = await scaffoldLockedGitProject();
 
@@ -82,6 +121,56 @@ test("install --frozen succeeds from committed vendor bytes without a machine st
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain("Installed 1 card(s).");
   expect(existsSync(resolveCardBareRepoPath(fixture.agentsDir, "@team/backend"))).toBe(false);
+});
+
+test("install consumes an immutable OrgWorkerBundleV1 only in frozen mode and records a bounded receipt", async () => {
+  const { fixture, projectDir } = await scaffoldLockedGitProject({
+    vendor: true,
+  });
+  const card = (await loadCardLock(projectDir))!.cards[0]!;
+  const bundlePath = await writeOrgWorkerBundle(projectDir, card);
+
+  const unsafe = await runAgentsCli(
+    ["install", "--org-worker-bundle", bundlePath, "--no-write"],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(unsafe.exitCode).not.toBe(0);
+  expect(`${unsafe.stdout}\n${unsafe.stderr}`).toMatch(
+    /bundle.*--frozen/i,
+  );
+
+  const result = await runAgentsCli(
+    [
+      "install",
+      "--frozen",
+      "--org-worker-bundle",
+      bundlePath,
+      "--no-write",
+    ],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(result.exitCode).toBe(0);
+  const receipt = JSON.parse(
+    await readFile(
+      join(
+        projectDir,
+        ".agents",
+        "drwn",
+        "receipts",
+        "org-worker-bundle-install.json",
+      ),
+      "utf8",
+    ),
+  );
+  expect(receipt).toMatchObject({
+    wireVersion: "org-worker-bundle-install-receipt@1",
+    workerId: "worker:test",
+    activeWorker: "@team/backend",
+    verifiedArtifactPins: ["artifact:test-worker-root"],
+  });
+  expect(JSON.stringify(receipt)).not.toMatch(/credential|token|secret/i);
 });
 
 test("install --frozen reports corrupt committed vendor bytes", async () => {

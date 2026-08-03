@@ -200,6 +200,8 @@ export interface SyncOptions {
   target?: TargetName;
   force?: boolean;
   strictHooks?: boolean;
+  strict?: boolean;
+  applyClaudeAdapter?: boolean;
   forceMachineScope?: boolean;
   scope?: "machine" | "project";
 }
@@ -234,6 +236,8 @@ export interface NormalizedSyncOptions {
   target?: TargetName;
   force?: boolean;
   strictHooks?: boolean;
+  strict?: boolean;
+  applyClaudeAdapter?: boolean;
   forceMachineScope?: boolean;
   scope?: "machine" | "project";
 }

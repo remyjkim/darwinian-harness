@@ -100,6 +100,7 @@ Each `cards` entry contains:
 | `skills` / `hooks` | Locked capability indexes. |
 | `persona` / `beliefs` / `memory` | Locked Mind declarations when present. |
 | `hookConsent` | Optional Card/version-range hook consent. |
+| `instructionConsent` | Optional exact-content and version-range instruction consent. |
 | `origin` | `store`, `git`, `file`, or `npm`. |
 | `git` | Commit and optional URL/ref for Store/Git origins. |
 | `registry` | Reserved; currently `null`. |

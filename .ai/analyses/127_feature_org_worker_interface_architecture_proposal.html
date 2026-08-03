@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="description" content="Deep-dive target architecture for the Architect's output artifacts and the org-to-worker interface protocol: Org Blueprint and MemoryPlan stay as accepted design artifacts, a sibling WorkerSpec carries grant provenance, and one governed contract (org-worker-bundle-v1) compiles them into drwn inputs with receipts flowing back — with diagrams, a nine-category mapping, and a full worked example.">
+		<title>Org↔Worker Instantiation Interface · Architecture Proposal</title>
+		<link rel="stylesheet" href="assets/report-system.css">
+		<script type="module" src="assets/report-system.js" defer></script>
+		<style>
+			/* Report-scoped additions only; the shared baseline is untouched. */
+			pre.code-sample { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.78rem; line-height: 1.55; background: var(--card); border: 1px solid var(--hair); border-radius: 10px; padding: 14px 16px; overflow-x: auto; color: var(--ink); margin: 10px 0 4px; }
+			pre.code-sample code { background: none; padding: 0; color: inherit; font-size: inherit; }
+			.diagram-figure { margin: 14px 0 6px; }
+			.diagram-figure svg { width: 100%; height: auto; display: block; background: var(--card); border: 1px solid var(--hair); border-radius: 12px; }
+			.diagram-figure figcaption { font-size: 0.8rem; color: var(--muted-text); margin-top: 8px; }
+			.diagram-figure text { font-family: "Avenir Next", "Segoe UI", sans-serif; }
+			.sample-label { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin: 16px 0 0; }
+		</style>
+	</head>
+	<body>
+		<a class="skip-link" href="#content">Skip to report content</a>
+		<nav class="site-nav" aria-label="Report library"><div class="site-nav__inner">
+			<a class="report-brand" href="https://github.com/curation-labs/hf-reports"><span class="report-brand__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Team reports</span></a>
+			<button class="site-nav__toggle" type="button" aria-expanded="false" aria-controls="site-nav-links">Menu</button>
+			<div class="site-nav__links" id="site-nav-links"><a href="https://github.com/curation-labs/hf-reports">Template library</a></div>
+		</div></nav>
+		<main class="report-shell" id="content">
+			<header class="report-mast" data-module="report-masthead" data-report-intent="proposal"><p class="kicker">Architecture Proposal · Proposal · Deep Dive</p><h1>Org↔Worker Instantiation Interface</h1><p class="report-mast__lede">The Architect's accepted design artifacts — Org Blueprint and MemoryPlan — stay exactly what they are; a sibling WorkerSpec section carries the one convergent addition (runtime + capability grants with provenance); and a single governed contract, <strong>org-worker-bundle-v1</strong>, compiles the accepted design into drwn inputs. drwn remains the sole materializer, its receipts feed the org readiness gate, and two projection systems become one boundary. This deep dive carries the full mapping: every instantiation category, both diagrams, the five contract shapes, and one worker traced end to end.</p>
+				<div class="report-meta" role="group" aria-label="Report metadata"><span class="pill" data-report-status>Lifecycle: Draft for joint session</span><span class="pill">Owner: Remy + program owner</span><span class="pill evidence">Confidence: Medium — drwn half verified in code; org half from the believer/Architect docs</span><span class="pill" data-report-updated>Updated: 22 July 2026</span></div>
+			</header>
+			<section class="report-section" aria-labelledby="reader-action-title" data-reader-action data-module="reader-action"><div class="reader-action-block"><div><p class="tag">Reader action · proposal</p><h2 id="reader-action-title">Adopt this contract draft as the shared basis for the believer §03 amendment</h2><p>This is the drwn-side draft of a cross-repo contract: the org side has not yet reviewed it. Adopting it at the C3/C4 joint session amends the believer proposal's projection list before its own decision date, fixes the shape of the planned capability additions (as a sibling WorkerSpec section — see §03 step 1), and lets the USMS pilot run bundle-shaped against real drwn commands immediately. It changes no accepted org artifact retroactively and does not commit the projection compilers.</p></div><dl><div><dt>Action owner</dt><dd>Remy + program owner</dd></div><div><dt>Desired by</dt><dd>25 July 2026 (the believer proposal's decision date)</dd></div></dl></div></section>
+			<div class="report-grid"><article data-numbered-content>
+					<section class="report-section" id="drivers" data-section-number="01" aria-labelledby="drivers-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">01</span><h2 id="drivers-title">Drivers</h2><p>Two teams, days from building the same seam twice, incompatibly — while the gaps each side names are mechanized on the other side already.</p></header>
+
+						<div class="callout primary" data-module="callout"><p class="tag">Architecture driver</p><h3>Two instruction projectors are about to exist, and worker capability authority is recorded nowhere</h3><p>Believer §03 plans <code>planToWorkerBundle</code> to emit per-worker CLAUDE.md, a capabilities manifest, and a card stack by hand-shaped compilation. drwn's approved architecture (analysis 124, decided 072226) projects worker instructions to a canonical root <code>AGENTS.md</code> block — grounded in cross-agent research showing root CLAUDE.md double-reads in Cursor — with per-card consent through the card-trust ledger. Built independently, these drift by construction and violate the single-composer criterion both teams adopted on their own.</p></div>
+						<div class="callout" data-module="callout"><p class="tag">The mirror-image gaps</p><h3>Each side's register names problems the other side has already shipped answers to</h3><p>The org gap register: tool authority is "granted by hand and recorded nowhere" (G3); "is this org ready to start?" has no mechanical answer (G6); runtime binding is hand-authored per org (G2). The drwn side ships the mechanisms these describe — a semver-ranged consent ledger, idempotent receipted writes, and a locked capability record — but at worker scale, with nothing org-side consuming them. The interface exists so neither side rebuilds the other's half.</p></div>
+					</section>
+
+					<section class="report-section" id="current-state" data-section-number="02" aria-labelledby="current-state-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">02</span><h2 id="current-state-title">Current state</h2><p>Each side has proven half of the pipeline; the seam between them is hand-authored session knowledge.</p></header>
+
+						<div class="grid two" data-module="finding-card">
+							<article class="card primary"><p class="tag">Org side · believer analysis 28</p><h3>Design artifacts are governed; instantiation is not</h3><p>The Org Blueprint and MemoryPlan are compiled, revisioned, staging-proven accepted design artifacts, and manuals/grants derive from them as pure projections. But five of the nine information categories an instantiation needs are hand-authored per org. The GTM org took ~180 lines of unreusable deployment knowledge; USMS began repeating the pattern the next day.</p></article>
+							<article class="card evidence"><p class="tag">Worker side · verified in code, decided 072226</p><h3>drwn already ships the mechanisms the gaps name</h3><p>Cards, Worker Blueprints, and <code>card.lock</code> record capability closures with versions and integrity; the trust ledger records per-card, semver-ranged consent for push capabilities (hooks shipped; instructions approved 072226 with first-party auto-grant and <code>--strict</code> CI enforcement); <code>drwn write</code> is idempotent with byte/mtime preservation, and its write-record + JSON output are exactly a worker-scale provisioning receipt. Nothing in the org pipeline consumes any of it today.</p></article>
+						</div>
+
+						<div class="table-scroll" data-module="evidence-table" tabindex="0" aria-label="The nine instantiation categories mapped to this architecture">
+							<table class="evidence-table"><caption>The nine information categories an instantiation needs (believer §02), and their consumer under this architecture</caption><thead><tr><th scope="col">Category</th><th scope="col">Canonical source today</th><th scope="col">Status</th><th scope="col">Under this architecture</th></tr></thead><tbody>
+								<tr><th scope="row">Org shape</th><td>Consultation answers + Org Blueprint (D1)</td><td>Ready</td><td>Unchanged — upstream of the seam</td></tr>
+								<tr><th scope="row">Memory topology</th><td>MemoryPlan (revisioned; republished to the substrate)</td><td>Ready — staging-proven</td><td>Unchanged — upstream of the seam</td></tr>
+								<tr><th scope="row">Worker protocol</th><td>UsageSpec → rendered manuals (pure projection)</td><td>Ready</td><td>Unchanged — org-side projection</td></tr>
+								<tr><th scope="row">Access</th><td>planToGrants projection; enforcement gated on ReBAC deploy</td><td>Projection ready</td><td>Unchanged — org-side projection</td></tr>
+								<tr><th scope="row">Worker runtime binding</th><td>Hand-authored per org (Task 16 §3)</td><td>Gap G2</td><td><strong>Contract inputs 2–3</strong> → drwn project config; workspace scaffold stays org-side</td></tr>
+								<tr><th scope="row">Capabilities</th><td>Doctrine docs + manual installs; no plan vocabulary</td><td>Gap G3</td><td><strong>Contract inputs 1 + 4</strong> → card.lock closure + trust grants with ratifier provenance (via WorkerSpec.capabilities)</td></tr>
+								<tr><th scope="row">Seeds &amp; ratification</th><td>Charter kind only; doctrine as prose checklists</td><td>Gap G4</td><td>Org-side (seeds extended per believer §03); ratification state additionally <em>feeds</em> grant derivation</td></tr>
+								<tr><th scope="row">Initiation &amp; readiness</th><td>Hand-written runbook; no mechanical gate</td><td>Gaps G5–G6</td><td>Runbook stays org-compiled; <strong>drwn receipts become the worker-scale evidence</strong> the gate consumes</td></tr>
+								<tr><th scope="row">Operator wiring</th><td>Plan operators block; firing mechanics undocumented</td><td>Gap G7</td><td>Org-side (planToRoutines) — out of this contract's scope by design</td></tr>
+							</tbody></table>
+						</div>
+					</section>
+
+					<section class="report-section" id="target-architecture" data-section-number="03" aria-labelledby="target-architecture-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">03</span><h2 id="target-architecture-title">Target architecture</h2><p>Artifacts stay put, one schema addition gains a concrete shape, and one contract carries everything across the seam.</p></header>
+
+						<figure class="diagram-figure" data-module="callout">
+							<svg viewBox="0 0 1000 560" role="img" aria-label="End-to-end pipeline: Architect design artifacts compile through org-worker-bundle-v1 into drwn inputs; drwn projects harness surfaces; receipts flow back to the org readiness gate.">
+								<defs>
+									<marker id="ifc-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 9 4.5 L 0 9 Z" fill="#887d6e"></path></marker>
+									<marker id="ifc-arrow-receipt" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 9 4.5 L 0 9 Z" fill="#2f7d55"></path></marker>
+								</defs>
+								<rect x="12" y="34" width="486" height="514" rx="14" fill="#ebe2d4" opacity="0.55"></rect>
+								<rect x="502" y="34" width="486" height="514" rx="14" fill="#f6f1e7" opacity="0.8"></rect>
+								<text x="30" y="60" font-size="15" font-weight="700" fill="#5f574a">ORG PLANE — compiles</text>
+								<text x="968" y="60" font-size="15" font-weight="700" fill="#5f574a" text-anchor="end">WORKER PLANE — materializes</text>
+								<line x1="500" y1="34" x2="500" y2="548" stroke="#a34a32" stroke-width="2" stroke-dasharray="7 6"></line>
+								<text x="500" y="26" font-size="13" font-weight="700" fill="#a34a32" text-anchor="middle">the seam · org-worker-bundle-v1</text>
+
+								<rect x="30" y="86" width="132" height="52" rx="10" fill="#fbf8f1" stroke="#c8bca7"></rect>
+								<text x="96" y="108" font-size="14" font-weight="600" fill="#1c1813" text-anchor="middle">Consultation</text>
+								<text x="96" y="126" font-size="12" fill="#72695d" text-anchor="middle">four rounds</text>
+								<line x1="162" y1="112" x2="192" y2="112" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow)"></line>
+
+								<rect x="196" y="86" width="128" height="52" rx="10" fill="#fbf8f1" stroke="#c8bca7"></rect>
+								<text x="260" y="108" font-size="14" font-weight="600" fill="#1c1813" text-anchor="middle">Architect</text>
+								<text x="260" y="126" font-size="12" fill="#72695d" text-anchor="middle">Worker Persona</text>
+								<line x1="324" y1="112" x2="354" y2="112" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow)"></line>
+
+								<rect x="358" y="74" width="122" height="112" rx="10" fill="#fbf8f1" stroke="#1f6f6b" stroke-width="1.6"></rect>
+								<text x="419" y="96" font-size="13.5" font-weight="700" fill="#1f6f6b" text-anchor="middle">Accepted design</text>
+								<text x="419" y="116" font-size="12.5" fill="#1c1813" text-anchor="middle">Org Blueprint</text>
+								<text x="419" y="134" font-size="12.5" fill="#1c1813" text-anchor="middle">MemoryPlan</text>
+								<text x="419" y="152" font-size="12.5" fill="#1c1813" text-anchor="middle">WorkerSpec + grants</text>
+								<text x="419" y="170" font-size="11" fill="#72695d" text-anchor="middle">immutable · revisioned</text>
+								<line x1="419" y1="186" x2="419" y2="222" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow)"></line>
+
+								<rect x="326" y="226" width="186" height="56" rx="10" fill="#fbf8f1" stroke="#c8bca7"></rect>
+								<text x="419" y="249" font-size="14" font-weight="600" fill="#1c1813" text-anchor="middle">planToWorkerBundle</text>
+								<text x="419" y="268" font-size="12" fill="#72695d" text-anchor="middle">compiled, never authored</text>
+								<line x1="419" y1="282" x2="419" y2="312" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow)"></line>
+
+								<rect x="332" y="316" width="336" height="128" rx="12" fill="#f3e2d8" stroke="#a34a32" stroke-width="1.8"></rect>
+								<text x="500" y="340" font-size="14" font-weight="700" fill="#a34a32" text-anchor="middle">five compiled inputs — no harness files</text>
+								<text x="500" y="362" font-size="12.5" fill="#1c1813" text-anchor="middle">1 · card set (name@version + integrity)</text>
+								<text x="500" y="380" font-size="12.5" fill="#1c1813" text-anchor="middle">2 · worker-root selection   3 · config overlay</text>
+								<text x="500" y="398" font-size="12.5" fill="#1c1813" text-anchor="middle">4 · trust grants (ratifier as grantedBy)</text>
+								<text x="500" y="416" font-size="12.5" fill="#1c1813" text-anchor="middle">5 · minDrwnVersion floor</text>
+								<text x="500" y="436" font-size="11" fill="#72695d" text-anchor="middle">workspace scaffold + secrets stay org-side</text>
+								<line x1="668" y1="380" x2="706" y2="380" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow)"></line>
+
+								<rect x="710" y="336" width="150" height="90" rx="10" fill="#fbf8f1" stroke="#1f6f6b" stroke-width="1.6"></rect>
+								<text x="785" y="358" font-size="13.5" font-weight="700" fill="#1f6f6b" text-anchor="middle">drwn CLI</text>
+								<text x="785" y="378" font-size="12" fill="#1c1813" text-anchor="middle">init · install --frozen</text>
+								<text x="785" y="396" font-size="12" fill="#1c1813" text-anchor="middle">write --dry-run</text>
+								<text x="785" y="414" font-size="12" fill="#1c1813" text-anchor="middle">write --strict</text>
+								<line x1="785" y1="336" x2="785" y2="196" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow)"></line>
+
+								<rect x="580" y="86" width="408" height="106" rx="10" fill="#e1efeb" stroke="#1f6f6b"></rect>
+								<text x="784" y="110" font-size="13.5" font-weight="700" fill="#1f6f6b" text-anchor="middle">harness surfaces — drwn is the sole projector</text>
+								<text x="784" y="132" font-size="12.5" fill="#1c1813" text-anchor="middle">AGENTS.md worker-instructions block · adapters</text>
+								<text x="784" y="150" font-size="12.5" fill="#1c1813" text-anchor="middle">sub-worker surfaces · skills · MCP · hooks</text>
+								<text x="784" y="172" font-size="12" fill="#72695d" text-anchor="middle">Claude Code · Codex · Cursor · OpenCode</text>
+
+								<path d="M 710 430 C 560 508, 330 508, 208 470" fill="none" stroke="#2f7d55" stroke-width="1.8" marker-end="url(#ifc-arrow-receipt)"></path>
+								<text x="470" y="520" font-size="12.5" font-weight="600" fill="#2d764f" text-anchor="middle">write-record + JSON output = worker-scale receipt</text>
+
+								<rect x="46" y="400" width="160" height="72" rx="10" fill="#e6f0e6" stroke="#2f7d55" stroke-width="1.6"></rect>
+								<text x="126" y="426" font-size="13.5" font-weight="700" fill="#2d764f" text-anchor="middle">Readiness gate</text>
+								<text x="126" y="446" font-size="12" fill="#1c1813" text-anchor="middle">receipted state (G6)</text>
+								<text x="126" y="462" font-size="11" fill="#72695d" text-anchor="middle">strict failure halts</text>
+							</svg>
+							<figcaption>Figure 1 — The end-to-end pipeline. Everything left of the seam compiles from the accepted design; everything right of it is drwn-materialized. The contract carries only the five inputs across, and the receipt path closes the loop into the readiness gate.</figcaption>
+						</figure>
+
+						<div class="sequence" data-module="sequence" role="group" aria-label="The three elements of the interface architecture">
+							<div class="sequence-step"><span class="sequence-step__n">1</span><strong class="sequence-step__actor">Artifacts</strong><div class="sequence-step__body"><h3>Architect outputs unchanged; the planned additions land as a sibling WorkerSpec</h3><p>The Org Blueprint (org shape) and MemoryPlan (memory topology) remain the accepted design artifacts exactly as the Architect program defines them — nothing below this boundary reaches back into them. The one convergent change refines where believer §03 planned it: rather than widening <code>MindSpec</code> (which is purely a memory-topology spec — views, seeds, knowledge strategy), a sibling <code>WorkerSpec</code> section carries the worker-plane concerns — <code>runtime</code> and <code>capabilities</code> with grant provenance, <code>{card, capability: hooks | instructions, semverRange, grantedBy}</code> — keyed by the same entity id, with the org's doctrine ratifier as <code>grantedBy</code>. Capabilities belong to the worker, not to its memory; this keeps the Memory Blueprint honest, sidesteps the worst of the mind homonym (register C6), and makes the amendment target literally <code>worker.capabilities</code>. It mechanizes G3 and satisfies drwn's decided consent gate in one move; because tool authority is authority, the section sits under the existing amendment gate classes, exactly as the believer proposal intends. (Fallback if the org side prefers one-spec-per-member: rename the widened type per C6 — decided at the session.)</p></div></div>
+							<div class="sequence-step"><span class="sequence-step__n">2</span><strong class="sequence-step__actor">Contract</strong><div class="sequence-step__body"><h3>org-worker-bundle-v1 — five compiled inputs, in drwn's vocabulary</h3><p>Following the Architect program's contract idiom (producer, consumers, truth carried): <em>producer</em> — the bundle compiler; <em>consumers</em> — the drwn CLI and, through its receipts, the readiness gate; <em>truth carried</em> — which cards, which roots, which settings, whose authority, which version floor. The bundle emits references and selections, never content bodies and never harness files. Workspace scaffolds, env/secret material (op:// references), operator wiring, and runbooks stay org-side — drwn only ever references environment variables through its per-target interpolation and never stores secret material in cards, locks, or projections.</p></div></div>
+							<div class="sequence-step"><span class="sequence-step__n">3</span><strong class="sequence-step__actor">Execution &amp; receipts</strong><div class="sequence-step__body"><h3>Foundry runs the drwn sequence; receipts flow back to the readiness gate</h3><p>Inside the scaffolded workspace: <code>drwn init --non-interactive</code> → apply the five inputs → <code>drwn install --frozen</code> → <code>drwn write --dry-run</code> (preview receipt) → <code>drwn write --strict</code>. The write-record and JSON output are captured as the worker-materialization receipt feeding the org readiness gate (G6); a failed strict write halts the gate rather than recording-and-continuing. <code>drwn doctor</code> is the standing conformance check after Day-0, and repeated writes are byte/mtime-idempotent, so receipts are stable across re-runs — matching the bundle pipeline's "idempotent, receipted stages" doctrine.</p></div></div>
+						</div>
+
+						<div class="table-scroll" data-comparison-matrix data-module="comparison-matrix" tabindex="0" aria-label="The five contract inputs">
+							<table class="evidence-table"><caption>org-worker-bundle-v1 — draft input shapes and what each replaces</caption><thead><tr><th scope="col">Input</th><th scope="col">Shape (draft)</th><th scope="col">drwn consumer</th><th scope="col">Replaces (believer §03 / gaps)</th></tr></thead><tbody>
+								<tr><th scope="row">1 · Card set</th><td>[{name, version, integrity (sha256 tree), origin (catalog or git ref)}] — references only, never content bodies</td><td>card.lock entries via drwn install</td><td>"capabilities manifest" + "card stack"</td></tr>
+								<tr><th scope="row">2 · Worker-root selection</th><td>{workerRoots: [ref…], activeWorker: ref | null}</td><td>project config via drwn add / drwn use</td><td>hand-authored runtime binding (G2, Task 16 §3)</td></tr>
+								<tr><th scope="row">3 · Project config overlay</th><td>Explicit whitelist only: target enablement, MCP server toggles, hook excludes</td><td>.agents/drwn/config.json</td><td>scattered per-org settings</td></tr>
+								<tr><th scope="row">4 · Trust grants</th><td>[{card, capability: hooks | instructions, semverRange, grantedBy, evidence link}] — derived from MindSpec.capabilities ratification state</td><td>card.lock consent via drwn card trust</td><td>G3 — authority granted by hand, recorded nowhere</td></tr>
+								<tr><th scope="row">5 · Version floor</th><td>{minDrwnVersion}</td><td>card.lock store floor, enforced by drwn write --strict</td><td>no mechanical version gate</td></tr>
+							</tbody></table>
+						</div>
+
+						<figure class="diagram-figure" data-module="callout">
+							<svg viewBox="0 0 1000 190" role="img" aria-label="Authority chain: doctrine ratifier grants in MindSpec.capabilities, compiled to bundle trust grants, recorded in the card.lock trust ledger, gating instructions and hook projection.">
+								<defs><marker id="ifc-arrow2" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto" markerUnits="userSpaceOnUse"><path d="M 0 0 L 9 4.5 L 0 9 Z" fill="#887d6e"></path></marker></defs>
+								<text x="20" y="34" font-size="15" font-weight="700" fill="#5f574a">THE AUTHORITY CHAIN — who allowed this card to govern</text>
+								<rect x="20" y="56" width="168" height="76" rx="10" fill="#fbf8f1" stroke="#c8bca7"></rect>
+								<text x="104" y="82" font-size="13.5" font-weight="700" fill="#1c1813" text-anchor="middle">Doctrine ratifier</text>
+								<text x="104" y="102" font-size="12" fill="#72695d" text-anchor="middle">org governance role</text>
+								<text x="104" y="120" font-size="12" fill="#72695d" text-anchor="middle">(amendment-gated)</text>
+								<line x1="188" y1="94" x2="218" y2="94" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow2)"></line>
+								<rect x="222" y="56" width="192" height="76" rx="10" fill="#fbf8f1" stroke="#9a6c16" stroke-width="1.5"></rect>
+								<text x="318" y="82" font-size="13.5" font-weight="700" fill="#9a6c16" text-anchor="middle">WorkerSpec.capabilities</text>
+								<text x="318" y="102" font-size="11.5" fill="#1c1813" text-anchor="middle">{card, capability, semverRange,</text>
+								<text x="318" y="118" font-size="11.5" fill="#1c1813" text-anchor="middle">grantedBy: ratifier}</text>
+								<line x1="414" y1="94" x2="444" y2="94" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow2)"></line>
+								<rect x="448" y="56" width="160" height="76" rx="10" fill="#f3e2d8" stroke="#a34a32" stroke-width="1.5"></rect>
+								<text x="528" y="82" font-size="13.5" font-weight="700" fill="#a34a32" text-anchor="middle">Bundle input 4</text>
+								<text x="528" y="102" font-size="12" fill="#1c1813" text-anchor="middle">trust grants</text>
+								<text x="528" y="120" font-size="11" fill="#72695d" text-anchor="middle">crosses the seam</text>
+								<line x1="608" y1="94" x2="638" y2="94" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow2)"></line>
+								<rect x="642" y="56" width="164" height="76" rx="10" fill="#fbf8f1" stroke="#1f6f6b" stroke-width="1.5"></rect>
+								<text x="724" y="82" font-size="13.5" font-weight="700" fill="#1f6f6b" text-anchor="middle">card.lock ledger</text>
+								<text x="724" y="102" font-size="12" fill="#1c1813" text-anchor="middle">drwn card trust</text>
+								<text x="724" y="120" font-size="12" fill="#72695d" text-anchor="middle">semver-ranged consent</text>
+								<line x1="806" y1="94" x2="836" y2="94" stroke="#887d6e" stroke-width="1.6" marker-end="url(#ifc-arrow2)"></line>
+								<rect x="840" y="56" width="144" height="76" rx="10" fill="#e1efeb" stroke="#1f6f6b" stroke-width="1.5"></rect>
+								<text x="912" y="82" font-size="13" font-weight="700" fill="#1f6f6b" text-anchor="middle">Gated projection</text>
+								<text x="912" y="102" font-size="12" fill="#1c1813" text-anchor="middle">instructions · hooks</text>
+								<text x="912" y="120" font-size="11" fill="#72695d" text-anchor="middle">--strict enforceable</text>
+								<text x="500" y="170" font-size="12.5" fill="#72695d" text-anchor="middle">An unratified capability never becomes an unconsented projection: the same fact travels the whole chain.</text>
+							</svg>
+							<figcaption>Figure 2 — Grant provenance. Org ratification is the consent authority; drwn's trust ledger is where it lands; the projection gate is where it bites. G3 closes because every link is recorded.</figcaption>
+						</figure>
+
+						<div class="dependency-map" data-module="dependency-map" role="group" aria-label="Dependency chain">
+							<div class="dependency-map__group"><article><span>Upstream</span><strong data-field="dependency">Architect acceptance + doctrine ratification state</strong><small><span data-field="owner">Org program</span> · <span data-field="status">Ready (acceptance) / prose today (ratification)</span></small><small data-field="commitment">Accepted design freezes intent; ratification supplies grantedBy</small><small data-field="gap">Ratification is checklist-shaped, not yet record-shaped (G4)</small><small data-field="impact">Grant derivation rules must be defined at the joint session</small></article></div>
+							<article class="dependency-map__focus"><span>Focal outcome</span><strong data-field="dependency">org-worker-bundle-v1 compile + drwn execution</strong><small><span data-field="owner">Bundle compiler (org) · drwn CLI (worker)</span> · <span data-field="status">Draft contract, this report</span></small><small data-field="commitment">Five inputs across the seam; no harness files; receipts back</small><small data-field="gap">Shapes unexercised until the USMS pilot runs bundle-shaped</small><small data-field="impact">Every downstream projection and the readiness gate depend on this seam holding</small></article>
+							<div class="dependency-map__group"><article><span>Downstream</span><strong data-field="dependency">Harness surfaces + readiness gate + Steward operations</strong><small><span data-field="owner">drwn (surfaces) · org pipeline (gate)</span> · <span data-field="status">drwn surfaces shipped/approved; gate is G6</span></small><small data-field="commitment">Four-target projection; receipted readiness</small><small data-field="gap">Instructions projection phase 1 not yet built (approved 072226)</small><small data-field="impact">Pilot can precede it — instructions-skill floor delivers until phase 1 lands</small></article></div>
+						</div>
+					</section>
+
+					<section class="report-section" id="worked-example" data-section-number="04" aria-labelledby="worked-example-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">04</span><h2 id="worked-example-title">Worked example — one worker, end to end</h2><p>A fictional-but-realistic USMS interviewer worker traced through every stage. All shapes are draft: field names are the joint session's decision surface, not settled contract.</p></header>
+
+						<p class="sample-label">a · WorkerSpec excerpt (accepted design, org plane)</p>
+						<pre class="code-sample"><code>{
+  "worker": "usms-interviewer",
+  "runtime": { "workspace": "workspaces/usms-interviewer", "envProfile": "usms-staging" },
+  "capabilities": [
+    { "card": "@usms/interviewer-core", "capability": "instructions",
+      "semverRange": "^1.0.0", "grantedBy": "doctrine:usms-operating-charter#ratifier",
+      "evidence": "bgdb://usms/ratifications/2026-07-24-interviewer" },
+    { "card": "@darwinian/mind-tools", "capability": "hooks",
+      "semverRange": "^0.9.0", "grantedBy": "doctrine:usms-operating-charter#ratifier",
+      "evidence": "bgdb://usms/ratifications/2026-07-24-interviewer" }
+  ]
+}</code></pre>
+
+						<p class="sample-label">b · Compiled bundle payload (the five inputs, crossing the seam)</p>
+						<pre class="code-sample"><code>{
+  "contract": "org-worker-bundle-v1",
+  "cards": [
+    { "name": "@usms/interviewer-core", "version": "1.2.0",
+      "integrity": "sha256-8c1f…e2a9", "origin": "catalog:usms-cards" },
+    { "name": "@darwinian/mind-tools", "version": "0.9.3",
+      "integrity": "sha256-77b0…41cd", "origin": "git+https://…#v0.9.3" }
+  ],
+  "workerRoots": ["@usms/interviewer-core@1.2.0"],
+  "activeWorker": "@usms/interviewer-core",
+  "projectConfig": { "targets": { "opencode": { "enabled": true } } },
+  "trustGrants": [
+    { "card": "@usms/interviewer-core", "capability": "instructions",
+      "semverRange": "^1.0.0", "grantedBy": "doctrine:usms-operating-charter#ratifier" },
+    { "card": "@darwinian/mind-tools", "capability": "hooks",
+      "semverRange": "^0.9.0", "grantedBy": "doctrine:usms-operating-charter#ratifier" }
+  ],
+  "minDrwnVersion": "0.9.0"
+}</code></pre>
+
+						<p class="sample-label">c · Foundry execution transcript (worker plane, inside the scaffolded workspace)</p>
+						<pre class="code-sample"><code>$ drwn init --non-interactive        # explicit empty machine/project intent
+$ drwn add @usms/interviewer-core@1.2.0 --write
+$ drwn use @usms/interviewer-core --no-write
+$ drwn card trust @usms/interviewer-core --instructions   # from grant 1
+$ drwn card trust @darwinian/mind-tools --hooks           # from grant 2
+$ drwn install --frozen              # closure resolves at pinned integrity
+$ drwn write --dry-run --json &gt; receipts/preview.json
+$ drwn write --strict --json &gt; receipts/write.json        # non-zero exit halts the gate</code></pre>
+
+						<p class="sample-label">d · Receipt excerpt (write-record — what the readiness gate reads)</p>
+						<pre class="code-sample"><code>{
+  "schema": "drwn.write-record", "schemaVersion": 1, "scope": "project",
+  "lastWriteAt": "2026-07-28T09:14:02Z", "lastWriteHarnessVersion": "0.9.0",
+  "managedPaths": [
+    { "path": "AGENTS.md", "kind": "managed-fields", "surface": "instructions",
+      "fields": ["block"], "fieldHashes": { "block": "sha256-4be2…9d10" } },
+    { "path": ".claude/skills/interviewer-instructions", "kind": "managed-directory",
+      "surface": "skill", "target": "claude", "contentHash": "sha256-1a77…03bc" },
+    { "path": "opencode.json", "kind": "managed-fields", "surface": "mcp",
+      "target": "opencode", "fields": ["mcpServers:context7"] }
+  ]
+}</code></pre>
+
+						<p class="sample-label">e · What lands in the workspace root (AGENTS.md, drwn-owned block only)</p>
+						<pre class="code-sample"><code>&lt;!-- drwn:instructions:start --&gt;
+&lt;!-- Generated by drwn from the active Worker closure. Do not edit this section.
+     Instruction-ID: @usms/interviewer-core@1.2.0  Content-Hash: sha256-4be2…9d10 --&gt;
+# USMS Interviewer — worker instructions
+You conduct structured belief-elicitation interviews for USMS…
+(composed from card instructions + Blueprint identity + skill bodies)
+&lt;!-- drwn:instructions:end --&gt;
+
+## Team notes            &lt;!-- user-owned section, byte-preserved --&gt;
+Local conventions the org adds by hand stay untouched here.</code></pre>
+					</section>
+
+					<section class="report-section" id="migration" data-section-number="05" aria-labelledby="migration-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">05</span><h2 id="migration-title">Migration</h2><p>Ratify the boundary first; let the pilot produce the evidence; only then build compilers.</p></header>
+
+						<div class="sequence" data-module="sequence" role="group" aria-label="Staged adoption plan">
+							<div class="sequence-step"><span class="sequence-step__n">1</span><strong class="sequence-step__actor">Before 25 July</strong><div class="sequence-step__body"><h3>Joint session: adopt the boundary, amend believer §03, fix the grant shape</h3><p>One session covers C3 (bundle compiles to drwn inputs; drwn projects), C4 (card.lock as the single capability record), and the WorkerSpec grant-shape co-design — all three already on the shared register. The believer §03 projection list drops "per-worker CLAUDE.md, capabilities manifest" in favor of the five inputs; the interim-hybrid fallback, if pilot timing demands it, enters the ratified doc only with a named sunset criterion. The assumptions in §07 are the session agenda — none block the pilot.</p></div></div>
+							<div class="sequence-step"><span class="sequence-step__n">2</span><strong class="sequence-step__actor">USMS pilot → compilers</strong><div class="sequence-step__body"><h3>Run the pilot bundle-shaped by hand, then freeze the contract and build planTo*</h3><p>The USMS founding proceeds immediately and manually — matching the believer proposal's own staging — but shaped as the five inputs and executed with real drwn commands exactly as in §04, producing real receipts. The pilot's evidence hardens the draft shapes; then the contract freezes as org-worker-bundle-v1 fixtures (the Architect program's freeze idiom), a conformance check rejects bundle outputs that carry harness files or duplicate capability records, and the planTo* compilers target the frozen contract. drwn's phase-1 instructions projection ships independently on its own approved plan — the pilot may run before it lands, delivering instructions via the instructions-skill floor until then.</p></div></div>
+						</div>
+					</section>
+
+					<section class="report-section" id="risk" data-section-number="06" aria-labelledby="risk-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">06</span><h2 id="risk-title">Risk</h2><p>One structural risk this architecture exists to prevent, and the honest unknowns it carries.</p></header>
+
+						<div class="table-scroll" data-module="evidence-table" tabindex="0" aria-label="Material risks and their evidence">
+							<table class="evidence-table"><caption>Material risks, evidence, and how the architecture answers them</caption><thead><tr><th scope="col">Signal</th><th scope="col">Evidence</th><th scope="col">Interpretation</th></tr></thead><tbody>
+								<tr><th scope="row">Dual projection systems drift by construction</th><td>Believer §03's current text plans per-worker CLAUDE.md emission; drwn's decided 124 projects AGENTS.md with consent gating. The single-composer criterion appears independently in both teams' docs (I24 criterion 5; believer's "compiled, never authored" doctrine). Cross-agent research shows root CLAUDE.md double-reads in Cursor.</td><td>The boundary rule plus a mechanical conformance check on bundle outputs (reject harness files, reject duplicate capability records) makes the failure mode structurally impossible rather than procedurally discouraged. The 25 July timing exists because both builds start after that date.</td></tr>
+								<tr><th scope="row">The contract is drafted from one side, against moving docs</th><td>The org half of this proposal derives from believer 28 and the Architect program report, not from running code; the org side has not reviewed the draft.</td><td>Lifecycle is Draft for joint session, not accepted; the pilot's manual run is the designed correction loop — every draft shape in §04 gets exercised against reality before anything freezes. Unknowns are §07 agenda items with owners, not silent assumptions.</td></tr>
+								<tr><th scope="row">Org ratification and per-card grants may not map one-to-one</th><td>Doctrine ratification today is document-level and checklist-shaped (G4: "prose checklists"); the grant shape is per-card, per-capability, semver-ranged. A single ratified charter may need to authorize several cards at different ranges, and re-ratification cadence on card version bumps is undefined.</td><td>Derivation rules are a named session topic: one ratification event may fan out to several grants, and semver ranges bound how far a grant travels without re-ratification — mirroring exactly how drwn's hook consent already handles version drift. The worked example (§04a) shows the fan-out shape.</td></tr>
+							</tbody></table>
+						</div>
+					</section>
+
+					<section class="report-section" id="assumptions" data-section-number="07" aria-labelledby="assumptions-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">07</span><h2 id="assumptions-title">Assumptions and open questions</h2><p>The session agenda, with materiality. None block the manual pilot; all block the contract freeze.</p></header>
+
+						<div class="assumption-list" data-module="assumption-register">
+							<article><span class="assumption-list__n">01</span><div><h3>Org workers materialize at project scope — one workspace per worker</h3><p>The five-input whitelist (input 3) assumes project-scope writes. A machine-scope org worker would change the overlay shape and the receipt path.</p></div><span class="pill evidence">Material</span></article>
+							<article><span class="assumption-list__n">02</span><div><h3>Ratification state can auto-satisfy trust for org-catalog cards</h3><p>drwn's trustedSources policy could treat the org catalog as a trusted source, making grants declarative rather than per-command. If not, Foundry issues explicit trust commands per grant (as in §04c) — workable, just noisier.</p></div><span class="pill">Bounded</span></article>
+							<article><span class="assumption-list__n">03</span><div><h3>Network fetch is available at instantiation</h3><p>Air-gapped instantiation would require the bundle to carry card archives (drwn's portable inventory transfer exists for this). Assumed unnecessary for the pilot.</p></div><span class="pill">Bounded</span></article>
+							<article><span class="assumption-list__n">04</span><div><h3>The AGENTS.md user section starts empty in org workspaces</h3><p>Whether an org seed (charter-derived preamble) should populate the user-owned section is an org-side authoring question; the drwn block owns only its markers either way (§04e).</p></div><span class="pill">Bounded</span></article>
+							<article><span class="assumption-list__n">05</span><div><h3>A failed strict write halts the readiness gate</h3><p>Record-and-continue would let a worker pass readiness with a known-drifted or consent-failing materialization. Halt is assumed; the org side owns the gate policy.</p></div><span class="pill evidence">Material</span></article>
+							<article><span class="assumption-list__n">06</span><div><h3>The pilot can precede drwn's phase-1 instructions projection</h3><p>Until phase 1 lands, worker instructions reach sessions through the instructions-skill floor (weaker, pull-strength). If the pilot requires push-strength instructions on day one, phase-1 sequencing becomes coupled — currently assumed decoupled.</p></div><span class="pill evidence">Material</span></article>
+						</div>
+					</section>
+
+					<section class="report-section" id="decision" data-section-number="08" data-final-action aria-labelledby="decision-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">08</span><h2 id="decision-title">Decision</h2><p>What the joint session is asked to adopt, and the two moves that follow.</p></header>
+
+						<div class="decision-block" data-module="decision-block">
+							<p class="tag">Reader move</p><h3>Adopt the boundary and the five-input contract draft as the amendment basis</h3><p>Adoption means: believer §03 is amended before its decision date, the MindSpec capability addition takes the grant-provenance shape, the USMS pilot runs bundle-shaped by hand, and contract freeze plus compilers follow the pilot's evidence. It does not retroactively change any accepted org artifact, does not commit compiler implementation, and does not couple the pilot to drwn's phase-1 projection timeline.</p>
+						</div>
+						<div class="responsive-table action-list" data-module="action-table" role="group" aria-label="Decisions and follow-on actions">
+							<div class="responsive-table__head" aria-hidden="true"><span>Action</span><span>Owner</span><span>Evidence of completion</span><span>Due</span><span>State</span></div>
+							<div class="responsive-row" data-action-row><div data-field="action"><span class="mobile-label">Action</span><strong>Hold the C3/C4 joint session and amend believer §03 to the five-input contract</strong></div><div data-field="owner"><span class="mobile-label">Owner</span>Remy + program owner</div><div data-field="evidence"><span class="mobile-label">Evidence of completion</span>Amended believer proposal text plus a toggle entry on the shared register recording the adopted shapes and the §07 dispositions.</div><div data-field="due"><span class="mobile-label">Due</span>25 July 2026</div><div data-field="state"><span class="mobile-label">State</span><span class="pill">Decision required</span></div></div>
+							<div class="responsive-row" data-action-row><div data-field="action"><span class="mobile-label">Action</span><strong>Freeze org-worker-bundle-v1 fixtures and add the bundle conformance check after the USMS pilot</strong></div><div data-field="owner"><span class="mobile-label">Owner</span>Org pipeline owner + drwn worker</div><div data-field="evidence"><span class="mobile-label">Evidence of completion</span>Frozen contract fixtures in the Architect program's freeze idiom; a CI check rejecting harness files and duplicate capability records in bundle outputs.</div><div data-field="due"><span class="mobile-label">Due</span>Date needed — after pilot evidence</div><div data-field="state"><span class="mobile-label">State</span><span class="pill">Waiting on session + pilot</span></div></div>
+						</div>
+					</section>
+
+					<section class="report-section" id="sources" data-section-number="09" aria-labelledby="sources-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">09</span><h2 id="sources-title">Sources</h2><p>The org half traces to the believer and Architect documents; the worker half to decided drwn analyses and shipped code. Worked-example values are fictional draft shapes, marked as such.</p></header>
+
+						<div class="source-register" data-source-register data-module="source-register">
+							<p class="tag">Exact source record</p>
+							<div class="source-row">
+								<a class="source" href="https://app.notion.com/p/curation-labs/072226-Remy-Architect-to-drwn-worker-blueprint-3a5f1fbef8c28003a9c4cf4bf28a0ad5">Shared register: glossary, conflicts C1–C10, Appendix A contract draft</a>
+								<a class="source" href="file:///Users/pureicis/dev/believer-interview/.ai/analyses/28_org-instantiation-machinery-proposal.html">Org instantiation machinery proposal: believer analysis 28</a>
+								<a class="source" href="file:///Users/pureicis/.config/superpowers/worktrees/darwinian-org/report-conformance/.ai/analyses/02_architect-v1-full-program-implementation-plan.html">Architect V1 program operating model</a>
+								<a class="source" href="cl0024_worker-instructions-projection_target_architecture.md">Worker instructions target architecture (decided 072226): analysis 124 (now cl0024)</a>
+								<a class="source" href="125_feature_canonical_instructions_projection_decision_analysis.md">Decision analysis and I24 port: analysis 125</a>
+								<a class="source" href="126_feature_canonical_instructions_architecture_proposal.html">Approved architecture report: analysis 126</a>
+								<a class="source" href="https://app.notion.com/p/curation-labs/I24-DW-Card-instructions-field-is-not-consumed-by-regular-card-apply-deploy-worker-only-39df1fbef8c2813ebc5ceabd396e9040">Team discussion: Notion issue I24</a>
+							</div>
+						</div>
+					</section>
+				</article><aside class="report-toc" aria-label="On this page"><strong>Report path</strong><a href="#drivers">01 · Drivers</a>
+					<a href="#current-state">02 · Current state</a>
+					<a href="#target-architecture">03 · Target architecture</a>
+					<a href="#worked-example">04 · Worked example</a>
+					<a href="#migration">05 · Migration</a>
+					<a href="#risk">06 · Risk</a>
+					<a href="#assumptions">07 · Assumptions</a>
+					<a href="#decision">08 · Decision</a>
+					<a href="#sources">09 · Sources</a></aside></div>
+			<footer class="report-footer"><strong>Org↔Worker Instantiation Interface</strong><p>Template engineering.architecture-proposal v1.0.0 (Deep Dive) · Report system v0.1.0</p><p>Responsible owner Remy + program owner · Last updated 22 July 2026</p></footer>
+		</main>
+	</body>
+</html>
