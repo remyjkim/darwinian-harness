@@ -60,3 +60,16 @@ test("config set rejects invalid values without changing persisted preferences",
     expect(await readFile(path, "utf8")).toBe(before);
   }
 });
+
+test("config set honors DRWN_STORE_READONLY", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+
+  const result = await runAgentsCli(["config", "set", "defaultAuthorScope", "@me"], {
+    ...envFor(fixture),
+    DRWN_STORE_READONLY: "1",
+  });
+
+  expect(result.exitCode).not.toBe(0);
+  expect(existsSync(resolveUserConfigPath(fixture.agentsDir))).toBe(false);
+});

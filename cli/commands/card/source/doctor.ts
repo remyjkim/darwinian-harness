@@ -34,13 +34,13 @@ export class CardSourceDoctorCommand extends BaseCommand {
     category: "Cards",
     description: "Report editable card source issues without mutating anything.",
     details: `
-      Checks one source, or every source when no name is provided, for manifest,
+      Checks one explicit or uniquely catalog-resolved source for manifest,
       bundled skill, package.json, and MCP server file issues. Reportable issues
       are returned in output; the command exits nonzero only for fatal command
       errors such as an unknown named source.
     `,
     examples: [
-      ["Doctor all sources", "drwn card source doctor"],
+      ["Doctor one source", "drwn card source doctor ./cards/backend"],
       ["Doctor one source as JSON", "drwn card source doctor @your-handle/backend --json"],
     ],
   });

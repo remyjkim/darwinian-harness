@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { resolveProjectCards } from "../cli/core/card-project";
-import { cleanupTempRoots, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 afterEach(async () => {
@@ -54,4 +54,24 @@ test("worker compose on a non-blueprint card is refused", async () => {
   ], envFor(fixture));
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toMatch(/not a blueprint/);
+});
+
+test("worker publish enforces the shared positional-name and --from grammar", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/frontend-eng", { kind: "blueprint" });
+
+  const missing = await runAgentsCli(["worker", "publish"], envFor(fixture));
+  expect(missing.exitCode).toBe(1);
+  expect(missing.stderr).toMatch(/source/i);
+
+  expect((await runAgentsCli(["worker", "publish", "@me/frontend-eng", "--from", sourceDir], envFor(fixture))).exitCode).toBe(0);
+
+  const mismatch = await runAgentsCli(["worker", "publish", "@me/other", "--from", sourceDir], envFor(fixture));
+  expect(mismatch.exitCode).toBe(1);
+  expect(mismatch.stderr).toMatch(/does not match/i);
+
+  const nameOnlyDir = await createCatalogCardSource(fixture, "@me/name-only", { kind: "blueprint" });
+  expect(nameOnlyDir).toContain("name-only");
+  expect((await runAgentsCli(["worker", "publish", "@me/name-only"], envFor(fixture))).exitCode).toBe(0);
 });

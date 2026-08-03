@@ -6,10 +6,10 @@ import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { DrwnError } from "./errors";
 import { writeAtomically } from "./fs";
-import { withInventoryLock } from "./inventory-lock";
-import { mutateMachineConfig, readMachineConfigFile } from "./machine-config";
+import { withInventoryLock, withMachineLock } from "./inventory-lock";
+import { readMachineConfigFile, writeMachineConfigFile } from "./machine-config";
 import { resolveUserConfigPath } from "./paths";
-import { resolveMachineConfigPath } from "./store-paths";
+import { assertStoreWritable, resolveMachineConfigPath } from "./store-paths";
 
 const checkoutPath = z.string().min(1).refine(
   (value) => value.trim() === value,
@@ -101,19 +101,9 @@ export async function loadUserPreferences(agentsDir: string): Promise<UserPrefer
   const preferences = existing ?? createEmptyUserPreferences();
   const machine = await readMachineConfigFile(resolveMachineConfigPath(agentsDir));
   const legacyScope = machine?.policy.authoring?.scope;
-  if (!legacyScope) return preferences;
-
-  const migrated = preferences.defaultAuthorScope
-    ? preferences
-    : { ...preferences, defaultAuthorScope: legacyScope };
-  if (!existing || migrated !== preferences) {
-    await writeUserPreferencesFile(preferencesPath, migrated);
-  }
-  await mutateMachineConfig(agentsDir, (current) => {
-    delete current.policy.authoring;
-    return { config: current, value: undefined };
-  });
-  return migrated;
+  return legacyScope && !preferences.defaultAuthorScope
+    ? { ...preferences, defaultAuthorScope: legacyScope }
+    : preferences;
 }
 
 export async function mutateUserPreferences<T>(
@@ -123,14 +113,31 @@ export async function mutateUserPreferences<T>(
     | Promise<{ preferences: UserPreferences; value: T }>,
   options: { dryRun?: boolean } = {},
 ): Promise<T> {
-  await loadUserPreferences(agentsDir);
   const run = async () => {
-    const current = await readUserPreferencesFile(resolveUserConfigPath(agentsDir)) ?? createEmptyUserPreferences();
+    const preferencesPath = resolveUserConfigPath(agentsDir);
+    const machinePath = resolveMachineConfigPath(agentsDir);
+    const persisted = await readUserPreferencesFile(preferencesPath) ?? createEmptyUserPreferences();
+    const machine = await readMachineConfigFile(machinePath);
+    const legacyScope = machine?.policy.authoring?.scope;
+    const current = legacyScope && !persisted.defaultAuthorScope
+      ? { ...persisted, defaultAuthorScope: legacyScope }
+      : persisted;
     const prepared = await prepare(structuredClone(current));
-    const validated = parseUserPreferences(prepared.preferences, resolveUserConfigPath(agentsDir));
-    if (!options.dryRun) await writeUserPreferencesFile(resolveUserConfigPath(agentsDir), validated);
+    const validated = parseUserPreferences(prepared.preferences, preferencesPath);
+    if (!options.dryRun) {
+      await writeUserPreferencesFile(preferencesPath, validated);
+      if (legacyScope && machine) {
+        await withMachineLock(agentsDir, async () => {
+          const latest = await readMachineConfigFile(machinePath);
+          if (!latest?.policy.authoring) return;
+          delete latest.policy.authoring;
+          await writeMachineConfigFile(machinePath, latest);
+        });
+      }
+    }
     return prepared.value;
   };
   if (options.dryRun) return run();
+  assertStoreWritable();
   return withInventoryLock(agentsDir, run);
 }

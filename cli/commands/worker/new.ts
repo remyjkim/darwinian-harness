@@ -2,7 +2,7 @@
 // ABOUTME: A blueprint composes member cards plus governance; author it, then compose and publish.
 
 import { Option } from "clipanion";
-import { createCardSource, normalizeCardName } from "../../core/card-store";
+import { assertCardSourceDestinationAvailable, createCardSource, normalizeCardName } from "../../core/card-store";
 import { BaseCommand } from "../base";
 import { loadUserPreferences, mutateUserPreferences } from "../../core/user-preferences";
 import { expandHomePath } from "../../core/paths";
@@ -41,6 +41,14 @@ export class WorkerNewCommand extends BaseCommand {
       const authorScope = fullName.split("/")[0]!;
       const parentDir = resolve(this.context.cwd, expandHomePath(this.into ?? ".", this.context.homeDir));
       const sourceDir = join(parentDir, fullName.split("/").at(-1)!);
+      const shouldPersistScope = !this.name.startsWith("@") && this.scope !== undefined;
+      if (shouldPersistScope && preferences.defaultAuthorScope !== authorScope) {
+        assertCardSourceDestinationAvailable(sourceDir);
+        await mutateUserPreferences(this.context.agentsDir, (current) => ({
+          preferences: { ...current, defaultAuthorScope: authorScope },
+          value: undefined,
+        }));
+      }
       const created = await createCardSource({
         sourceDir,
         name: this.name,
@@ -48,13 +56,8 @@ export class WorkerNewCommand extends BaseCommand {
         noGit: this.noGit,
         kind: "blueprint",
       });
-      if (preferences.defaultAuthorScope !== authorScope) {
-        await mutateUserPreferences(this.context.agentsDir, (current) => ({
-          preferences: { ...current, defaultAuthorScope: authorScope },
-          value: undefined,
-        }));
-      }
       this.context.stdout.write(`Created blueprint source ${created.name}: ${created.sourceDir}\n`);
+      this.context.stdout.write(`Next: drwn worker publish --from ${created.sourceDir}\n`);
       return 0;
     } catch (error) {
       this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

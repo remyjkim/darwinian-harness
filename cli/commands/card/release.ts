@@ -31,19 +31,24 @@ export class CardReleaseCommand extends BaseCommand {
   json = Option.Boolean("--json", false);
 
   async execute() {
-    const bump = this.bump as "major" | "minor" | "patch" | undefined;
-    const source = await resolveCommandCardSource(this.context, { input: this.name, from: this.from });
-    const result = await runRelease(this.context.agentsDir, source.sourceDir, { bump, yes: this.yes });
-    if (this.json) {
-      this.context.stdout.write(renderJson(result));
-    } else {
-      this.context.stdout.write(
-        `${result.steps.map((step) => `${step.ok ? "ok" : "fail"} ${step.step}${step.detail ? `: ${step.detail}` : ""}`).join("\n")}\n`,
-      );
-      if (result.proposedVersion) {
-        this.context.stdout.write(`Proposed version: ${result.proposedVersion}\n`);
+    try {
+      const bump = this.bump as "major" | "minor" | "patch" | undefined;
+      const source = await resolveCommandCardSource(this.context, { input: this.name, from: this.from });
+      const result = await runRelease(this.context.agentsDir, source.sourceDir, { bump, yes: this.yes });
+      if (this.json) {
+        this.context.stdout.write(renderJson(result));
+      } else {
+        this.context.stdout.write(
+          `${result.steps.map((step) => `${step.ok ? "ok" : "fail"} ${step.step}${step.detail ? `: ${step.detail}` : ""}`).join("\n")}\n`,
+        );
+        if (result.proposedVersion) {
+          this.context.stdout.write(`Proposed version: ${result.proposedVersion}\n`);
+        }
       }
+      return result.ok ? 0 : 1;
+    } catch (error) {
+      this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      return 1;
     }
-    return result.ok ? 0 : 1;
   }
 }

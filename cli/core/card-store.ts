@@ -2,7 +2,7 @@
 // ABOUTME: Centralizes card store layout so authoring and project commands share behavior.
 
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { chmod, mkdir, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { assertValidCardManifest, isCardScopeName, isCardUnscopedName, type CardManifest } from "./card-manifest";
@@ -315,6 +315,17 @@ export function cardNamesEqual(refOrName: string, name: string) {
   return parseCardRef(refOrName).name === name;
 }
 
+export function assertCardSourceDestinationAvailable(sourceInput: string) {
+  const sourceDir = resolve(sourceInput);
+  try {
+    lstatSync(sourceDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return sourceDir;
+    throw error;
+  }
+  throw new Error(`Card source destination already exists: ${sourceDir}`);
+}
+
 export async function createCardSource(options: {
   sourceDir: string;
   name: string;
@@ -327,10 +338,7 @@ export async function createCardSource(options: {
     throw new Error("Unscoped card names require --scope or machine authoring.scope");
   }
   const fullName = normalizeCardName(options.name, options.scope);
-  const sourceDir = resolve(options.sourceDir);
-  if (existsSync(join(sourceDir, "card.json"))) {
-    throw new Error(`Card source already exists: ${fullName}`);
-  }
+  const sourceDir = assertCardSourceDestinationAvailable(options.sourceDir);
   mkdirSync(sourceDir, { recursive: true });
   const manifest: CardManifest =
     options.kind === "blueprint"

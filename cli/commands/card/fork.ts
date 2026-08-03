@@ -3,8 +3,9 @@
 
 import { Option } from "clipanion";
 import { cp, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { readCardSourceManifest } from "../../core/card-store";
+import { join, resolve } from "node:path";
+import { assertCardSourceDestinationAvailable, normalizeCardName, readCardSourceManifest } from "../../core/card-store";
+import { expandHomePath } from "../../core/paths";
 import { BaseCommand } from "../base";
 import { resolveCommandCardSource } from "./source-input";
 
@@ -26,20 +27,27 @@ export class CardForkCommand extends BaseCommand {
   into = Option.String("--into", { description: "Org monorepo directory to copy into." });
 
   async execute() {
-    const source = await resolveCommandCardSource(this.context, { input: this.sourceName });
-    const manifest = await readCardSourceManifest(source.sourceDir);
-    const [, baseName] = manifest.name.includes("/") ? manifest.name.split("/") : ["", manifest.name];
-    const targetScope = this.scope ?? manifest.name.split("/")[0]!;
-    const targetName = `${targetScope}/${baseName}`;
-    const targetDir = join(this.into ?? this.context.cwd, baseName!);
-    await mkdir(this.into ?? this.context.cwd, { recursive: true });
-    await cp(source.sourceDir, targetDir, { recursive: true, force: true });
-    const { readFile, writeFile } = await import("node:fs/promises");
-    const cardPath = join(targetDir, "card.json");
-    const next = JSON.parse(await readFile(cardPath, "utf8"));
-    next.name = targetName;
-    await writeFile(cardPath, `${JSON.stringify(next, null, 2)}\n`);
-    this.context.stdout.write(`Forked ${manifest.name} -> ${targetName} at ${targetDir}\n`);
-    return 0;
+    try {
+      const source = await resolveCommandCardSource(this.context, { input: this.sourceName });
+      const manifest = await readCardSourceManifest(source.sourceDir);
+      const [, baseName] = manifest.name.includes("/") ? manifest.name.split("/") : ["", manifest.name];
+      const targetScope = this.scope ?? manifest.name.split("/")[0]!;
+      const targetName = normalizeCardName(baseName!, targetScope);
+      const targetParent = resolve(this.context.cwd, expandHomePath(this.into ?? ".", this.context.homeDir));
+      const targetDir = join(targetParent, baseName!);
+      assertCardSourceDestinationAvailable(targetDir);
+      await mkdir(targetParent, { recursive: true });
+      await cp(source.sourceDir, targetDir, { recursive: true, force: false, errorOnExist: true });
+      const { readFile, writeFile } = await import("node:fs/promises");
+      const cardPath = join(targetDir, "card.json");
+      const next = JSON.parse(await readFile(cardPath, "utf8"));
+      next.name = targetName;
+      await writeFile(cardPath, `${JSON.stringify(next, null, 2)}\n`);
+      this.context.stdout.write(`Forked ${manifest.name} -> ${targetName} at ${targetDir}\n`);
+      return 0;
+    } catch (error) {
+      this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      return 1;
+    }
   }
 }

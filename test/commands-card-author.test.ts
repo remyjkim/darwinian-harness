@@ -3,7 +3,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveCardBareRepoPath, resolveExtractedRoot } from "../cli/core/store-paths";
 import { cleanupTempRoots, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
@@ -39,6 +39,53 @@ test("card new --into creates the manifest-named repository beneath the selected
   expect(JSON.parse(await readFile(join(collection, "backend", "card.json"), "utf8"))).toMatchObject({
     name: "@me/backend",
   });
+});
+
+test("card new refuses every existing destination shape without adopting its bytes", async () => {
+  for (const shape of ["empty-dir", "nonempty-dir", "file", "symlink"] as const) {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const target = join(fixture.repoRoot, "backend");
+    if (shape === "empty-dir" || shape === "nonempty-dir") await mkdir(target, { recursive: true });
+    if (shape === "nonempty-dir") await writeFile(join(target, "secret.txt"), "do-not-publish\n");
+    if (shape === "file") await writeFile(target, "not a repository\n");
+    if (shape === "symlink") {
+      const actual = join(fixture.root, "actual-source");
+      await mkdir(actual, { recursive: true });
+      await symlink(actual, target);
+    }
+
+    const result = await runAgentsCli(["card", "new", "@me/backend", "--no-git"], envFor(fixture));
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("destination already exists");
+    expect(existsSync(join(target, "card.json"))).toBe(false);
+  }
+});
+
+test("fully-qualified card new does not change the default author scope", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  expect((await runAgentsCli(["config", "set", "defaultAuthorScope", "@saved"], envFor(fixture))).exitCode).toBe(0);
+
+  const result = await runAgentsCli(["card", "new", "@other/backend", "--no-git"], envFor(fixture));
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("Next: drwn card publish --from");
+  const preferences = JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "config.json"), "utf8"));
+  expect(preferences.defaultAuthorScope).toBe("@saved");
+});
+
+test("failed default-scope persistence creates no source", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const result = await runAgentsCli(["card", "new", "backend", "--scope", "@me", "--no-git"], {
+    ...envFor(fixture),
+    DRWN_STORE_READONLY: "1",
+  });
+
+  expect(result.exitCode).not.toBe(0);
+  expect(existsSync(join(fixture.repoRoot, "backend"))).toBe(false);
 });
 
 test("card new fails for unscoped non-interactive names without authoring scope", async () => {

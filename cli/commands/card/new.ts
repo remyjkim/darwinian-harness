@@ -6,7 +6,7 @@ import { createInterface } from "node:readline/promises";
 import { captureProjectAsCard } from "../../core/card-capture";
 import { createCapabilityCardFromDefaults } from "../../core/card-from-defaults";
 import { isCardUnscopedName } from "../../core/card-manifest";
-import { createCardSource } from "../../core/card-store";
+import { assertCardSourceDestinationAvailable, createCardSource } from "../../core/card-store";
 import { normalizeCardName } from "../../core/card-store";
 import { probeAuthoringScope, resolveScopeForCardNew } from "../../core/authoring-scope";
 import { defaultProbeGh, defaultProbeGit } from "../../core/authoring-scope-probes";
@@ -24,7 +24,7 @@ export class CardNewCommand extends BaseCommand {
     details: `
       Creates a source directory with card.json, skills/, and mcp-servers/
       beneath the current directory or an explicit --into collection.
-      Unscoped names require --scope or a saved authoring.scope in machine.json.
+      Unscoped names require --scope or defaultAuthorScope in user preferences.
       By default the source directory is initialized as a git repository.
       Use --from-project to snapshot the current project's selected Worker
       closure and explicit overlays as a self-contained card source.
@@ -72,6 +72,7 @@ export class CardNewCommand extends BaseCommand {
     const preferences = await loadUserPreferences(this.context.agentsDir);
 
     let scopeForCreate: string | undefined = this.scope ?? preferences.defaultAuthorScope;
+    let shouldPersistScope = isCardUnscopedName(this.name) && this.scope !== undefined;
     if (isCardUnscopedName(this.name) && !scopeForCreate) {
       const resolved = await resolveScopeForCardNew({
         explicit: this.scope,
@@ -98,11 +99,19 @@ export class CardNewCommand extends BaseCommand {
         return 1;
       }
       scopeForCreate = resolved.scope;
+      shouldPersistScope = resolved.source === "derived" || resolved.source === "explicit";
     }
     const fullName = normalizeCardName(this.name, scopeForCreate);
     const authorScope = fullName.split("/")[0]!;
     const parentDir = resolve(this.context.cwd, expandHomePath(this.into ?? ".", this.context.homeDir));
     const sourceDir = join(parentDir, fullName.split("/").at(-1)!);
+    if (shouldPersistScope && preferences.defaultAuthorScope !== authorScope) {
+      assertCardSourceDestinationAvailable(sourceDir);
+      await mutateUserPreferences(this.context.agentsDir, (current) => ({
+        preferences: { ...current, defaultAuthorScope: authorScope },
+        value: undefined,
+      }));
+    }
 
     if (this.fromDefaults) {
       let captured;
@@ -119,12 +128,6 @@ export class CardNewCommand extends BaseCommand {
       } catch (error) {
         this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
         return 1;
-      }
-      if (preferences.defaultAuthorScope !== authorScope) {
-        await mutateUserPreferences(this.context.agentsDir, (current) => ({
-          preferences: { ...current, defaultAuthorScope: authorScope },
-          value: undefined,
-        }));
       }
       this.context.stdout.write(`Created capability card ${captured.name}: ${captured.sourceDir}\n`);
       this.context.stdout.write(`Skills captured: ${captured.skillCount}\n`);
@@ -150,12 +153,6 @@ export class CardNewCommand extends BaseCommand {
         this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
         return 1;
       }
-      if (preferences.defaultAuthorScope !== authorScope) {
-        await mutateUserPreferences(this.context.agentsDir, (current) => ({
-          preferences: { ...current, defaultAuthorScope: authorScope },
-          value: undefined,
-        }));
-      }
       this.context.stdout.write(`Captured card source ${captured.name}: ${captured.sourceDir}\n`);
       this.context.stdout.write(`Skills captured: ${captured.skillCount}\n`);
       this.context.stdout.write(`Hooks captured: ${captured.hookCount}\n`);
@@ -177,13 +174,8 @@ export class CardNewCommand extends BaseCommand {
       this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       return 1;
     }
-    if (preferences.defaultAuthorScope !== authorScope) {
-      await mutateUserPreferences(this.context.agentsDir, (current) => ({
-        preferences: { ...current, defaultAuthorScope: authorScope },
-        value: undefined,
-      }));
-    }
     this.context.stdout.write(`Created card source ${source.name}: ${source.sourceDir}\n`);
+    this.context.stdout.write(`Next: drwn card publish --from ${source.sourceDir}\n`);
     return 0;
   }
 }
