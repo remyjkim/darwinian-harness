@@ -80,6 +80,13 @@ async function scaffoldFixture() {
 }
 
 describe("sync-mcp.ts compatibility", () => {
+  test("explicit repoRoot is also the default project discovery cwd", async () => {
+    const { repoRoot, homeDir } = await scaffoldFixture();
+    const { syncRepository } = await import("../sync-mcp");
+
+    await expect(syncRepository({ repoRoot, homeDir, dryRun: true })).resolves.toBeDefined();
+  });
+
   test("--dry-run reports changes without mutating files", async () => {
     const { repoRoot, homeDir, claudeSettings } = await scaffoldFixture();
     const { syncRepository } = await import("../sync-mcp");
