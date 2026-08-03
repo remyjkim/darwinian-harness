@@ -1,0 +1,12 @@
+{
+  "name": "@remyjkim/knowledge-docs",
+  "version": "1.0.0",
+  "description": "Keep knowledge documentation in sync with the codebase: draft new docs from the code, audit existing docs for drift, and restructure them into a categorized hierarchy.",
+  "skills": {
+    "include": [
+      "auditing-knowledge-docs",
+      "restructuring-knowledge-docs",
+      "drafting-knowledge-docs"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@remyjkim/bgng",
+  "version": "1.0.0",
+  "description": "Operate the bgng and bgdb CLIs and BeginningDB services — personal knowledge base, IDE control plane, direct BeginningDB ops + product ReBAC, and S3 adapter admin — across Claude Code, Codex, and Cursor.",
+  "skills": {
+    "include": [
+      "bgng-knowledge-base",
+      "bgng-ide",
+      "bgdb-direct-db",
+      "bgng-s3-admin"
+    ]
+  }
+}

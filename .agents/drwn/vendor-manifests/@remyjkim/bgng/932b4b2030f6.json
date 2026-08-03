@@ -1,0 +1,39 @@
+{
+  "card": "@remyjkim/bgng",
+  "treeSha": "932b4b2030f6821f381a540e92550d36d003461b",
+  "integrity": "sha256-22b2b6ab2e311436f4b15e111b58797fe030c3cc21f1c4e27dffd1f6970db3f8",
+  "manifest": {
+    "files": [
+      {
+        "path": "card.json",
+        "exec": false,
+        "hash": "3520a783aab7e1213b2ed2c9c548a6f8bfb3516c1b6c70a9ed982c45d961dca3"
+      },
+      {
+        "path": "README.md",
+        "exec": false,
+        "hash": "5f244b264803b18f59f6d38fd1827bc1838fbb1fbfeea4b5ea0c88493ffecb22"
+      },
+      {
+        "path": "skills/bgdb-direct-db/SKILL.md",
+        "exec": false,
+        "hash": "11abcdb9a5547bfc5a13b8b06ab6c9433ea570f94106c2ea69b37e01b9597dcf"
+      },
+      {
+        "path": "skills/bgng-ide/SKILL.md",
+        "exec": false,
+        "hash": "f48b69659c1b9a26ca6ba08cb31b192b3bd5a534746397740a2899858a8cb91e"
+      },
+      {
+        "path": "skills/bgng-knowledge-base/SKILL.md",
+        "exec": false,
+        "hash": "c21d49c633f9106063a5d90b661db129cd1dfad6cdedf5dde2a12e6a8a7e6fdb"
+      },
+      {
+        "path": "skills/bgng-s3-admin/SKILL.md",
+        "exec": false,
+        "hash": "27618a9bd6fed3c6d478adeb5e6d20b776eac4db8a31a67428978405e055f267"
+      }
+    ]
+  }
+}
