@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -15,9 +15,8 @@ afterEach(async () => {
 async function setupProjectWithHookCard() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
   manifest.instructions = { text: "Follow the reviewed operating policy." };
   await writeFile(join(sourceDir, "card.json"), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -102,10 +101,10 @@ test("card trust rejects instruction consent when no explicit contribution exist
 test("card add warns when the added card declares hooks without consent", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture))).exitCode).toBe(0);
-  const manifest = JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "sources", "@me", "policy", "card.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
   const projectDir = join(fixture.root, "project");
   await writeSupportedProjectConfig(projectDir);
 
@@ -143,9 +142,8 @@ test("card untrust --hooks clears hook consent", async () => {
 test("card update drops hook consent when the locked version exits the consent range", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   expect((await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture))).exitCode).toBe(0);
   const projectDir = join(fixture.root, "project");
   await writeSupportedProjectConfig(projectDir);
@@ -179,21 +177,7 @@ test("card update carries hook consent while locked version remains in range", a
 test("card update re-grants instruction consent in-range on content change and preserves for exact content", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect(
-    (
-      await runAgentsCli(
-        ["card", "new", "@me/instructions", "--no-git"],
-        envFor(fixture),
-      )
-    ).exitCode,
-  ).toBe(0);
-  const sourceDir = join(
-    fixture.agentsDir,
-    "drwn",
-    "sources",
-    "@me",
-    "instructions",
-  );
+  const sourceDir = await createCatalogCardSource(fixture, "@me/instructions");
   const manifestPath = join(sourceDir, "card.json");
   let manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.instructions = { text: "Stable reviewed instructions." };
@@ -286,9 +270,8 @@ test("card update re-grants instruction consent in-range on content change and p
 test("card outdated notes when hook consent will need re-granting", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   expect((await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture))).exitCode).toBe(0);
   const projectDir = join(fixture.root, "project");
   await writeSupportedProjectConfig(projectDir);
@@ -329,9 +312,8 @@ test("card trust reports an error when the card is not locked", async () => {
 test("card update re-grants hook consent in-range when hook policy content changes", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
   expect((await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture))).exitCode).toBe(0);
   const projectDir = join(fixture.root, "project");
   await writeSupportedProjectConfig(projectDir);
@@ -362,8 +344,7 @@ test("card update re-grants hook consent in-range when hook policy content chang
 test("card update drops instruction consent when new version exits the consented range", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/rangecheck", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "rangecheck");
+  const sourceDir = await createCatalogCardSource(fixture, "@me/rangecheck");
   const manifestPath = join(sourceDir, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.instructions = { text: "Original instructions." };
@@ -387,4 +368,3 @@ test("card update drops instruction consent when new version exits the consented
   expect(result.stdout).toContain("instruction consent dropped");
   expect((await readLock(projectDir)).cards[0].instructionConsent).toBeUndefined();
 });
-

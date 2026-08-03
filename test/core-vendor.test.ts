@@ -34,12 +34,12 @@ async function scaffoldPublishedCard(version = "1.0.0") {
   const root = await createTempRoot("vendor-card-");
   tempRoots.push(root);
   const agentsDir = join(root, "agents");
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "tool");
+  const sourceDir = join(root, "card-sources", "tool");
   await mkdir(sourceDir, { recursive: true });
   await writeFile(join(sourceDir, "card.json"), JSON.stringify({ name: "@me/tool", version }, null, 2));
   await mkdir(join(sourceDir, "skills", "alpha"), { recursive: true });
   await writeFile(join(sourceDir, "skills", "alpha", "SKILL.md"), "---\nname: alpha\n---\nbody\n");
-  const published = await publishCard(agentsDir, "@me/tool");
+  const published = await publishCard(agentsDir, sourceDir);
   const resolved = await resolveCard(agentsDir, "@me/tool@1.0.0");
   return { root, agentsDir, published, resolved };
 }

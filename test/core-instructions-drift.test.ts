@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { buildProjectStatusV1 } from "../cli/core/diagnostics";
 import {
   cleanupTempRoots,
+  createCatalogCardSource,
   envFor,
   runAgentsCli,
   scaffoldCliFixture,
@@ -23,14 +24,7 @@ afterEach(async () => {
 async function projectedInstructionFixture() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect(
-    (
-      await runAgentsCli(
-        ["card", "new", "@me/diagnostic", "--no-git"],
-        envFor(fixture),
-      )
-    ).exitCode,
-  ).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/diagnostic");
   expect(
     (
       await runAgentsCli(
@@ -55,17 +49,7 @@ async function projectedInstructionFixture() {
     ).exitCode,
   ).toBe(0);
   const manifest = JSON.parse(
-    await readFile(
-      join(
-        fixture.agentsDir,
-        "drwn",
-        "sources",
-        "@me",
-        "diagnostic",
-        "card.json",
-      ),
-      "utf8",
-    ),
+    await readFile(join(sourceDir, "card.json"), "utf8"),
   );
   const projectRoot = join(fixture.root, "project");
   const projectConfigPath = await writeSupportedProjectConfig(projectRoot);

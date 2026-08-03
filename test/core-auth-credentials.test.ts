@@ -28,7 +28,7 @@ const sample: DrwnCredentials = {
 
 const dahSample = {
   version: 2 as const,
-  issuer: "https://auth.darwiniantools.com/api/auth",
+  issuer: "https://auth.darwinian.dev/api/auth",
   clientId: "drwn-cli" as const,
   resource: "https://api.darwinian.dev",
   accessToken: "h.payload.s",

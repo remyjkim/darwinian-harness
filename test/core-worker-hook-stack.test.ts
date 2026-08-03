@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, envFor, installProjectWorkers, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, installProjectWorkers, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -14,14 +14,14 @@ afterEach(async () => {
 });
 
 async function publishHookCard(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>, name: string, hook: string) {
-  expect((await runAgentsCli(["card", "new", name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  await createCatalogCardSource(fixture, name);
   expect((await runAgentsCli(["card", "source", "add-hook", name, hook], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "publish", name], envFor(fixture))).exitCode).toBe(0);
 }
 
 async function publishHookBlueprint(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  expect((await runAgentsCli(["card", "new", "@me/worker", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  const path = join(fixture.agentsDir, "drwn", "sources", "@me", "worker", "card.json");
+  const sourceDir = await createCatalogCardSource(fixture, "@me/worker", { kind: "blueprint" });
+  const path = join(sourceDir, "card.json");
   const manifest = JSON.parse(await readFile(path, "utf8"));
   manifest.kind = "blueprint";
   manifest.composedFrom = ["@me/base@1.0.0", "@me/overlay@1.0.0"];

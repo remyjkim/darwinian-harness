@@ -180,6 +180,25 @@ export function envFor(fixture: { repoRoot: string; homeDir: string; agentsDir: 
   };
 }
 
+export async function createCatalogCardSource(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  name: string,
+  options: { kind?: "card" | "blueprint"; noGit?: boolean } = {},
+) {
+  const catalogRoot = join(fixture.root, "card-catalog");
+  const cardsDir = join(catalogRoot, "cards");
+  const command = options.kind === "blueprint" ? "worker" : "card";
+  const result = await runAgentsCli(
+    [command, "new", name, "--into", cardsDir, ...(options.noGit === false ? [] : ["--no-git"])],
+    envFor(fixture),
+  );
+  expect(result.exitCode).toBe(0);
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
+  const baseName = name.split("/").at(-1);
+  if (!baseName) throw new Error(`Invalid Card name: ${name}`);
+  return join(cardsDir, baseName);
+}
+
 export async function publishCardWithSkills(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   options: {
@@ -195,10 +214,13 @@ export async function publishCardWithSkills(
     throw new Error(`Use a scoped card name in tests: ${options.name}`);
   }
   const [, scope, cardName] = match;
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", scope!, cardName!);
+  const catalogRoot = join(fixture.root, "card-catalog");
+  const sourceParent = join(catalogRoot, "cards");
+  const sourceRoot = join(sourceParent, cardName!);
   if (!existsSync(join(sourceRoot, "card.json"))) {
-    expect((await runAgentsCli(["card", "new", options.name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    expect((await runAgentsCli(["card", "new", options.name, "--into", sourceParent, "--no-git"], envFor(fixture))).exitCode).toBe(0);
   }
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
 
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());
@@ -215,7 +237,7 @@ export async function publishCardWithSkills(
     await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${skill}\ndescription: ${skill}\n---\n`);
   }
 
-  const published = await runAgentsCli(["card", "publish", options.name], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", options.name, "--from", sourceRoot], envFor(fixture));
   expect(published.exitCode).toBe(0);
   const { resolveCard } = await import("../cli/core/card-store");
   return (await resolveCard(fixture.agentsDir, `${scope}/${cardName}@${version}`)).dir;
@@ -224,12 +246,14 @@ export async function publishCardWithSkills(
 export async function publishExactOperatorProfile(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
 ) {
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@darwinian", "operator");
+  const catalogRoot = join(fixture.root, "card-catalog");
+  const sourceRoot = join(catalogRoot, "cards", "operator");
   await mkdir(dirname(sourceRoot), { recursive: true });
   await cp(join(import.meta.dir, "..", "darwinian-worker-skills", "cards", "operator"), sourceRoot, {
     recursive: true,
   });
-  const published = await runAgentsCli(["card", "publish", DARWINIAN_OPERATOR_PROFILE.name], envFor(fixture));
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
+  const published = await runAgentsCli(["card", "publish", DARWINIAN_OPERATOR_PROFILE.name, "--from", sourceRoot], envFor(fixture));
   expect(published.exitCode).toBe(0);
   const { resolveCard } = await import("../cli/core/card-store");
   const resolved = await resolveCard(
@@ -402,8 +426,10 @@ export async function runGlobalAgentsCli(args: string[], env: Record<string, str
 }
 
 export async function runSyncWrapper(args: string[], env: Record<string, string>) {
-  const proc = Bun.spawn(["bun", "run", "sync-mcp.ts", ...args], {
-    cwd: join(import.meta.dir, ".."),
+  const entrypoint = fileURLToPath(new URL("../sync-mcp.ts", import.meta.url));
+  const bunBin = Bun.which("bun") ?? process.execPath;
+  const proc = Bun.spawn([bunBin, "run", entrypoint, ...args], {
+    cwd: env.AGENTS_REPO_ROOT ?? join(import.meta.dir, ".."),
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",

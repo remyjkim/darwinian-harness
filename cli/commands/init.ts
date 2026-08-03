@@ -15,6 +15,7 @@ import { initializeMachineCapabilities } from "../core/machine-profiles";
 import { ensureGitignoreEntries, ensureVendorGitattributes } from "../core/git-hygiene";
 import { registerProject } from "../core/project-registry";
 import { scaffoldProjectConfig } from "../core/project";
+import { mutateUserPreferences } from "../core/user-preferences";
 import { BaseCommand } from "./base";
 
 export class InitCommand extends BaseCommand {
@@ -37,6 +38,7 @@ export class InitCommand extends BaseCommand {
     examples: [
       ["First-time setup in an interactive shell", "drwn init"],
       ["Minimal config without prompts", "drwn init --non-interactive"],
+      ["Register a Card collection checkout", "drwn init --non-interactive --catalog-checkout ~/dev/darwinian-cards"],
       ["Re-run setup over an existing config", "drwn init --force --guided"],
     ],
   });
@@ -61,6 +63,10 @@ export class InitCommand extends BaseCommand {
     description: "Skip pre-registering the default community card catalog.",
   });
 
+  catalogCheckouts = Option.Array("--catalog-checkout", [], {
+    description: "Register an ordinary Card collection checkout for name-based authoring.",
+  });
+
   async execute() {
     const projectDir = process.cwd();
     const mode = resolveInitMode({
@@ -76,6 +82,10 @@ export class InitCommand extends BaseCommand {
     const existingConfigPath = join(projectDir, ".agents", "drwn", "config.json");
     if (existsSync(existingConfigPath) && !this.force) {
       throw new Error(`Project config already exists: ${existingConfigPath}`);
+    }
+
+    if (this.catalogCheckouts.length > 0) {
+      await this.registerCatalogCheckouts(this.catalogCheckouts);
     }
 
     const configPath = mode.mode === "guided"
@@ -124,6 +134,12 @@ export class InitCommand extends BaseCommand {
           await rl.question("Use Recommended Darwinian Operator machine capabilities? [Y/n] "),
         ),
       });
+      if (this.catalogCheckouts.length === 0) {
+        const checkout = (await rl.question("Path to a Card collection checkout? (leave blank to skip) ")).trim();
+        if (checkout) {
+          await this.registerCatalogCheckouts([checkout]);
+        }
+      }
       const configPath = await scaffoldProjectConfig(projectDir, { force: this.force });
       const parallelAnswer = (await rl.question("Enable Parallel extension for this project? [y/N] ")).trim().toLowerCase();
       if (parallelAnswer === "y" || parallelAnswer === "yes") {
@@ -148,5 +164,15 @@ export class InitCommand extends BaseCommand {
     } finally {
       rl.close();
     }
+  }
+
+  private async registerCatalogCheckouts(checkouts: string[]) {
+    await mutateUserPreferences(this.context.agentsDir, (current) => ({
+      preferences: {
+        ...current,
+        catalogCheckouts: [...new Set([...current.catalogCheckouts, ...checkouts])],
+      },
+      value: undefined,
+    }));
   }
 }

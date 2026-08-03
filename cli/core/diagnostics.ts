@@ -38,7 +38,6 @@ import { getExtension } from "./extensions/registry";
 import {
   resolveCardsRoot,
   resolveGlobalWriteRecordPath,
-  resolveSourcesRoot,
   resolveStoreGeneratedDir,
   resolveStoreMcpServersDir,
   resolveStoreMetadataPath,
@@ -125,7 +124,7 @@ export interface DiagnosticsSections {
     initialized: boolean;
     schemaVersion: number | null;
     cardCount: number;
-    sourceCount: number;
+    legacySourceCount: number;
     skillBundleCount: number;
     mcpServerCount: number;
   };
@@ -1336,7 +1335,7 @@ function currentStateStatus(agentsDir: string): DiagnosticsSections["store"] {
     initialized: existsSync(metadataPath),
     schemaVersion,
     cardCount: countMarkedDirectories(resolveCardsRoot(agentsDir), "HEAD"),
-    sourceCount: countMarkedDirectories(resolveSourcesRoot(agentsDir), "card.json"),
+    legacySourceCount: countMarkedDirectories(join(resolveStoreRoot(agentsDir), "sources"), "card.json"),
     skillBundleCount: countMarkedDirectories(resolveStoreSkillsRoot(agentsDir), "current"),
     mcpServerCount: countJsonRecords(resolveStoreMcpServersDir(agentsDir)),
   };

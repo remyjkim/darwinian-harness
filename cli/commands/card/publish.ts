@@ -4,6 +4,7 @@
 import { Option } from "clipanion";
 import { publishCard, type ConsentImpact } from "../../core/card-store";
 import { BaseCommand } from "../base";
+import { resolveCommandCardSource } from "./source-input";
 
 export class CardPublishCommand extends BaseCommand {
   static override paths = [["card", "publish"]];
@@ -24,7 +25,8 @@ export class CardPublishCommand extends BaseCommand {
     ],
   });
 
-  name = Option.String({ required: true });
+  name = Option.String({ required: false });
+  from = Option.String("--from", { description: "Explicit Card source directory." });
 
   forceBumpMismatch = Option.Boolean("--force-bump-mismatch", false, {
     description: "Publish despite a mismatch between structural diff classification and declared version bump.",
@@ -37,7 +39,8 @@ export class CardPublishCommand extends BaseCommand {
   async execute() {
     let published;
     try {
-      published = await publishCard(this.context.agentsDir, this.name, {
+      const source = await resolveCommandCardSource(this.context, { input: this.name, from: this.from });
+      published = await publishCard(this.context.agentsDir, source.sourceDir, {
         forceBumpMismatch: this.forceBumpMismatch,
       });
     } catch (error) {

@@ -4,6 +4,7 @@
 import { Option } from "clipanion";
 import { composeCardSourceBlueprint } from "../../core/card-source";
 import { BaseCommand } from "../base";
+import { resolveCommandCardSource } from "../card/source-input";
 
 export class WorkerComposeCommand extends BaseCommand {
   static override paths = [["worker", "compose"]];
@@ -34,9 +35,9 @@ export class WorkerComposeCommand extends BaseCommand {
       return 1;
     }
     try {
+      const source = await resolveCommandCardSource(this.context, { input: this.name });
       const result = await composeCardSourceBlueprint({
-        agentsDir: this.context.agentsDir,
-        cardName: this.name,
+        sourceDir: source.sourceDir,
         add: this.add,
         remove: this.remove,
       });

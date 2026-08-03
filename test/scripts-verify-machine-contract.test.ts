@@ -39,10 +39,10 @@ describe("machine capability release gate", () => {
     const defaults = readFileSync(join(repoRoot, "cli/core/defaults.ts"), "utf8");
     const result = verifyMachineContract(repoRoot, {
       "cli/index.ts": `${index}\ncli.register(SkillsCurateCommand);\n`,
-      "registry/machine-profiles.json": registry.replaceAll("#v2.0.0", "#^2.0.0"),
+      "registry/machine-profiles.json": registry.replaceAll("#v2.0.1", "#^2.0.1"),
       "cli/core/defaults.ts": defaults.replace(
         "const machine = await readMachineConfig(options.agentsDir);",
-        "await resolveCard(options.agentsDir, '@darwinian/operator@^2.0.0');\n  const machine = await readMachineConfig(options.agentsDir);",
+        "await resolveCard(options.agentsDir, '@darwinian/operator@^2.0.1');\n  const machine = await readMachineConfig(options.agentsDir);",
       ),
     });
 
@@ -61,15 +61,27 @@ describe("machine capability release gate", () => {
         'const foreignMcpTargets = ["claude", "codex", "cursor"] as const',
         "ownership case removed",
       ),
-      "registry/machine-profiles.json": registry.replaceAll("2.0.0", "2.0.1"),
+      "registry/machine-profiles.json": registry.replaceAll("2.0.1", "2.0.2"),
       "cli/index.ts": `${index}\ncli.register(StoreExportCommand);\n`,
       "cli/commands/store/export.ts": "export class StoreExportCommand {}\n",
     });
 
     expect(result.ok).toBe(false);
     expect(result.details).toContain("foreign ownership coverage is missing");
-    expect(result.details).toContain("Operator version must be 2.0.0");
+    expect(result.details).toContain("Operator version must be 2.0.1");
     expect(result.details).toContain("public whole-Store export must remain unavailable");
+  });
+
+  test("enforces the separate strict user-preferences contract", () => {
+    const preferences = readFileSync(join(repoRoot, "cli/core/user-preferences.ts"), "utf8");
+    const result = verifyMachineContract(repoRoot, {
+      "cli/core/user-preferences.ts": preferences
+        .replace('z.literal("drwn.user-preferences")', "z.string()")
+        .replace("}).strict();", "}).passthrough();"),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("cli/core/user-preferences.ts is missing");
   });
 
   test("release JSON includes the machine capability contract gate", async () => {

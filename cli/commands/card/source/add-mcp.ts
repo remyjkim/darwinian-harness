@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { addCardSourceMcp } from "../../../core/card-source";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceAddMcpCommand extends BaseCommand {
   static override paths = [["card", "source", "add-mcp"]];
@@ -45,10 +46,11 @@ export class CardSourceAddMcpCommand extends BaseCommand {
   async execute() {
     let result;
     try {
+      const source = await resolveCommandCardSource(this.context, { input: this.cardName });
       result = await addCardSourceMcp({
         agentsDir: this.context.agentsDir,
         repoRoot: this.context.repoRoot,
-        cardName: this.cardName,
+        sourceDir: source.sourceDir,
         serverId: this.serverId,
         from: this.from,
         replace: this.replace,

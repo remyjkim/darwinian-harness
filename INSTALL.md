@@ -48,7 +48,7 @@ Machine Store state lives under `~/.agents/drwn/`:
 
 ```text
 machine.json
-sources/
+config.json
 cards/
 extracted/
 skills/
@@ -58,6 +58,13 @@ generated/
 projects.json
 credentials.json
 ```
+
+`config.json` is non-secret `drwn.user-preferences` V1 state containing
+`catalogCheckouts` and an optional `defaultAuthorScope`; `machine.json` remains
+capability intent. Keep secrets in `credentials.json`, environment variables,
+or a secret manager. A pre-I176 `sources/` directory may remain as legacy
+operator data, but drwn neither uses nor removes it. Verify each canonical
+source repository before any manual cleanup.
 
 Project authority lives under:
 
@@ -144,12 +151,20 @@ drwn use --none
 
 ## Author A Capability Card
 
+Explicit source paths work without configuration. To also enable name-only
+source resolution, register the catalog collection once:
+
 ```bash
-drwn card new @team/notion --no-git
-drwn card source add-skill @team/notion notion-knowledge
-drwn card source add-mcp @team/notion notion
-drwn card source doctor @team/notion --json
-drwn card publish @team/notion
+drwn config set catalogCheckouts '["~/dev/darwinian-cards"]'
+```
+
+```bash
+drwn card new @team/notion --into ~/dev/darwinian-cards/cards --no-git
+NOTION_SOURCE=~/dev/darwinian-cards/cards/notion
+drwn card source add-skill "$NOTION_SOURCE" notion-knowledge
+drwn card source add-mcp "$NOTION_SOURCE" notion
+drwn card source doctor "$NOTION_SOURCE" --json
+drwn card publish --from "$NOTION_SOURCE"
 ```
 
 Editable source state is mutable. Published Card versions are immutable.
@@ -157,11 +172,13 @@ Editable source state is mutable. Published Card versions are immutable.
 ## Compose A Blueprint
 
 ```bash
-drwn worker new @team/operator --no-git
-drwn worker compose @team/operator --add @team/notion@^1.0.0
-drwn worker compose @team/operator --add @team/fal@^1.0.0
-drwn card source doctor @team/operator --json
-drwn worker publish @team/operator
+drwn worker new @team/operator --into ~/dev/darwinian-cards/cards --no-git
+OPERATOR_SOURCE=~/dev/darwinian-cards/cards/operator
+drwn worker compose "$OPERATOR_SOURCE" --add @team/notion@^1.0.0
+# Assume @team/fal is an already-published Card in this example.
+drwn worker compose "$OPERATOR_SOURCE" --add @team/fal@^1.0.0
+drwn card source doctor "$OPERATOR_SOURCE" --json
+drwn worker publish --from "$OPERATOR_SOURCE"
 ```
 
 The Blueprint's member order determines closure order. Members remain independently authored Cards, but the project selects the Blueprint as one Worker.

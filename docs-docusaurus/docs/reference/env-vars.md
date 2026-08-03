@@ -74,9 +74,10 @@ drwn worker chat <slug> --message "hello"
 
 ### `DRWN_DAH_HUB_URL`
 
-Overrides the Auth Hub origin used by `drwn login`, token refresh, and logout. During
-the I80 overlap window the default remains `https://auth.darwiniantools.com`; staging
-tests must name their intended hub explicitly.
+Overrides the Auth Hub origin used by `drwn login`, token refresh, and logout. The
+default is `https://auth.darwinian.dev`; local and staging environments must name their
+intended hub explicitly. Credentials issued by a different hub are rejected with
+instructions to run `drwn login` again under the intended setting.
 
 ### `DRWN_DAH_RESOURCE`
 

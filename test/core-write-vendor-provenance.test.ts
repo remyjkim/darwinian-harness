@@ -41,12 +41,12 @@ async function scaffoldVendoredProject() {
   await writeFile(codexConfig, 'personality = "pragmatic"\n');
   await writeFile(cursorConfig, JSON.stringify({ mcpServers: {} }, null, 2));
 
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "prov");
+  const sourceDir = join(root, "card-sources", "prov");
   await mkdir(join(sourceDir, "skills", "alpha"), { recursive: true });
   await writeFile(join(sourceDir, "card.json"), JSON.stringify({ name: "@me/prov", version: "1.0.0", skills: { include: ["alpha"] } }, null, 2));
   await writeFile(join(sourceDir, "skills", "alpha", "SKILL.md"), "---\nname: alpha\n---\n");
 
-  await publishCard(agentsDir, "@me/prov");
+  await publishCard(agentsDir, sourceDir);
   const resolved = await resolveCard(agentsDir, "@me/prov@1.0.0");
   const barePath = resolveCardBareRepoPath(agentsDir, "@me/prov");
   const treeSha = await git.getCommitTree(barePath, resolved.git!.commit);

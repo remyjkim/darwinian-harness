@@ -2,6 +2,7 @@
 // ABOUTME: Ensures the original source remains untouched.
 
 import { afterEach, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cleanupTempRoots, runAgentsCli, scaffoldCliFixture } from "./helpers";
@@ -12,24 +13,61 @@ afterEach(async () => cleanupTempRoots(tempRoots));
 test("card fork copies source into a new scope", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  const [, scope, cardName] = "@team/backend".match(/^(@[^/]+)\/(.+)$/) ?? [];
-  if (!scope || !cardName) {
-    throw new Error("invalid card name");
-  }
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", scope, cardName);
+  const sourceRoot = join(fixture.root, "sources", "backend-upstream");
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(join(sourceRoot, "card.json"), `${JSON.stringify({ name: "@team/backend", version: "1.0.0" }, null, 2)}\n`);
   await writeFile(join(sourceRoot, "README.md"), "original\n");
 
-  const result = await runAgentsCli(["card", "fork", "@team/backend", "--scope", "@you"], {
+  const targetParent = join(fixture.root, "forks");
+  const result = await runAgentsCli(["card", "fork", sourceRoot, "--scope", "@you", "--into", targetParent], {
     AGENTS_REPO_ROOT: fixture.repoRoot,
     AGENTS_HOME_DIR: fixture.homeDir,
     AGENTS_DIR: fixture.agentsDir,
   });
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toMatch(/@you\/backend/);
-  const forked = join(fixture.agentsDir, "drwn", "sources", "@you", "backend", "card.json");
+  const forked = join(targetParent, "backend", "card.json");
   const manifest = JSON.parse(await readFile(forked, "utf8"));
   expect(manifest.name).toBe("@you/backend");
   expect(await readFile(join(sourceRoot, "README.md"), "utf8")).toBe("original\n");
+});
+
+test("card fork refuses an existing target without overwriting or merging bytes", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const sourceRoot = join(fixture.root, "sources", "backend-upstream");
+  const targetParent = join(fixture.root, "forks");
+  const target = join(targetParent, "backend");
+  await mkdir(sourceRoot, { recursive: true });
+  await mkdir(target, { recursive: true });
+  await writeFile(join(sourceRoot, "card.json"), `${JSON.stringify({ name: "@team/backend", version: "1.0.0" })}\n`);
+  await writeFile(join(target, "keep.txt"), "untouched\n");
+
+  const result = await runAgentsCli(["card", "fork", sourceRoot, "--scope", "@you", "--into", targetParent], {
+    AGENTS_REPO_ROOT: fixture.repoRoot,
+    AGENTS_HOME_DIR: fixture.homeDir,
+    AGENTS_DIR: fixture.agentsDir,
+  });
+
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr).toContain("destination already exists");
+  expect(await readFile(join(target, "keep.txt"), "utf8")).toBe("untouched\n");
+});
+
+test("card fork rejects an invalid scope before creating its parent directory", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const sourceRoot = join(fixture.root, "sources", "backend");
+  const targetParent = join(fixture.root, "not-created");
+  await mkdir(sourceRoot, { recursive: true });
+  await writeFile(join(sourceRoot, "card.json"), `${JSON.stringify({ name: "@team/backend", version: "1.0.0" })}\n`);
+
+  const result = await runAgentsCli(["card", "fork", sourceRoot, "--scope", "invalid scope", "--into", targetParent], {
+    AGENTS_REPO_ROOT: fixture.repoRoot,
+    AGENTS_HOME_DIR: fixture.homeDir,
+    AGENTS_DIR: fixture.agentsDir,
+  });
+
+  expect(result.exitCode).not.toBe(0);
+  expect(existsSync(targetParent)).toBe(false);
 });

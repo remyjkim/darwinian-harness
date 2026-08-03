@@ -18,10 +18,10 @@ afterEach(async () => {
 async function scaffoldCardWithMeta() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "tool");
+  const sourceDir = join(fixture.root, "card-source");
   await mkdir(sourceDir, { recursive: true });
   await writeFile(join(sourceDir, "card.json"), JSON.stringify({ name: "@me/tool", version: "1.0.0" }, null, 2));
-  await publishCard(fixture.agentsDir, "@me/tool");
+  await publishCard(fixture.agentsDir, sourceDir);
   const barePath = resolveCardBareRepoPath(fixture.agentsDir, "@me/tool");
   await writeCardMeta(barePath, {
     deprecations: { "1.0.0": "Renamed" },

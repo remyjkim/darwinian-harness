@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -28,8 +28,7 @@ test("card show --json includes Git history for store-origin cards", async () =>
 test("card show surfaces manifest quality fields in human and json output", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/quality", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "quality");
+  const sourceDir = await createCatalogCardSource(fixture, "@me/quality");
   const manifestPath = join(sourceDir, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   Object.assign(manifest, {

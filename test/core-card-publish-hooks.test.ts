@@ -17,7 +17,7 @@ async function scaffoldSource(options?: { policyDir?: boolean; policyFile?: bool
   const root = await createTempRoot("card-publish-hooks-");
   tempRoots.push(root);
   const agentsDir = join(root, "agents");
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "policy");
+  const sourceDir = join(root, "card-sources", "policy");
   await mkdir(sourceDir, { recursive: true });
   await writeFile(
     join(sourceDir, "card.json"),
@@ -33,28 +33,28 @@ async function scaffoldSource(options?: { policyDir?: boolean; policyFile?: bool
 }
 
 test("publishCard succeeds when declared policy.ts exists", async () => {
-  const { agentsDir } = await scaffoldSource({ policyDir: true, policyFile: true });
+  const { agentsDir, sourceDir } = await scaffoldSource({ policyDir: true, policyFile: true });
 
-  const result = await publishCard(agentsDir, "@me/policy");
+  const result = await publishCard(agentsDir, sourceDir);
 
   expect(result.manifest.hooks?.include).toEqual(["audit"]);
 });
 
 test("publishCard rejects missing declared hook directory", async () => {
-  const { agentsDir } = await scaffoldSource();
+  const { agentsDir, sourceDir } = await scaffoldSource();
 
-  await expect(publishCard(agentsDir, "@me/policy")).rejects.toThrow("missing hook directory");
+  await expect(publishCard(agentsDir, sourceDir)).rejects.toThrow("missing hook directory");
 });
 
 test("publishCard rejects declared hook directory without policy.ts", async () => {
-  const { agentsDir } = await scaffoldSource({ policyDir: true });
+  const { agentsDir, sourceDir } = await scaffoldSource({ policyDir: true });
 
-  await expect(publishCard(agentsDir, "@me/policy")).rejects.toThrow("missing policy.ts");
+  await expect(publishCard(agentsDir, sourceDir)).rejects.toThrow("missing policy.ts");
 });
 
 test("resolveCard rejects extracted hook trees missing policy.ts", async () => {
-  const { agentsDir } = await scaffoldSource({ policyDir: true, policyFile: true });
-  const published = await publishCard(agentsDir, "@me/policy");
+  const { agentsDir, sourceDir } = await scaffoldSource({ policyDir: true, policyFile: true });
+  const published = await publishCard(agentsDir, sourceDir);
   await rm(join(published.versionDir, "hooks", "audit", "policy.ts"));
 
   await expect(resolveCard(agentsDir, "@me/policy@1.0.0")).rejects.toThrow("missing policy.ts");

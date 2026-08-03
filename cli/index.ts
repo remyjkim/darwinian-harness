@@ -138,6 +138,7 @@ import { ScanCommand } from "./commands/scan";
 import { StatusCommand } from "./commands/status";
 import { WriteCommand } from "./commands/write";
 import { ExportSessionsCommand } from "./commands/export/sessions";
+import { ConfigGetCommand, ConfigSetCommand } from "./commands/config";
 
 const packageJson = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf8"),
@@ -263,6 +264,8 @@ cli.register(AnalyzeSessionsCommand);
 cli.register(ExportSessionsCommand);
 cli.register(StatusCommand);
 cli.register(DoctorCommand);
+cli.register(ConfigGetCommand);
+cli.register(ConfigSetCommand);
 cli.register(InitCommand);
 cli.register(ProjectsListCommand);
 cli.register(ProjectsUnregisterCommand);

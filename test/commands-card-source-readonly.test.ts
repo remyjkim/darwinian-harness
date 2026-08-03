@@ -2,9 +2,13 @@
 // ABOUTME: Protects source-listing, source-inspection, and source-doctor output contracts.
 
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { createEmptyMachineConfig, writeMachineConfigFile } from "../cli/core/machine-config";
+import { resolveMachineConfigPath } from "../cli/core/store-paths";
+import { resolveUserConfigPath } from "../cli/core/paths";
 
 const tempRoots: string[] = [];
 
@@ -15,21 +19,52 @@ afterEach(async () => {
 async function scaffoldSourceFixture() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/example", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const catalog = join(fixture.root, "catalog");
+  expect((await runAgentsCli(["card", "new", "@me/example", "--into", join(catalog, "cards"), "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalog])], envFor(fixture))).exitCode).toBe(0);
   return fixture;
 }
 
-test("card source list supports json and text output", async () => {
+test("card source list is deprecated with catalog and explicit-path guidance", async () => {
   const fixture = await scaffoldSourceFixture();
+  const legacy = join(fixture.agentsDir, "drwn", "sources", "@me", "example");
+  await mkdir(legacy, { recursive: true });
+  await writeFile(join(legacy, "card.json"), `${JSON.stringify({ name: "@me/example", version: "1.0.0" })}\n`);
 
   const json = await runAgentsCli(["card", "source", "list", "--json"], envFor(fixture));
   const text = await runAgentsCli(["card", "source", "list"], envFor(fixture));
 
-  expect(json.exitCode).toBe(0);
-  expect(JSON.parse(json.stdout).sources[0].name).toBe("@me/example");
-  expect(text.exitCode).toBe(0);
-  expect(text.stdout).toContain("@me/example");
-  expect(text.stdout).toContain("1.0.0");
+  expect(json.exitCode).toBe(1);
+  expect(JSON.parse(json.stdout)).toMatchObject({
+    deprecated: true,
+    legacyInventory: { entries: [{ name: "@me/example", status: "canonical" }] },
+  });
+  expect(text.exitCode).toBe(1);
+  expect(text.stderr).toContain("deprecated");
+  expect(text.stderr).toContain("catalogCheckouts");
+  expect(text.stderr).toContain("canonical: @me/example");
+});
+
+test("source inspection under readonly uses legacy scope without migrating machine state", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const sourceDir = join(fixture.root, "source");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(join(sourceDir, "card.json"), `${JSON.stringify({ name: "@legacy/example", version: "1.0.0" })}\n`);
+  const machine = createEmptyMachineConfig();
+  machine.policy.authoring = { scope: "@legacy" };
+  const machinePath = resolveMachineConfigPath(fixture.agentsDir);
+  await writeMachineConfigFile(machinePath, machine);
+  const before = await readFile(machinePath, "utf8");
+
+  const result = await runAgentsCli(["card", "source", "show", sourceDir, "--json"], {
+    ...envFor(fixture),
+    DRWN_STORE_READONLY: "1",
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(await readFile(machinePath, "utf8")).toBe(before);
+  expect(existsSync(resolveUserConfigPath(fixture.agentsDir))).toBe(false);
 });
 
 test("card source show supports json and text output", async () => {
@@ -62,7 +97,7 @@ test("card source doctor supports json and text output for a healthy source", as
 
 test("card source doctor exits zero and reports ok false for nonfatal source issues", async () => {
   const fixture = await scaffoldSourceFixture();
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "example");
+  const sourceDir = join(fixture.root, "catalog", "cards", "example");
   const manifestPath = join(sourceDir, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());
   manifest.skills = { include: ["alpha"] };

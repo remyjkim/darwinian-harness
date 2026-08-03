@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { addCardSourceBelief } from "../../../core/card-source";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceAddBeliefCommand extends BaseCommand {
   static override paths = [["card", "source", "add-belief"]];
@@ -35,9 +36,9 @@ export class CardSourceAddBeliefCommand extends BaseCommand {
   async execute() {
     let result;
     try {
+      const source = await resolveCommandCardSource(this.context, { input: this.cardName });
       result = await addCardSourceBelief({
-        agentsDir: this.context.agentsDir,
-        cardName: this.cardName,
+        sourceDir: source.sourceDir,
         entryName: this.entryName,
         visibility: this.visibility,
         dryRun: this.dryRun,

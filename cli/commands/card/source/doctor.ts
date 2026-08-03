@@ -6,6 +6,7 @@ import { doctorCardSource, type CardSourceDoctorReport } from "../../../core/car
 import { checkCardSourceUpstream } from "../../../core/card-source-sync";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 function renderSourceDoctorReport(report: CardSourceDoctorReport, upstreamWarnings: string[] = []) {
   const lines: string[] = [];
@@ -33,29 +34,30 @@ export class CardSourceDoctorCommand extends BaseCommand {
     category: "Cards",
     description: "Report editable card source issues without mutating anything.",
     details: `
-      Checks one source, or every source when no name is provided, for manifest,
+      Checks one explicit or uniquely catalog-resolved source for manifest,
       bundled skill, package.json, and MCP server file issues. Reportable issues
       are returned in output; the command exits nonzero only for fatal command
       errors such as an unknown named source.
     `,
     examples: [
-      ["Doctor all sources", "drwn card source doctor"],
+      ["Doctor one source", "drwn card source doctor ./cards/backend"],
       ["Doctor one source as JSON", "drwn card source doctor @your-handle/backend --json"],
     ],
   });
 
-  name = Option.String({ required: false });
+  name = Option.String({ required: true });
 
   json = Option.Boolean("--json", false, {
     description: "Emit machine-readable JSON output.",
   });
 
   async execute() {
-    const report = await doctorCardSource(this.context.agentsDir, this.name);
+    const source = await resolveCommandCardSource(this.context, { input: this.name });
+    const report = await doctorCardSource(source.sourceDir);
     const upstreamWarnings: string[] = [];
     if (this.name) {
       try {
-        const upstream = await checkCardSourceUpstream(this.context.agentsDir, this.name);
+        const upstream = await checkCardSourceUpstream(this.context.agentsDir, source.sourceDir);
         for (const skill of upstream.stale) {
           upstreamWarnings.push(`upstream stale: skill ${skill} differs from upstream`);
         }

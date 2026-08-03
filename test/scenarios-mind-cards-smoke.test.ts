@@ -45,14 +45,14 @@ test("@darwinian/mind-tools applies from file:, locks with the Mind floor, and p
   expect(entry?.skills).toEqual(["mind-read", "mind-remember", "mind-share", "mind-forget", "mind-search"]);
   expect(lock?.store?.minDrwnVersion).toBe(WORKER_MIND_MIN_DRWN_VERSION);
 
-  const sourcesDir = join(fixture.agentsDir, "drwn", "sources", "@darwinian", "mind-tools");
+  const sourcesDir = join(fixture.root, "card-sources", "mind-tools");
   await cp(MIND_TOOLS_SOURCE, sourcesDir, { recursive: true, filter: (src) => !src.includes("/.git") });
 
-  const doctor = await runAgentsCli(["card", "source", "doctor", "@darwinian/mind-tools", "--json"], envFor(fixture));
+  const doctor = await runAgentsCli(["card", "source", "doctor", sourcesDir, "--json"], envFor(fixture));
   expect(doctor.exitCode).toBe(0);
   expect(JSON.parse(doctor.stdout).ok).toBe(true);
 
-  const published = await runAgentsCli(["card", "publish", "@darwinian/mind-tools"], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", "--from", sourcesDir], envFor(fixture));
   expect(published.exitCode).toBe(0);
 });
 
@@ -74,7 +74,7 @@ test("@darwinian/mind-starter applies alone, provisions a complete mind (voice +
   expect(entry?.skills).toEqual(["mind-read", "mind-remember", "mind-share", "mind-forget", "mind-search"]);
   expect(lock?.store?.minDrwnVersion).toBe(WORKER_MIND_MIN_DRWN_VERSION);
 
-  const sourcesDir = join(fixture.agentsDir, "drwn", "sources", "@darwinian", "mind-starter");
+  const sourcesDir = join(fixture.root, "card-sources", "mind-starter");
   await cp(MIND_STARTER_SOURCE, sourcesDir, { recursive: true, filter: (src) => !src.includes("/.git") });
 
   // Doctor + publish validate the card is publishable. Publish is the load-bearing
@@ -82,6 +82,6 @@ test("@darwinian/mind-starter applies alone, provisions a complete mind (voice +
   // publish proves the git+ refs are well-formed. (Doctor's upstream-sync also clones
   // the mind-tools remote — a ~10s network op — so it is covered by the P6 end-to-end
   // check rather than asserted on every test run.)
-  const published = await runAgentsCli(["card", "publish", "@darwinian/mind-starter"], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", "--from", sourcesDir], envFor(fixture));
   expect(published.exitCode).toBe(0);
 });

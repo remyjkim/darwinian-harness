@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { addCardSourcePersona } from "../../../core/card-source";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceAddPersonaCommand extends BaseCommand {
   static override paths = [["card", "source", "add-persona"]];
@@ -38,9 +39,9 @@ export class CardSourceAddPersonaCommand extends BaseCommand {
   async execute() {
     let result;
     try {
+      const source = await resolveCommandCardSource(this.context, { input: this.cardName });
       result = await addCardSourcePersona({
-        agentsDir: this.context.agentsDir,
-        cardName: this.cardName,
+        sourceDir: source.sourceDir,
         entryName: this.entryName,
         visibility: this.visibility,
         dryRun: this.dryRun,

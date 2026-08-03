@@ -42,7 +42,7 @@ test("syncCardSource check then apply roundtrips upstream skill content", async 
   tempRoots.push(root);
   const agentsDir = join(root, "agents");
   const { barePath } = await createUpstreamBareWithSkill(root);
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "sync");
+  const sourceDir = join(root, "card-sources", "sync");
   await mkdir(join(sourceDir, "skills", "alpha"), { recursive: true });
   await writeFile(
     join(sourceDir, "card.json"),
@@ -61,11 +61,11 @@ test("syncCardSource check then apply roundtrips upstream skill content", async 
   );
   await writeFile(join(sourceDir, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: stale local\n---\n");
 
-  const check = await syncCardSource(agentsDir, "@me/sync", { check: true });
+  const check = await syncCardSource(agentsDir, sourceDir, { check: true });
   expect(check.stale).toContain("alpha");
   expect(check.synced).toEqual([]);
 
-  const apply = await syncCardSource(agentsDir, "@me/sync", { check: false });
+  const apply = await syncCardSource(agentsDir, sourceDir, { check: false });
   expect(apply.synced).toContain("alpha");
   expect(await readFile(join(sourceDir, "skills", "alpha", "SKILL.md"), "utf8")).toContain("upstream");
   await rm(join(sourceDir, ".upstream-sync.json"), { force: true });

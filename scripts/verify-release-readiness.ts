@@ -670,6 +670,15 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
     "readMachineConfigFile",
     "mergeMachinePolicy(repoConfig, machineConfig)",
   ]);
+  requireTokens("cli/core/user-preferences.ts", [
+    'schema: z.literal("drwn.user-preferences")',
+    "schemaVersion: z.literal(1)",
+    "catalogCheckouts: z.array(checkoutPath)",
+    "defaultAuthorScope: z.string().min(1).optional()",
+    "USER_PREFERENCES_INVALID",
+    "resolveUserConfigPath",
+    ".strict()",
+  ]);
   requireTokens("cli/core/defaults.ts", [
     "resolveMachineCapabilities",
     "verifyMachineProfilePin",

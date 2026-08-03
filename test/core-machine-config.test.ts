@@ -16,7 +16,7 @@ import {
   writeMachineConfigFile,
 } from "../cli/core/machine-config";
 import { resolveMachineConfigPath } from "../cli/core/store-paths";
-import { createDarwinianOperatorPin } from "../cli/core/operator-profile-contract";
+import { createDarwinianOperatorPin, DARWINIAN_OPERATOR_V200_PIN } from "../cli/core/operator-profile-contract";
 import { cleanupTempRoots, createTempRoot } from "./helpers";
 
 const tempRoots: string[] = [];
@@ -46,6 +46,26 @@ describe("machine config V1", () => {
       schemaVersion: 1,
       policy: {},
       capabilities: { profile: null, skills: [], mcpServers: [] },
+    });
+  });
+
+  test("accepts the exact previous Operator pin for upgrade compatibility only", () => {
+    const previous = {
+      ...createEmptyMachineConfig(),
+      capabilities: {
+        profile: { ...DARWINIAN_OPERATOR_V200_PIN, skills: [...DARWINIAN_OPERATOR_V200_PIN.skills], mcpServers: [] },
+        skills: [],
+        mcpServers: [],
+      },
+    };
+
+    expect(parseMachineConfig(previous).capabilities.profile?.version).toBe("2.0.0");
+    expectInvalid({
+      ...previous,
+      capabilities: {
+        ...previous.capabilities,
+        profile: { ...previous.capabilities.profile, version: "2.0.1" },
+      },
     });
   });
 

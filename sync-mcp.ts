@@ -32,9 +32,11 @@ export {
 };
 
 export async function syncRepository(options: SyncOptions = {}) {
+  const repoRoot = options.repoRoot ?? process.env.AGENTS_REPO_ROOT ?? inferRepoRootFromModulePath(import.meta.path);
   return await syncRepositoryCore({
     ...options,
-    repoRoot: options.repoRoot ?? process.env.AGENTS_REPO_ROOT ?? inferRepoRootFromModulePath(import.meta.path),
+    repoRoot,
+    cwd: options.cwd ?? repoRoot,
   });
 }
 

@@ -15,12 +15,18 @@ afterEach(async () => {
 async function scaffoldSourceFixture() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/example", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const catalog = join(fixture.root, "catalog");
+  expect((await runAgentsCli(["card", "new", "@me/example", "--into", join(catalog, "cards"), "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalog])], envFor(fixture))).exitCode).toBe(0);
   return fixture;
 }
 
+function sourceDir(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
+  return join(fixture.root, "catalog", "cards", "example");
+}
+
 async function readManifest(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  return JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "sources", "@me", "example", "card.json"), "utf8"));
+  return JSON.parse(await readFile(join(sourceDir(fixture), "card.json"), "utf8"));
 }
 
 test("set --dry-run --json reports old and new description without writing", async () => {
@@ -92,13 +98,7 @@ test("set updates Wave 2 quality fields", async () => {
 
 test("set authors, replaces, and clears explicit instructions with conflict validation", async () => {
   const fixture = await scaffoldSourceFixture();
-  const sourceDir = join(
-    fixture.agentsDir,
-    "drwn",
-    "sources",
-    "@me",
-    "example",
-  );
+  const sourceDir = join(fixture.root, "catalog", "cards", "example");
 
   const inline = await runAgentsCli(
     [

@@ -5,12 +5,12 @@
     {
       "id": "darwinian-operator",
       "displayName": "Recommended Darwinian Operator",
-      "source": "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.0",
+      "source": "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1",
       "name": "@darwinian/operator",
-      "version": "2.0.0",
-      "commit": "68271137d21a59f13eb02bd0cd61ce471c9757a7",
-      "treeSha": "4c9217f758b8f78949929b935514d5173d99004c",
-      "integrity": "sha256-c698f560e696e4d629180a6ea1da0b9880774eea2bd3ef47d9034ea549dd782b",
+      "version": "2.0.1",
+      "commit": "33e3aa7a4cc37bbc462efad8aa50400d940ab0d5",
+      "treeSha": "c9623c0bc4998c625cc9fefa0ed4fc929e71f0d9",
+      "integrity": "sha256-e29b7f089df854e8f7f186778fa83de15717712fd710902d642114327b52f380",
       "skills": [
         "bootstrap-project",
         "manage-project-worker",

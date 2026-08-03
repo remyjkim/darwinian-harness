@@ -62,9 +62,8 @@ NODE
 });
 
 async function publishWorker(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>, name: string, skill: string) {
-  expect((await runAgentsCli(["card", "new", name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  const [, scope, cardName] = name.match(/^(@[^/]+)\/(.+)$/) ?? [];
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", scope!, cardName!);
+  const { createCatalogCardSource } = await import("./helpers");
+  const sourceDir = await createCatalogCardSource(fixture, name);
   const manifest = JSON.parse(await Bun.file(join(sourceDir, "card.json")).text());
   manifest.skills = { include: [skill] };
   await writeFile(join(sourceDir, "card.json"), `${JSON.stringify(manifest, null, 2)}\n`);

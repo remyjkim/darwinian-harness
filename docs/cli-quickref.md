@@ -231,23 +231,30 @@ General commands:
 - `drwn projects unregister <projectRoot> [--dry-run] [--json]`
 - `drwn projects prune [--dry-run] [--json]`
 
-Card commands:
+Authoring preferences (persisted in non-secret
+`~/.agents/drwn/config.json`, separate from capability intent in
+`machine.json`):
 
-- `drwn card new <name> --scope @scope`
-- `drwn card new <name> --from-project [projectPath]`
-- `drwn card new <name> --from-defaults`
-- `drwn card publish <name> [--json] [--force-bump-mismatch]`
+- `drwn config get catalogCheckouts|defaultAuthorScope`
+- `drwn config set catalogCheckouts <json-array>`
+- `drwn config set defaultAuthorScope <@scope>`
+- `drwn card new <name> [--scope @scope] [--into <collection>]`
+- `drwn card new <name> --from-project [projectPath] [--into <collection>]`
+- `drwn card new <name> --from-defaults [--into <collection>]`
+- `drwn card publish [name] [--from <source-path>] [--json] [--force-bump-mismatch]`
+- `drwn card release [name] [--from <source-path>] [--bump <patch|minor|major>] [--yes]`
 - `drwn card catalog publish <cardRef> --catalog <scope|git-url|path> --mode <local|direct>`
-- `drwn card source list`
-- `drwn card source show <name>`
-- `drwn card source doctor [name]`
-- `drwn card source add-skill <name> <skillName> [--from <SKILL.md|skillDir>]`
-- `drwn card source remove-skill <name> <skillName>`
-- `drwn card source add-hook <name> <policyName>`
-- `drwn card source remove-hook <name> <policyName>`
-- `drwn card source set <name> [--instructions-text <text>|--instructions-path <relative-path>|--clear-instructions] [options]`
-- `drwn card source add-mcp <name> <serverName>`
-- `drwn card source remove-mcp <name> <serverName>`
+- `drwn card source list` (deprecated migration guidance; exits non-zero)
+- `drwn card source show <path-or-name>`
+- `drwn card source doctor <path-or-name>`
+- `drwn card source sync <path-or-name> [--check] [--json]`
+- `drwn card source add-skill <path-or-name> <skillName> [--from <SKILL.md|skillDir>]`
+- `drwn card source remove-skill <path-or-name> <skillName>`
+- `drwn card source add-hook <path-or-name> <policyName>`
+- `drwn card source remove-hook <path-or-name> <policyName>`
+- `drwn card source set <path-or-name> [--instructions-text <text>|--instructions-path <relative-path>|--clear-instructions] [options]`
+- `drwn card source add-mcp <path-or-name> <serverName>`
+- `drwn card source remove-mcp <path-or-name> <serverName>`
 - `drwn card outdated [--check]`
 - `drwn card list`
 - `drwn card show <cardRef>`
@@ -259,13 +266,27 @@ Card commands:
 - `drwn card deprecate <cardRef>`
 - `drwn card validate <cardRef>`
 
-Card source commands operate on editable sources under `~/.agents/drwn/sources/<scope>/<name>/`. Published cards are immutable store releases under `~/.agents/drwn/cards/`, and consumed cards are the refs and locks recorded by a project.
+Card sources are ordinary repositories selected by path or by a unique manifest
+match under configured catalog checkouts. `card source list` is retained only
+as deprecated migration guidance. Published cards are immutable store releases
+under `~/.agents/drwn/cards/`, and consumed cards are the refs and locks recorded
+by a project.
+
+Publishing requires exactly one source input. `--from` and direct paths accept
+relative, absolute, `~`, `file:`, and `file://` forms. A bare Card name resolves
+only when exactly one configured checkout has a matching manifest at its
+immediate `cards/*/card.json`; zero matches report `--from` guidance and multiple
+matches are an ambiguity error. If both a name and `--from` are supplied, the
+manifest name must match. `source sync` only refreshes skills declared through
+`skills.upstream`; it does not copy a Card into machine state. A pre-I176
+`~/.agents/drwn/sources/` tree is read-only legacy operator data and is never
+created, moved, or deleted automatically.
 
 Worker Blueprint authoring and remote operations:
 
-- `drwn worker new <name>`
-- `drwn worker compose <name> --add <cardRef>`
-- `drwn worker publish <name>`
+- `drwn worker new <name> [--into <collection>]`
+- `drwn worker compose <path-or-name> --add <cardRef>`
+- `drwn worker publish [name] [--from <source-path>]`
 - `drwn worker deploy <rootRef> --name <slug>`
 - `drwn worker list`
 - `drwn worker status <slug>`
@@ -275,7 +296,7 @@ alternatives; `drwn use` selects at most one root for project projection.
 
 Card hooks:
 
-- Authors scaffold policies with `drwn card source add-hook <card> <policyName>`. This creates `hooks/<policyName>/policy.ts` and adds the policy to `card.json` under `hooks.include`.
+- Authors scaffold policies with `drwn card source add-hook <source-path-or-name> <policyName>`. This creates `hooks/<policyName>/policy.ts` and adds the policy to `card.json` under `hooks.include`.
 - Consumers must explicitly consent before hook code is materialized: `drwn card trust <card> --hooks`. Consent is stored in `card.lock` with a semver range; `card untrust <card> --hooks` clears it.
 - `drwn write` silently skips hook policies without valid consent and reports a warning. Use `drwn write --strict-hooks` in CI when missing hook consent should fail the write.
 - Claude Code, Codex, Cursor, and OpenCode hook generation follow the corresponding `targets.<name>.enabled` settings. Cursor hooks are written to `.cursor/hooks.json`; a pre-existing hooks.json that drwn does not own is left untouched with a warning (rerun with `--force` to overwrite). OpenCode hooks materialize as an in-process plugin at `.opencode/plugins/drwn-hooks.js` that blocks denied tools by throwing; `ask` decisions fail closed because OpenCode plugins have no interactive approval channel. Consent flows through `drwn card trust <card> --hooks` for every runtime.
@@ -303,13 +324,14 @@ Card instructions:
 Typical source authoring:
 
 ```bash
-drwn card new @your-handle/backend --no-git
-drwn card source add-skill @your-handle/backend reviewer
-drwn card source add-hook @your-handle/backend audit-tool-calls
-drwn card source add-mcp @your-handle/backend context7
-drwn card source set @your-handle/backend --description "Backend review harness" --version 0.1.0 --stability stable --last-validated-with 0.1.0 --test-status-badge https://example.com/status.svg
-drwn card source doctor @your-handle/backend
-drwn card publish @your-handle/backend
+drwn card new @your-handle/backend --into ~/dev/darwinian-cards/cards --no-git
+CARD_SOURCE=~/dev/darwinian-cards/cards/backend
+drwn card source add-skill "$CARD_SOURCE" reviewer
+drwn card source add-hook "$CARD_SOURCE" audit-tool-calls
+drwn card source add-mcp "$CARD_SOURCE" context7
+drwn card source set "$CARD_SOURCE" --description "Backend review harness" --version 0.1.0 --stability stable --last-validated-with 0.1.0 --test-status-badge https://example.com/status.svg
+drwn card source doctor "$CARD_SOURCE"
+drwn card publish --from "$CARD_SOURCE"
 ```
 
 Publishing a new version of an existing card prints a **consent-impact report**
@@ -317,7 +339,7 @@ showing which surfaces changed content between the previous and newly-published
 version. Pass `--json` for machine-readable output (`consentImpact` field):
 
 ```bash
-drwn card publish @your-handle/backend --json
+drwn card publish --from "$CARD_SOURCE" --json
 ```
 
 When hooks or instructions changed, consumers must re-trust. If the new version
@@ -718,8 +740,8 @@ For editable Card sources, copy the same loose skill into the Card source
 instead of importing it into standalone inventory:
 
 ```bash
-drwn card source add-skill @your-handle/backend import-mcp-from-claude --from ./SKILL.md
-drwn card source doctor @your-handle/backend
+drwn card source add-skill ./cards/backend import-mcp-from-claude --from ./SKILL.md
+drwn card source doctor ./cards/backend
 ```
 
 The distinction matters:
