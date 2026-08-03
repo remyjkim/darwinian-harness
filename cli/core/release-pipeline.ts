@@ -5,6 +5,9 @@ import { doctorCardSource } from "./card-source";
 import { syncCardSource } from "./card-source-sync";
 import { publishCard } from "./card-store";
 import { isStrictSemver } from "./semver-utils";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { resolveCardSourceDir } from "./store-paths";
 
 export interface ReleasePipelineOptions {
   bump?: "major" | "minor" | "patch";
@@ -17,9 +20,10 @@ export interface ReleasePipelineStep {
   detail?: string;
 }
 
-export async function runRelease(agentsDir: string, cardName: string, options: ReleasePipelineOptions = {}) {
+export async function runRelease(agentsDir: string, sourceDir: string, options: ReleasePipelineOptions = {}) {
+  sourceDir = existsSync(join(sourceDir, "card.json")) ? sourceDir : resolveCardSourceDir(agentsDir, sourceDir);
   const steps: ReleasePipelineStep[] = [];
-  const sync = await syncCardSource(agentsDir, cardName, { check: true });
+  const sync = await syncCardSource(agentsDir, sourceDir, { check: true });
   steps.push({
     step: "source-sync",
     ok: sync.stale.length === 0 && sync.moved.length === 0,
@@ -29,7 +33,7 @@ export async function runRelease(agentsDir: string, cardName: string, options: R
     return { ok: false, steps, proposedVersion: null };
   }
 
-  const doctor = await doctorCardSource(agentsDir, cardName);
+  const doctor = await doctorCardSource(sourceDir);
   steps.push({ step: "doctor", ok: doctor.ok, detail: doctor.issues.map((i) => i.message).join("; ") });
   if (!doctor.ok) {
     return { ok: false, steps, proposedVersion: null };
@@ -50,7 +54,7 @@ export async function runRelease(agentsDir: string, cardName: string, options: R
   source.manifest.version = proposedVersion;
   const { writeFile } = await import("node:fs/promises");
   await writeFile(source.manifestPath, `${JSON.stringify(source.manifest, null, 2)}\n`);
-  await publishCard(agentsDir, cardName);
+  await publishCard(agentsDir, sourceDir);
   steps.push({ step: "publish", ok: true });
   return { ok: true, steps, proposedVersion, dryRun: false };
 }

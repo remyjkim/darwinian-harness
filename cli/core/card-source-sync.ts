@@ -4,7 +4,7 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { computeContentManifest } from "./content-manifest";
 import { DrwnError } from "./errors";
 import { formatUpstreamRef, parseUpstreamRef } from "./git-ref";
@@ -125,12 +125,12 @@ export async function classifyAndApplySkillSync(input: SkillSyncInput): Promise<
 
 export async function syncCardSource(
   agentsDir: string,
-  cardName: string,
+  sourceInput: string,
   options: { check?: boolean } = {},
 ): Promise<SyncCardSourceResult> {
-  const manifest = await readCardSourceManifest(agentsDir, cardName);
+  const sourceDir = existsSync(join(sourceInput, "card.json")) ? resolve(sourceInput) : resolveCardSourceDir(agentsDir, sourceInput);
+  const manifest = await readCardSourceManifest(sourceDir);
   const upstream = manifest.skills?.upstream ?? {};
-  const sourceDir = resolveCardSourceDir(agentsDir, manifest.name);
   const syncState = await readUpstreamSyncState(sourceDir);
   const synced: string[] = [];
   const stale: string[] = [];
@@ -178,6 +178,6 @@ export async function syncCardSource(
   return { synced, stale, moved };
 }
 
-export async function checkCardSourceUpstream(agentsDir: string, cardName: string) {
-  return syncCardSource(agentsDir, cardName, { check: true });
+export async function checkCardSourceUpstream(agentsDir: string, sourceDir: string) {
+  return syncCardSource(agentsDir, sourceDir, { check: true });
 }

@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { runRelease } from "../../core/release-pipeline";
 import { renderJson } from "../../core/output";
 import { BaseCommand } from "../base";
+import { resolveCommandCardSource } from "./source-input";
 
 export class CardReleaseCommand extends BaseCommand {
   static override paths = [["card", "release"]];
@@ -23,14 +24,16 @@ export class CardReleaseCommand extends BaseCommand {
     ],
   });
 
-  name = Option.String({ required: true });
+  name = Option.String({ required: false });
+  from = Option.String("--from", { description: "Explicit Card source directory." });
   bump = Option.String("--bump", { description: "major, minor, or patch" });
   yes = Option.Boolean("--yes", false, { description: "Apply bump and publish." });
   json = Option.Boolean("--json", false);
 
   async execute() {
     const bump = this.bump as "major" | "minor" | "patch" | undefined;
-    const result = await runRelease(this.context.agentsDir, this.name, { bump, yes: this.yes });
+    const source = await resolveCommandCardSource(this.context, { input: this.name, from: this.from });
+    const result = await runRelease(this.context.agentsDir, source.sourceDir, { bump, yes: this.yes });
     if (this.json) {
       this.context.stdout.write(renderJson(result));
     } else {

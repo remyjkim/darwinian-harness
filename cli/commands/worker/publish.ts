@@ -4,6 +4,7 @@
 import { Option } from "clipanion";
 import { publishCard } from "../../core/card-store";
 import { BaseCommand } from "../base";
+import { resolveCommandCardSource } from "../card/source-input";
 
 export class WorkerPublishCommand extends BaseCommand {
   static override paths = [["worker", "publish"]];
@@ -20,7 +21,8 @@ export class WorkerPublishCommand extends BaseCommand {
     examples: [["Publish a blueprint", "drwn worker publish @you/frontend-eng"]],
   });
 
-  name = Option.String({ required: true });
+  name = Option.String({ required: false });
+  from = Option.String("--from", { description: "Explicit Worker Blueprint source directory." });
 
   forceBumpMismatch = Option.Boolean("--force-bump-mismatch", false, {
     description: "Publish despite a mismatch between structural diff classification and declared version bump.",
@@ -28,7 +30,9 @@ export class WorkerPublishCommand extends BaseCommand {
 
   async execute() {
     try {
-      const published = await publishCard(this.context.agentsDir, this.name, {
+      const source = await resolveCommandCardSource(this.context, { input: this.name, from: this.from });
+      if (source.manifest.kind !== "blueprint") throw new Error(`${source.manifest.name} is not a Worker Blueprint.`);
+      const published = await publishCard(this.context.agentsDir, source.sourceDir, {
         forceBumpMismatch: this.forceBumpMismatch,
       });
       if (this.forceBumpMismatch) {

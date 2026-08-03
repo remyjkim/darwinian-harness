@@ -49,6 +49,35 @@ test("card publish creates immutable version and card show displays it", async (
   expect(show.stdout).toContain("@me/backend");
 });
 
+test("card publish accepts --from and uses card.json as authoritative identity", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const sourceDir = join(fixture.root, "repositories", "unrelated-slug");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(join(sourceDir, "card.json"), `${JSON.stringify({ name: "@me/path-card", version: "1.0.0" })}\n`);
+
+  const result = await runAgentsCli(["card", "publish", "--from", sourceDir], envFor(fixture));
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("@me/path-card@1.0.0");
+  expect(existsSync(resolveCardBareRepoPath(fixture.agentsDir, "@me/path-card"))).toBe(true);
+  expect(existsSync(join(fixture.agentsDir, "drwn", "sources"))).toBe(false);
+});
+
+test("card publish rejects a positional name that disagrees with --from manifest identity", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const sourceDir = join(fixture.root, "repositories", "path-card");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(join(sourceDir, "card.json"), `${JSON.stringify({ name: "@me/path-card", version: "1.0.0" })}\n`);
+
+  const result = await runAgentsCli(["card", "publish", "@me/other", "--from", sourceDir], envFor(fixture));
+
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr).toContain("does not match");
+  expect(existsSync(resolveCardBareRepoPath(fixture.agentsDir, "@me/path-card"))).toBe(false);
+});
+
 test("card publish refuses to overwrite an existing version", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);

@@ -584,8 +584,9 @@ export async function listCardSources(agentsDir: string): Promise<CardSourceSumm
 }
 
 export async function doctorCardSource(agentsDir: string, name?: string): Promise<CardSourceDoctorReport> {
-  const names = name ? [name] : await discoverSourceNames(agentsDir);
-  const sources = await Promise.all(names.map((sourceName) => readCardSourceState(agentsDir, sourceName)));
+  const sources = existsSync(join(agentsDir, "card.json"))
+    ? [await readCardSourceState(agentsDir)]
+    : await Promise.all((name ? [name] : await discoverSourceNames(agentsDir)).map((sourceName) => readCardSourceState(agentsDir, sourceName)));
   const issues = sources.flatMap((source) => source.issues);
   return { ok: issues.length === 0, sources, issues };
 }
