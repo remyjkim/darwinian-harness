@@ -174,7 +174,8 @@ test("captureProjectAsCard refuses to overwrite an existing source", async () =>
 test("captureProjectAsCard copies selected hooks after applying project exclusions", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const { createCatalogCardSource } = await import("./helpers");
+  await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "audit"], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "blocked"], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture))).exitCode).toBe(0);

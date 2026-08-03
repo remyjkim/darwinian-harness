@@ -427,10 +427,11 @@ describe("drwn doctor", () => {
   test("reports card hooks without valid consent", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    const { createCatalogCardSource } = await import("./helpers");
+    const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
     expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
     expect((await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture))).exitCode).toBe(0);
-    const manifest = JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "sources", "@me", "policy", "card.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
     const projectDir = join(fixture.root, "project");
     await writeSupportedProjectConfig(projectDir);
     expect((await runAgentsCli(["add", `@me/policy@${manifest.version}`], envFor(fixture), projectDir)).exitCode).toBe(0);
@@ -445,9 +446,9 @@ describe("drwn doctor", () => {
   test("does not report MCP drift for a synced project with Claude hooks", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    const { createCatalogCardSource } = await import("./helpers");
+    const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
     expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-    const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
     await writeFile(join(sourceDir, "hooks", "guard", "policy.ts"), `
       import { defineToolPolicy } from "darwinian/hook-policy";
       export default defineToolPolicy({
@@ -473,9 +474,9 @@ describe("drwn doctor", () => {
   test("reports stale generated hook composers", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    const { createCatalogCardSource } = await import("./helpers");
+    const sourceDir = await createCatalogCardSource(fixture, "@me/policy");
     expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "guard"], envFor(fixture))).exitCode).toBe(0);
-    const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
     await writeFile(join(sourceDir, "hooks", "guard", "policy.ts"), `
       import { defineToolPolicy } from "darwinian/hook-policy";
       export default defineToolPolicy({ policyKind: "observer" });

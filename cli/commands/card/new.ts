@@ -20,9 +20,10 @@ export class CardNewCommand extends BaseCommand {
 
   static override usage = BaseCommand.Usage({
     category: "Cards",
-    description: "Create an editable Card source under ~/.agents/drwn/sources.",
+    description: "Create an editable Card source repository.",
     details: `
-      Creates a source directory with card.json, skills/, and mcp-servers/.
+      Creates a source directory with card.json, skills/, and mcp-servers/
+      beneath the current directory or an explicit --into collection.
       Unscoped names require --scope or a saved authoring.scope in machine.json.
       By default the source directory is initialized as a git repository.
       Use --from-project to snapshot the current project's selected Worker

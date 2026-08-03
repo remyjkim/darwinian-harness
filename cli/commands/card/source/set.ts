@@ -14,8 +14,8 @@ export class CardSourceSetCommand extends BaseCommand {
     category: "Cards",
     description: "Set common fields in an editable card source manifest.",
     details: `
-      Semantically updates selected card.json fields for a local source under
-      ~/.agents/drwn/sources. Supported fields include version, description,
+      Semantically updates card.json in a source repository selected by path
+      or unique catalog identity. Supported fields include version, description,
       license, harness.minVersion, and Wave 2 quality fields surfaced by
       drwn card show.
     `,

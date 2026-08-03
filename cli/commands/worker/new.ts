@@ -15,9 +15,9 @@ export class WorkerNewCommand extends BaseCommand {
     category: "Worker",
     description: 'Create an editable Worker Blueprint source (a kind:"blueprint" card).',
     details: `
-      Scaffolds a blueprint source under ~/.agents/drwn/sources with an empty
-      composedFrom. Add member cards with 'drwn worker compose', then ship it
-      with 'drwn worker publish'.
+      Scaffolds a Blueprint source repository beneath the current directory or
+      an explicit --into collection. Add member Cards with 'drwn worker compose',
+      then ship it with 'drwn worker publish'.
     `,
     examples: [["Create a blueprint", "drwn worker new @your-handle/frontend-eng"]],
   });

@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   cleanupTempRoots,
+  createCatalogCardSource,
   createExecutable,
   createInstalledSkillBundle,
   createSkillBundleFixture,
@@ -38,7 +39,7 @@ describe("drwn add skill", () => {
     const cardSkillPath = join(fixture.root, "card-alpha", "SKILL.md");
     await mkdir(join(fixture.root, "card-alpha"), { recursive: true });
     await writeFile(cardSkillPath, cardSkill);
-    expect((await runAgentsCli(["card", "new", "@me/operator", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    await createCatalogCardSource(fixture, "@me/operator");
     expect((await runAgentsCli([
       "card", "source", "add-skill", "@me/operator", "alpha", "--from", cardSkillPath,
     ], envFor(fixture))).exitCode).toBe(0);

@@ -18,6 +18,10 @@ export class ConfigGetCommand extends BaseCommand {
   static override usage = BaseCommand.Usage({
     category: "General",
     description: "Read a machine-local Card authoring preference.",
+    details: `
+      Reads strict user preferences without consulting project or machine
+      capability state. Missing preferences are reported as null.
+    `,
     examples: [["Show catalog checkouts", "drwn config get catalogCheckouts"]],
   });
 
@@ -43,6 +47,10 @@ export class ConfigSetCommand extends BaseCommand {
   static override usage = BaseCommand.Usage({
     category: "General",
     description: "Set a machine-local Card authoring preference.",
+    details: `
+      Atomically updates catalog checkout roots or the default Card author
+      scope in the strict user-preferences file.
+    `,
     examples: [
       ["Set catalog checkouts", "drwn config set catalogCheckouts '[\"~/dev/darwinian-cards\"]'"],
       ["Set the default author scope", "drwn config set defaultAuthorScope @your-handle"],

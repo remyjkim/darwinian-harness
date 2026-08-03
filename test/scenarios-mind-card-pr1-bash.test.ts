@@ -24,16 +24,16 @@ test("bash CLI authors, publishes, and visibility-gates a mind card", async () =
   const result = await runBash(
     `
 set -euo pipefail
-"$BUN_BIN" run "$DRWN_ENTRYPOINT" card new @team/mind --no-git
-"$BUN_BIN" run "$DRWN_ENTRYPOINT" card source add-persona @team/mind voice --visibility internal
-"$BUN_BIN" run "$DRWN_ENTRYPOINT" card source add-belief @team/mind engineering --visibility public
-"$BUN_BIN" run "$DRWN_ENTRYPOINT" card source doctor @team/mind --json > "$DOCTOR_PATH"
+"$BUN_BIN" run "$DRWN_ENTRYPOINT" card new @team/mind --into "$CARD_COLLECTION" --no-git
+"$BUN_BIN" run "$DRWN_ENTRYPOINT" card source add-persona "$CARD_SOURCE" voice --visibility internal
+"$BUN_BIN" run "$DRWN_ENTRYPOINT" card source add-belief "$CARD_SOURCE" engineering --visibility public
+"$BUN_BIN" run "$DRWN_ENTRYPOINT" card source doctor "$CARD_SOURCE" --json > "$DOCTOR_PATH"
 node <<'NODE'
 const fs = require('fs');
 const payload = JSON.parse(fs.readFileSync(process.env.DOCTOR_PATH, 'utf8'));
 if (!payload.ok) throw new Error('doctor failed: ' + JSON.stringify(payload.issues));
 NODE
-"$BUN_BIN" run "$DRWN_ENTRYPOINT" card publish @team/mind
+"$BUN_BIN" run "$DRWN_ENTRYPOINT" card publish --from "$CARD_SOURCE"
 "$BUN_BIN" run "$DRWN_ENTRYPOINT" card remote add @team/mind "$REMOTE_URL"
 if "$BUN_BIN" run "$DRWN_ENTRYPOINT" card push @team/mind --remote-visibility public > "$PUSH_STDOUT" 2> "$PUSH_STDERR"; then
   echo "expected public visibility push to fail" >&2
@@ -43,6 +43,8 @@ grep -q "less restrictive" "$PUSH_STDERR"
 `,
     {
       ...envFor(fixture),
+      CARD_COLLECTION: join(fixture.root, "cards"),
+      CARD_SOURCE: join(fixture.root, "cards", "mind"),
       REMOTE_URL: remote.url,
       DOCTOR_PATH: join(fixture.root, "doctor.json"),
       PUSH_STDOUT: join(fixture.root, "push.out"),

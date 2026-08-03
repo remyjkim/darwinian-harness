@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as git from "../cli/core/git";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -21,7 +21,7 @@ test("a published card becomes discoverable and cloneable from a shared catalog"
   const cardRemote = await createEmptyBareRemote("card-remote-");
   const catalog = await createCatalogRemote({ scope: "@team" });
 
-  expect((await runAgentsCli(["card", "new", "@team/backend", "--no-git"], envFor(producer))).exitCode).toBe(0);
+  await createCatalogCardSource(producer, "@team/backend");
   expect((await runAgentsCli(["card", "source", "add-skill", "@team/backend", "alpha"], envFor(producer))).exitCode).toBe(0);
   expect(
     (

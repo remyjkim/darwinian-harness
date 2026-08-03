@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -21,10 +21,9 @@ describe("command output contracts", () => {
       AGENTS_HOME_DIR: fixture.homeDir,
       AGENTS_DIR: fixture.agentsDir,
     };
-    expect((await runAgentsCli(["card", "new", "@me/output", "--no-git"], env)).exitCode).toBe(0);
+    await createCatalogCardSource(fixture, "@me/output");
 
     const humanCommands = [
-      ["card", "source", "list"],
       ["card", "source", "show", "@me/output"],
       ["card", "source", "doctor", "@me/output"],
       ["write", "--dry-run"],
@@ -50,7 +49,6 @@ describe("command output contracts", () => {
     }
 
     const jsonCommands = [
-      ["card", "source", "list", "--json"],
       ["card", "source", "show", "@me/output", "--json"],
       ["card", "source", "doctor", "@me/output", "--json"],
       ["write", "--dry-run", "--json"],
@@ -72,6 +70,13 @@ describe("command output contracts", () => {
       expect(result.exitCode).toBe(0);
       expect(() => JSON.parse(result.stdout)).not.toThrow();
     }
+
+    const deprecatedHuman = await runAgentsCli(["card", "source", "list"], env);
+    expect(deprecatedHuman.exitCode).toBe(1);
+    expect(deprecatedHuman.stderr.trim().length).toBeGreaterThan(0);
+    const deprecatedJson = await runAgentsCli(["card", "source", "list", "--json"], env);
+    expect(deprecatedJson.exitCode).toBe(1);
+    expect(() => JSON.parse(deprecatedJson.stdout)).not.toThrow();
   }, 120000);
 
   test("project-aware commands keep human and json output contracts", async () => {

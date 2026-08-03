@@ -10,11 +10,11 @@ export class CardSourceListCommand extends BaseCommand {
 
   static override usage = BaseCommand.Usage({
     category: "Cards",
-    description: "List editable card sources under ~/.agents/drwn/sources.",
+    description: "Explain how to locate editable Card source repositories.",
     details: `
-      Lists local source directories used by card authors before publishing.
-      This command is read-only; published card versions remain under
-      ~/.agents/drwn/cards and are listed with drwn card list.
+      Editable Card sources are ordinary repositories and are no longer stored
+      in a machine-wide source directory. Inspect configured catalog checkouts
+      or pass an explicit source path to source commands.
     `,
     examples: [
       ["List editable sources", "drwn card source list"],
