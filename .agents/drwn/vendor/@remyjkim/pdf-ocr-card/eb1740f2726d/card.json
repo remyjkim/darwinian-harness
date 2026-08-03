@@ -1,0 +1,10 @@
+{
+  "name": "@remyjkim/pdf-ocr-card",
+  "version": "1.0.0",
+  "description": "PDF -> Markdown OCR with LaTeX equations and figures via marker-pdf (force_ocr).",
+  "skills": {
+    "include": [
+      "marker-pdf-conversion"
+    ]
+  }
+}

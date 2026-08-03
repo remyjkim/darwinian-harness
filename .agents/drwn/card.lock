@@ -1,0 +1,295 @@
+{
+  "schema": "drwn.project-lock",
+  "schemaVersion": 1,
+  "store": {
+    "minDrwnVersion": "0.8.0"
+  },
+  "workerRoots": [
+    {
+      "name": "@curation-labs/ai-narratives-worker",
+      "requested": "@curation-labs/ai-narratives-worker@1.1.0",
+      "kind": "blueprint",
+      "members": [
+        "@remyjkim/bgng",
+        "@remyjkim/youtube-transcript",
+        "@curation-labs/workflow-skills",
+        "@remyjkim/notion-token",
+        "@remyjkim/knowledge-docs",
+        "@remyjkim/pdf-ocr-card"
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "name": "@curation-labs/ai-narratives-worker",
+      "requested": "@curation-labs/ai-narratives-worker@1.1.0",
+      "version": "1.1.0",
+      "path": "/Users/pureicis/.agents/drwn/extracted/bf072e02ed765b113a3f62402e40dbc0e407ed59",
+      "integrity": "sha256-efff033dd654c8d7d419c6f6a2fe2878495206639b4d7be3b8239f1e6858b2c8",
+      "treeSha": "bf072e02ed765b113a3f62402e40dbc0e407ed59",
+      "manifest": {
+        "name": "@curation-labs/ai-narratives-worker",
+        "version": "1.1.0",
+        "kind": "blueprint",
+        "composedFrom": [
+          "@remyjkim/bgng@^1.0.0",
+          "@remyjkim/youtube-transcript@^1.0.0",
+          "@curation-labs/workflow-skills@^1.0.0",
+          "file:/Users/pureicis/.agents/drwn/sources/@remyjkim/notion-token",
+          "@remyjkim/knowledge-docs@^1.0.0",
+          "@remyjkim/pdf-ocr-card@^1.0.0"
+        ],
+        "description": "Aggregate Worker for the ai-narratives project: bgng/BeginningDB, YouTube transcript, Notion token, Curation Labs workflow skills (v0.4), knowledge-docs, and PDF OCR.",
+        "harness": {
+          "minVersion": "0.9.0"
+        },
+        "stability": "experimental"
+      },
+      "skills": [],
+      "hooks": [],
+      "registry": null,
+      "origin": "store",
+      "git": {
+        "commit": "d90f25f6e6fcbf4ca2040c9bd1f2fb458e576231"
+      }
+    },
+    {
+      "name": "@remyjkim/bgng",
+      "requested": "@remyjkim/bgng@^1.0.0",
+      "version": "1.0.0",
+      "path": "/Users/pureicis/.agents/drwn/extracted/932b4b2030f6821f381a540e92550d36d003461b",
+      "integrity": "sha256-22b2b6ab2e311436f4b15e111b58797fe030c3cc21f1c4e27dffd1f6970db3f8",
+      "treeSha": "932b4b2030f6821f381a540e92550d36d003461b",
+      "manifest": {
+        "name": "@remyjkim/bgng",
+        "version": "1.0.0",
+        "description": "Operate the bgng and bgdb CLIs and BeginningDB services — personal knowledge base, IDE control plane, direct BeginningDB ops + product ReBAC, and S3 adapter admin — across Claude Code, Codex, and Cursor.",
+        "skills": {
+          "include": [
+            "bgng-knowledge-base",
+            "bgng-ide",
+            "bgdb-direct-db",
+            "bgng-s3-admin"
+          ]
+        }
+      },
+      "skills": [
+        "bgng-knowledge-base",
+        "bgng-ide",
+        "bgdb-direct-db",
+        "bgng-s3-admin"
+      ],
+      "hooks": [],
+      "registry": null,
+      "origin": "store",
+      "git": {
+        "commit": "02bb3978e0bae8cb4aab5ebc3f63f6b124acdf4e"
+      }
+    },
+    {
+      "name": "@remyjkim/youtube-transcript",
+      "requested": "@remyjkim/youtube-transcript@^1.0.0",
+      "version": "1.0.1",
+      "path": "/Users/pureicis/.agents/drwn/extracted/4ecbf0189844328446f54464f15ec020723884a5",
+      "integrity": "sha256-b6e79972f924766389d4132b7b2584c3635a059aa91a3f4f92d1d97c77877c30",
+      "treeSha": "4ecbf0189844328446f54464f15ec020723884a5",
+      "manifest": {
+        "name": "@remyjkim/youtube-transcript",
+        "version": "1.0.1",
+        "description": "Capture a YouTube (or bgng-supported) URL as a transcript, save it locally, and upload it to BeginningDB with chronological and by-channel mirrored placements.",
+        "skills": {
+          "include": [
+            "youtube-transcript"
+          ]
+        }
+      },
+      "skills": [
+        "youtube-transcript"
+      ],
+      "hooks": [],
+      "registry": null,
+      "origin": "store",
+      "git": {
+        "commit": "40494090ed8ed8f39c2497c29d6a9fd9c93eda42"
+      }
+    },
+    {
+      "name": "@curation-labs/workflow-skills",
+      "requested": "@curation-labs/workflow-skills@^1.0.0",
+      "version": "1.1.0",
+      "path": "/Users/pureicis/.agents/drwn/extracted/b29f3b7245fe8efccf4c299834a09938a8586817",
+      "integrity": "sha256-7639dd5911ca888310b421ce6f9f3550d78eeec7e0c4e650202414d41e15b5eb",
+      "treeSha": "b29f3b7245fe8efccf4c299834a09938a8586817",
+      "manifest": {
+        "name": "@curation-labs/workflow-skills",
+        "version": "1.1.0",
+        "description": "Curation Labs org card: 13 customized workflow skills aligned with the independent Owner Status and Reviewer Status model in CL Issue-driven Workflow v0.4.",
+        "instructions": {
+          "path": "instructions.md"
+        },
+        "skills": {
+          "include": [
+            "brainstorming",
+            "writing-plans",
+            "executing-plans",
+            "subagent-driven-development",
+            "finishing-a-development-branch",
+            "using-git-worktrees",
+            "dispatching-parallel-agents",
+            "test-driven-development",
+            "systematic-debugging",
+            "verification-before-completion",
+            "requesting-code-review",
+            "receiving-code-review",
+            "incremental-commits"
+          ],
+          "upstream": {
+            "brainstorming": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/brainstorming@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "writing-plans": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/writing-plans@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "executing-plans": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/executing-plans@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "subagent-driven-development": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/subagent-driven-development@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "finishing-a-development-branch": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/finishing-a-development-branch@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "using-git-worktrees": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/using-git-worktrees@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "dispatching-parallel-agents": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/dispatching-parallel-agents@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "test-driven-development": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/test-driven-development@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "systematic-debugging": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/systematic-debugging@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "verification-before-completion": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/verification-before-completion@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "requesting-code-review": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/requesting-code-review@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "receiving-code-review": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/receiving-code-review@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+            "incremental-commits": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/incremental-commits@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444"
+          }
+        },
+        "hooks": {
+          "include": [
+            "org-conventions"
+          ]
+        },
+        "harness": {
+          "minVersion": "0.9.0"
+        }
+      },
+      "skills": [
+        "brainstorming",
+        "writing-plans",
+        "executing-plans",
+        "subagent-driven-development",
+        "finishing-a-development-branch",
+        "using-git-worktrees",
+        "dispatching-parallel-agents",
+        "test-driven-development",
+        "systematic-debugging",
+        "verification-before-completion",
+        "requesting-code-review",
+        "receiving-code-review",
+        "incremental-commits"
+      ],
+      "hooks": [
+        "org-conventions"
+      ],
+      "hookConsent": {
+        "consentedAt": "2026-07-31T18:07:44.408Z",
+        "consentedRange": "^1.1.0"
+      },
+      "instructionConsent": {
+        "consentedAt": "2026-07-31T18:07:44.501Z",
+        "consentedRange": "^1.1.0",
+        "contentDigest": "sha256-985544eec9bc61f778bb165622c2270a1880554a29f1543ffd172c5766d3f2cb"
+      },
+      "registry": null,
+      "origin": "store",
+      "git": {
+        "commit": "0ad131827433c0c308cbfac2484197cdb534184c"
+      }
+    },
+    {
+      "name": "@remyjkim/notion-token",
+      "requested": "file:/Users/pureicis/.agents/drwn/sources/@remyjkim/notion-token",
+      "version": "0.1.0",
+      "path": "/Users/pureicis/.agents/drwn/sources/@remyjkim/notion-token",
+      "integrity": "sha256-1c75674d7bf897eccd3dd43ace047c12e2a3a0bcc9a260f775df2c057b50be17",
+      "manifest": {
+        "name": "@remyjkim/notion-token",
+        "version": "0.1.0",
+        "description": "Headless/cloud Notion access via the open-source notion-mcp-server authenticated with a static integration token (NOTION_TOKEN). OAuth-free alternative to @remyjkim/notion-agent. Skills not yet bundled — hosted-server skills require tool-surface adaptation.",
+        "servers": {
+          "notion": {
+            "transport": "stdio",
+            "command": "npx",
+            "args": [
+              "-y",
+              "@notionhq/notion-mcp-server"
+            ],
+            "env": {
+              "NOTION_TOKEN": "${NOTION_TOKEN}"
+            },
+            "description": "Notion MCP via the open-source notion-mcp-server, authenticated with a static Notion integration token. For headless/cloud deploys where the hosted OAuth server is not viable.",
+            "optional": false,
+            "notes": "Requires a Notion internal integration token (ntn_...) supplied via the NOTION_TOKEN env var — inject as a container secret, never commit. Share the target pages/databases with the integration in Notion. Tool names follow Notion OpenAPI operation ids (API-post-search, API-retrieve-a-page, API-patch-page, API-create-a-comment, API-post-page), which differ from the hosted server's curated notion-* tools — skills written for the hosted server must be adapted."
+          }
+        }
+      },
+      "skills": [],
+      "hooks": [],
+      "registry": null,
+      "origin": "file"
+    },
+    {
+      "name": "@remyjkim/knowledge-docs",
+      "requested": "@remyjkim/knowledge-docs@^1.0.0",
+      "version": "1.0.0",
+      "path": "/Users/pureicis/.agents/drwn/extracted/61315160ba47c1a5ebfdefc74a4cba267952476c",
+      "integrity": "sha256-b4035ef528c60ca21ecdf43caf3b40c5abdbb1f7676495030529bc42d29646a0",
+      "treeSha": "61315160ba47c1a5ebfdefc74a4cba267952476c",
+      "manifest": {
+        "name": "@remyjkim/knowledge-docs",
+        "version": "1.0.0",
+        "description": "Keep knowledge documentation in sync with the codebase: draft new docs from the code, audit existing docs for drift, and restructure them into a categorized hierarchy.",
+        "skills": {
+          "include": [
+            "auditing-knowledge-docs",
+            "restructuring-knowledge-docs",
+            "drafting-knowledge-docs"
+          ]
+        }
+      },
+      "skills": [
+        "auditing-knowledge-docs",
+        "restructuring-knowledge-docs",
+        "drafting-knowledge-docs"
+      ],
+      "hooks": [],
+      "registry": null,
+      "origin": "store",
+      "git": {
+        "commit": "6f3a7cf96c1887d920c00aa61f997d8aa1b46cf0"
+      }
+    },
+    {
+      "name": "@remyjkim/pdf-ocr-card",
+      "requested": "@remyjkim/pdf-ocr-card@^1.0.0",
+      "version": "1.0.0",
+      "path": "/Users/pureicis/.agents/drwn/extracted/eb1740f2726d5a55c807e5438d6838b2aec20217",
+      "integrity": "sha256-f6219468f039f0782120de4b1d9a30e1403f2bf5c9533dc705e99d176a49e090",
+      "treeSha": "eb1740f2726d5a55c807e5438d6838b2aec20217",
+      "manifest": {
+        "name": "@remyjkim/pdf-ocr-card",
+        "version": "1.0.0",
+        "description": "PDF -> Markdown OCR with LaTeX equations and figures via marker-pdf (force_ocr).",
+        "skills": {
+          "include": [
+            "marker-pdf-conversion"
+          ]
+        }
+      },
+      "skills": [
+        "marker-pdf-conversion"
+      ],
+      "hooks": [],
+      "registry": null,
+      "origin": "store",
+      "git": {
+        "commit": "34d5597e794a6960161ce4b72bb3f5591e9b675a"
+      }
+    }
+  ]
+}

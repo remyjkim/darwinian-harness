@@ -1,0 +1,19 @@
+{
+  "card": "@remyjkim/youtube-transcript",
+  "treeSha": "4ecbf0189844328446f54464f15ec020723884a5",
+  "integrity": "sha256-b6e79972f924766389d4132b7b2584c3635a059aa91a3f4f92d1d97c77877c30",
+  "manifest": {
+    "files": [
+      {
+        "path": "card.json",
+        "exec": false,
+        "hash": "151092a376f14e5041a313bd684ee1f5970ce799a46533175e9b49cd441c43ef"
+      },
+      {
+        "path": "skills/youtube-transcript/SKILL.md",
+        "exec": false,
+        "hash": "e7855c3ac8395a1a8b127555ee7e215bb94d1852260807e1effdd5bd712b7e22"
+      }
+    ]
+  }
+}

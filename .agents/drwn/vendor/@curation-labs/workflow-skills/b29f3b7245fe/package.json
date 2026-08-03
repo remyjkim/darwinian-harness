@@ -1,0 +1,14 @@
+{
+  "name": "@curation-labs/workflow-skills",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Curation Labs org card: customized workflow skills aligned with CL Issue-driven Workflow v0.4",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:functional": "node --test test/functional/*.test.mjs",
+    "test:all": "node --test test/*.test.mjs test/functional/*.test.mjs",
+    "test:contract": "node --test test/card-contract.test.mjs test/skill-content.test.mjs test/workflow-v0-4-contract.test.mjs",
+    "test:hook": "node --test test/hook-policy.test.mjs"
+  }
+}

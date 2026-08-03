@@ -1,0 +1,48 @@
+{
+  "name": "@curation-labs/workflow-skills",
+  "version": "1.1.0",
+  "description": "Curation Labs org card: 13 customized workflow skills aligned with the independent Owner Status and Reviewer Status model in CL Issue-driven Workflow v0.4.",
+  "instructions": {
+    "path": "instructions.md"
+  },
+  "skills": {
+    "include": [
+      "brainstorming",
+      "writing-plans",
+      "executing-plans",
+      "subagent-driven-development",
+      "finishing-a-development-branch",
+      "using-git-worktrees",
+      "dispatching-parallel-agents",
+      "test-driven-development",
+      "systematic-debugging",
+      "verification-before-completion",
+      "requesting-code-review",
+      "receiving-code-review",
+      "incremental-commits"
+    ],
+    "upstream": {
+      "brainstorming": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/brainstorming@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "writing-plans": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/writing-plans@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "executing-plans": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/executing-plans@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "subagent-driven-development": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/subagent-driven-development@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "finishing-a-development-branch": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/finishing-a-development-branch@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "using-git-worktrees": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/using-git-worktrees@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "dispatching-parallel-agents": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/dispatching-parallel-agents@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "test-driven-development": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/test-driven-development@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "systematic-debugging": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/systematic-debugging@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "verification-before-completion": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/verification-before-completion@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "requesting-code-review": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/requesting-code-review@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "receiving-code-review": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/receiving-code-review@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444",
+      "incremental-commits": "git+https://github.com/remyjkim/darwinian-worker.git#skills/shared/incremental-commits@f3f3bc79a7b2c68f75f4a9c3c2adbabdcd501444"
+    }
+  },
+  "hooks": {
+    "include": [
+      "org-conventions"
+    ]
+  },
+  "harness": {
+    "minVersion": "0.9.0"
+  }
+}

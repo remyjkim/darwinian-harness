@@ -1,0 +1,34 @@
+{
+  "card": "@remyjkim/knowledge-docs",
+  "treeSha": "61315160ba47c1a5ebfdefc74a4cba267952476c",
+  "integrity": "sha256-b4035ef528c60ca21ecdf43caf3b40c5abdbb1f7676495030529bc42d29646a0",
+  "manifest": {
+    "files": [
+      {
+        "path": "card.json",
+        "exec": false,
+        "hash": "3cf8c9c787fadad1300fe79b4dcc7e37ca31913f5eb5501a6b2695ae722707f6"
+      },
+      {
+        "path": "README.md",
+        "exec": false,
+        "hash": "d44663970c47f6a1d2dbfc70383d7c991896e9c0b42733538e45bbbbb7527e31"
+      },
+      {
+        "path": "skills/auditing-knowledge-docs/SKILL.md",
+        "exec": false,
+        "hash": "849bfff3af5325264c1e46952eee3c48d5150310c135505a394812c4a39fb555"
+      },
+      {
+        "path": "skills/drafting-knowledge-docs/SKILL.md",
+        "exec": false,
+        "hash": "c7df2c0d28f62903f77ad7c3310e7e1a81c469f271b051d8be10608060065d2b"
+      },
+      {
+        "path": "skills/restructuring-knowledge-docs/SKILL.md",
+        "exec": false,
+        "hash": "09db7d5a40f448a3afdd9e34d85242796177756656d278ea9ba9d405b55f9d07"
+      }
+    ]
+  }
+}
