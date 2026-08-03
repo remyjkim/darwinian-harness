@@ -1,255 +1,593 @@
-# ABOUTME: Handoff-ready implementation plan for machine-scope Worker Blueprint — replacing the profile + explicit-skills model with a single governed blueprint selected at machine scope, enabling card-closure governance (versioned, integrity-verified, hook+instruction capable) for ambient defaults.
-# ABOUTME: Assumes [I176] (card source path reform) has landed. Pre-launch hard cut. All call sites, schema changes, sync gates, consent paths, and command changes mapped with exact file:line citations from the code-level investigation.
+# ABOUTME: Execution plan for the I177 pre-launch hard cut to machine-scope Worker Blueprint V2.
+# ABOUTME: Orders documentation before implementation and every behavior change as a RED-GREEN-REFACTOR slice.
 
 # [I177] Machine-Scope Worker Blueprint — Task Plan (GATE 2)
 
-**Status**: Ready for execution **after [I176] lands**.
-**Created**: 2026-08-02 · **Issue**: [I177] (tracker row created 2026-08-03)
-**Owner**: Remy K · **Reviewer**: Minseung Lee
+> **For the implementation owner:** Execute this plan incrementally on `remy/I177-machine-scope-blueprint`. For every production behavior, demonstrate RED before GREEN, keep commits atomic, and record exact commands and results in the completion document.
+
+**Status**: Revised hard-cut plan; architecture and documentation gate in progress (2026-08-03)
+
+**Issue**: [I177] · **Owner**: Remy K · **Reviewer**: Minseung Lee
+
 **Architecture**: [`../analyses/cl0177_machine_scope_blueprint_target_architecture.md`](../analyses/cl0177_machine_scope_blueprint_target_architecture.md)
-**Branch**: `remy/I177-machine-scope-blueprint`
-**Prerequisite**: **[I176] card source path reform has landed.** Docs/G1/G2 for this issue may run ahead of that (v0.4 parallel preparation); **Building may not**.
-**Scope**: Breaking change to `machine.json` schema + effective-state + sync engine + consent model + use/apply commands. Pre-launch; no external consumers to break.
-**Builds on**: [I24] instructions projection (`65d94c7`) — `sync-machine-instructions.ts` is designed as a sibling of that issue's `sync-project-instructions.ts`.
 
----
+**Prerequisite**: [I176] merged at `1fc03e6`; post-merge CI `30848589215` passed all six jobs.
 
-## Objective
+**Compatibility**: Hard cut. Accept only `drwn.machine` V2; reject V1/prototypes without migration or dual read.
 
-Replace the machine-default dual model (hardcoded profile + ungoverned explicit skills) with a single Worker Blueprint selected at machine scope. `drwn write --root` projects the blueprint's full closure (skills + hooks + instructions + MCP) into user-home tool configs, with the same governance as project scope: versioned, integrity-verified, consent-gated.
+**Toolchain**: Bun `1.2.21`, TypeScript, Clipanion, Zod, filesystem-backed integration tests, GitHub Actions.
 
-## Design decisions (resolved in the architecture doc)
+**Card collection**: `/Users/pureicis/dev/darwinian-cards/cards/` (one source repository per Card).
 
-1. **Replace** — the blueprint is the sole source of machine-scope capabilities. Profile + explicit skills/mcpServers are removed.
-2. **`machine.json`** — `activeWorker` + `workerLock` live in `capabilities`, replacing `profile`/`skills`/`mcpServers`. `schemaVersion` bumps to 2.
-3. **Bundle + per-harness adapters** — instructions project to `~/.agents/drwn/generated/instructions.md` (canonical) + `~/.claude/CLAUDE.md` + `~/.codex/AGENTS.md`. NOT `~/AGENTS.md`.
+**Lab repository**: `/Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/`.
 
----
+## Goal
 
-## Implementation surface (from code-level investigation)
+Replace machine profile and flat skill/MCP activation with one selected, immutable Worker Blueprint closure. Machine selection, consent, effective-state derivation, projection, diagnostics, and release checks must use that closure exclusively. Existing V1 state fails closed with controlled-reset guidance.
 
-- **3 core modules** with structural changes (`effective-state.ts`, `machine-config.ts`, `sync.ts`)
-- **2 new modules** (`worker-machine.ts`, `sync-machine-instructions.ts`)
-- **4 command files** modified (`use.ts`, `apply.ts`/`project/apply.ts`, `card/trust.ts`, `write.ts`)
-- **2 type/schema files** (`types.ts`, `machine-config.ts`)
-- **2 consent-ack files** (`hook-consent-ack.ts`, `instruction-consent-ack.ts`)
-- **1 project-command helper** (`project-command.ts`)
-- **~30 test files** (the machine-config + effective-state + sync tests)
+## Non-negotiable decisions
 
----
+1. Patch and verify all affected documentation before production code.
+2. Do not migrate V1, infer Card provenance, dual read, or preserve legacy enable/disable behavior.
+3. `activeWorker` stores a canonical root name. The embedded lock root stores the requested versioned source.
+4. Runtime Card resolution uses immutable Store content, pinned Git refs, or explicit integrity-locked file refs, never mutable `catalogCheckouts`.
+5. `config.json` owns authoring preferences independently; remove the `machine.policy.authoring` bridge.
+6. Machine effective capabilities derive only from the active verified closure.
+7. Project and machine projection remain exclusive.
+8. Manual verification uses disposable roots only; never write to the operator's real home.
 
-## Phased plan
+## Testing strategy
 
-### Phase 0 — Prerequisites
+### Behaviors to prove
 
-- [ ] Confirm **[I176]** has landed (`~/.agents/drwn/sources/` eliminated, `~/.agents/drwn/config.json` exists, `drwn card publish --from <path>` works).
-- [ ] Re-baseline on the post-I176 `main` and record here: `____ pass / ____ skip / 0 fail`. (Pre-I176 floor, for reference: **1773 pass / 6 skip / 0 fail** on `ab060ff`, 2026-08-03. I176 changes ~45 test files, so its landing moves this number — re-measure, do not assume.)
-- [ ] **Execute on the issue branch `remy/I177-machine-scope-blueprint` with incremental commits** (one logical commit per phase). Supersedes the original "no branch, no commits" note, which predates the v0.4 issue-branch model.
-- [ ] Verify with the submodule-initialized recipe — a bare worktree without `darwinian-worker-skills` yields ~31 phantom ENOENT failures in exactly the operator/machine-profile/release-gate cluster this task rewrites, which would be badly misleading here:
-  ```bash
-  git submodule update --init darwinian-worker-skills && bun install && bun run typecheck && bun run test
-  ```
+- strict V2 parse/serialize and actionable, non-mutating V1 rejection;
+- independent user preferences with no authoring compatibility mutation;
+- recommended Blueprint descriptor integrity and fresh-init selection/decline behavior;
+- machine `apply`, `use`, `--none`, alternative-root retention, lock validation, and atomicity;
+- range-authorized consent preservation/re-grant/drop behavior shared with project mutations;
+- active-closure-only effective state with content re-hashing;
+- skills, MCP, generated Worker, hooks, and instruction adapters at machine scope;
+- first-write foreign-content refusal, drift refusal, force, cleanup, target/mode filters, and preflight atomicity;
+- root-scope consent replay even when invoked inside a project;
+- legacy activation commands fail nonzero while inventory commands remain supported;
+- V2 capture-from-defaults, inventory references, diagnostics, status, and release readiness;
+- unchanged project-scope behavior.
 
-### Phase 1 — `machine.json` v2 schema + migration
+### Test tiers
 
-**Goal**: define the new schema, write the v1→v2 migration, and ensure all readers handle both.
-
-- [ ] **1a. `cli/core/types.ts` (lines 108–123)**: widen `MachineConfig` to a discriminated union of v1 (`schemaVersion: 1`, `capabilities: { profile, skills, mcpServers }`) and v2 (`schemaVersion: 2`, `capabilities: { activeWorker, workerLock }`). Add `MachineCapabilitiesV2` interface: `{ activeWorker: string | null; workerLock: ProjectLockV1 | null }`.
-
-- [ ] **1b. `cli/core/machine-config.ts` (lines 74–89)**: add `machineConfigV2Schema` parallel to the existing v1 schema. `schemaVersion: z.literal(2)`, `capabilities: z.object({ activeWorker: z.string().nullable(), workerLock: projectLockV1Schema.nullable() }).strict()`. The `parseMachineConfig` function (129–138) dispatches on `schemaVersion` to select the right schema.
-
-- [ ] **1c. `cli/core/machine-config.ts` — v1→v2 migration**: add `isV1MachineConfig(raw)` + `migrateV1ToV2(raw)` mirroring the existing legacy pattern (101–118). The migration synthesizes a default blueprint name (`@machine/default-worker`), composes a `workerLock` from the profile + explicit skills' resolved card entries, and writes `{ schemaVersion: 2, capabilities: { activeWorker, workerLock } }`. Call from `readMachineConfigFile` (170–188) between the legacy check and the parse.
-
-- [ ] **1d. `cli/core/machine-config.ts` — `createEmptyMachineConfig` (120–127)**: v2 form: `{ schema: "drwn.machine", schemaVersion: 2, policy: {}, capabilities: { activeWorker: null, workerLock: null } }`.
-
-- [ ] **1e. `cli/core/card-store.ts` — `readMachineConfig` (208–210)**: ensure it returns the v2 empty form.
-
-**Acceptance**: `tsc --noEmit` passes. Parsing a v1 `machine.json` auto-migrates to v2. A v2 file validates.
-
-### Phase 2 — `selectMachineWorker` + effective-state machine branch
-
-**Goal**: when `machine.json` has an `activeWorker`, `buildEffectiveState` populates the card closure at machine scope.
-
-- [ ] **2a. `cli/core/effective-state.ts` — new `selectMachineWorker` function**: extract the closure-resolution tail of `selectProjectWorker` (lines 231–254: `selectedRoot` lookup, `closureNames`, `activeCards` derivation) into a shared helper. Build `selectMachineWorker({ activeWorker, workerLock })` that:
-  - Reads `workerLock.workerRoots` + `workerLock.cards`.
-  - Finds the selected root by `activeWorker`.
-  - Computes `activeCards` via `closureNames(selectedRoot)`.
-  - Returns `EffectiveWorkerSelection` with `selectionSource: "machine"`, `localOverrides` zeroed.
-  - Add `"machine"` to the `selectionSource` union (line 87 or `types.ts`).
-
-- [ ] **2b. `cli/core/effective-state.ts` — new machine-worker branch in `buildEffectiveState`**: between line 403 (end of project branch) and line 405 (scope computation), add:
-  ```
-  else if (machineConfig?.capabilities.activeWorker && machineConfig?.capabilities.workerLock) {
-    // resolve the machine worker closure
-    workerSelection = selectMachineWorker({ activeWorker, workerLock });
-    activeCards = workerSelection.activeCards;
-    lockedCards = workerLock.cards;
-    skillApplyOrderCards = activeCards;
-    // populate contentRootsByCard from extracted card paths (the lock entries have .path)
-    // populate cardModes (all "overlay" or a new "machine" mode), cardLanes ("committed"), vendorEligible (empty)
-    // populate cardServerDefinitions from activeCards manifests
-    // skip overlayWarnings, organizationInstructionConsent (machine scope has no overlays)
-  }
-  ```
-  This mirrors the variable population from the project branch (304–403) but reads from `machineConfig` instead of `projectConfig`/`card.lock`.
-
-- [ ] **2c. `cli/core/effective-state.ts` — `scopeRoot`/`generatedDir` (405–410)**: extend the ternary to handle the machine-worker case. When `writeScope === "machine"` AND `workerSelection` is populated (the new branch ran), `generatedDir` should still be `resolveStoreGeneratedDir(agentsDir)` (it already is for machine scope — no change needed). `scopeRoot` should be `homeDir` (already is — no change needed). **Verify no change needed; confirm during implementation.**
-
-- [ ] **2d. `cli/core/effective-state.ts` — `resolveMachineCapabilities` (defaults.ts:121–177)**: when `machine.json` is v2, this function should return skills/MCP derived from the blueprint closure (via `activeCards`) instead of the old profile + explicit skills. Either: (a) call it only for v1 configs (and have the v2 branch populate skills directly from `activeCards`), or (b) extend it to read v2. **Decision for execution**: option (a) — the v2 branch in `buildEffectiveState` populates `skillApplyOrderCards` from `activeCards`, making `resolveMachineCapabilities` unnecessary for v2. The v2 branch skips the `resolveMachineCapabilities` call at line 273.
-
-**Acceptance**: `tsc --noEmit` passes. A machine with v2 `activeWorker` set produces a non-empty `workerSelection` + `activeCards` in `buildEffectiveState` with `forceMachineScope: true`.
-
-### Phase 3 — Lift sync gates + machine instructions
-
-**Goal**: `syncRepository` projects workers + instructions at machine scope.
-
-- [ ] **3a. `cli/core/sync.ts` (line 690)**: change the `if (state.projectRoot)` gate to also enter when `state.workerSelection` is populated at machine scope. Either: `if (state.projectRoot || (state.scopedOptions.writeScope === "machine" && state.workerSelection?.selectedRoot))`. This lets `syncWorkers` (703) and `syncProjectInstructions` (707) run.
-
-- [ ] **3b. `cli/core/sync.ts` (line 691)**: `reconcileVendorTrees` is project-only. Guard it inside `if (state.projectRoot)` (a nested condition) so it doesn't run at machine scope. Vendor reconciliation is a project-materialization concept.
-
-- [ ] **3c. New `cli/core/sync-machine-instructions.ts`**: a sibling of `sync-project-instructions.ts` that:
-  - Takes the same `{ state, previousManagedPaths, composition }` input.
-  - Composes instructions via `instructionCompositionForState(state)` — already works (iterates `activeCards`).
-  - Projects to `~/.claude/CLAUDE.md` (adapterRelativePath `.claude/CLAUDE.md` rooted at `homeDir`).
-  - Projects to `~/.codex/AGENTS.md` (rooted at `homeDir`).
-  - Does NOT write `~/AGENTS.md`.
-  - Uses the same managed-block mechanism (`writeManagedBytes`, `OWNERSHIP_FIELD = "drwn:instructions"`).
-  - Managed-path records store home-relative paths (e.g. `.claude/CLAUDE.md`, `.codex/AGENTS.md`).
-
-- [ ] **3d. `cli/core/sync.ts` (line 707)**: when `writeScope === "machine"`, call `syncMachineInstructions` instead of `syncProjectInstructions`. When project scope, call `syncProjectInstructions` as today.
-
-- [ ] **3e. `cli/core/sync-project-instructions.ts` (lines 37–45)**: the `writeScope === "machine"` early-return can stay (the machine path now goes through `syncMachineInstructions` instead). No change needed here — the machine variant bypasses it entirely.
-
-- [ ] **3f. `cli/core/sync.ts` — hook projection at machine scope**: `syncHooks` (744) already runs unconditionally. With `activeCards` populated (Phase 2), it will now produce hook policies. The hook composer writes to `state.scopedOptions.generatedDir` (machine scope → `~/.agents/drwn/generated/hooks/`). **Verify**: does the hook also need to write to `~/.claude/settings.json` (the user-scope hooks config)? Check `sync-hooks.ts` for the target path logic. If it writes to `<scopeRoot>/.claude/settings.json`, then at machine scope it writes to `~/.claude/settings.json` — which is correct.
-
-**Acceptance**: `drwn write --root` (with v2 activeWorker set) produces: worker bundle in `~/.agents/drwn/generated/`, instructions in `~/.claude/CLAUDE.md` + `~/.codex/AGENTS.md`, hook composers in `~/.agents/drwn/generated/hooks/`, skills in `~/.claude/skills/` + `~/.codex/skills/`.
-
-### Phase 4 — Machine-scope consent
-
-**Goal**: `drwn card trust --scope machine` writes consent into `machine.json workerLock`.
-
-- [ ] **4a. `cli/commands/card/project-command.ts` (lines 12–17)**: add `resolveMutationScope(command)` that returns `{ kind: "project", root }` or `{ kind: "machine", root: homeDir }` based on a `--root`/`--scope machine` flag. Export both `requireProjectRoot` (unchanged) and `requireMutationRoot` (scope-aware).
-
-- [ ] **4b. `cli/commands/card/trust.ts` (lines 53, 63)**: use `requireMutationRoot(this)` instead of `requireProjectRoot(this)`. When machine scope: write consent into `machine.json workerLock.cards[<cardName>].hookConsent` / `.instructionConsent` via `mutateMachineConfig`.
-
-- [ ] **4c. `cli/core/card-project.ts` — `setCardConsent`**: add a machine-scope arm. When the root is the machine store, mutate `machine.json capabilities.workerLock.cards[]` instead of `<project>/.agents/drwn/card.lock`. The consent fields (`hookConsent`, `instructionConsent`) have the same shape on both lock types.
-
-- [ ] **4d. `cli/core/hook-consent-ack.ts` + `instruction-consent-ack.ts`**: add machine-scope ack-key variants. `buildHookConsentAckKey({ projectRoot: "__machine__", card, hookPolicyDigest })` — use a constant sentinel `"__machine__"` instead of a real project path. The ack-file path stays the same (`~/.agents/drwn/state/hook-consent-acks.json`); the key just disambiguates machine from project acks.
-
-- [ ] **4e. `cli/commands/write.ts` (lines 164–225)**: the consent replay block. Add a machine-scope branch:
-  - When `this.scope === "machine"` (or `this.root`), read consent from `machine.json workerLock.cards[]` instead of project `card.lock`.
-  - Check ack keys with the `"__machine__"` sentinel.
-  - Record acks on miss (same "consented on another machine" message).
-
-**Acceptance**: `drwn card trust @curation-labs/workflow-skills --hooks --scope machine` writes consent to `machine.json`. `drwn write --root` projects the hooks (no "missing consent" warning).
-
-### Phase 5 — `drwn use --root` / `drwn apply --root`
-
-**Goal**: select a machine-scope worker via the CLI.
-
-- [ ] **5a. New `cli/core/worker-machine.ts`**: mirrors `worker-project.ts` but for machine scope. Functions:
-  - `useMachineWorker(agentsDir, ref|null, { dryRun })` — writes `activeWorker` + resolves + writes `workerLock` to `machine.json` via `mutateMachineConfig`. Uses `resolveWorkerGraph` (project-agnostic) for closure resolution.
-  - `applyMachineWorkerRoots(agentsDir, specs, { active, none, dryRun })` — install + select atomically.
-  - These reuse `resolveCard`, `resolveWorkerGraph`, `toCardLockEntry` — all project-agnostic.
-
-- [ ] **5b. `cli/commands/use.ts` (line 37)**: add `--root` flag (or detect `--scope machine`). When set: call `useMachineWorker` instead of `useProjectWorker`. Skip `registerProject`. Pass `forceMachineScope: true` to `runChainedWrite`.
-
-- [ ] **5c. `cli/commands/project/apply.ts` (line 40)**: same — add `--root` flag. When set: call `applyMachineWorkerRoots` instead of `applyProjectWorkerRoots`. Pass `forceMachineScope: true` to the chained write.
-
-- [ ] **5d. `cli/commands/card/project-command.ts` — `runChainedWrite` (44–58)**: accept a `forceMachineScope` parameter. When true, pass it to `buildEffectiveState` so the machine branch runs.
-
-**Acceptance**: `drwn use --root @curation-labs/machine-defaults@1.0.0` writes `activeWorker` + `workerLock` to `machine.json` v2. `drwn write --root` projects the full closure.
-
-### Phase 6 — Deprecate the old model
-
-**Goal**: remove the profile contract + explicit skills machinery (now subsumed).
-
-- [ ] **6a. `cli/core/operator-profile-contract.ts`**: mark deprecated. The `DARWINIAN_OPERATOR_PROFILE` constants stay (for migration reference) but the `z.literal()` schema is no longer enforced. The operator card is consumed as a normal blueprint member.
-
-- [ ] **6b. `cli/core/machine-profiles.ts`**: `initializeMachineCapabilities` (151–180) now offers a machine blueprint instead of the operator profile. The guided init prompt changes from "Use Recommended Darwinian Operator machine capabilities?" to "Use Recommended Machine Defaults blueprint?".
-
-- [ ] **6c. `cli/commands/machine/skill.ts`**: `enable`/`disable` (426–476) — deprecate with a message: "Machine skills are now managed via the machine Worker Blueprint. Use `drwn use --root <blueprint>` to select machine defaults." The commands can stay as no-ops or be removed.
-
-- [ ] **6d. `cli/core/defaults.ts`**: `resolveMachineCapabilities` (121–177) — only called for v1 configs (the migration path). For v2, it's unused (Phase 2d).
-
-**Acceptance**: no code path requires the profile contract or explicit-skills list for v2 configs. The v1→v2 migration preserves the user's current capabilities.
-
-### Phase 7 — Tests
-
-- [ ] **7a. New test: machine-scope blueprint end-to-end** — compose a test blueprint, `drwn use --root`, `drwn write --root`, verify skills + hooks + instructions projected to `~/.claude/` + `~/.codex/`.
-- [ ] **7b. New test: v1→v2 migration** — feed a v1 machine.json, verify migration produces a valid v2 with the correct closure.
-- [ ] **7c. New test: machine-scope consent** — `drwn card trust --scope machine`, verify consent in machine.json, verify hooks project after trust.
-- [ ] **7d. Update existing machine-config tests** — `test/core-machine-config.test.ts` (or equivalent) for v2 schema + migration.
-- [ ] **7e. Update existing effective-state tests** — for the machine-worker branch.
-- [ ] **7f. Update existing sync tests** — for machine-scope worker + instruction projection.
-
-**Acceptance**: `bun test` passes with 0 failures.
-
-### Phase 8 — Documentation
-
-- [ ] **8a. `README.md`** — update the machine-defaults description.
-- [ ] **8b. `docs/cli-quickref.md`** — document `drwn use --root`, `drwn apply --root`, `drwn card trust --scope machine`, the v2 machine.json schema.
-- [ ] **8c. `.ai/knowledges/`** — update the architecture doc (10_drwn-cli-architecture.md) for the machine blueprint model.
-- [ ] **8d. `darwinian-worker-skills/README.md`** — update the machine-defaults workflow (now blueprint-based, not skill-enable-based).
-- [ ] **8e. `~/.agents/skills/manage-defaults/SKILL.md`** — update for the blueprint model.
-
-### Phase 9 — Final verification
-
-- [ ] `bun run tsc --noEmit` — clean.
-- [ ] `bun test` — all pass.
-- [ ] Compose `@curation-labs/machine-defaults` blueprint (operator + workflow-skills + knowledge-docs).
-- [ ] `drwn use --root @curation-labs/machine-defaults@1.0.0` → machine.json v2 with activeWorker + workerLock.
-- [ ] `drwn card trust @curation-labs/workflow-skills --hooks --scope machine` + `--instructions --scope machine`.
-- [ ] `drwn write --root` → projects skills + hooks + instructions + MCP to `~/.claude/`, `~/.codex/`.
-- [ ] Verify: `~/.claude/CLAUDE.md` has the composed instructions managed block.
-- [ ] Verify: `~/.claude/skills/` has the operator + workflow + knowledge-docs skills.
-- [ ] Verify: `~/.agents/drwn/generated/hooks/` has the hook composers.
-- [ ] Verify: a project's `drwn write` still works independently (project worker shadows machine).
-- [ ] Leave all changes uncommitted for operator review.
-
----
-
-## Highest-leverage edit order
-
-1. **Phase 1** (schema + migration) — defines the data model everything else reads.
-2. **Phase 2** (`selectMachineWorker` + effective-state branch) — the core wiring; makes `activeCards` available at machine scope.
-3. **Phase 3** (lift gates + machine instructions) — makes the sync engine project the closure.
-4. **Phase 4** (consent) — enables hooks + instructions (gated on consent).
-5. **Phase 5** (use/apply --root) — the user-facing selection commands.
-6. **Phase 6** (deprecate old model) — cleanup.
-
-## Reuse wins (from the investigation)
-
-| Subsystem | Why no change needed |
-|---|---|
-| `syncWorkers` (`sync-worker.ts:240`) | Already scope-agnostic — reads `workerSelection` + `generatedDir`, both correct at machine scope |
-| `resolveCard` + `resolveWorkerGraph` | Project-agnostic (take `agentsDir` + refs) |
-| `managed-block.ts` | Path-agnostic byte manipulation |
-| `closureNames` / `sameTopology` | Reusable helpers in `effective-state.ts` |
-| `mutateMachineConfig` | Already provides locked-write for machine.json |
-| MCP sync | Already runs at machine scope |
-| Global write-record | Already tracks machine-scope paths |
-
-## Risks
-
-| Risk | Likelihood | Mitigation |
+| Tier | Purpose | Representative files |
 |---|---|---|
-| Machine branch in effective-state is complex (~100 lines) | Medium | Mirror the project branch precisely; reuse `selectMachineWorker` extracted from `selectProjectWorker` tail |
-| Hook projection to `~/.claude/settings.json` may conflict | Medium | Use `managed-fields` (per-field hashing); verify `sync-hooks.ts` target logic during implementation |
-| v1→v2 migration loses user capabilities | Medium | Migration synthesizes the closure from existing profile + skills; test thoroughly (Phase 7b) |
-| Consent ack key collision (machine vs project) | Low | Use `"__machine__"` sentinel in ack keys |
-| Instructions to `~/.codex/AGENTS.md` format mismatch | Low | Codex reads AGENTS.md natively; verify during Phase 3 testing |
+| Unit | schema, lock invariants, descriptor parsing, pure selection/consent rules | `test/core-machine-config.test.ts`, `test/core-machine-worker-lock.test.ts`, `test/core-user-preferences.test.ts` |
+| Integration | CLI transactions and filesystem projection under isolated roots | `test/commands-init.test.ts`, `test/scenarios-root-scope.test.ts`, `test/commands-write-*.test.ts` |
+| End-to-end | one published fixture Blueprint through apply/trust/write/status | `test/e2e-machine-blueprint.test.ts` |
+| Contract/release | prevent V1/docs/profile regressions in the shipped package | `test/scripts-verify-machine-contract.test.ts`, `test/scripts-verify-operator-contract.test.ts`, `test/release-readiness.test.ts` |
+| Manual | operator-shaped acceptance with disposable `HOME` and `AGENTS_DIR` | `.ai/knowledges/09_cards-manual-test-guide.md` |
 
-## Notes for the operator
+### TDD order
 
-- **Execute on `remy/I177-machine-scope-blueprint` with incremental commits**, one logical commit per phase. (Supersedes the original "no branch, no commits" note — it predates the v0.4 issue-branch model.)
-- **Test command**: `bun run test` (full suite) — after `git submodule update --init darwinian-worker-skills`; without it the operator/machine-profile/release-gate tests ENOENT spuriously, which is exactly the cluster this task rewrites.
-- **Execute after [I176]** — the source-path reform must land first. **Correction (2026-08-03):** the shared surface is **`machine-config.ts` + `types.ts`**, *not* `effective-state.ts`. I176 never touches `effective-state.ts`; it removes `policy.authoring` from the machine schema (`machine-config.ts:78`, `types.ts:111-112`) while this task rewrites that same schema to v2. Verified by grep against the post-stack tree. The I176 → I177 order holds; only the stated rationale was wrong.
-- **The highest-leverage single edit**: Phase 2a (`selectMachineWorker`) — once the machine worker selection works, the sync engine (Phase 3) and consent (Phase 4) follow mechanically.
+For each numbered implementation slice:
 
-## Out of scope
+1. add or change one externally observable expectation;
+2. run the narrowest pinned command and capture the expected failure (RED);
+3. implement the minimum behavior;
+4. rerun the narrow test to GREEN;
+5. run the named regression group;
+6. refactor only while that group remains green; and
+7. commit the cohesive slice.
 
-- The personal-harness split (Issue 2) — separate effort; the machine blueprint can compose whatever cards exist.
-- **The `~/.agents/skills/` curated-dir cleanup — with an ownership boundary, not a blanket exclusion (clarified 2026-08-03).** The seam: this task's machine-scope projection *writes into* that directory, while cl0153 sub-PR2 (D2b, machine-default skill shadowing) treats it as a bug target. Boundary: **this task owns what the blueprint projects there** (the closure's skills, their content and lifecycle); **cl0153 sub-PR2 owns the shadowing/precedence rules** for whatever ends up there. Since sub-PR2's G2 is still unwritten, it must be drafted against this task's v2 closure model rather than the v1 profile model. Un-owned leftovers from the v1 era (hand-curated skills nobody projects) stay out of scope for both.
-- Cursor/OpenCode hook delivery (experiment 04) — the hook limitation is in drwn's encoder, not the machine-scope model.
-- Per-scope catalogs for `@curation-labs`/`@remyjkim` — registry-only is sufficient.
+Tests must assert bytes, exit codes, state invariants, and preservation behavior—not private helper structure. A test that passes before the intended production change is not valid RED evidence and must be strengthened.
+
+### Case catalog
+
+| Contract | Positive cases | Negative/edge cases |
+|---|---|---|
+| V2 schema | empty; active canonical root; alternatives retained | V1; prototype; unknown fields; active without lock; root mismatch; unsupported lock version |
+| selection | Blueprint Git/Store/file ref; use existing root; apply replacement | mutable checkout not searched; missing root; any plain Card machine root; multiple roots without `--active` |
+| integrity | exact locked bytes for every origin | missing Store/Git extraction; changed extraction; changed explicit file source; digest/topology mismatch |
+| consent | trust active-closure hooks/instructions; same-content preservation; in-range changed-content re-grant | out-of-range drop; inactive Card trust refusal; root-forced replay; dry-run/non-interactive refusal |
+| projection | all surfaces; deterministic order | inactive alternatives; foreign bytes; drift; partial preflight failure; stale cleanup |
+| filters | target allowlist; `--skills-only`; `--mcp-only` | excluded instruction/hook surfaces remain untouched |
+| hard cut | new guidance and empty init | all V1 readers and four activation commands reject; no state mutation |
+| capture/status | active closure flattened/reported | inactive roots, secrets, ambient inventory, and generated bytes excluded |
+
+### Fixtures and isolation
+
+- Build Card fixtures in a per-test temporary directory with exact content digests.
+- Set isolated `HOME`, `AGENTS_DIR`, project root, and target directories before importing CLI modules that read environment state.
+- Use local file/Git fixtures; unit and integration tests make no network calls.
+- Create foreign and drifted files deliberately and assert original unrelated bytes survive.
+- Use a fixture Blueprint root plus plain Card members; nested Blueprints remain out of scope.
+- Reset environment variables and process CWD in `finally` blocks.
+- Do not reuse the operator's actual machine Store, preferences, credentials, or harness files.
+
+### Canonical commands
+
+Install and baseline with the pinned package-manager version:
+
+```sh
+git submodule update --init darwinian-worker-skills
+bunx bun@1.2.21 install --frozen-lockfile
+bunx bun@1.2.21 test --timeout 30000 ./test/
+```
+
+Focused examples appear in each task. Final local gates are:
+
+```sh
+bunx bun@1.2.21 run typecheck
+bunx bun@1.2.21 test --timeout 30000 ./test/
+QUALITY_GATE_TEST_MODE=1 bunx bun@1.2.21 run verify:release
+```
+
+The full suite must report zero failures. Platform-specific skips are recorded, not silently ignored. After push, every required GitHub Actions job must pass at the tested commit.
+
+## Execution sequence
+
+### Task 0 — Documentation and contract gate (must finish before production code)
+
+**Files**
+
+- Modify: `.ai/analyses/cl0177_machine_scope_blueprint_target_architecture.md`
+- Modify: `.ai/tasks/cl0177_machine_scope_blueprint_task_plan.md`
+- Modify: `.ai/knowledges/01_agents-cli-usage-guide.md`
+- Modify: `.ai/knowledges/02_per-project-config-guide.md`
+- Modify: `.ai/knowledges/03_npm-skill-bundles-guide.md`
+- Modify: `.ai/knowledges/09_cards-manual-test-guide.md`
+- Modify: `.ai/knowledges/10_drwn-cli-architecture.md`
+- Modify: `.ai/knowledges/11_card-usage-guide.html`
+- Modify: `README.md`
+- Modify: `INSTALL.md`
+- Modify: `docs/cli-quickref.md`
+- Modify: `docs/contracts/project-worker-v1.md`
+- Modify: `docs-astro/src/content/docs/02-how-apply-works.md`
+- Modify: `docs-astro/src/content/docs/03-cli-reference.md`
+- Modify: `docs-astro/src/content/docs/04-mcp-registry.md`
+- Modify: `docs-astro/src/content/docs/05-skill-library.md`
+- Modify: `docs-astro/src/content/docs/10-mind-cards.md`
+- Modify: affected `docs-docusaurus/docs/` machine, Card, selection, projection, diagnostics, and troubleshooting pages found by the stale-contract scan
+- Modify: `darwinian-worker-skills/README.md`
+- Modify: `darwinian-worker-skills/skills/manage-machine-capabilities/SKILL.md`
+
+**Steps**
+
+1. Rewrite G1 and G2 around the approved hard cut and the post-I176 codebase.
+2. Replace profile/explicit-activation guidance in every affected operator document.
+3. Keep standalone inventory, authoring checkout, project Worker, secret, and transfer boundaries explicit.
+4. Update the machine manual test to use a disposable Blueprint closure and user-home adapters.
+5. Search for stale active guidance:
+
+```sh
+rg -n 'schemaVersion.?1|capabilities\.(profile|skills|mcpServers)|machine (skill|mcp) (enable|disable)|Recommended Darwinian Operator profile|policy\.authoring' README.md docs .ai/knowledges darwinian-worker-skills
+```
+
+6. Classify any remaining matches as history, explicit rejection, project schema, or defects. Fix defects.
+7. Inspect Markdown/HTML links and run documentation/release static checks available before implementation.
+8. Version the changed public Operator payload independently as `2.0.2`, set
+   `harness.minVersion` to the planned `drwn` `1.1.0` floor, and omit
+   `lastValidatedWith` until the implementation is actually verified.
+9. Commit the parent documentation and the worker-skills documentation as separate atomic commits. Publish the versioned submodule change on an issue branch, but defer the parent gitlink/integrity pin, immutable tag, and `lastValidatedWith` claim until the I177 CLI contract can validate that new Operator release.
+
+**Acceptance**: all named docs describe V2 consistently; no production `.ts` file changed; Docusaurus/HTML/Markdown and submodule identity checks pass. Forward-looking docs are expected to make the current V1 static docs/release assertions RED; record those exact expected failures rather than weakening them before implementation.
+
+**Commit subjects**
+
+- `[docs] define I177 machine Blueprint hard cut`
+- submodule: `[docs] update machine capability workflow for blueprints`
+- `[docs] document machine Blueprint V2 contract`
+
+### Task 1 — Establish the verified baseline and pass G1/G2
+
+**Files**
+
+- Update after evidence: `.ai/tasks/cl0177_machine_scope_blueprint_task_plan.md`
+
+**Steps**
+
+1. Create/use a clean isolated checkout at merged prerequisite commit `1fc03e6` and run the pinned full suite there. This is the code baseline, unaffected by forward-looking I177 docs.
+2. Record pass/fail/assertion/skip totals, Bun version, commit, and platform.
+3. On the I177 docs commit, run the focused docs/release contract tests and record the expected RED assertions that still enforce V1. Any unrelated failure is a blocker; do not update verifier code before its Task 8 RED slice.
+4. Audit G1 against the hard-cut architecture and resolve every significant finding.
+5. Push the corrected docs branch, update the PR, and repair the Issue Tracker's stale migration-era Details/status/thread before requesting review.
+6. Record the atomic G1 review transaction and Owner acknowledgement in the Issue Tracker.
+7. Audit this plan for exact paths, executable commands, complete TDD cases, risk coverage, and doc-first sequencing.
+8. Record the atomic G2 review transaction and Owner acknowledgement into Building.
+
+**Acceptance**: clean pinned baseline at `1fc03e6`; only catalogued V1 static-contract REDs on the forward docs commit; G1 Passed; G2 Passed; Owner Building; documentation still precedes production code.
+
+**Commit**: `[docs] record I177 design gate evidence` only if repository evidence changes.
+
+### Task 2 — Publish the recommended machine-defaults Card source
+
+**Files**
+
+- Create repository: `/Users/pureicis/dev/darwinian-cards/cards/machine-defaults/card.json`
+- Create as required: `/Users/pureicis/dev/darwinian-cards/cards/machine-defaults/instructions.md`
+- Create/modify: `registry/machine-workers.json`
+- Create: `cli/core/machine-worker-contract.ts`
+- Create: `test/core-machine-worker-contract.test.ts`
+- Modify: `test/release-readiness.test.ts`
+
+**RED**
+
+Add contract tests that require a versioned recommended descriptor, canonical Blueprint name, exact immutable source ref, compatible CLI floor, and a real released source whose closure resolves. Confirm failure because the descriptor/contract does not exist.
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-machine-worker-contract.test.ts test/release-readiness.test.ts
+```
+
+**GREEN**
+
+1. Verify the current immutable release refs for intended member Cards.
+2. Create the source with `drwn worker new` and compose only valid plain Card releases.
+3. Initialize/verify its independent Git repository, commit the source, configure its dedicated remote, push the issue/default branch, create and push immutable tag `v1.0.0`, then validate the tag/ref from a clean clone. `drwn worker publish` may populate the local Store but does not substitute for the remote/tag steps.
+4. Add the shipped descriptor and minimal validator.
+5. Make the contract test resolve the released Blueprint without catalog checkout fallback.
+
+**Regression**
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/commands-card-release.test.ts test/core-release-pipeline.test.ts test/core-machine-worker-contract.test.ts test/release-readiness.test.ts
+```
+
+**Commit**: `[other] register recommended machine defaults worker`
+
+### Task 3 — Enforce strict machine V2 and preference independence
+
+**Files**
+
+- Modify: `cli/core/types.ts`
+- Modify: `cli/core/machine-config.ts`
+- Modify: `cli/core/user-preferences.ts`
+- Modify: `test/core-machine-config.test.ts`
+- Modify: `test/core-user-preferences.test.ts`
+- Modify: `test/core-project-machine-isolation.test.ts`
+
+**RED 3.1 — schema**
+
+Add cases for empty V2, active/lock invariants, unknown V1 fields, V1 rejection text, prototype rejection, and unsupported embedded lock versions. Confirm the V2 fixture is rejected and V1 still parses.
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-machine-config.test.ts
+```
+
+**GREEN 3.1**
+
+Replace V1 types/schema with strict V2, validate the embedded lock via the existing lock validator, and emit controlled-reset guidance without mutating invalid files. Delete migration helpers.
+
+**RED 3.2 — preferences**
+
+Assert `config.json.defaultAuthorScope` loads and persists independently and an old `machine.policy.authoring` file is rejected unchanged. Confirm the old bridge mutates or accepts the fixture.
+
+**GREEN 3.2**
+
+Remove the authoring compatibility bridge from `user-preferences.ts` and all V1 machine authoring types.
+
+**Regression**
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-machine-config.test.ts test/core-user-preferences.test.ts test/core-project-machine-isolation.test.ts test/commands-init.test.ts
+bunx bun@1.2.21 run typecheck
+```
+
+**Commit**: `[other] hard cut machine configuration to v2`
+
+### Task 4 — Add scope-aware machine Worker mutation and guided init
+
+**Files**
+
+- Modify: `cli/core/worker-project.ts`
+- Create or modify: `cli/core/worker-machine.ts`
+- Modify: `cli/commands/card/project-command.ts`
+- Modify: `cli/commands/project/apply.ts`
+- Modify: `cli/commands/use.ts`
+- Modify: `cli/commands/init.ts`
+- Remove or repurpose: `cli/core/machine-profiles.ts`
+- Modify: `test/commands-use-worker.test.ts`
+- Modify: `test/scenarios-root-scope.test.ts`
+- Modify: `test/commands-init.test.ts`
+- Replace: `test/core-machine-profiles.test.ts`
+- Create: `test/core-machine-worker-lock.test.ts`
+
+**RED 4.1 — mutations**
+
+Test `apply --root`, `use --root`, canonical selection, requested ref retention, alternative-root retention, `--active`, both `--none` forms, plain-Card root rejection, mutation atomicity, apply's unchanged opt-in `--write`, use's unchanged default projection/`--no-write`, projection failure after committed intent, dry-run zero mutation, and unsupported `store.minDrwnVersion` refusal before commit. Confirm current root-scoped apply is rejected or writes V1.
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-machine-worker-lock.test.ts test/commands-use-worker.test.ts test/scenarios-root-scope.test.ts
+```
+
+**GREEN 4.1**
+
+Extract safe shared Card graph/lock logic, implement `worker-machine.ts` through `mutateMachineConfig`, plumb root scope through commands, and validate the final lock before write.
+
+**RED 4.2 — consent carry-forward**
+
+Add same-content preservation, changed-content within-range re-grant, out-of-range drop, removed contribution, and Card disappearance cases. Confirm timestamps/digests/warnings match the shared project behavior.
+
+**GREEN 4.2**
+
+Reuse `carryCardConsent` so machine and project range-authorized behavior cannot diverge.
+
+**RED 4.3 — init**
+
+Test guided accept/decline, non-interactive empty state, unavailable descriptor, invalid pre-existing V1, and no mutation on failure.
+
+**GREEN 4.3**
+
+Replace profile initialization with descriptor-driven Blueprint initialization. Never read mutable catalog checkouts during resolution.
+
+**Regression**
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/commands-init.test.ts test/commands-init-default-catalog.test.ts test/commands-project-workers.test.ts test/commands-use-worker.test.ts test/scenarios-root-scope.test.ts test/core-machine-worker-lock.test.ts
+```
+
+**Commit**: `[other] add root-scoped worker selection`
+
+### Task 5 — Derive machine effective state from the verified active closure
+
+**Files**
+
+- Modify: `cli/core/effective-state.ts`
+- Modify: `cli/core/defaults.ts`
+- Create or modify: `test/core-effective-state-machine-worker.test.ts`
+- Modify: `test/core-effective-state.test.ts`
+- Modify: `test/core-effective-state-worker.test.ts`
+- Modify: `test/core-defaults.test.ts`
+
+**RED 5.1 — closure**
+
+Test active root reconstruction, deterministic Card order, closure-derived skills/MCP/hooks/instructions, inactive alternative exclusion, null selection, and project exclusivity. Confirm machine state still comes from V1 arrays.
+
+**RED 5.2 — integrity**
+
+Test missing Store/Git bytes, modified extracted content, a changed explicit file-origin source path, root mismatch, unsupported lock/version floor, plain-Card machine root, and nested Blueprint rejection. Confirm at least one corrupted closure reaches planning.
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-effective-state-machine-worker.test.ts test/core-effective-state.test.ts test/core-effective-state-worker.test.ts test/core-defaults.test.ts
+```
+
+**GREEN**
+
+Add the machine-selection branch, validate and re-hash lock content, populate the existing active-Card pipeline, and remove V1 inventory-ID capability derivation.
+
+**Regression**
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-effective-state-machine-worker.test.ts test/core-effective-state.test.ts test/core-effective-state-worker.test.ts test/core-effective-state-overlay.test.ts test/core-project-machine-isolation.test.ts test/core-defaults.test.ts
+```
+
+**Commit**: `[other] derive machine state from active worker closure`
+
+### Task 6 — Project every machine closure surface safely
+
+**Files**
+
+- Modify: `cli/core/sync.ts`
+- Modify: `cli/core/sync-project-instructions.ts`
+- Modify: `cli/core/sync-instructions.ts`
+- Modify: `cli/core/hook-generator/sync-hooks.ts`
+- Reuse: `cli/core/worker-generator/sync-worker.ts`
+- Modify: `test/core-sync-worker.test.ts`
+- Modify: `test/core-sync-instructions.test.ts`
+- Modify: `test/commands-write-instructions.test.ts`
+- Modify: `test/core-mcp-sync.test.ts`
+- Modify: `test/core-mcp-merge-hooks.test.ts`
+- Modify: `test/commands-write-committed-surfaces.test.ts`
+- Create: `test/core-machine-instructions.test.ts`
+- Create: `test/e2e-machine-blueprint.test.ts`
+
+**RED 6.1 — preflight**
+
+Assert the planned machine path set includes closure skills, MCP targets, generated Worker/hooks, Claude/Codex instruction adapters, and hook/settings targets before any write. Test first-write foreign files and one late conflict causing zero writes.
+
+**GREEN 6.1**
+
+Expand `planMachineManagedPaths` and keep all ownership checks ahead of mutation.
+
+**RED 6.2 — Worker, skill, MCP**
+
+Assert the active closure generates one aggregate Worker, deterministic skill/MCP output, no inactive alternatives, and correct `--skills-only`/`--mcp-only` behavior.
+
+**GREEN 6.2**
+
+Lift the project-only Worker gate and feed closure-derived Card order to existing synchronizers.
+
+**RED 6.3 — instructions**
+
+Assert managed blocks at `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`, never `~/AGENTS.md`; test foreign-byte preservation, drift, force, cleanup, target filters, and mode filters.
+
+**GREEN 6.3**
+
+Make instruction sync scope-aware and reuse managed-block primitives.
+
+**RED 6.4 — hooks**
+
+Assert consented hooks update managed fields in `~/.claude/settings.json` while unrelated keys survive; cover update, drift, force, cleanup, and unsupported targets.
+
+**GREEN 6.4**
+
+Enable machine closure hook inputs through current user-scope routing; do not add new target encoders.
+
+**Focused command**
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-sync-worker.test.ts test/core-sync-instructions.test.ts test/core-machine-instructions.test.ts test/commands-write-instructions.test.ts test/core-mcp-sync.test.ts test/core-mcp-merge-hooks.test.ts test/commands-write-committed-surfaces.test.ts test/e2e-machine-blueprint.test.ts
+```
+
+**Regression**
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/commands-write.test.ts test/commands-write-drift.test.ts test/commands-write-claude-conflict.test.ts test/commands-write-codex-conflict.test.ts test/commands-write-cursor-conflict.test.ts test/core-write-record-managed-content.test.ts test/core-write-idempotent.test.ts
+```
+
+**Commit**: `[other] project machine worker closure safely`
+
+### Task 7 — Extend Card consent to machine scope
+
+**Files**
+
+- Modify: `cli/commands/card/trust.ts`
+- Modify: `cli/commands/card/untrust.ts`
+- Modify: `cli/commands/write.ts`
+- Modify: `cli/core/worker-machine.ts`
+- Modify: `test/commands-card-trust.test.ts`
+- Modify: `test/core-hook-consent.test.ts`
+- Modify: `test/core-instruction-consent.test.ts`
+- Modify: `test/core-instruction-consent-ack.test.ts`
+- Modify: `test/commands-write-version-floor.test.ts`
+- Modify: `test/scenarios-root-scope.test.ts`
+
+**RED 7.1 — trust/untrust**
+
+Test machine hook/instruction trust, canonical Card lookup, digest recording, untrust, inactive Card refusal (while preserving consent recorded when previously active), dry-run/non-interactive behavior, and lock version floors.
+
+**RED 7.2 — replay**
+
+Run `write --root` from inside a project and assert machine consent replay occurs. Confirm the current `if (!(this.root || this.user))` branch skips it.
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/commands-card-trust.test.ts test/core-hook-consent.test.ts test/core-instruction-consent.test.ts test/core-instruction-consent-ack.test.ts test/commands-write-version-floor.test.ts test/scenarios-root-scope.test.ts
+```
+
+**GREEN**
+
+Add a typed machine consent scope, persist through the machine lock transaction, replay for every machine write entry path, and keep prompts outside dry-run/non-interactive mutation.
+
+**Regression**
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/core-hook-consent-notice.test.ts test/core-instruction-consent-evidence.test.ts test/commands-write.test.ts test/scenarios-root-scope.test.ts
+```
+
+**Commit**: `[other] add machine worker consent`
+
+### Task 8 — Remove remaining V1 consumers and update observable contracts
+
+**Files**
+
+- Modify: `cli/commands/machine/skill.ts`
+- Modify: `cli/commands/machine/mcp.ts`
+- Modify: `cli/core/card-from-defaults.ts`
+- Modify: `cli/core/inventory-references.ts`
+- Modify: `cli/core/diagnostics.ts`
+- Modify or rename: `cli/core/operator-profile-contract.ts`
+- Modify: `scripts/verify-release-readiness.ts`
+- Modify: `package.json`
+- Modify: `test/commands-machine-skill.test.ts`
+- Modify: `test/commands-machine-mcp.test.ts`
+- Modify: `test/commands-card-new-from-defaults.test.ts`
+- Modify: `test/core-inventory-references.test.ts`
+- Modify: `test/core-diagnostics-sections.test.ts`
+- Modify: `test/commands-status.test.ts`
+- Modify: `test/commands-status-why.test.ts`
+- Modify: `test/scripts-verify-machine-contract.test.ts`
+- Modify: `test/scripts-verify-operator-contract.test.ts`
+- Modify: `test/release-readiness.test.ts`
+
+**RED 8.1 — removed commands**
+
+Assert all four enable/disable commands exit nonzero, do not mutate V2, and name `drwn apply --root`/`drwn use --root`; inventory list/install/update/uninstall/add/remove still operate.
+
+**RED 8.2 — downstream consumers**
+
+Assert `card new --from-defaults` flattens only active closure skills/MCP into a plain Card; references/status/why report V2 roots, closure, integrity, consent, and projection; inactive alternatives, secrets, and ambient inventory are excluded.
+
+**RED 8.3 — release**
+
+Assert the release verifier rejects V1 schema/profile/explicit command docs,
+requires CLI version `1.1.0`, and validates the recommended Blueprint plus
+canonical Operator Card `2.0.2` contract.
+
+```sh
+bunx bun@1.2.21 test --timeout 30000 test/commands-machine-skill.test.ts test/commands-machine-mcp.test.ts test/commands-card-new-from-defaults.test.ts test/core-inventory-references.test.ts test/core-diagnostics-sections.test.ts test/commands-status.test.ts test/commands-status-why.test.ts test/scripts-verify-machine-contract.test.ts test/scripts-verify-operator-contract.test.ts test/release-readiness.test.ts
+```
+
+**GREEN**
+
+Remove direct V1 readers, implement V2 capture/diagnostics, preserve inventory-only operations, separate Operator Card release verification from the removed profile activation mechanism, and bump the hard-cut CLI release line to `1.1.0`.
+
+**Regression**
+
+```sh
+QUALITY_GATE_TEST_MODE=1 bunx bun@1.2.21 run verify:release
+bunx bun@1.2.21 run typecheck
+```
+
+**Commit**: `[other] remove legacy machine activation model`
+
+### Task 9 — Documentation reconciliation and completion evidence
+
+**Files**
+
+- Revisit every Task 0 document if implementation names or exact outputs changed.
+- Create: `.ai/tasks/cl0177_machine_scope_blueprint_completion.md`
+- Modify release notes/version metadata required by the release contract.
+- Modify the worker-skills Operator manifest/test to set
+  `lastValidatedWith: "1.1.0"` only after its complete validation matrix passes.
+
+**Steps**
+
+1. Search code, tests, shipped docs, knowledge docs, and bundled skills for stale V1 activation guidance.
+2. Ensure help output and docs match exact implemented flags and error text.
+3. Run focused tests for every changed slice.
+4. Run typecheck, full pinned suite, and release readiness from a clean worktree.
+5. Execute the manual guide using disposable `HOME`, `AGENTS_DIR`, project, and Card collection fixtures.
+6. Complete the Operator `2.0.2` release commit only after its payload passes
+   against `drwn` `1.1.0`; then create and push the immutable Operator tag, pin
+   that accepted submodule commit/integrity in the parent, and rerun release
+   readiness from committed state.
+7. Push the tested parent commit and require all CI jobs to pass.
+8. Request G3 review with a PR body containing `Testing & CI evidence`.
+9. Write the completion document with commits, test totals, manual artifacts, remaining non-goals, and rollback/reset guidance.
+10. Record the atomic G3 Issue Tracker transaction and Owner acknowledgement only after review evidence exists.
+
+**Final commands**
+
+```sh
+git status --short --branch
+bunx bun@1.2.21 run typecheck
+bunx bun@1.2.21 test --timeout 30000 ./test/
+QUALITY_GATE_TEST_MODE=1 bunx bun@1.2.21 run verify:release
+git diff --check
+```
+
+**Acceptance**: zero local failures, required CI green at the exact reviewed commit, disposable-HOME acceptance green, docs match implementation, completion evidence reviewed.
+
+**Commit**: `[docs] complete I177 machine Blueprint rollout`
+
+## Risk controls
+
+| Risk | Control |
+|---|---|
+| V1 silently accepted by a forgotten consumer | strict parser plus repository-wide release scan and focused consumer tests |
+| fabricated/mutable provenance | pinned Store/Git refs, digest-locked explicit file refs re-hashed at evaluation, and no catalog-checkout runtime lookup |
+| machine projection overwrites user files | complete preflight, global write record, managed blocks/fields, drift tests, disposable HOME |
+| consent exceeds its authorized range | shared same/in-range/out-of-range carry-forward tests, warnings, and write-time replay |
+| project regression from shared code | project mutation/effective-state/write regression suites after each shared refactor |
+| docs advertise behavior before code lands | docs live on the I177 branch; G3 requires final reconciliation and implementation evidence |
+| external Card source is unavailable | contract test resolves the real release; implementation stops before setting it as recommended |
+
+## Explicit non-goals
+
+- backward compatibility, automatic migration, or V1 state repair;
+- nested Blueprint closure expansion;
+- resolving runtime Cards from mutable catalog checkouts;
+- copying credentials or installed tool runtimes into Cards;
+- whole-machine backup/restore;
+- Cursor/OpenCode user instruction or new hook encoders without proven target contracts;
+- personal-harness repository decomposition;
+- unrelated skill-directory precedence cleanup.
+
+## Progress ledger
+
+- [x] I176 G3 passed and merged.
+- [x] I176 post-merge CI passed all required jobs.
+- [x] I177 worktree updated onto merged main with submodule and dependencies present.
+- [x] Architecture/code/test/documentation audit completed.
+- [x] Hard-cut decision approved by the product owner.
+- [ ] Task 0 documentation gate verified and committed.
+- [ ] Fresh pinned I177 baseline recorded.
+- [ ] G1 passed and acknowledged.
+- [ ] G2 passed and acknowledged.
+- [ ] Tasks 2–8 executed through recorded RED-GREEN-REFACTOR slices.
+- [ ] Task 9 final verification, G3, and completion evidence finished.

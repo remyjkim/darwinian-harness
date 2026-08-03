@@ -1,280 +1,342 @@
-# ABOUTME: Target architecture design for machine-scope Worker Blueprint activation — replacing the profile + explicit-skills dual model with a single governed blueprint selected at machine scope, enabling card-closure governance (versioned, integrity-verified, hook+instruction capable) for ambient defaults.
-# ABOUTME: Assumes [I176] (card source path reform) has landed. Pre-launch hard cut. Grounded in the machine-defaults investigation + the blueprint-instructions investigation + the machine-scope feasibility investigation.
+# ABOUTME: Defines the hard-cut V2 machine-scope Worker Blueprint contract for drwn.
+# ABOUTME: Replaces profile and bare capability selections with one immutable, consent-gated Card closure.
 
 # [I177] Machine-Scope Worker Blueprint — Target Architecture (GATE 1)
 
-**Status**: Design proposal (2026-08-02), submitted for G1 review 2026-08-03. Pre-launch; open to breaking changes.
+**Status**: Revised hard-cut design; ready for G1 review (2026-08-03)
+
 **Issue**: [I177] · **Owner**: Remy K · **Reviewer**: Minseung Lee · **Branch**: `remy/I177-machine-scope-blueprint`
+
 **Plan**: [`../tasks/cl0177_machine_scope_blueprint_task_plan.md`](../tasks/cl0177_machine_scope_blueprint_task_plan.md) (GATE 2)
-**Prerequisite**: **[I176]** has landed — `~/.agents/drwn/sources/` eliminated, `~/.agents/drwn/config.json` (user preferences) exists, `drwn card publish --from <path>` works. Docs/G1/G2 here may run ahead of that; Building may not.
-**Scope**: the drwn CLI's machine-default model + effective-state + sync engine (`cli/`).
-**Related**: [`cl0176_card_source_path_reform_target_architecture.md`](./cl0176_card_source_path_reform_target_architecture.md) (prerequisite), [I24] instructions projection (merged `65d94c7`) whose `sync-project-instructions.ts` this design mirrors.
 
-## 1. The problem
+**Prerequisite**: [I176] is merged at `1fc03e6`; post-merge CI run `30848589215` passed all six jobs.
 
-The machine-default model has a **governance gap**: it supports two levels, both broken for different reasons.
+**Compatibility decision**: Pre-launch hard cut. V1 and prototype machine configurations are rejected. There is no migration, dual read, or legacy activation path.
 
-**The profile** (`capabilities.profile`) — one hardcoded, immutably-pinned operator card. Provides integrity verification and atomic curation. But locked to exactly `@darwinian/operator@2.0.0` via `z.literal()` — cannot be changed without a CLI release, cannot accept a second card, cannot be extended.
+## 1. Decision
 
-**Explicit skills** (`capabilities.skills[]`) — a flat list of bare skill IDs, enabled one-by-one via `drwn machine skill enable <id>`. No version tracking, no integrity verification, no provenance. Resolves to whatever bytes `findAvailableSkill` finds on disk. The 12 remaining explicit skills on this machine are exactly the `@remyjkim/personal-harness` skill list, but `machine.json` records no connection to that card.
+Machine capability intent has one authority: a selected Worker Blueprint and its immutable Card closure.
 
-There is **no middle ground**: no way to say "these skills come from this card, at this version, as my machine defaults." The operator profile proves the concept (card-pinned machine capabilities with integrity) but the mechanism is deliberately non-extensible.
+The current V1 model has two incompatible activation mechanisms:
 
-The consequence: machine defaults are either over-governed (the locked profile) or under-governed (bare skill IDs). And neither level supports hooks or instructions at machine scope — the two surfaces that make the workflow-skills card valuable.
+- a special, CLI-pinned Operator profile with integrity but no extensibility; and
+- flat skill/MCP IDs with neither Card provenance nor version or content integrity.
 
-## 2. The proposed architecture
+V1 cannot be migrated losslessly because its bare IDs do not identify the Card release that supplied the bytes. I177 therefore replaces the model outright. A machine either has a valid V2 Blueprint selection or no active machine Worker.
 
-**Replace the dual model with one: a Worker Blueprint selected at machine scope.**
+This produces one mental model across scopes:
 
-```
-# machine.json (after)
+| Concern | Project scope | Machine scope |
+|---|---|---|
+| Selection | one active Worker root | one active Worker root |
+| Reproducibility | `drwn.project-lock` V1 | embedded `drwn.project-lock` V1 value |
+| Capability source | selected Card closure | selected Card closure |
+| Consent | per locked Card/digest | per locked Card/digest |
+| Projection | repository target surfaces | user-home target surfaces |
+| Write record | project write record | global write record |
+
+Project and machine state remain exclusive. A project write never inherits ambient machine capabilities, and a machine write never consults the current project.
+
+## 2. Canonical V2 schema
+
+`~/.agents/drwn/machine.json` becomes:
+
+```jsonc
 {
   "schema": "drwn.machine",
   "schemaVersion": 2,
-  "policy": { ... },
+  "policy": {
+    "targets": {},
+    "catalogs": {},
+    "analyzer": {},
+    "trustedSources": {}
+  },
   "capabilities": {
-    "activeWorker": "@curation-labs/machine-defaults@1.0.0",
-    "workerLock": { ... }    // closure lock (like a project card.lock)
+    "activeWorker": null,
+    "workerLock": null
   }
 }
 ```
 
-- `activeWorker` — the selected blueprint ref (or `null` for no machine worker).
-- `workerLock` — the resolved closure (roots + cards with integrity hashes), analogous to a project's `card.lock`.
-- `profile`, `skills`, `mcpServers` — **removed** (subsumed by the blueprint closure).
+An active state replaces the two nulls with a canonical root name and a
+complete validated `ProjectLockV1` value. That lock includes `store`,
+`workerRoots`, and `cards`; every root contains `name`, the immutable requested
+ref, `kind`, and ordered `members`. The architecture intentionally does not show
+an abbreviated active lock as if it were valid JSON.
 
-The machine blueprint is a normal Worker Blueprint card (`kind: "blueprint"`) that composes whatever cards the user wants as ambient defaults:
+Normative rules:
 
-```jsonc
-// @curation-labs/machine-defaults card.json
+1. `schemaVersion` is exactly `2`.
+2. `policy` retains target, catalog, analyzer, and trusted-source policy. It has no `authoring` field.
+3. `capabilities.activeWorker` is either a canonical root Card name or `null`. It is never a versioned or transport-bearing reference.
+4. `capabilities.workerLock` is either a validated `ProjectLockV1` value or `null`.
+5. A non-null `activeWorker` requires a non-null lock containing exactly one matching root name.
+6. Every machine root has `kind: "blueprint"`; plain Cards may be members but cannot be installed or selected as machine roots.
+7. The root's `requested` field preserves the user's versioned Git, Store, or integrity-locked file reference.
+8. `activeWorker: null` may retain a valid lock containing installed alternative roots. `workerLock: null` means no installed machine roots.
+9. The removed V1 fields `profile`, `skills`, and `mcpServers` are invalid in V2.
+10. `config.json.defaultAuthorScope` and `config.json.catalogCheckouts` remain independent user preferences. No load-time bridge reads or removes `machine.policy.authoring`.
+
+The existing `ProjectLockV1` TypeScript shape and `validateCardLockfile` behavior are reused; no nonexistent schema export is invented. Machine mutation validates both machine schema and lock version floors before committing bytes.
+
+### Empty V2 state
+
+Fresh non-guided or non-interactive initialization writes explicit empty intent:
+
+```json
 {
-  "name": "@curation-labs/machine-defaults",
-  "version": "1.0.0",
-  "kind": "blueprint",
-  "composedFrom": [
-    "@darwinian/operator@^2.0.0",         // the 8 operator skills
-    "@curation-labs/workflow-skills@^1.0.0", // 13 workflow skills + hook + instructions
-    "@remyjkim/knowledge-docs@^1.0.0",     // 3 knowledge-docs skills
-    "@remyjkim/parallel-research@^1.0.0"   // (future: the split personal-harness skills)
-  ],
-  "instructions": {
-    "path": "instructions.md"
-  },
-  "description": "Machine-wide default Worker: operator capabilities, workflow skills, and research tools."
+  "schema": "drwn.machine",
+  "schemaVersion": 2,
+  "policy": {},
+  "capabilities": {
+    "activeWorker": null,
+    "workerLock": null
+  }
 }
 ```
 
-### Decision 1 — Replace (rationale)
+Default-filled policy values may be materialized by the parser, but serialized intent must not invent a selected Worker.
 
-**Replace, not coexist.** The dual model IS the governance gap — keeping it alongside the blueprint reintroduces the exact problem. Replace means:
+## 3. Hard-cut behavior
 
-- The profile's 8 operator skills are delivered by including `@darwinian/operator` as a `composedFrom` member of the machine blueprint. No separate mechanism needed.
-- Explicit skills (`capabilities.skills[]`) are removed. Skills that were explicitly enabled are instead delivered by card members in the blueprint closure.
-- The hardcoded profile contract (`operator-profile-contract.ts`) becomes unnecessary — the machine blueprint's lock provides equivalent (or better) integrity verification via the normal card-closure resolution + content-hashing path. The contract can be deprecated.
-- `schemaVersion` bumps to `2` (breaking change; pre-launch, acceptable).
+All V1 and prototype `machine.json` shapes fail closed with one actionable error. drwn does not infer provenance, migrate IDs, delete state, or project from invalid state.
 
-**What this eliminates:** the profile-vs-explicit tension, the `z.literal()` lock that requires a CLI release to change the operator, the ungoverned bare-skill-ID list, and the inability to have hooks/instructions at machine scope.
+The error directs the operator to:
 
-**What this preserves:** the *concept* of "ambient defaults available on every machine" — just delivered through a governed card closure instead of ungoverned skill IDs.
+1. copy `machine.json` and `global-write-record.json` outside the state root if they need an audit record;
+2. remove the unsupported machine intent and write record intentionally;
+3. run `drwn init`; and
+4. select a Blueprint with `drwn apply --root <ref>` or leave machine intent empty.
 
-### Decision 2 — Location: `machine.json` (rationale)
+The reset is operator-controlled because deletion may relinquish ownership of user-home files. `drwn init` must not silently overwrite an unsupported file.
 
-A blueprint selection determines what gets projected — that's capability/integrity state, not a user preference. It belongs in `machine.json` alongside (replacing) the current `capabilities`. Post-task-130, `policy.authoring.scope` has already moved to `config.json`, so `machine.json` is purely about "what this machine projects" — the right place for the active worker.
-
-The `workerLock` field embeds the closure lock directly in `machine.json` (rather than a separate file like `<project>/.agents/drwn/card.lock`). This keeps machine state in one file and avoids a second lock path resolver. The lock entry schema (including `hookConsent`/`instructionConsent`) is reused from the project `card.lock` — it's location-independent.
-
-### Decision 3 — Instructions projection: bundle + per-harness adapters (rationale)
-
-The investigation confirmed the blueprint can carry its own `instructions` field, and `composeConsentedInstructions` already composes it alongside member cards' instructions. The composition works unchanged. The question is the projection *target* at machine scope.
-
-**The generated worker bundle's `instructions.md`** is written automatically by `syncWorkers` — this already works at machine scope (the generated dir resolves to `~/.agents/drwn/generated/`). This is the canonical copy.
-
-**Per-harness adapter files** at user scope deliver the composed instructions to each harness's user-scope memory:
-- `~/.claude/CLAUDE.md` — Claude Code's user-scope memory (already used by drwn as an adapter target at project scope).
-- `~/.codex/AGENTS.md` — Codex's user-scope instructions.
-- Cursor and OpenCode: read `AGENTS.md` files; the adapter can target `~/.cursor/AGENTS.md` and `~/.config/opencode/AGENTS.md` if those paths are conventionally read (verify during implementation).
-
-**`~/AGENTS.md` is NOT written** — it would impose project-style instructions on every shell session and conflict with user-maintained home files. The per-harness adapter files are sufficient and non-polluting.
-
-The drwn managed-block mechanism (the `<!-- drwn:instructions:start -->` / `<!-- drwn:instructions:end -->` block with `Instruction-ID` and `Content-Digest` headers) is reused unchanged — it's already how project-scope `AGENTS.md` works.
-
-## 3. The simplified mental model
-
-**Before** (3 concepts at machine scope):
-1. The profile — one hardcoded operator card, immutably pinned, can't be changed.
-2. Explicit skills — bare IDs, ungoverned, enabled one-by-one.
-3. Explicit MCP servers — bare IDs, same governance gap.
-
-**After** (1 concept):
-1. A Worker Blueprint — selected at machine scope, composing any cards you want. Same governance as project scope: versioned, integrity-verified, hook+instruction capable. `drwn write --root` projects its full closure (skills + hooks + instructions + MCP) into user-home tool configs.
-
-The machine/project distinction becomes "which scope am I writing to," not "which completely different model applies." One primitive (blueprint), one governance model (card closure), two scopes (machine + project).
-
-## 4. The user experience
-
-### Fresh install
+The legacy commands below exit nonzero and explain the replacement workflow:
 
 ```sh
-npm install -g darwinian
-drwn init
-# guided init offers: "Use Recommended Machine Defaults blueprint? [Y/n]"
-# → if yes: resolves @curation-labs/machine-defaults, writes activeWorker + workerLock to machine.json
-drwn write --root
-# → projects 20+ skills + hooks + instructions + MCP to ~/.claude/, ~/.codex/, etc.
+drwn machine skill enable <id>
+drwn machine skill disable <id>
+drwn machine mcp enable <id>
+drwn machine mcp disable <id>
 ```
 
-### Changing machine defaults
+Inventory commands remain supported. Installation is not activation:
 
 ```sh
-# swap to a different blueprint
-drwn use --root @my-org/custom-defaults@1.0.0
-drwn write --root
-
-# or compose a new one
-drwn card new @my-org/my-defaults --kind blueprint
-drwn worker compose @my-org/my-defaults --add @darwinian/operator@^2.0.0
-drwn worker compose @my-org/my-defaults --add @curation-labs/workflow-skills@^1.0.0
-drwn card publish --from ./my-defaults/
-drwn use --root @my-org/my-defaults@1.0.0
-drwn write --root
+drwn machine skill install|update|uninstall|list|show|references ...
+drwn machine mcp add|update|remove|list|show|references ...
+drwn machine inventory export|bundle|verify|sync|gc ...
 ```
 
-### Consuming at project scope (unchanged)
+## 4. Blueprint source and recommended defaults
+
+The recommended source is a real standalone Card repository under the Card collection:
+
+`/Users/pureicis/dev/darwinian-cards/cards/machine-defaults`
+
+It is authored with the existing Worker commands, published as an immutable Git release, and consumed through an explicit immutable ref. It is not a directory inside the drwn Store and not a mutable catalog checkout at runtime.
+
+Initial composition is verified against real released refs before publication and is expected to include the current Operator, workflow-skills, knowledge-docs, and personal-harness Cards. If any intended member lacks a valid immutable release, publication stops rather than substituting ambient bytes.
+
+Guided `drwn init` discovers the recommended ref from a versioned descriptor such as `registry/machine-workers.json`. The descriptor pins the complete source ref; a contract module validates that descriptor. Non-interactive and declined setup remain empty.
+
+The Operator remains a normal Card member. The changed workflow payload is
+versioned independently as Operator `2.0.2` with `harness.minVersion: "1.1.0"`.
+It is neither tagged nor marked `lastValidatedWith` until the I177 `drwn`
+`1.1.0` implementation passes the complete release matrix. Its release
+verifier continues to validate canonical Operator content and compatibility,
+but the special machine-profile activation contract and profile registry are
+removed. If practical, `operator-profile-contract.ts` is renamed to
+`operator-card-contract.ts`; otherwise its machine-profile concerns are
+deleted and its Card-release responsibility is made explicit.
+
+### Resolution boundary
+
+Runtime selection uses only the existing reproducible Card sources:
+
+- an immutable Card already present in the local Store;
+- an explicit Git ref permitted by trusted-source policy; or
+- an explicit file source permitted by policy and locked to its resolved content digest.
+
+Store and pinned Git releases are immutable. An explicit file source is a
+development convenience, not immutable: every machine evaluation re-hashes its
+live source path and fails closed if it differs from the lock. `config.json.catalogCheckouts`
+is an authoring lookup for Card source commands. It must not be added to
+`resolveCard`, `use`, or `apply`; ambient mutable checkouts never satisfy a
+runtime ref implicitly.
+
+## 5. Machine Worker mutations
+
+Project mutation semantics are lifted to a scope-aware transaction rather than copied into unrelated command code.
+
+### `drwn apply --root`
+
+- Resolves every supplied root and replaces the installed machine root set atomically.
+- Rejects any root whose locked `kind` is not `blueprint`.
+- Selects the sole root automatically or the root named by `--active`.
+- Persists canonical `activeWorker`, requested refs, resolved versions, Card entries, integrity hashes, and consent carried forward through the shared range-authorized project contract.
+- `--none` suppresses selection while retaining the supplied replacement roots in a valid lock. `apply --root --none` with no refs clears the root set and produces `activeWorker: null`, `workerLock: null`.
+- Commits intent without projection by default, matching project `apply`; `--write` chains projection after the successful commit.
+
+### `drwn use --root`
+
+- With a ref, resolves or adds that root and selects it without discarding installed alternatives.
+- Rejects a plain Card root.
+- With `--none`, clears only `activeWorker`; a valid lock may retain installed roots.
+- Carries forward consent using the same range-authorized rules as project selection.
+- Projects after committing unless `--no-write` is supplied.
+
+Existing add/remove/pin/update primitives should be shared where their semantics are safe. Every machine mutation uses the locked `mutateMachineConfig` transaction and validates the resulting lock before rename.
+
+## 6. Effective state and integrity
+
+When no project config is active, `buildEffectiveState` reads the machine selection:
+
+1. validate V2 and the embedded lock;
+2. locate the canonical active root;
+3. reconstruct its selected closure from the locked topology;
+4. load every locked Card from the location dictated by its locked origin;
+5. re-hash Store/Git extractions and explicit file-origin source paths against the lock before projection;
+6. derive skills, MCP definitions, hooks, and instructions only from the active closure; and
+7. report missing, changed, or unsupported bytes as a blocking integrity error.
+
+The closure follows the current Card validator: a Blueprint root may compose plain Cards; nested Blueprint behavior does not expand as part of I177.
+
+`machineCapabilities` is no longer populated from machine inventory IDs. Skills and MCP servers flow through the same active-Card ordering and provenance used at project scope. Inactive installed roots and unrelated inventory never enter effective state.
+
+Status/doctor output becomes a V2 contract reporting:
+
+- canonical active Worker and requested root ref;
+- installed roots and locked Card closure;
+- closure-derived skill, MCP, hook, and instruction counts/provenance;
+- lock/content integrity;
+- consent gaps; and
+- projection ownership/currentness.
+
+## 7. Consent
+
+Hooks and instructions remain opt-in per locked Card and digest.
 
 ```sh
-cd ~/my-project
-drwn apply @my-org/project-worker@1.0.0
-drwn write
-# → project worker fully shadows machine worker for this project's writes
-# → drwn write --root still projects the machine worker independently
+drwn card trust <card> --hooks --scope machine
+drwn card trust <card> --instructions --scope machine
 ```
 
-## 5. What already works (free from the investigation)
+Machine consent is stored in `machine.json capabilities.workerLock.cards[]`, not a second database. A typed consent scope discriminator identifies project versus machine acknowledgements; an unexplained magic path such as `"__machine__"` is not public state. At machine scope, `card trust` accepts only a Card in the currently active closure. This deliberate tightening prevents granting ambient consent to an inactive alternative; consent already recorded while that Card was active remains attached to its lock entry when another root is selected.
 
-| Subsystem | Why it needs no changes |
-|---|---|
-| Worker bundle destination | `generatedDir` already resolves to `~/.agents/drwn/generated/` at machine scope |
-| Card resolution | `resolveCard` and `resolveWorkerGraph` are project-agnostic (take `agentsDir` + refs) |
-| MCP sync | Already runs at machine scope unconditionally |
-| Skills sync | Already runs at machine scope (driven by `skillApplyOrderCards` + `machineCapabilities`) |
-| Global write-record | Already tracks machine-scope managed paths |
-| `--root` plumbing | `assertMachineWriteScopeAllowed` + `forceMachineScope` already exist |
-| Blueprint instructions | `composeConsentedInstructions` already iterates `activeCards` including the blueprint root; `closureNames` includes `[root.name, ...root.members]` |
-| Lock entry schema | `hookConsent`/`instructionConsent` fields are location-independent |
+Machine `use`, `apply`, and `write` must preserve the project contract:
 
-## 6. What needs building (6 work items)
+- unchanged content inside the prior consented semver range preserves consent;
+- changed hook/instruction content inside that range is re-granted with a fresh timestamp/current digest and an explicit warning, matching `carryCardConsent`;
+- versions outside the consented range or removed consent-relevant contributions drop consent and require an explicit trust command;
+- a mutation that newly requires consent reports it precisely;
+- `drwn write --root` replays acknowledged consent before planning, including when `--root` forced machine scope from a project directory; and
+- no consent prompt or acknowledgement is written during `--dry-run` or non-interactive failure.
 
-### 6.1 New effective-state branch (~100 lines)
+## 8. Projection contract
 
-In `buildEffectiveState` (`effective-state.ts`), when `projectConfigPath` is null AND `machine.json` has an `activeWorker`:
+`drwn write --scope machine` and `drwn write --root` project the active closure to user-home surfaces. They never project inactive roots or arbitrary installed inventory.
 
-1. Read `workerLock` from `machine.json`.
-2. Reconstruct `workerSelection` from the lock (the lock records roots + cards + selection).
-3. Populate `activeCards`, `skillApplyOrderCards`, `cardServerDefinitions`, `contentRootsByCard`, `cardModes` — mirroring lines 304-403 of the project branch.
-4. Verify integrity (re-hash the extracted card dirs against the lock's hashes).
+### Generated Worker
 
-This is the core wiring change. The logic is a parallel of the project branch, reading from `machine.json workerLock` instead of `<project>/.agents/drwn/card.lock`.
+The existing scope-agnostic Worker generator writes the active aggregate bundle beneath:
 
-### 6.2 Lift the project-only gates
+`~/.agents/drwn/generated/workers/<scope>/<name>/`
 
-In `syncRepository` (`sync.ts:690-715`):
+This includes the Worker manifest, composed skills, consented instructions, and consented hook assets. The implementation lifts the current project-only orchestration gate; it does not fork the generator.
 
-- Move `syncWorkers` out of `if (state.projectRoot)` — it should also run when `state.workerSelection` is populated at machine scope.
-- Move `syncProjectInstructions` out of `if (state.projectRoot)` — but redirect the output target from `<scopeRoot>/AGENTS.md` to per-harness adapter files (§6.4).
-- Remove the `writeScope === "machine"` early-return in `sync-project-instructions.ts:38-45`.
+### Skills and MCP
 
-### 6.3 Machine-scope consent
+Skills and MCP definitions are derived from `activeCards` in deterministic closure order. The V1 `machineCapabilities.skills` and `machineCapabilities.mcpServers` inputs disappear. Target and mode filters still apply.
 
-- `drwn card trust <card> --hooks --scope machine` and `--instructions --scope machine` — write consent into `machine.json workerLock.cards[].hookConsent` / `.instructionConsent`.
-- `card trust` gains a `--scope machine` (or `--root`) flag. When set, it reads/writes `machine.json workerLock` instead of requiring a project root.
-- Consent-ack keys use a `"machine"` sentinel instead of `projectRoot`.
-- `drwn write --root` replays consent from the machine lock (the project-scope replay logic in `write.ts:164-227` gains a machine-scope branch).
+### Instructions
 
-### 6.4 Instructions projection at machine scope
+The canonical composed instructions are part of the generated Worker. Managed adapters deliver them to:
 
-- The composed instructions byte stream (from `composeConsentedInstructions`) is projected to:
-  - `~/.agents/drwn/generated/instructions.md` (the worker bundle — already written by `syncWorkers`).
-  - `~/.claude/CLAUDE.md` (Claude adapter — drwn managed block).
-  - `~/.codex/AGENTS.md` (Codex adapter — drwn managed block).
-- **Not** `~/AGENTS.md` (avoids home-dir pollution).
-- The managed-block mechanism (`<!-- drwn:instructions:start -->` with `Instruction-ID`/`Content-Digest`) is reused unchanged.
-- A new function `syncMachineInstructions` (or a scope-aware branch in `syncProjectInstructions`) handles the target routing.
+- `~/.claude/CLAUDE.md`; and
+- `~/.codex/AGENTS.md`.
 
-### 6.5 `machine.json` schema bump
+I177 never writes `~/AGENTS.md`. Cursor/OpenCode instruction adapters are excluded until their user-scope discovery contract is proven. The existing managed-block format, content digest, foreign-byte preservation, drift refusal, force handling, cleanup, `--mcp-only`, `--skills-only`, and target filters apply.
 
-- `schemaVersion` → `2`.
-- `capabilities` becomes `{ activeWorker: string | null, workerLock: ProjectLockValue | null }`.
-- `profile`, `skills`, `mcpServers` removed (subsumed by the blueprint closure).
-- Migration: `drwn init` (or a migration command) converts v1 → v2 by composing a default machine blueprint from the existing profile + explicit skills, preserving the user's current capability set.
+### Hooks
 
-### 6.6 `drwn use --root` and `drwn apply --root`
+The current target routing already maps machine-scope Claude hooks to managed fields in `~/.claude/settings.json`. I177 enables the closure-derived hook input and verifies that unrelated settings survive first write, update, drift, force, and cleanup. Unsupported target hook encoders remain unsupported.
 
-- `drwn use --root <blueprint-ref>` — selects the machine-scope active worker. Resolves the closure, writes `activeWorker` + `workerLock` to `machine.json`.
-- `drwn apply --root <blueprint-ref>` — install + select in one step (same as project `apply` but targeting `machine.json`).
-- These are the machine-scope equivalents of the project `use`/`apply` commands.
+### Preflight and atomicity
 
-## 7. Interaction with project scope
+`planMachineManagedPaths` must include every possible closure-derived destination before writes begin:
 
-**Project worker fully shadows machine worker when a project is active.** This matches today's exclusive model (entering a project replaces the machine view), extended to the blueprint:
+- skills;
+- MCP config fields/files;
+- generated Worker and hook artifacts;
+- Claude/Codex instruction adapters; and
+- target hook/settings destinations.
 
-- `drwn write` (from a project) → projects the project's selected worker. Machine worker is not consulted.
-- `drwn write --root` → projects the machine worker. Project worker is not consulted.
-- The two write invocations produce independent projections to independent target dirs (project `.claude/` vs machine `~/.claude/`). The harness deduplicates by directory name, with project dirs taking precedence (closer to CWD).
+The global write record remains the ownership authority. First-write foreign content fails, drift fails without force, force updates only planned managed content, stale unchanged output is cleaned, and partial planning failure writes nothing.
 
-No new three-way merge logic is needed — the existing exclusive model extends naturally.
+## 9. Other V1 consumers
 
-## 8. Interaction with [I176]
+The hard cut is not complete until direct V1 readers are removed or updated:
 
-[I176] eliminates `sources/` and introduces `~/.agents/drwn/config.json` (user preferences: `catalogCheckouts`, `defaultAuthorScope`). This design:
+- `cli/commands/machine/mcp.ts`
+- `cli/commands/machine/skill.ts`
+- `cli/core/card-from-defaults.ts`
+- `cli/core/defaults.ts`
+- `cli/core/diagnostics.ts`
+- `cli/core/inventory-references.ts`
+- `cli/core/machine-profiles.ts`
+- `scripts/verify-release-readiness.ts`
+- their focused, contract, release, and end-to-end tests.
 
-- **Shares two files with [I176]** — `machine-config.ts` and `types.ts`. **Correction (2026-08-03):** an earlier draft of this section claimed the two "touch different subsystems." That is wrong: [I176] removes `policy.authoring` from the machine schema (`machine-config.ts:78`, `types.ts:111-112`) while this design rewrites that same schema to v2 (`schemaVersion` 1 → 2). The overlap is real and is the hard reason for the ordering. (The companion plan's claim that they share `effective-state.ts` is *also* wrong — [I176] never touches that file. Verified by grep against the post-stack tree.)
-- Benefits from [I176]'s `config.json` — the `catalogCheckouts` field enables bare-name blueprint resolution (`drwn use --root @curation-labs/machine-defaults` resolves via the catalog checkout).
-- Must land **after** [I176] — not merely for testing convenience, but because both edit the same schema and type declarations. Docs/G1/G2 may run ahead (v0.4 parallel preparation); Building may not.
+`drwn card new <name> --from-defaults` remains useful, but V2 defines defaults as the active machine closure. It creates a new plain Card by intentionally flattening that closure's effective skills and MCP definitions. It does not read V1 arrays, include inactive roots, copy secrets, or turn generated output into source.
 
-## 9. Migration path
+Inventory reference reporting no longer reports V1 explicit machine selections. It may report immutable Card-lock references when an installed inventory record is genuinely used by the active machine closure; Store-backed Cards are not falsely described as standalone inventory selections.
 
-### For this machine (pre-launch)
+Release readiness verifies the V2 schema, hard-cut errors, machine Blueprint descriptor, recommended Card contract, and deprecated command failures. Documentation and tests must contain no active instructions to enable a machine skill or MCP record directly.
 
-1. Compose `@curation-labs/machine-defaults` blueprint (operator + workflow-skills + knowledge-docs + the personal-harness split cards once Issue 2 is resolved).
-2. `drwn use --root @curation-labs/machine-defaults@1.0.0` → writes `activeWorker` + `workerLock` to `machine.json` v2.
-3. `drwn card trust @curation-labs/workflow-skills --hooks --scope machine` + `--instructions --scope machine`.
-4. `drwn write --root` → projects the full closure: skills (from all member cards), hooks (workflow-skills org-conventions), instructions (blueprint + workflow-skills composed), MCP (from member cards).
-5. Verify: `~/.claude/skills/` has the operator + workflow + knowledge-docs skills; `~/.claude/CLAUDE.md` has the composed instructions managed block; the hook composer is in `~/.agents/drwn/generated/hooks/`.
+## 10. Safety and boundaries
 
-### For new machines
+- Secrets and runtime credentials remain operator-owned environment or tool state. Cards carry definitions and secret references, never resolved values.
+- Machine inventory transfer remains inventory-only. It excludes machine intent, Worker locks, Cards, credentials, generated output, and write history.
+- Project projection remains independent and unchanged except for shared refactoring covered by regression tests.
+- Authoring checkout discovery from I176 remains independent of runtime selection.
+- The personal-harness Card split and unrelated curated-directory precedence work remain separate issues.
+- Manual acceptance runs only with disposable `HOME`, `AGENTS_DIR`, project roots, and downstream target paths. I177 never experiments against the operator's real home.
 
-`drwn init` (guided) offers the Recommended Machine Defaults blueprint. If accepted, the full closure is set up in one step — no individual skill enables, no profile dance.
+## 11. Rejected alternatives
 
-## 10. What this eliminates
+### Automatic V1 migration
 
-1. **The profile contract** (`operator-profile-contract.ts`) — the hardcoded `z.literal()` lock becomes unnecessary. The operator card is composed as a blueprint member with normal integrity verification.
-2. **Explicit skills[]** — the ungoverned bare-ID list is replaced by governed card-closure skills.
-3. **The governance gap** — one model (blueprint closure), one governance level (versioned + integrity-verified + consent-gated).
-4. **The "no hooks at machine scope" limitation** — hooks are part of the card closure; they project at machine scope like any other surface.
-5. **The "no instructions at machine scope" limitation** — instructions compose from the blueprint + member cards and project to per-harness adapter files.
-6. **The `drwn machine skill enable` one-by-one workflow** — replaced by `drwn use --root <blueprint>`. Enabling/disabling individual skills becomes a matter of editing the blueprint's `composedFrom` and re-publishing.
+Rejected. Bare skill/MCP IDs do not identify a source Card release, so migration would fabricate provenance or bind whichever mutable bytes happen to be present.
 
-## 11. What this preserves
+### Dual read or coexistence
 
-- **The project-scope model** — unchanged. Projects still select their own workers via `drwn apply`/`drwn use`.
-- **The card-closure resolution engine** — `resolveWorkerGraph`, `resolveCard`, `selectProjectWorker` all reused.
-- **The sync engine** — `syncRepository`'s surface orchestration, with `syncWorkers`/`syncProjectInstructions` lifted from the project-only gate.
-- **The consent model** — `card trust` extended with `--scope machine`, same digest-based consent.
-- **The managed-block mechanism** — `AGENTS.md`/`CLAUDE.md` managed blocks, same format.
-- **The write-record** — global write-record tracks machine-scope managed paths, same as today.
+Rejected. Retaining profile/explicit activation recreates two authorities and makes status, write, and consent ambiguous.
 
-## 12. Open questions
+### Mutable catalog checkout resolution
 
-1. **Should the machine blueprint's hooks project to `~/.claude/settings.json` at user scope?** Today `settings.json` hooks are project-scoped (`.claude/settings.json`). At machine scope, the equivalent is `~/.claude/settings.json` (Claude's user-scope settings). This is the natural target, but it's a shared file — drwn would manage the hooks key via `managed-fields` (per-field hashing), same as it manages MCP. Verify during implementation that `~/.claude/settings.json` isn't clobbered.
+Rejected. Authoring convenience cannot replace immutable runtime resolution or content-addressed integrity.
 
-2. **Should `drwn init` (guided) compose a machine blueprint automatically from the operator profile?** The migration path suggests this. The guided init could compose `@curation-labs/machine-defaults` (or a user-chosen name) with `@darwinian/operator` as the sole member, then offer to add more cards interactively. This replaces the current "accept recommended operator profile?" prompt with "accept recommended machine blueprint?".
+### A second machine lock file
 
-3. **Schema migration from v1 to v2.** A `drwn machine migrate` command (or automatic migration in `ensureStoreInitialized`) converts the v1 `capabilities: { profile, skills, mcpServers }` to v2 `capabilities: { activeWorker, workerLock }` by composing a default blueprint from the existing profile + explicit skills. This preserves the user's current capability set during the transition.
+Rejected. Embedding the validated lock in `machine.json` keeps one atomic machine-intent transaction and avoids split-brain selection.
 
-4. **The `darwinian-worker-skills` bundle.** Today the README instructs `drwn machine skill install <bundle>` + `drwn machine skill enable <id>` one-by-one. With the machine blueprint, this becomes `drwn use --root <blueprint-containing-the-bundle>`. The README + the `manage-defaults` skill need updating.
+### Home-root `AGENTS.md`
 
-## 13. The mental model comparison
+Rejected. It is too broad and may affect unrelated shells and repositories. Only harness-specific user adapters are managed.
 
-**Current** (machine scope): "Enable individual skills one-by-one. The profile gives you 8 hardcoded operator skills. Everything else is bare IDs with no version tracking. No hooks, no instructions at machine scope."
+## 12. Acceptance criteria
 
-**Proposed** (machine scope): "Select a Worker Blueprint at machine scope, same as you do at project scope. It composes any cards you want, with full governance (versioned, integrity-verified, consent-gated). `drwn write --root` projects its full closure — skills, hooks, instructions, MCP — into your user-home tool configs. One primitive, one governance model, two scopes."
+I177 is complete only when all of the following are evidenced:
+
+1. Only strict machine V2 is accepted; V1/prototype inputs fail with controlled-reset guidance and no mutation.
+2. `policy.authoring` and its compatibility bridge are absent; `config.json` preferences work independently.
+3. A published, immutable `@curation-labs/machine-defaults` Blueprint exists in its own Card repository.
+4. Guided init can pin that descriptor; non-interactive/declined init is empty.
+5. `use --root`, `apply --root`, `--none`, consent carry-forward, and projection failure semantics match the documented contract.
+6. Effective state is derived only from the active verified closure.
+7. Machine skills, MCP, Worker bundle, hooks, and Claude/Codex instructions project with ownership and filter guarantees.
+8. Legacy enable/disable commands fail nonzero with replacement guidance while inventory operations remain functional.
+9. Diagnostics, capture-from-defaults, inventory references, release verification, public docs, knowledge docs, and Operator skills describe V2 only.
+10. Focused tests, typecheck, full pinned suite, release readiness, post-push CI, and disposable-HOME acceptance all pass with recorded evidence.
+
+No production implementation begins until this architecture, the companion TDD plan, and all affected existing documentation have been revised and checked for internal consistency.
