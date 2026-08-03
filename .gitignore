@@ -26,7 +26,11 @@ docs/presentations/
 .agents/drwn/receipts/
 .agents/drwn/generated/
 .claude/skills/
+.claude/CLAUDE.md
+.claude/settings.json
+.claude/settings.local.json
 .codex/skills/
+.codex/hooks.json
 .cursor/
 .mcp.json
 .cursor/mcp.json
