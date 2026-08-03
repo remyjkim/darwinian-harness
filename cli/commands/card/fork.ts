@@ -2,11 +2,11 @@
 // ABOUTME: Leaves the original source untouched.
 
 import { Option } from "clipanion";
-import { cp } from "node:fs/promises";
+import { cp, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readCardSourceManifest } from "../../core/card-store";
-import { resolveCardSourceDir, resolveSourcesRoot } from "../../core/store-paths";
 import { BaseCommand } from "../base";
+import { resolveCommandCardSource } from "./source-input";
 
 export class CardForkCommand extends BaseCommand {
   static override paths = [["card", "fork"]];
@@ -26,15 +26,14 @@ export class CardForkCommand extends BaseCommand {
   into = Option.String("--into", { description: "Org monorepo directory to copy into." });
 
   async execute() {
-    const manifest = await readCardSourceManifest(this.context.agentsDir, this.sourceName);
-    const sourceDir = resolveCardSourceDir(this.context.agentsDir, manifest.name);
+    const source = await resolveCommandCardSource(this.context, { input: this.sourceName });
+    const manifest = await readCardSourceManifest(source.sourceDir);
     const [, baseName] = manifest.name.includes("/") ? manifest.name.split("/") : ["", manifest.name];
     const targetScope = this.scope ?? manifest.name.split("/")[0]!;
     const targetName = `${targetScope}/${baseName}`;
-    const targetDir = this.into
-      ? join(this.into, targetScope, baseName!)
-      : join(resolveSourcesRoot(this.context.agentsDir), targetScope, baseName!);
-    await cp(sourceDir, targetDir, { recursive: true, force: true });
+    const targetDir = join(this.into ?? this.context.cwd, baseName!);
+    await mkdir(this.into ?? this.context.cwd, { recursive: true });
+    await cp(source.sourceDir, targetDir, { recursive: true, force: true });
     const { readFile, writeFile } = await import("node:fs/promises");
     const cardPath = join(targetDir, "card.json");
     const next = JSON.parse(await readFile(cardPath, "utf8"));

@@ -15,7 +15,7 @@ import { resolveManifestInstructionContribution } from "./instruction-contributi
 import { findLibraryMcpServer, findLibrarySkill } from "./library";
 import { validateMcpLibraryServer } from "./mcp-library";
 import { findRepoSkill } from "./skills";
-import { assertSafePathPart, assertStoreWritable, resolveCardSourceDir, resolveSourcesRoot } from "./store-paths";
+import { assertSafePathPart, assertStoreWritable } from "./store-paths";
 import type { RegistryServer } from "./types";
 
 export interface CardSourceIssue {
@@ -88,15 +88,6 @@ export interface CardSourceState {
   mcpServers: CardSourceMcpServerState[];
   issues: CardSourceIssue[];
   ok: boolean;
-}
-
-export interface CardSourceSummary {
-  name: string;
-  path: string;
-  version?: string;
-  description?: string;
-  ok: boolean;
-  issues: CardSourceIssue[];
 }
 
 export interface CardSourceDoctorReport {
@@ -185,31 +176,6 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
-}
-
-async function discoverSourceNames(agentsDir: string) {
-  const root = resolveSourcesRoot(agentsDir);
-  if (!existsSync(root)) {
-    return [];
-  }
-  const names: string[] = [];
-  for (const entry of await readdir(root, { withFileTypes: true })) {
-    if (entry.name.startsWith(".") || (!entry.isDirectory() && !entry.isSymbolicLink())) {
-      continue;
-    }
-    if (entry.name.startsWith("@")) {
-      const scopeDir = join(root, entry.name);
-      for (const child of await readdir(scopeDir, { withFileTypes: true })) {
-        if (child.name.startsWith(".") || (!child.isDirectory() && !child.isSymbolicLink())) {
-          continue;
-        }
-        names.push(`${entry.name}/${child.name}`);
-      }
-      continue;
-    }
-    names.push(entry.name);
-  }
-  return names.sort((a, b) => a.localeCompare(b));
 }
 
 async function parseJsonFile(path: string): Promise<{ value: unknown; error?: string }> {
@@ -423,12 +389,10 @@ async function readMcpServers(sourceDir: string, manifest: CardManifest | null, 
   return servers.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export async function readCardSourceState(sourceDirOrAgentsDir: string, legacyName?: string): Promise<CardSourceState> {
-  const sourceDir = legacyName
-    ? resolveCardSourceDir(sourceDirOrAgentsDir, legacyName)
-    : resolve(sourceDirOrAgentsDir);
+export async function readCardSourceState(sourceDirInput: string): Promise<CardSourceState> {
+  const sourceDir = resolve(sourceDirInput);
   if (!existsSync(sourceDir)) {
-    throw new Error(`Card source not found: ${legacyName ?? sourceDir}`);
+    throw new Error(`Card source not found: ${sourceDir}`);
   }
 
   const issues: CardSourceIssue[] = [];
@@ -450,9 +414,6 @@ export async function readCardSourceState(sourceDirOrAgentsDir: string, legacyNa
       } else {
         const validManifest = parsed.value as CardManifest;
         manifest = validManifest;
-        if (legacyName && manifest.name !== legacyName) {
-          issues.push(issue("manifest_name_mismatch", `card.json.name must equal source name: ${legacyName}`, manifestPath));
-        }
       }
     }
   }
@@ -538,7 +499,7 @@ export async function readCardSourceState(sourceDirOrAgentsDir: string, legacyNa
   const mcpServers = await readMcpServers(sourceDir, manifest, issues);
 
   return {
-    name: manifest?.name ?? legacyName ?? basename(sourceDir),
+    name: manifest?.name ?? basename(sourceDir),
     sourceDir,
     manifestPath,
     manifest,
@@ -570,23 +531,8 @@ export async function readCardSourceState(sourceDirOrAgentsDir: string, legacyNa
   };
 }
 
-export async function listCardSources(agentsDir: string): Promise<CardSourceSummary[]> {
-  const names = await discoverSourceNames(agentsDir);
-  const states = await Promise.all(names.map((name) => readCardSourceState(agentsDir, name)));
-  return states.map((state) => ({
-    name: state.name,
-    path: state.sourceDir,
-    ...(state.manifest?.version ? { version: state.manifest.version } : {}),
-    ...(state.manifest?.description ? { description: state.manifest.description } : {}),
-    ok: state.ok,
-    issues: state.issues,
-  }));
-}
-
-export async function doctorCardSource(agentsDir: string, name?: string): Promise<CardSourceDoctorReport> {
-  const sources = existsSync(join(agentsDir, "card.json"))
-    ? [await readCardSourceState(agentsDir)]
-    : await Promise.all((name ? [name] : await discoverSourceNames(agentsDir)).map((sourceName) => readCardSourceState(agentsDir, sourceName)));
+export async function doctorCardSource(sourceDir: string): Promise<CardSourceDoctorReport> {
+  const sources = [await readCardSourceState(sourceDir)];
   const issues = sources.flatMap((source) => source.issues);
   return { ok: issues.length === 0, sources, issues };
 }

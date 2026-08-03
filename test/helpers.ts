@@ -195,11 +195,13 @@ export async function publishCardWithSkills(
     throw new Error(`Use a scoped card name in tests: ${options.name}`);
   }
   const [, scope, cardName] = match;
-  const sourceParent = join(fixture.root, "card-sources", scope!.slice(1));
+  const catalogRoot = join(fixture.root, "card-catalog");
+  const sourceParent = join(catalogRoot, "cards");
   const sourceRoot = join(sourceParent, cardName!);
   if (!existsSync(join(sourceRoot, "card.json"))) {
     expect((await runAgentsCli(["card", "new", options.name, "--into", sourceParent, "--no-git"], envFor(fixture))).exitCode).toBe(0);
   }
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
 
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());
@@ -225,11 +227,13 @@ export async function publishCardWithSkills(
 export async function publishExactOperatorProfile(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
 ) {
-  const sourceRoot = join(fixture.root, "card-sources", "darwinian", "operator");
+  const catalogRoot = join(fixture.root, "card-catalog");
+  const sourceRoot = join(catalogRoot, "cards", "operator");
   await mkdir(dirname(sourceRoot), { recursive: true });
   await cp(join(import.meta.dir, "..", "darwinian-worker-skills", "cards", "operator"), sourceRoot, {
     recursive: true,
   });
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
   const published = await runAgentsCli(["card", "publish", DARWINIAN_OPERATOR_PROFILE.name, "--from", sourceRoot], envFor(fixture));
   expect(published.exitCode).toBe(0);
   const { resolveCard } = await import("../cli/core/card-store");

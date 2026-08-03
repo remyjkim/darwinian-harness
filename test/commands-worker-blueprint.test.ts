@@ -50,7 +50,7 @@ test("worker compose on a non-blueprint card is refused", async () => {
   await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["x"] });
 
   const result = await runAgentsCli([
-    "worker", "compose", join(fixture.root, "card-sources", "me", "plain"), "--add", "@me/a@^1.0.0",
+    "worker", "compose", join(fixture.root, "card-catalog", "cards", "plain"), "--add", "@me/a@^1.0.0",
   ], envFor(fixture));
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toMatch(/not a blueprint/);

@@ -3,7 +3,6 @@
 
 import { Option, UsageError } from "clipanion";
 import { emptyConfigLocal, loadConfigLocal, writeConfigLocal, ensureCardLockLocalEntryFromSource } from "../../core/config-local";
-import { resolveCardSourceDir } from "../../core/store-paths";
 import { BaseCommand } from "../base";
 import { requireProjectRoot } from "./project-command";
 
@@ -54,9 +53,6 @@ export class CardLinkCommand extends BaseCommand {
       }
       local.sourceOverrides[this.card] = this.source;
       const resolved = this.source.replace(/^file:/, "");
-      if (resolved !== resolveCardSourceDir(this.context.agentsDir, this.card) && !resolved) {
-        // no-op validation placeholder
-      }
       await ensureCardLockLocalEntryFromSource(projectRoot, this.context.agentsDir, this.card, resolved);
     }
 
