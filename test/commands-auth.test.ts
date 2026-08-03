@@ -22,7 +22,7 @@ function b64(value: unknown): string {
 
 function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): string {
   return `${b64({ alg: "none" })}.${b64({
-    iss: "https://auth.darwiniantools.com/api/auth",
+    iss: "https://auth.darwinian.dev/api/auth",
     aud: "https://api.darwinian.dev",
     sub: "user_123",
     email,
@@ -184,7 +184,7 @@ describe("auth commands", () => {
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
     await writeCredentials(credentialsPath, {
       version: 2,
-      issuer: "https://auth.darwiniantools.com/api/auth",
+      issuer: "https://auth.darwinian.dev/api/auth",
       clientId: "drwn-cli",
       resource: "https://api.darwinian.dev",
       accessToken: fakeJwt(),
@@ -199,7 +199,7 @@ describe("auth commands", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Logged out. Credentials removed.");
     expect(await Bun.file(credentialsPath).exists()).toBe(false);
-    expect(called).toEqual(["https://auth.darwiniantools.com/api/auth/oauth2/revoke"]);
+    expect(called).toEqual(["https://auth.darwinian.dev/api/auth/oauth2/revoke"]);
   });
 
   test("logout deletes credentials and exits 0 when the revoke returns 400", async () => {

@@ -29,7 +29,7 @@ export function dahIssuerFor(origin: string): string {
 export function drwnCliProfile(
   env: Record<string, string | undefined> = process.env,
 ): CliAuthProfile {
-  const hubOrigin = trimTrailingSlashes(env.DRWN_DAH_HUB_URL ?? "https://auth.darwiniantools.com");
+  const hubOrigin = trimTrailingSlashes(env.DRWN_DAH_HUB_URL ?? "https://auth.darwinian.dev");
   const resource = trimTrailingSlashes(env.DRWN_DAH_RESOURCE ?? DAH_API_ORIGINS.services);
   return {
     clientId: DAH_CLIENT_IDS.drwnCli,

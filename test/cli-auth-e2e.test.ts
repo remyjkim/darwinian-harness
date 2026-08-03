@@ -161,7 +161,7 @@ describe("auth CLI E2E", () => {
     expect(credentials && "version" in credentials ? credentials.accessToken : "").toContain(".");
     expect(Date.parse(credentials!.saved_at)).not.toBeNaN();
 
-    const whoami = await runAgentsCli(["whoami", "--json"], envFor(fixture));
+    const whoami = await runAgentsCli(["whoami", "--json"], env);
     expect(whoami.exitCode).toBe(0);
     expect(JSON.parse(whoami.stdout)).toMatchObject({
       email: "cli-e2e@example.com",
@@ -200,7 +200,7 @@ describe("auth CLI E2E", () => {
     expect(valid.exitCode).toBe(0);
     expect(JSON.parse(valid.stdout)).toMatchObject({
       email: "env-e2e@example.com",
-      issuer: "https://auth.darwiniantools.com/api/auth",
+      issuer: "https://auth.darwinian.dev/api/auth",
       source: "env",
     });
     expect(await Bun.file(resolveCredentialsPath(fixture.agentsDir)).exists()).toBe(false);

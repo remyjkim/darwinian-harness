@@ -426,8 +426,10 @@ export async function runGlobalAgentsCli(args: string[], env: Record<string, str
 }
 
 export async function runSyncWrapper(args: string[], env: Record<string, string>) {
-  const proc = Bun.spawn(["bun", "run", "sync-mcp.ts", ...args], {
-    cwd: join(import.meta.dir, ".."),
+  const entrypoint = fileURLToPath(new URL("../sync-mcp.ts", import.meta.url));
+  const bunBin = Bun.which("bun") ?? process.execPath;
+  const proc = Bun.spawn([bunBin, "run", entrypoint, ...args], {
+    cwd: env.AGENTS_REPO_ROOT ?? join(import.meta.dir, ".."),
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
