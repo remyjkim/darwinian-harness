@@ -1,198 +1,167 @@
-// ABOUTME: Verifies packaged machine profile descriptors, one-time Git resolution, and offline pin validation.
-// ABOUTME: Uses isolated local Git remotes while preserving the canonical source recorded in machine intent.
+// ABOUTME: Verifies recommended machine Worker initialization and fail-closed guided setup.
+// ABOUTME: Proves accept, decline, repeat, unavailable, and invalid-existing paths preserve valid V2 intent.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { writeMachineConfig } from "../cli/core/card-store";
-import { createEmptyMachineConfig } from "../cli/core/machine-config";
-import { createDarwinianOperatorPin, DARWINIAN_OPERATOR_PROFILE, DARWINIAN_OPERATOR_REGISTRY, DARWINIAN_OPERATOR_SKILL_IDS } from "../cli/core/operator-profile-contract";
+import { resolveCard } from "../cli/core/card-store";
 import {
-  initializeMachineCapabilities,
-  loadMachineProfileRegistry,
-  verifyMachineProfilePin,
-  type MachineProfileDescriptor,
+  initializeMachineWorker,
+  type MachineWorkerInitDescriptor,
 } from "../cli/core/machine-profiles";
-import { resolveCardBareRepoPath, resolveMachineConfigPath } from "../cli/core/store-paths";
-import { readMachineConfigFile } from "../cli/core/machine-config";
-import { cleanupTempRoots, publishExactOperatorProfile, scaffoldCliFixture } from "./helpers";
+import { createEmptyMachineConfig } from "../cli/core/machine-config";
+import { resolveMachineConfigPath } from "../cli/core/store-paths";
+import {
+  cleanupTempRoots,
+  createCatalogCardSource,
+  envFor,
+  runAgentsCli,
+  scaffoldCliFixture,
+} from "./helpers";
 
 const tempRoots: string[] = [];
 
-afterEach(async () => {
-  await cleanupTempRoots(tempRoots);
-});
+afterEach(async () => cleanupTempRoots(tempRoots));
 
-async function localOperatorProfile() {
-  const source = await scaffoldCliFixture();
-  const target = await scaffoldCliFixture();
-  tempRoots.push(source.root, target.root);
-  const { resolved } = await publishExactOperatorProfile(source);
-  const barePath = resolveCardBareRepoPath(source.agentsDir, "@darwinian/operator");
-  const descriptor: MachineProfileDescriptor = {
-    id: "darwinian-operator",
-    displayName: "Recommended Darwinian Operator",
-    source: DARWINIAN_OPERATOR_PROFILE.source,
-    name: "@darwinian/operator",
-    version: DARWINIAN_OPERATOR_PROFILE.version,
-    commit: resolved.git!.commit,
-    treeSha: resolved.treeSha!,
-    integrity: resolved.integrity as `sha256-${string}`,
-    skills: [...DARWINIAN_OPERATOR_SKILL_IDS],
-    mcpServers: [],
-  };
+async function localDescriptor(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
+  const name = "@me/machine-defaults";
+  const sourceDir = await createCatalogCardSource(fixture, name, { kind: "blueprint" });
+  const manifestPath = join(sourceDir, "card.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.harness = { minVersion: "0.8.0" };
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const publish = await runAgentsCli(["worker", "publish", name], envFor(fixture));
+  expect(publish.exitCode, publish.stderr).toBe(0);
+  const source = `${name}@1.0.0`;
+  const resolved = await resolveCard(fixture.agentsDir, source);
   return {
     source,
-    target,
-    descriptor,
-    resolutionRef: `git+file://${barePath}#v${DARWINIAN_OPERATOR_PROFILE.version}`,
-  };
+    name,
+    version: resolved.version,
+    minDrwnVersion: "0.8.0",
+    commit: resolved.git!.commit,
+    treeSha: resolved.treeSha!,
+    integrity: resolved.integrity,
+    members: [],
+  } satisfies MachineWorkerInitDescriptor;
 }
 
-describe("machine profiles", () => {
-  test("loads the strict packaged Recommended Operator descriptor", async () => {
+describe("machine Worker initialization", () => {
+  test("guided acceptance resolves and selects the exact descriptor Blueprint", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
+    const descriptor = await localDescriptor(fixture);
 
-    const registry = await loadMachineProfileRegistry(join(import.meta.dir, ".."));
-
-    expect(registry).toEqual(JSON.parse(JSON.stringify(DARWINIAN_OPERATOR_REGISTRY)));
-  });
-
-  test("resolves once, verifies immutable coordinates, and writes the pin", async () => {
-    const fixture = await localOperatorProfile();
-
-    const result = await initializeMachineCapabilities({
-      agentsDir: fixture.target.agentsDir,
-      repoRoot: fixture.target.repoRoot,
-      guided: true,
-      promptRecommended: async () => true,
-      descriptor: fixture.descriptor,
-      resolutionRef: fixture.resolutionRef,
-    });
-
-    expect(result).toMatchObject({ created: true, selectedProfile: "darwinian-operator" });
-    const machine = await readMachineConfigFile(resolveMachineConfigPath(fixture.target.agentsDir));
-    expect(machine?.capabilities.profile).toEqual({
-      id: fixture.descriptor.id,
-      source: fixture.descriptor.source,
-      name: fixture.descriptor.name,
-      version: fixture.descriptor.version,
-      commit: fixture.descriptor.commit,
-      treeSha: fixture.descriptor.treeSha,
-      integrity: fixture.descriptor.integrity,
-      skills: fixture.descriptor.skills,
-      mcpServers: fixture.descriptor.mcpServers,
-    });
-  });
-
-  test("validates a pin offline after its bare Git repo is removed", async () => {
-    const fixture = await localOperatorProfile();
-    await initializeMachineCapabilities({
-      agentsDir: fixture.target.agentsDir,
-      repoRoot: fixture.target.repoRoot,
-      guided: true,
-      promptRecommended: async () => true,
-      descriptor: fixture.descriptor,
-      resolutionRef: fixture.resolutionRef,
-    });
-    await writeMachineConfig(fixture.target.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: createDarwinianOperatorPin(), skills: [], mcpServers: [] },
-    });
-    const machine = await readMachineConfigFile(resolveMachineConfigPath(fixture.target.agentsDir));
-    await rm(resolveCardBareRepoPath(fixture.target.agentsDir, "@darwinian/operator"), { recursive: true, force: true });
-
-    const verified = await verifyMachineProfilePin(fixture.target.agentsDir, machine!.capabilities.profile!);
-
-    expect(verified.manifest.name).toBe("@darwinian/operator");
-    expect(verified.manifest.version).toBe(DARWINIAN_OPERATOR_PROFILE.version);
-  });
-
-  test("detects extracted profile byte mutation", async () => {
-    const fixture = await localOperatorProfile();
-    await initializeMachineCapabilities({
-      agentsDir: fixture.target.agentsDir,
-      repoRoot: fixture.target.repoRoot,
-      guided: true,
-      promptRecommended: async () => true,
-      descriptor: fixture.descriptor,
-      resolutionRef: fixture.resolutionRef,
-    });
-    await writeMachineConfig(fixture.target.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: createDarwinianOperatorPin(), skills: [], mcpServers: [] },
-    });
-    const machine = await readMachineConfigFile(resolveMachineConfigPath(fixture.target.agentsDir));
-    const skillPath = join(fixture.target.agentsDir, "drwn", "extracted", fixture.descriptor.treeSha, "skills", "bootstrap-project", "SKILL.md");
-    await chmod(skillPath, 0o644);
-    await writeFile(skillPath, "mutated\n");
-
-    await expect(verifyMachineProfilePin(fixture.target.agentsDir, machine!.capabilities.profile!)).rejects.toMatchObject({
-      code: "MACHINE_PROFILE_INVALID",
-    });
-  });
-
-  test("does not write an unapproved profile pin", async () => {
-    const fixture = await localOperatorProfile();
-    const descriptor = { ...fixture.descriptor, skills: ["not-approved"] } as MachineProfileDescriptor;
-
-    await expect(initializeMachineCapabilities({
-      agentsDir: fixture.target.agentsDir,
-      repoRoot: fixture.target.repoRoot,
+    const result = await initializeMachineWorker({
+      agentsDir: fixture.agentsDir,
+      repoRoot: fixture.repoRoot,
       guided: true,
       promptRecommended: async () => true,
       descriptor,
-      resolutionRef: fixture.resolutionRef,
-    })).rejects.toMatchObject({ code: "MACHINE_PROFILE_INVALID" });
+    });
 
-    expect((await readMachineConfigFile(resolveMachineConfigPath(fixture.target.agentsDir))) ?? createEmptyMachineConfig())
-      .toEqual(createEmptyMachineConfig());
+    expect(result).toEqual({ created: true, selectedWorker: descriptor.name });
+    const machine = JSON.parse(await readFile(resolveMachineConfigPath(fixture.agentsDir), "utf8"));
+    expect(machine.capabilities.activeWorker).toBe(descriptor.name);
+    expect(machine.capabilities.workerLock.workerRoots[0].requested).toBe(descriptor.source);
   });
 
-  test("rejects a resolved Card that does not match the pinned commit", async () => {
-    const fixture = await localOperatorProfile();
-    const descriptor = { ...fixture.descriptor, commit: "0".repeat(40) } as MachineProfileDescriptor;
+  test("guided decline and non-guided setup write exact empty V2", async () => {
+    for (const guided of [true, false]) {
+      const fixture = await scaffoldCliFixture();
+      tempRoots.push(fixture.root);
+      const result = await initializeMachineWorker({
+        agentsDir: fixture.agentsDir,
+        repoRoot: fixture.repoRoot,
+        guided,
+        promptRecommended: async () => false,
+      });
+      expect(result).toEqual({ created: true, selectedWorker: null });
+      expect(JSON.parse(await readFile(resolveMachineConfigPath(fixture.agentsDir), "utf8")))
+        .toEqual(createEmptyMachineConfig());
+    }
+  });
 
-    await expect(initializeMachineCapabilities({
-      agentsDir: fixture.target.agentsDir,
-      repoRoot: fixture.target.repoRoot,
+  test("an unavailable descriptor fails without creating machine intent", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const path = resolveMachineConfigPath(fixture.agentsDir);
+    const descriptor: MachineWorkerInitDescriptor = {
+      source: "@missing/machine-defaults@1.0.0",
+      name: "@missing/machine-defaults",
+      version: "1.0.0",
+      minDrwnVersion: "0.8.0",
+      commit: "a".repeat(40),
+      treeSha: "b".repeat(40),
+      integrity: `sha256-${"c".repeat(64)}`,
+      members: [],
+    };
+
+    await expect(initializeMachineWorker({
+      agentsDir: fixture.agentsDir,
+      repoRoot: fixture.repoRoot,
       guided: true,
       promptRecommended: async () => true,
       descriptor,
-      resolutionRef: fixture.resolutionRef,
-    })).rejects.toMatchObject({ code: "MACHINE_PROFILE_INVALID" });
-
-    expect((await readMachineConfigFile(resolveMachineConfigPath(fixture.target.agentsDir))) ?? createEmptyMachineConfig())
-      .toEqual(createEmptyMachineConfig());
+    })).rejects.toMatchObject({ code: "MACHINE_WORKER_NOT_AVAILABLE" });
+    expect(existsSync(path)).toBe(false);
   });
 
-  test("guided opt-out writes empty intent and existing intent is never re-prompted", async () => {
+  test("descriptor mismatch fails before machine intent is written", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    let prompts = 0;
+    const descriptor = await localDescriptor(fixture);
+    const path = resolveMachineConfigPath(fixture.agentsDir);
 
-    const first = await initializeMachineCapabilities({
+    await expect(initializeMachineWorker({
+      agentsDir: fixture.agentsDir,
+      repoRoot: fixture.repoRoot,
+      guided: true,
+      promptRecommended: async () => true,
+      descriptor: { ...descriptor, integrity: `sha256-${"0".repeat(64)}` },
+    })).rejects.toMatchObject({ code: "MACHINE_WORKER_NOT_AVAILABLE" });
+    expect(existsSync(path)).toBe(false);
+  });
+
+  test("invalid pre-existing V1 is rejected unchanged", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const path = resolveMachineConfigPath(fixture.agentsDir);
+    const v1 = `${JSON.stringify({
+      schema: "drwn.machine",
+      schemaVersion: 1,
+      policy: {},
+      capabilities: { profile: null, skills: [], mcpServers: [] },
+    }, null, 2)}\n`;
+    await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
+    await writeFile(path, v1);
+
+    await expect(initializeMachineWorker({
+      agentsDir: fixture.agentsDir,
+      repoRoot: fixture.repoRoot,
+      guided: false,
+    })).rejects.toMatchObject({ code: "MACHINE_CONFIG_INVALID" });
+    expect(await readFile(path, "utf8")).toBe(v1);
+  });
+
+  test("an existing valid machine config is returned without prompting", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    await initializeMachineWorker({ agentsDir: fixture.agentsDir, repoRoot: fixture.repoRoot, guided: false });
+    let prompted = false;
+
+    const result = await initializeMachineWorker({
       agentsDir: fixture.agentsDir,
       repoRoot: fixture.repoRoot,
       guided: true,
       promptRecommended: async () => {
-        prompts += 1;
-        return false;
-      },
-    });
-    const second = await initializeMachineCapabilities({
-      agentsDir: fixture.agentsDir,
-      repoRoot: fixture.repoRoot,
-      guided: true,
-      promptRecommended: async () => {
-        prompts += 1;
+        prompted = true;
         return true;
       },
     });
 
-    expect(first).toMatchObject({ created: true, selectedProfile: null });
-    expect(second).toMatchObject({ created: false, selectedProfile: null });
-    expect(prompts).toBe(1);
+    expect(result).toEqual({ created: false, selectedWorker: null });
+    expect(prompted).toBe(false);
   });
 });

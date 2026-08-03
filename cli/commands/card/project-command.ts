@@ -5,6 +5,7 @@ import { UsageError } from "clipanion";
 import { resolveProjectRootFromConfigPath } from "../../core/project";
 import type { CardProjectMutation } from "../../core/card-project";
 import type { WorkerProjectMutation } from "../../core/worker-project";
+import type { MachineWorkerMutation } from "../../core/worker-machine";
 import { renderOptionalMcpReport, renderSyncResult } from "../../core/output";
 import { syncRepository } from "../../core/sync";
 import type { BaseCommand } from "../base";
@@ -41,13 +42,25 @@ export function renderWorkerMutation(result: WorkerProjectMutation) {
   ].join("\n") + "\n";
 }
 
-export async function runChainedWrite(command: BaseCommand) {
+export function renderMachineWorkerMutation(result: MachineWorkerMutation) {
+  return [
+    result.dryRun ? `Would update ${result.machineConfigPath}` : `Updated ${result.machineConfigPath}`,
+    result.roots.length === 0
+      ? "Machine Worker roots: none"
+      : `Machine Worker roots:\n${result.roots.map((root) => `- ${root.name} (${root.kind}; ${root.requested})`).join("\n")}`,
+    `Active machine Worker: ${result.activeWorker ?? "none"}`,
+    ...(result.warnings?.length ? [`Warnings:\n${result.warnings.map((warning) => `- ${warning}`).join("\n")}`] : []),
+  ].join("\n") + "\n";
+}
+
+export async function runChainedWrite(command: BaseCommand, options: { machine?: boolean } = {}) {
   try {
     const result = await syncRepository({
       repoRoot: command.context.repoRoot,
       agentsDir: command.context.agentsDir,
       homeDir: command.context.homeDir,
       cwd: command.context.cwd,
+      ...(options.machine ? { forceMachineScope: true, scope: "machine" as const } : {}),
     });
     command.context.stdout.write(`${renderSyncResult(result)}${renderOptionalMcpReport(result.optionalMcpReport)}`);
     return 0;

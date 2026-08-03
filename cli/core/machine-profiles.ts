@@ -1,180 +1,113 @@
-// ABOUTME: Resolves approved machine capability profiles once and verifies pinned extracted bytes offline.
-// ABOUTME: Filters profile Cards to explicit machine-safe skill and MCP allowlists.
+// ABOUTME: Initializes machine V2 from the recommended immutable Worker Blueprint descriptor.
+// ABOUTME: Keeps guided acceptance fail-closed and writes explicit empty intent when declined.
 
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { assertValidCardManifest, type CardManifest } from "./card-manifest";
-import { resolveCard, writeMachineConfig } from "./card-store";
-import { computeIntegrityFromDir } from "./content-manifest";
+import type { CardLockEntry, WorkerRootLockEntry } from "./card-lock";
+import type { CardManifest } from "./card-manifest";
 import { DrwnError } from "./errors";
-import { createEmptyMachineConfig, parseMachineConfig, readMachineConfigFile } from "./machine-config";
+import { createEmptyMachineConfig, readMachineConfigFile, writeMachineConfigFile } from "./machine-config";
 import {
-  DARWINIAN_OPERATOR_PROFILE,
-  DARWINIAN_OPERATOR_REGISTRY,
-  createDarwinianOperatorPin,
-  operatorProfileDescriptorSchema,
-  operatorProfileRegistrySchema,
-} from "./operator-profile-contract";
-import { resolveMachineProfilesRegistryPath } from "./paths";
-import { resolveExtractedPath, resolveMachineConfigPath } from "./store-paths";
-import type { MachineProfilePin } from "./types";
+  RECOMMENDED_MACHINE_WORKER,
+  assertRecommendedMachineWorkerGraph,
+  loadMachineWorkerRegistry,
+} from "./machine-worker-contract";
+import { resolveMachineConfigPath } from "./store-paths";
+import { applyMachineWorkerRoots } from "./worker-machine";
+import type { ResolvedWorkerGraph } from "./worker-graph";
 
-export interface MachineProfileDescriptor extends MachineProfilePin {
-  displayName: typeof DARWINIAN_OPERATOR_PROFILE.displayName;
+export interface MachineWorkerInitDescriptor {
+  source: string;
+  name: string;
+  version: string;
+  minDrwnVersion: string;
+  commit: string;
+  treeSha: string;
+  integrity: string;
+  members: ReadonlyArray<{ name: string; source: string }>;
 }
 
-export interface MachineProfileRegistry {
-  schema: "drwn.machine-profiles";
-  schemaVersion: 1;
-  profiles: MachineProfileDescriptor[];
+function initUnavailable(message: string, cause?: unknown): DrwnError {
+  return new DrwnError(
+    "MACHINE_WORKER_NOT_AVAILABLE",
+    message,
+    ["Retry when the immutable Worker release is reachable, or rerun guided init and decline it."],
+    cause,
+  );
 }
 
-function profileInvalid(message: string, cause?: unknown) {
-  return new DrwnError("MACHINE_PROFILE_INVALID", message, undefined, cause);
+export async function verifyMachineProfilePin(
+  _agentsDir: string,
+  _pin: unknown,
+): Promise<{ dir: string; manifest: CardManifest }> {
+  throw new DrwnError(
+    "MACHINE_PROFILE_RETIRED",
+    "Machine profiles are retired; select a machine Worker Blueprint with drwn apply --root or drwn use --root",
+  );
 }
 
-function parseDescriptor(value: unknown): MachineProfileDescriptor {
-  const parsed = operatorProfileDescriptorSchema.safeParse(value);
-  if (!parsed.success) {
-    throw profileInvalid(`Invalid machine profile descriptor: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`, parsed.error);
+function assertInitDescriptorGraph(
+  graph: ResolvedWorkerGraph,
+  descriptor: MachineWorkerInitDescriptor,
+): void {
+  if (
+    descriptor.source === RECOMMENDED_MACHINE_WORKER.source
+    && descriptor.name === RECOMMENDED_MACHINE_WORKER.name
+  ) {
+    assertRecommendedMachineWorkerGraph(graph);
+    return;
   }
-  return parsed.data as MachineProfileDescriptor;
-}
 
-export async function loadMachineProfileRegistry(repoRoot: string): Promise<MachineProfileRegistry> {
-  const path = resolveMachineProfilesRegistryPath(repoRoot);
-  let value: unknown;
-  try {
-    value = JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    throw profileInvalid(`Cannot read machine profile registry at ${path}`, error);
-  }
-  const parsed = operatorProfileRegistrySchema.safeParse(value);
-  if (!parsed.success) {
-    throw profileInvalid(`Invalid machine profile registry at ${path}: ${parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ")}`, parsed.error);
-  }
-  if (!isDeepStrictEqual(parsed.data, DARWINIAN_OPERATOR_REGISTRY)) {
-    throw profileInvalid("Machine profile registry must deep-equal the centralized Operator contract");
-  }
-  return parsed.data as MachineProfileRegistry;
-}
-
-function validateProfileContents(manifest: CardManifest, descriptor: MachineProfileDescriptor) {
-  const cardSkills = manifest.skills?.include ?? [];
-  const cardServers = Object.keys(manifest.servers ?? {});
-  if (JSON.stringify(cardSkills) !== JSON.stringify(descriptor.skills)) {
-    throw profileInvalid(`Profile skills do not exactly match ${manifest.name}@${manifest.version}`);
-  }
-  if (JSON.stringify(cardServers) !== JSON.stringify(descriptor.mcpServers)) {
-    throw profileInvalid(`Profile MCP servers do not exactly match ${manifest.name}@${manifest.version}`);
+  const root = graph.roots[0] as WorkerRootLockEntry | undefined;
+  const rootCard = graph.cards[0] as CardLockEntry | undefined;
+  const memberNames = descriptor.members.map((member) => member.name);
+  if (
+    graph.roots.length !== 1
+    || !root
+    || root.name !== descriptor.name
+    || root.requested !== descriptor.source
+    || root.kind !== "blueprint"
+    || !isDeepStrictEqual(root.members, memberNames)
+    || !rootCard
+    || rootCard.version !== descriptor.version
+    || rootCard.integrity !== descriptor.integrity
+    || rootCard.treeSha !== descriptor.treeSha
+    || rootCard.git?.commit !== descriptor.commit
+    || rootCard.manifest.harness?.minVersion !== descriptor.minDrwnVersion
+    || !isDeepStrictEqual(rootCard.manifest.composedFrom ?? [], descriptor.members.map((member) => member.source))
+  ) {
+    throw initUnavailable("Resolved machine Worker does not match its immutable descriptor");
   }
 }
 
-async function resolveMachineProfilePin(options: {
-  agentsDir: string;
-  repoRoot: string;
-  descriptor: MachineProfileDescriptor;
-  resolutionRef?: string;
-}): Promise<MachineProfilePin> {
-  const descriptor = parseDescriptor(options.descriptor);
-  let resolved;
-  try {
-    resolved = await resolveCard(options.agentsDir, options.resolutionRef ?? descriptor.source, {
-      allowUntrustedSource: true,
-      repoRoot: options.repoRoot,
-    });
-  } catch (error) {
-    throw new DrwnError("MACHINE_PROFILE_NOT_AVAILABLE", `Cannot resolve ${descriptor.displayName}`, undefined, error);
-  }
-
-  const mismatches = [
-    resolved.name === descriptor.name ? null : `name ${resolved.name}`,
-    resolved.version === descriptor.version ? null : `version ${resolved.version}`,
-    resolved.git?.commit === descriptor.commit ? null : `commit ${resolved.git?.commit ?? "missing"}`,
-    resolved.treeSha === descriptor.treeSha ? null : `tree ${resolved.treeSha ?? "missing"}`,
-    resolved.integrity === descriptor.integrity ? null : `integrity ${resolved.integrity}`,
-  ].filter((value): value is string => value !== null);
-  if (mismatches.length > 0) {
-    throw profileInvalid(`Resolved profile does not match its immutable descriptor: ${mismatches.join(", ")}`);
-  }
-  validateProfileContents(resolved.manifest, descriptor);
-
-  const pin = {
-    id: descriptor.id,
-    source: descriptor.source,
-    name: descriptor.name,
-    version: descriptor.version,
-    commit: descriptor.commit,
-    treeSha: descriptor.treeSha,
-    integrity: descriptor.integrity,
-    skills: [...descriptor.skills],
-    mcpServers: [...descriptor.mcpServers],
-  } satisfies MachineProfilePin;
-  try {
-    parseMachineConfig({
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: pin, skills: [], mcpServers: [] },
-    });
-  } catch (error) {
-    throw profileInvalid("Resolved profile pin violates the approved machine contract", error);
-  }
-  return pin;
-}
-
-export async function verifyMachineProfilePin(agentsDir: string, pin: MachineProfilePin): Promise<{ dir: string; manifest: CardManifest }> {
-  if (!isDeepStrictEqual(pin, createDarwinianOperatorPin())) {
-    throw profileInvalid("Pinned profile must exactly match the centralized Operator contract");
-  }
-  const dir = resolveExtractedPath(agentsDir, pin.treeSha);
-  if (!existsSync(dir)) {
-    throw new DrwnError("MACHINE_PROFILE_NOT_AVAILABLE", `Pinned profile bytes are missing: ${dir}`);
-  }
-  let manifest: CardManifest;
-  try {
-    manifest = JSON.parse(await readFile(join(dir, "card.json"), "utf8")) as CardManifest;
-    assertValidCardManifest(manifest);
-  } catch (error) {
-    throw profileInvalid(`Pinned profile manifest is invalid at ${dir}`, error);
-  }
-  if (manifest.name !== pin.name || manifest.version !== pin.version) {
-    throw profileInvalid(`Pinned profile identity changed at ${dir}`);
-  }
-  validateProfileContents(manifest, { ...pin, displayName: DARWINIAN_OPERATOR_PROFILE.displayName });
-  if (await computeIntegrityFromDir(dir) !== pin.integrity) {
-    throw profileInvalid(`Pinned profile integrity changed at ${dir}`);
-  }
-  return { dir, manifest };
-}
-
-export async function initializeMachineCapabilities(options: {
+export async function initializeMachineWorker(options: {
   agentsDir: string;
   repoRoot: string;
   guided: boolean;
   promptRecommended?: () => Promise<boolean>;
-  descriptor?: MachineProfileDescriptor;
-  resolutionRef?: string;
-}): Promise<{ created: boolean; selectedProfile: string | null }> {
+  descriptor?: MachineWorkerInitDescriptor;
+}): Promise<{ created: boolean; selectedWorker: string | null }> {
   const path = resolveMachineConfigPath(options.agentsDir);
   const existing = await readMachineConfigFile(path);
   if (existing) {
-    return { created: false, selectedProfile: existing.capabilities.profile?.id ?? null };
+    return { created: false, selectedWorker: existing.capabilities.activeWorker };
   }
 
-  const config = createEmptyMachineConfig();
-  if (options.guided) {
-    const accepted = await (options.promptRecommended?.() ?? Promise.resolve(true));
-    if (accepted) {
-      const descriptor = options.descriptor ?? (await loadMachineProfileRegistry(options.repoRoot)).profiles[0]!;
-      config.capabilities.profile = await resolveMachineProfilePin({
-        agentsDir: options.agentsDir,
-        repoRoot: options.repoRoot,
-        descriptor,
-        resolutionRef: options.resolutionRef,
-      });
-    }
+  if (!options.guided || !(await (options.promptRecommended?.() ?? Promise.resolve(true)))) {
+    const config = createEmptyMachineConfig();
+    await writeMachineConfigFile(path, config);
+    return { created: true, selectedWorker: null };
   }
-  await writeMachineConfig(options.agentsDir, config);
-  return { created: true, selectedProfile: config.capabilities.profile?.id ?? null };
+
+  const descriptor = options.descriptor ?? (await loadMachineWorkerRegistry(options.repoRoot)).workers[0]!;
+  try {
+    const mutation = await applyMachineWorkerRoots(options.agentsDir, [descriptor.source], {
+      allowUntrustedSource: true,
+      repoRoot: options.repoRoot,
+      validateGraph: (graph) => assertInitDescriptorGraph(graph, descriptor),
+    });
+    return { created: true, selectedWorker: mutation.activeWorker };
+  } catch (error) {
+    if (error instanceof DrwnError && error.code === "MACHINE_WORKER_NOT_AVAILABLE") throw error;
+    throw initUnavailable(`Cannot resolve recommended machine Worker ${descriptor.name}`, error);
+  }
 }

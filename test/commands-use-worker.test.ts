@@ -36,6 +36,46 @@ async function readProjectState(stateDir: string) {
   };
 }
 
+async function publishBlueprint(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  name: string,
+) {
+  await createCatalogCardSource(fixture, name, { kind: "blueprint" });
+  const published = await runAgentsCli(["worker", "publish", name], envFor(fixture));
+  expect(published.exitCode, published.stderr).toBe(0);
+}
+
+test("apply --root replaces machine roots and use --root selects additively without a project", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  await publishBlueprint(fixture, "@me/one");
+  await publishBlueprint(fixture, "@me/two");
+
+  const apply = await runAgentsCli(
+    ["apply", "--root", "@me/one@1.0.0"],
+    envFor(fixture),
+  );
+  expect(apply.exitCode, apply.stderr).toBe(0);
+  const machinePath = join(fixture.agentsDir, "drwn", "machine.json");
+  expect(JSON.parse(await readFile(machinePath, "utf8")).capabilities.activeWorker).toBe("@me/one");
+
+  const use = await runAgentsCli(
+    ["use", "--root", "@me/two@1.0.0", "--no-write"],
+    envFor(fixture),
+  );
+  expect(use.exitCode, use.stderr).toBe(0);
+  const added = JSON.parse(await readFile(machinePath, "utf8"));
+  expect(added.capabilities.activeWorker).toBe("@me/two");
+  expect(added.capabilities.workerLock.workerRoots.map((root: { name: string }) => root.name))
+    .toEqual(["@me/one", "@me/two"]);
+
+  const none = await runAgentsCli(["use", "--root", "--none", "--no-write"], envFor(fixture));
+  expect(none.exitCode, none.stderr).toBe(0);
+  const cleared = JSON.parse(await readFile(machinePath, "utf8"));
+  expect(cleared.capabilities.activeWorker).toBeNull();
+  expect(cleared.capabilities.workerLock.workerRoots).toHaveLength(2);
+});
+
 test("use selects an installed root without changing the lock and writes by default", async () => {
   const { fixture, projectDir, stateDir } = await projectFixture();
   expect((await runAgentsCli(

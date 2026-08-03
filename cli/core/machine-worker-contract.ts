@@ -134,11 +134,13 @@ export function assertRecommendedMachineWorkerGraph(graph: {
   }
 
   const rootCard = graph.cards[0]!;
+  const [rootUrl] = descriptor.source.slice(4).split("#");
   if (
     rootCard.requested !== descriptor.source ||
     rootCard.version !== descriptor.version ||
     rootCard.integrity !== descriptor.integrity ||
     rootCard.treeSha !== descriptor.treeSha ||
+    rootCard.git?.url !== rootUrl ||
     rootCard.git?.commit !== descriptor.commit ||
     rootCard.git?.ref !== `v${descriptor.version}` ||
     rootCard.manifest.kind !== "blueprint" ||

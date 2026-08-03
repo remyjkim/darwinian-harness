@@ -128,6 +128,20 @@ describe("machine config V2", () => {
     });
   });
 
+  test("rejects a valid project lock whose machine root is a plain Card", () => {
+    const card = blueprintCard();
+    card.manifest = { name: card.name, version: card.version };
+    const plainLock = createCardLockfile({
+      workerRoots: [{ name: card.name, requested: card.requested, kind: "card", members: [] }],
+      cards: [card],
+    });
+
+    expectInvalid({
+      ...createEmptyMachineConfig(),
+      capabilities: { activeWorker: null, workerLock: plainLock },
+    });
+  });
+
   test("rejects V1, prototypes, and unknown fields at every V2 boundary", () => {
     const empty = createEmptyMachineConfig();
     const v1 = {

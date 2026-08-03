@@ -80,7 +80,7 @@ function invalidMachineConfig(message: string, cause?: unknown): DrwnError {
   return new DrwnError(
     "MACHINE_CONFIG_INVALID",
     message,
-    ["Reset ~/.agents/drwn/machine.json and rerun drwn init; prototype machine formats are not supported."],
+    ["Machine V1 and prototype formats are unsupported. Reset ~/.agents/drwn/machine.json and rerun drwn init."],
     cause,
   );
 }
@@ -110,6 +110,12 @@ export function parseMachineConfig(value: unknown, path = "machine.json"): Machi
       throw invalidMachineConfig(
         `Invalid machine config at ${path}: capabilities.workerLock must be a valid drwn.project-lock V1`,
         error,
+      );
+    }
+    const plainRoot = workerLock.workerRoots.find((root) => root.kind !== "blueprint");
+    if (plainRoot) {
+      throw invalidMachineConfig(
+        `Invalid machine config at ${path}: machine Worker root ${plainRoot.name} must be a Blueprint`,
       );
     }
   }

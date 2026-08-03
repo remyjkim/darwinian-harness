@@ -3,16 +3,22 @@
 
 import { Option } from "clipanion";
 import { applyProjectWorkerRoots } from "../../core/worker-project";
+import { applyMachineWorkerRoots } from "../../core/worker-machine";
 import { loadCardLock } from "../../core/card-lock";
 import { buildApplySummaries } from "../../core/card-apply-summary";
 import { BaseCommand } from "../base";
-import { renderWorkerMutation, requireProjectRoot, runChainedWrite } from "../card/project-command";
+import {
+  renderMachineWorkerMutation,
+  renderWorkerMutation,
+  requireProjectRoot,
+  runChainedWrite,
+} from "../card/project-command";
 
 export class ProjectApplyCommand extends BaseCommand {
   static override paths = [["apply"]];
   static override usage = BaseCommand.Usage({
     category: "Project",
-    description: "Replace this project's Worker roots.",
+    description: "Replace project Worker roots, or machine Blueprint roots with --root.",
     details: `
       Resolves the complete replacement root graph before atomically committing
       config and lock. Multiple alternative roots require --active <root> or
@@ -24,6 +30,7 @@ export class ProjectApplyCommand extends BaseCommand {
     ],
   });
   specs = Option.Rest();
+  root = Option.Boolean("--root", false, { description: "Mutate machine Worker Blueprint roots." });
   active = Option.String("--active");
   none = Option.Boolean("--none", false);
   write = Option.Boolean("--write", false);
@@ -37,6 +44,20 @@ export class ProjectApplyCommand extends BaseCommand {
         this.context.stderr.write("drwn apply requires at least one Worker ref, or --none to clear roots.\n");
         return 1;
       }
+      if (this.root) {
+        const result = await applyMachineWorkerRoots(this.context.agentsDir, this.specs, {
+          active: this.active,
+          none: this.none,
+          allowUntrustedSource: this.allowUntrustedSource,
+          acceptSuccessor: this.acceptSuccessor,
+          repoRoot: this.context.repoRoot,
+          cwd: this.context.cwd,
+          dryRun: this.dryRun,
+        });
+        this.context.stdout.write(renderMachineWorkerMutation(result));
+        return this.write && !this.dryRun ? runChainedWrite(this, { machine: true }) : 0;
+      }
+
       const projectRoot = requireProjectRoot(this);
       const previous = await loadCardLock(projectRoot);
       const result = await applyProjectWorkerRoots(projectRoot, this.context.agentsDir, this.specs, {
