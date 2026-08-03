@@ -3,6 +3,7 @@
 
 import type { OptionalMcpReport } from "./mcp-report";
 import type { OrganizationInstructionConsentContext } from "./instruction-consent-evidence";
+import type { ProjectLockV1 } from "./card-lock";
 
 export type Transport = "stdio" | "http" | "sse" | "platform-provided";
 export type TargetName = "claude" | "codex" | "cursor" | "opencode";
@@ -93,34 +94,18 @@ export interface StoreMetadata {
   initAt: string;
 }
 
-export interface MachineProfilePin {
-  id: "darwinian-operator";
-  source:
-    | "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.0"
-    | "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1";
-  name: "@darwinian/operator";
-  version: "2.0.0" | "2.0.1";
-  commit: string;
-  treeSha: string;
-  integrity: `sha256-${string}`;
-  skills: string[];
-  mcpServers: string[];
-}
-
 export interface MachineConfig {
   schema: "drwn.machine";
-  schemaVersion: 1;
+  schemaVersion: 2;
   policy: {
-    authoring?: { scope?: string };
     targets?: Partial<Record<TargetName, Partial<TargetConfig>>>;
     catalogs?: CanonicalConfig["catalogs"];
     analyzer?: CanonicalConfig["analyzer"];
     trustedSources?: TrustedSourcesPolicy;
   };
   capabilities: {
-    profile: MachineProfilePin | null;
-    skills: string[];
-    mcpServers: string[];
+    activeWorker: string | null;
+    workerLock: ProjectLockV1 | null;
   };
 }
 
