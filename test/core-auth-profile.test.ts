@@ -5,10 +5,10 @@ import { describe, expect, test } from "bun:test";
 import { drwnCliProfile } from "../cli/core/auth/profile";
 
 describe("drwnCliProfile", () => {
-  test("requests the new services audience from the existing production hub by default", () => {
+  test("defaults to the darwinian.dev hub and services audience (old hub retired at I80 Phase 4)", () => {
     expect(drwnCliProfile({})).toMatchObject({
-      hubOrigin: "https://auth.darwiniantools.com",
-      issuer: "https://auth.darwiniantools.com/api/auth",
+      hubOrigin: "https://auth.darwinian.dev",
+      issuer: "https://auth.darwinian.dev/api/auth",
       resource: "https://api.darwinian.dev",
     });
   });
@@ -26,9 +26,9 @@ describe("drwnCliProfile", () => {
 
   test("does not infer a token resource from the API routing override", () => {
     expect(drwnCliProfile({
-      DRWN_STUDIO_API_URL: "https://studio.darwiniantools.com/",
+      DRWN_STUDIO_API_URL: "https://studio.example/",
     })).toMatchObject({
-      hubOrigin: "https://auth.darwiniantools.com",
+      hubOrigin: "https://auth.darwinian.dev",
       resource: "https://api.darwinian.dev",
     });
   });

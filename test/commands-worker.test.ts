@@ -35,7 +35,7 @@ function b64(value: unknown): string {
 
 function fakeJwt(): string {
   return `${b64({ alg: "none" })}.${b64({
-    iss: "https://auth.darwiniantools.com/api/auth",
+    iss: "https://auth.darwinian.dev/api/auth",
     aud: "https://api.darwinian.dev",
     sub: "user_123",
     email: "worker@example.com",
@@ -309,7 +309,7 @@ describe("worker API commands", () => {
 
   test("expired token reads as a token error, not connectivity (I65 Fix 3)", async () => {
     process.env.DRWN_TOKEN = `${b64({ alg: "none" })}.${b64({
-      iss: "https://auth.darwiniantools.com/api/auth",
+      iss: "https://auth.darwinian.dev/api/auth",
       aud: "https://api.darwinian.dev",
       sub: "user_123",
       email: "worker@example.com",
