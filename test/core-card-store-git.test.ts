@@ -39,6 +39,21 @@ async function createSource(agentsDir: string, version = "1.0.0", skills = ["alp
 }
 
 describe("Git-backed card store", () => {
+  test("creates and publishes an explicit source directory without creating a store sources tree", async () => {
+    const root = await createTempRoot("card-store-path-");
+    tempRoots.push(root);
+    const agentsDir = join(root, ".agents");
+    const sourceDir = join(root, "card-repositories", "backend");
+
+    const created = await createCardSource({ sourceDir, name: "@me/backend", noGit: true });
+    const published = await publishCard(agentsDir, sourceDir);
+
+    expect(created.sourceDir).toBe(sourceDir);
+    expect(published.name).toBe("@me/backend");
+    expect(existsSync(join(agentsDir, "drwn", "sources"))).toBe(false);
+    expect(existsSync(resolveCardBareRepoPath(agentsDir, "@me/backend"))).toBe(true);
+  });
+
   test("publishCard creates a bare repo, tag, and extracted materialization without cache", async () => {
     const root = await createTempRoot("card-store-git-");
     tempRoots.push(root);

@@ -59,6 +59,20 @@ test("readCardSourceState reports manifest skills, bundled skills, and orphaned 
   expect(state.ok).toBe(false);
 });
 
+test("readCardSourceState accepts an ordinary source directory and trusts manifest identity", async () => {
+  const root = await createTempRoot("card-source-path-");
+  tempRoots.push(root);
+  const sourceDir = join(root, "repository-with-unrelated-slug");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(join(sourceDir, "card.json"), `${JSON.stringify({ name: "@me/path-card", version: "1.0.0" })}\n`);
+
+  const state = await readCardSourceState(sourceDir);
+
+  expect(state.name).toBe("@me/path-card");
+  expect(state.sourceDir).toBe(sourceDir);
+  expect(state.ok).toBe(true);
+});
+
 test("doctorCardSource reports missing SKILL.md and package.json name/version mismatch", async () => {
   const agentsDir = await createAgentsDir();
   const source = await createCardSource({ agentsDir, name: "@me/example", noGit: true });

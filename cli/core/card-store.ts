@@ -187,7 +187,6 @@ export async function ensureStoreInitialized(agentsDir: string) {
   mkdirSync(storeRoot, { recursive: true });
   for (const pathValue of [
     resolveCardsRoot(agentsDir),
-    resolveSourcesRoot(agentsDir),
     resolveStoreSkillsRoot(agentsDir),
     resolveStoreMcpServersDir(agentsDir),
     resolveStoreGeneratedDir(agentsDir),
@@ -319,7 +318,8 @@ export function cardNamesEqual(refOrName: string, name: string) {
 }
 
 export async function createCardSource(options: {
-  agentsDir: string;
+  sourceDir?: string;
+  agentsDir?: string;
   name: string;
   scope?: string;
   noGit?: boolean;
@@ -330,14 +330,16 @@ export async function createCardSource(options: {
     throw new Error("Unscoped card names require --scope or machine authoring.scope");
   }
   const fullName = normalizeCardName(options.name, options.scope);
-  await ensureStoreInitialized(options.agentsDir);
-  if (options.scope) {
+  if (options.agentsDir) await ensureStoreInitialized(options.agentsDir);
+  if (options.scope && options.agentsDir && !options.sourceDir) {
     const machine = await readMachineConfig(options.agentsDir);
     machine.policy.authoring = { ...(machine.policy.authoring ?? {}), scope: options.scope };
     await writeMachineConfig(options.agentsDir, machine);
   }
 
-  const sourceDir = resolveCardSourceDir(options.agentsDir, fullName);
+  const sourceDir = options.sourceDir
+    ? resolve(options.sourceDir)
+    : resolveCardSourceDir(options.agentsDir!, fullName);
   if (existsSync(join(sourceDir, "card.json"))) {
     throw new Error(`Card source already exists: ${fullName}`);
   }
@@ -361,16 +363,14 @@ export async function createCardSource(options: {
   return { name: fullName, sourceDir, manifestPath: join(sourceDir, "card.json") };
 }
 
-export async function readCardSourceManifest(agentsDir: string, name: string): Promise<CardManifest> {
-  const manifestPath = join(resolveCardSourceDir(agentsDir, name), "card.json");
+export async function readCardSourceManifest(sourceDirOrAgentsDir: string, legacyName?: string): Promise<CardManifest> {
+  const sourceDir = legacyName ? resolveCardSourceDir(sourceDirOrAgentsDir, legacyName) : resolve(sourceDirOrAgentsDir);
+  const manifestPath = join(sourceDir, "card.json");
   if (!existsSync(manifestPath)) {
-    throw new Error(`Card source not found: ${name}`);
+    throw new Error(`Card source not found: ${legacyName ?? sourceDir}`);
   }
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as CardManifest;
   assertValidCardManifest(manifest);
-  if (manifest.name !== name) {
-    throw new Error(`Card source manifest name mismatch: expected ${name}, got ${manifest.name}`);
-  }
   return manifest;
 }
 
@@ -771,11 +771,11 @@ async function listBareRepos(agentsDir: string): Promise<Array<{ name: string; p
   return repos.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function publishCard(agentsDir: string, name: string, options: PublishCardOptions = {}) {
+export async function publishCard(agentsDir: string, sourceInput: string, options: PublishCardOptions = {}) {
   assertStoreWritable();
   await ensureStoreInitialized(agentsDir);
-  const manifest = await readCardSourceManifest(agentsDir, name);
-  const sourceDir = resolveCardSourceDir(agentsDir, manifest.name);
+  const sourceDir = existsSync(join(sourceInput, "card.json")) ? resolve(sourceInput) : resolveCardSourceDir(agentsDir, sourceInput);
+  const manifest = await readCardSourceManifest(sourceDir);
   for (const [skillName, upstreamRef] of Object.entries(manifest.skills?.upstream ?? {})) {
     try {
       parseUpstreamRef(upstreamRef);
@@ -803,7 +803,7 @@ export async function publishCard(agentsDir: string, name: string, options: Publ
   }
   validatePublishedHookDirs(sourceDir, manifest);
   validatePublishedMindContentDirs(sourceDir, manifest);
-  const packagePath = join(resolveCardSourceDir(agentsDir, manifest.name), "package.json");
+  const packagePath = join(sourceDir, "package.json");
   if (existsSync(packagePath)) {
     const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as { name?: string; version?: string };
     if (packageJson.name !== manifest.name) {
@@ -999,8 +999,8 @@ export async function deprecateCardVersion(agentsDir: string, ref: string, messa
   return resolved;
 }
 
-export async function removeCardSourceForTests(agentsDir: string, name: string) {
-  rmSync(resolveCardSourceDir(agentsDir, name), { recursive: true, force: true });
+export async function removeCardSourceForTests(sourceDirOrAgentsDir: string, legacyName?: string) {
+  rmSync(legacyName ? resolveCardSourceDir(sourceDirOrAgentsDir, legacyName) : resolve(sourceDirOrAgentsDir), { recursive: true, force: true });
 }
 
 export function cardPathParts(name: string) {

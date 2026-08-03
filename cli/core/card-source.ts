@@ -423,10 +423,12 @@ async function readMcpServers(sourceDir: string, manifest: CardManifest | null, 
   return servers.sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export async function readCardSourceState(agentsDir: string, name: string): Promise<CardSourceState> {
-  const sourceDir = resolveCardSourceDir(agentsDir, name);
+export async function readCardSourceState(sourceDirOrAgentsDir: string, legacyName?: string): Promise<CardSourceState> {
+  const sourceDir = legacyName
+    ? resolveCardSourceDir(sourceDirOrAgentsDir, legacyName)
+    : resolve(sourceDirOrAgentsDir);
   if (!existsSync(sourceDir)) {
-    throw new Error(`Card source not found: ${name}`);
+    throw new Error(`Card source not found: ${legacyName ?? sourceDir}`);
   }
 
   const issues: CardSourceIssue[] = [];
@@ -448,8 +450,8 @@ export async function readCardSourceState(agentsDir: string, name: string): Prom
       } else {
         const validManifest = parsed.value as CardManifest;
         manifest = validManifest;
-        if (manifest.name !== name) {
-          issues.push(issue("manifest_name_mismatch", `card.json.name must equal source name: ${name}`, manifestPath));
+        if (legacyName && manifest.name !== legacyName) {
+          issues.push(issue("manifest_name_mismatch", `card.json.name must equal source name: ${legacyName}`, manifestPath));
         }
       }
     }
@@ -536,7 +538,7 @@ export async function readCardSourceState(agentsDir: string, name: string): Prom
   const mcpServers = await readMcpServers(sourceDir, manifest, issues);
 
   return {
-    name,
+    name: manifest?.name ?? legacyName ?? basename(sourceDir),
     sourceDir,
     manifestPath,
     manifest,
