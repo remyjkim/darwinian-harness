@@ -95,9 +95,11 @@ export interface StoreMetadata {
 
 export interface MachineProfilePin {
   id: "darwinian-operator";
-  source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1";
+  source:
+    | "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.0"
+    | "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1";
   name: "@darwinian/operator";
-  version: "2.0.1";
+  version: "2.0.0" | "2.0.1";
   commit: string;
   treeSha: string;
   integrity: `sha256-${string}`;
