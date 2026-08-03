@@ -5,6 +5,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { loadUserPreferences } from "../cli/core/user-preferences";
 import {
   cleanupTempRoots,
   envFor,
@@ -26,22 +27,25 @@ test("card new --from-project captures a project and the captured source can be 
   tempRoots.push(fixture.root);
   await publishCardWithSkills(fixture, { name: "@me/base", skills: ["card-alpha"] });
   const projectDir = join(fixture.root, "project");
+  const collectionDir = join(fixture.root, "captured-cards");
   await installProjectWorkers(projectDir, fixture.agentsDir, ["@me/base@1.0.0"], "@me/base", {
     skills: { include: ["beta"] },
   });
 
-  const capture = await runAgentsCli(["card", "new", "@me/captured", "--from-project", projectDir, "--no-git"], envFor(fixture));
+  const capture = await runAgentsCli(["card", "new", "@me/captured", "--from-project", projectDir, "--into", collectionDir, "--no-git"], envFor(fixture));
 
   expect(capture.exitCode).toBe(0);
   expect(capture.stdout).toContain("Captured card source @me/captured");
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "captured");
+  const sourceDir = join(collectionDir, "captured");
   expect(existsSync(join(sourceDir, "skills", "card-alpha", "SKILL.md"))).toBe(true);
   expect(existsSync(join(sourceDir, "skills", "beta", "SKILL.md"))).toBe(true);
   const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
   expect(manifest.version).toBe("0.1.0");
   expect(manifest.skills.include).toEqual(["card-alpha", "beta"]);
+  expect(capture.stdout).toContain(`drwn card publish --from ${sourceDir}`);
+  expect((await loadUserPreferences(fixture.agentsDir)).defaultAuthorScope).toBeUndefined();
 
-  const publish = await runAgentsCli(["card", "publish", "@me/captured"], envFor(fixture));
+  const publish = await runAgentsCli(["card", "publish", "--from", sourceDir], envFor(fixture));
   expect(publish.exitCode).toBe(0);
   expect(publish.stdout).toContain("Published @me/captured@0.1.0");
 });
@@ -58,7 +62,7 @@ test("card new --from-project without a path captures the current project", asyn
   const capture = await runAgentsCli(["card", "new", "@me/cwd-capture", "--from-project", "--no-git"], envFor(fixture), projectDir);
 
   expect(capture.exitCode).toBe(0);
-  expect(existsSync(join(fixture.agentsDir, "drwn", "sources", "@me", "cwd-capture", "skills", "alpha", "SKILL.md"))).toBe(true);
+  expect(existsSync(join(projectDir, "cwd-capture", "skills", "alpha", "SKILL.md"))).toBe(true);
 });
 
 test("card new --from-project fails clearly outside a drwn project", async () => {
@@ -87,7 +91,7 @@ test("card new --from-project fails without an active Worker and creates no sour
 
   expect(capture.exitCode).toBe(1);
   expect(capture.stderr).toContain("active Worker");
-  expect(existsSync(join(fixture.agentsDir, "drwn", "sources", "@me", "no-worker"))).toBe(false);
+  expect(existsSync(join(projectDir, "no-worker"))).toBe(false);
 });
 
 test("card new rejects a project path positional without --from-project", async () => {

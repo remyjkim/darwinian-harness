@@ -5,6 +5,7 @@ import { Option, UsageError } from "clipanion";
 import { patchCardSourceManifest } from "../../../core/card-source";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceSetCommand extends BaseCommand {
   static override paths = [["card", "source", "set"]];
@@ -13,8 +14,8 @@ export class CardSourceSetCommand extends BaseCommand {
     category: "Cards",
     description: "Set common fields in an editable card source manifest.",
     details: `
-      Semantically updates selected card.json fields for a local source under
-      ~/.agents/drwn/sources. Supported fields include version, description,
+      Semantically updates card.json in a source repository selected by path
+      or unique catalog identity. Supported fields include version, description,
       license, harness.minVersion, and Wave 2 quality fields surfaced by
       drwn card show.
     `,
@@ -88,9 +89,9 @@ export class CardSourceSetCommand extends BaseCommand {
     }
     let result;
     try {
+      const source = await resolveCommandCardSource(this.context, { input: this.cardName });
       result = await patchCardSourceManifest({
-        agentsDir: this.context.agentsDir,
-        cardName: this.cardName,
+        sourceDir: source.sourceDir,
         patch: {
           description: this.description,
           version: this.version,

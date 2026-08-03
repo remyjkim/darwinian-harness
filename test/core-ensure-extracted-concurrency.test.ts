@@ -20,12 +20,12 @@ test("parallel ensureExtracted calls produce one extracted directory", async () 
   const root = await createTempRoot("extract-concurrency-");
   tempRoots.push(root);
   const agentsDir = join(root, "agents");
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "tool");
+  const sourceDir = join(root, "card-sources", "tool");
   await mkdir(join(sourceDir, "skills", "alpha"), { recursive: true });
   await writeFile(join(sourceDir, "card.json"), JSON.stringify({ name: "@me/tool", version: "1.0.0", skills: { include: ["alpha"] } }, null, 2));
   await writeFile(join(sourceDir, "skills", "alpha", "SKILL.md"), "---\nname: alpha\n---\n");
 
-  await publishCard(agentsDir, "@me/tool");
+  await publishCard(agentsDir, sourceDir);
   const resolved = await resolveCard(agentsDir, "@me/tool@1.0.0");
   const barePath = resolveCardBareRepoPath(agentsDir, "@me/tool");
   const treeSha = await git.getCommitTree(barePath, resolved.git!.commit);

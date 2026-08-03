@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -17,7 +17,7 @@ test("card source authoring commands can publish, apply, and preview materializa
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
 
-  expect((await runAgentsCli(["card", "new", "@me/example", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  await createCatalogCardSource(fixture, "@me/example");
   expect((await runAgentsCli(["card", "source", "add-skill", "@me/example", "alpha"], envFor(fixture))).exitCode).toBe(0);
   expect(
     (

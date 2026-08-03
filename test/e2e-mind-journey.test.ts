@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createMindDbClient, type MindDbClient } from "../cli/core/mind-store/client";
 import { readMindIndex } from "../cli/core/mind-store/mind-index";
 import { memoryViewPath, poolEntryPath } from "../cli/core/mind-store/paths";
-import { cleanupTempRoots, createTempRoot, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, createTempRoot, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const enabled = process.env.DRWN_E2E_BGDB === "1";
 const test = baseTest.skipIf(!enabled);
@@ -134,7 +134,7 @@ test("journey: provision, DB-first edit, drift-preserving sync, checkpoint again
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
 
-  expect((await runAgentsCli(["card", "new", "@me/mind", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const sourceDir = await createCatalogCardSource(fixture, "@me/mind");
   expect(
     (await runAgentsCli(["card", "source", "add-persona", "@me/mind", "voice", "--visibility", "internal"], envFor(fixture)))
       .exitCode,
@@ -170,7 +170,7 @@ test("journey: provision, DB-first edit, drift-preserving sync, checkpoint again
   const checkpointed = await runAgentsCli(["worker", "mind", "checkpoint", "--json"], env, projectDir);
   expect(checkpointed.exitCode).toBe(0);
   const sourcePersona = await readFile(
-    join(fixture.agentsDir, "drwn", "sources", "@me", "mind", "persona", "voice", "PERSONA.md"),
+    join(sourceDir, "persona", "voice", "PERSONA.md"),
     "utf8",
   );
   expect(sourcePersona).toContain("E2E-edited voice");

@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { cleanupTempRoots, runAgentsCli, scaffoldCliFixture } from "./helpers";
 import { createEmptyMachineConfig } from "../cli/core/machine-config";
+import { resolveUserConfigPath } from "../cli/core/paths";
 
 const tempRoots: string[] = [];
 
@@ -54,6 +55,28 @@ describe("drwn init", () => {
 
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "machine.json"), "utf8"))).toEqual(createEmptyMachineConfig());
+  });
+
+  test("--catalog-checkout registers authoring collections during init", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const projectDir = join(fixture.root, "catalog-project");
+    await mkdir(projectDir, { recursive: true });
+
+    const result = await runAgentsCli([
+      "init", "--non-interactive", "--no-default-catalogs",
+      "--catalog-checkout", "~/dev/darwinian-cards",
+      "--catalog-checkout", "/work/personal-cards",
+    ], {
+      AGENTS_REPO_ROOT: fixture.repoRoot,
+      AGENTS_HOME_DIR: fixture.homeDir,
+      AGENTS_DIR: fixture.agentsDir,
+    }, projectDir);
+
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(await readFile(resolveUserConfigPath(fixture.agentsDir), "utf8"))).toMatchObject({
+      catalogCheckouts: ["~/dev/darwinian-cards", "/work/personal-cards"],
+    });
   });
 
   test("exits non-zero when config already exists without force", async () => {

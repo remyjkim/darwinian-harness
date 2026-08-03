@@ -269,10 +269,12 @@ Git-origin entries include tree SHA, integrity, and Git commit provenance.
 Authoring and publishing:
 
 ```bash
-drwn card new @me/backend --no-git
-drwn card new backend --scope @me --no-git
-drwn card new @me/project-harness --from-project .
-drwn card publish @me/backend
+drwn config set catalogCheckouts '["~/dev/darwinian-cards"]'
+drwn card new @me/backend --into ~/dev/darwinian-cards/cards --no-git
+# Equivalent alternative when creating a different source:
+# drwn card new backend --scope @me --into <another-collection> --no-git
+drwn card new @me/project-harness --from-project . --into ~/dev/darwinian-cards/cards
+drwn card publish --from ~/dev/darwinian-cards/cards/backend
 drwn card show @me/backend@1.0.0
 drwn card diff @me/backend@1.0.0 @me/backend@1.1.0
 drwn card deprecate @me/backend@1.0.0
@@ -280,7 +282,8 @@ drwn card validate @me/backend@1.0.0
 ```
 
 `card new --from-project` snapshots the current project's effective harness
-into a self-contained source under `~/.agents/drwn/sources/<scope>/<name>/`.
+into a self-contained source repository under the current directory or the
+explicit `--into` collection.
 It copies active skill content, records active MCP server definitions, and
 preserves effective extension and target intent. It never reads host environment
 variable values into the captured card.
@@ -290,14 +293,27 @@ mutable authoring state. A published card is an immutable Git-backed release in
 the local store. A consumed card is a project ref and lock entry that points at
 a published store release, file source, or Git origin.
 
-Inspect source state:
+Inspect source state by path, or by a uniquely matched manifest name under
+`catalogCheckouts`:
 
 ```bash
-drwn card source list
+drwn card source list # deprecated guidance only
 drwn card source show @me/backend
 drwn card source show @me/backend --json
-drwn card source doctor
 drwn card source doctor @me/backend
+drwn card source show ~/dev/darwinian-cards/cards/backend --json
+```
+
+The name-only examples below depend on the checkout configured above and on the
+source living at its immediate `cards/backend/card.json`. Without that setup,
+pass the source path directly. Every source command's first operand is
+path-or-name; for example:
+
+```bash
+drwn card source doctor ~/dev/darwinian-cards/cards/backend --json
+drwn card source set ~/dev/darwinian-cards/cards/backend --description "Backend review harness"
+drwn card source sync ~/dev/darwinian-cards/cards/backend --check --json
+drwn card release --from ~/dev/darwinian-cards/cards/backend --bump patch
 ```
 
 Edit bundled skills and MCP definitions:
@@ -619,7 +635,16 @@ The local store lives under `~/.agents/drwn`. Card content is Git-backed:
 - extracted trees: `~/.agents/drwn/extracted/<tree-sha>`
 - catalogs: `~/.agents/drwn/catalogs`
 - machine config: `~/.agents/drwn/machine.json`
+- authoring preferences: `~/.agents/drwn/config.json`
 - Git URL name cache: `~/.agents/drwn/url-card-map.json`
+
+The strict `drwn.user-preferences` file stores `catalogCheckouts` and optional
+`defaultAuthorScope`; it is separate from capability intent in `machine.json`.
+When loaded, a valid legacy `machine.policy.authoring.scope` is durably moved
+to `config.json.defaultAuthorScope` and removed from `machine.json`. A legacy
+`~/.agents/drwn/sources/` tree is not an authoring location: drwn inventories it
+read-only and never migrates or deletes it. Verify canonical repositories before
+manual cleanup.
 
 Inspect machine state:
 
@@ -635,7 +660,7 @@ Maintenance:
 ```bash
 drwn machine inventory gc --json
 drwn machine inventory gc --prune --json
-DRWN_STORE_READONLY=1 drwn card publish @me/backend
+DRWN_STORE_READONLY=1 drwn card publish --from ./cards/backend
 ```
 
 No public command creates a broad archive of `~/.agents/drwn`; that root may
@@ -1159,8 +1184,8 @@ drwn install --frozen
 ### Share a card with a team Git remote
 
 ```bash
-drwn card new @team/backend --no-git
-drwn card publish @team/backend
+drwn card new @team/backend --into ~/dev/darwinian-cards/cards --no-git
+drwn card publish --from ~/dev/darwinian-cards/cards/backend
 drwn card remote add @team/backend <git-url>
 drwn card push @team/backend
 drwn catalog add <catalog-git-url>

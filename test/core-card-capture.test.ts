@@ -8,7 +8,6 @@ import { join } from "node:path";
 import { captureProjectAsCard } from "../cli/core/card-capture";
 import { assertValidCardManifest } from "../cli/core/card-manifest";
 import { sanitizeMcpServerSecrets } from "../cli/core/mcp-secret-policy";
-import { resolveCardSourceDir } from "../cli/core/store-paths";
 import {
   cleanupTempRoots,
   installProjectWorkers,
@@ -117,6 +116,7 @@ test("captureProjectAsCard snapshots only the selected closure and explicit over
     homeDir: fixture.homeDir,
     projectPath: projectDir,
     name: "@me/captured",
+    sourceDir: join(fixture.root, "card-sources", "captured"),
   });
 
   expect(result.name).toBe("@me/captured");
@@ -157,8 +157,9 @@ test("captureProjectAsCard refuses to overwrite an existing source", async () =>
   const projectDir = join(fixture.root, "project");
   await publishCardWithSkills(fixture, { name: "@me/base", skills: [] });
   await installProjectWorkers(projectDir, fixture.agentsDir, ["@me/base@1.0.0"], "@me/base");
-  await mkdir(resolveCardSourceDir(fixture.agentsDir, "@me/captured"), { recursive: true });
-  await writeFile(join(resolveCardSourceDir(fixture.agentsDir, "@me/captured"), "card.json"), "{}\n");
+  const sourceDir = join(fixture.root, "card-sources", "captured");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(join(sourceDir, "card.json"), "{}\n");
 
   await expect(
     captureProjectAsCard({
@@ -167,14 +168,16 @@ test("captureProjectAsCard refuses to overwrite an existing source", async () =>
       homeDir: fixture.homeDir,
       projectPath: projectDir,
       name: "@me/captured",
+      sourceDir,
     }),
-  ).rejects.toThrow(/Card source already exists/);
+  ).rejects.toThrow(/Card source destination already exists/);
 });
 
 test("captureProjectAsCard copies selected hooks after applying project exclusions", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const { createCatalogCardSource } = await import("./helpers");
+  await createCatalogCardSource(fixture, "@me/policy");
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "audit"], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "source", "add-hook", "@me/policy", "blocked"], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture))).exitCode).toBe(0);
@@ -189,6 +192,7 @@ test("captureProjectAsCard copies selected hooks after applying project exclusio
     homeDir: fixture.homeDir,
     projectPath: projectDir,
     name: "@me/captured-policy",
+    sourceDir: join(fixture.root, "card-sources", "captured-policy"),
     noGit: true,
   });
   const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));
@@ -214,6 +218,7 @@ test("captureProjectAsCard respects DRWN_STORE_READONLY", async () => {
       homeDir: fixture.homeDir,
       projectPath: projectDir,
       name: "@me/captured",
+      sourceDir: join(fixture.root, "card-sources", "captured"),
     }),
   ).rejects.toThrow(/read-only/);
 });
@@ -223,7 +228,7 @@ test("captureProjectAsCard requires an active Worker without creating a source",
   tempRoots.push(fixture.root);
   const projectDir = join(fixture.root, "project");
   await writeSupportedProjectConfig(projectDir);
-  const sourceDir = resolveCardSourceDir(fixture.agentsDir, "@me/captured");
+  const sourceDir = join(fixture.root, "card-sources", "captured");
 
   await expect(captureProjectAsCard({
     agentsDir: fixture.agentsDir,
@@ -231,6 +236,7 @@ test("captureProjectAsCard requires an active Worker without creating a source",
     homeDir: fixture.homeDir,
     projectPath: projectDir,
     name: "@me/captured",
+    sourceDir,
   })).rejects.toThrow(/active Worker/i);
 
   expect(existsSync(sourceDir)).toBe(false);

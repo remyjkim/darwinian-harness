@@ -8,7 +8,7 @@ import { z } from "zod";
 import { DrwnError } from "./errors";
 import { writeAtomically } from "./fs";
 import { withInventoryLock, withMachineLock } from "./inventory-lock";
-import { DARWINIAN_OPERATOR_SKILL_IDS, operatorProfilePinSchema } from "./operator-profile-contract";
+import { DARWINIAN_OPERATOR_SKILL_IDS, supportedOperatorProfilePinSchema } from "./operator-profile-contract";
 import { withOwnerLock } from "./owner-lock";
 import { MACHINE_LOCK_FILENAME, resolveMachineConfigPath } from "./store-paths";
 import type { MachineConfig } from "./types";
@@ -69,7 +69,7 @@ const trustedSourcesSchema = z.object({
   refs: z.array(z.string().min(1)).optional(),
 }).strict();
 
-const profileSchema = operatorProfilePinSchema;
+const profileSchema = supportedOperatorProfilePinSchema;
 
 const machineConfigSchema = z.object({
   schema: z.literal("drwn.machine"),

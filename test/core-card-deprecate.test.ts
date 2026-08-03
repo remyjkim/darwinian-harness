@@ -25,10 +25,10 @@ async function scaffoldPublishedCard(version = "1.0.0") {
   const root = await createTempRoot("card-deprecate-");
   tempRoots.push(root);
   const agentsDir = join(root, "agents");
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "tool");
+  const sourceDir = join(root, "card-sources", "tool");
   await mkdir(sourceDir, { recursive: true });
   await writeFile(join(sourceDir, "card.json"), JSON.stringify({ name: "@me/tool", version }, null, 2));
-  await publishCard(agentsDir, "@me/tool");
+  await publishCard(agentsDir, sourceDir);
   return { agentsDir };
 }
 
@@ -87,12 +87,12 @@ test("readDeprecationMap batch-reads all deprecations for a card repo", async ()
   const root = await createTempRoot("card-deprecate-batch-");
   tempRoots.push(root);
   const agentsDir = join(root, "agents");
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "tool");
+  const sourceDir = join(root, "card-sources", "tool");
   await mkdir(sourceDir, { recursive: true });
 
   for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
     await writeFile(join(sourceDir, "card.json"), JSON.stringify({ name: "@me/tool", version }, null, 2));
-    await publishCard(agentsDir, "@me/tool");
+    await publishCard(agentsDir, sourceDir);
     if (version !== "1.1.0") {
       await deprecateCardVersion(agentsDir, `@me/tool@${version}`, `deprecated ${version}`);
     }

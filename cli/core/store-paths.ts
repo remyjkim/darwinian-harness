@@ -133,14 +133,6 @@ function slugifyUrl(url: string) {
     .toLowerCase();
 }
 
-export function resolveSourcesRoot(agentsDir: string) {
-  return join(resolveStoreRoot(agentsDir), "sources");
-}
-
-export function resolveCardSourceDir(agentsDir: string, name: string) {
-  return join(resolveSourcesRoot(agentsDir), ...splitCardName(name));
-}
-
 export function resolveStoreSkillsRoot(agentsDir: string) {
   return join(resolveStoreRoot(agentsDir), "skills");
 }

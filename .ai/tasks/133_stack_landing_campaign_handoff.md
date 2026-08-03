@@ -3,7 +3,7 @@
 
 # Handoff — Stack Landing Campaign → [I176] Execution
 
-**Status**: Active handoff. Campaign phases 0–7 complete; [I176] implementation not started.
+**Status**: Active handoff. Campaign phases 0–7 complete; [I176] prerequisites and plan repair started on the issue branch.
 **Created**: 2026-08-03
 **Owner**: Remy K · **Reviewer**: Minseung Lee (owner-as-reviewer in force — see §5)
 **Predecessor**: [`132_stack_landing_and_reform_queue_task_plan.md`](./132_stack_landing_and_reform_queue_task_plan.md) — the campaign plan this executed.
@@ -14,7 +14,7 @@
 
 ## 1. Read this first — the 60-second version
 
-A three-layer branch stack that had been sitting unpushed for ~8 days was landed to `main`, its two follow-on reform tasks were given tracker rows and docs PRs, and the repo was tidied. **`main` is now `ab060ff`, green at 1773 pass / 6 skip / 0 fail.**
+A three-layer branch stack that had been sitting unpushed for ~8 days was landed to `main`, its two follow-on reform tasks were given tracker rows and docs PRs, and the repo was tidied. **`main` is now `430106b` after the two handoff-doc PRs.** Production code is unchanged from `ab060ff`, but Ubuntu Validate is not green; see the baseline correction below.
 
 Your job: **execute [I176] card source path reform** — eliminate `~/.agents/drwn/sources/`, make card sources path-addressable (`drwn card publish --from <path>`). The plan is written, verified against the current tree, and gate-approved (§5). Start at §7.
 
@@ -39,7 +39,7 @@ Why the stack existed: I104 was built on I24's branch and split into its own iss
 
 ## 3. Current repository state
 
-- **`main` = `ab060ff`** (in sync with `origin/main`).
+- **`main` = `430106b`** (in sync with `origin/main`; changes after `ab060ff` are handoff documentation only).
 - **Working tree**: clean except one deliberately parked file — `test/scenarios-mind-card-command-contract.test.ts` (untracked, unowned by any issue; decision D3 = park, revisit post-campaign). Do not sweep it into an unrelated commit.
 - **Open PRs from this campaign**: [#71](https://github.com/remyjkim/darwinian-worker/pull/71) (I176 docs), [#72](https://github.com/remyjkim/darwinian-worker/pull/72) (I177 docs). Unrelated open PRs: #67 (I34 routines), #68 (I80 auth default).
 - **Branches**: `remy/I176-card-source-path-reform` and `remy/I177-machine-scope-blueprint` carry the docs. `feat/gate3-materialization-review-fixes` is intentionally retained as the only copy of the pre-cherry-pick commit SHAs; its content is fully in `main` (verified by `git cherry`), so it is safe to delete once you are confident.
@@ -95,7 +95,7 @@ Three things a worktree does **not** give you here:
 
 1. **The submodule does not come along.** Without the init above you get ~31 phantom failures (below). This is the most common hour-loser.
 2. **The gitignored harness configs are absent.** `.claude/settings.json` and `.codex/hooks.json` hold *absolute* paths into `/Users/pureicis/dev/darwinian-minds/.agents/drwn/generated/hooks/`; being gitignored, they do not exist in a new worktree, so drwn's projected hooks will not fire there. Harmless for test work — surprising if you expect hook behavior.
-3. **⚠️ It gives NO isolation from the machine-global drwn store.** This is the real risk in I176: Phase 3 writes `~/.agents/drwn/config.json` and **Phase 6a deletes `~/.agents/drwn/sources/`** — both mutate the operator's actual machine regardless of which worktree you sit in. For every manual CLI verification (Phase 7's `drwn card new` / `card publish --from` / `config set`), redirect the store first:
+3. **⚠️ It gives NO isolation from the machine-global drwn store.** This is the real risk in I176: preference/config commands write beneath the active Agents directory, and legacy-source inventory may inspect `~/.agents/drwn/sources/`. For every manual CLI verification (Phase 7's `drwn card new` / `card publish --from` / `config set`), redirect the store first:
 
    ```bash
    export AGENTS_DIR=/tmp/drwn-i176-scratch
@@ -103,7 +103,7 @@ Three things a worktree does **not** give you here:
 
    Verified: `cli/context.ts:28` reads `process.env.AGENTS_DIR ?? resolveAgentsDir(homeDir)`, so this redirects the entire store — it is the supported knob and I176 leaves it unchanged.
 
-   Only run against the real `~/.agents` deliberately, and **confirm with Remy before Phase 6a's deletion** — it removes `~/.agents/drwn/sources/` from the operator's actual machine. The automated suite is already safe: `test/helpers.ts:175-181` (`envFor`) sets `AGENTS_DIR` to a per-fixture temp store on every CLI invocation.
+   Only run against the real `~/.agents` deliberately. I176 inventories and classifies the legacy source tree; it does **not** delete the real `~/.agents/drwn/sources/`. Any later deletion is a separate destructive operation requiring explicit confirmation. The automated suite is already safe: `test/helpers.ts:175-181` (`envFor`) sets `AGENTS_DIR` to a per-fixture temp store on every CLI invocation.
 
 **Testing — the submodule is mandatory.** `darwinian-worker-skills` is a git submodule holding the operator profile's cards/skills. A fresh worktree without it produces **~31 phantom `ENOENT` failures**, all in the operator / machine-profile / release-gate cluster (`e2e-operator-profile-contract`, `core-machine-config`, `core-defaults`, `release-readiness`, `scripts-verify-*`). They fail identically on clean `main`, so they are not regressions. Always:
 
@@ -113,16 +113,18 @@ git submodule update --init darwinian-worker-skills && bun install && bun run ty
 
 This matters doubly for I177, whose target files are exactly that cluster.
 
-**Repo is bun-only.** `bun run typecheck` (tsc --noEmit), `bun run test` (bun test ./test/). Full suite ≈ 280s. Ignore any instruction mentioning `pnpm <area>:test` — see the drift note in §9.
+**Baseline correction — Ubuntu was already red after post-stack hygiene.** Under the pinned Bun 1.2.21 runtime, the tracked suite reproduced **1772 pass / 6 skip / 1 fail** in `user journeys > legacy wrapper user sees plausible equivalent dry-run intent`. Root cause: the compatibility wrapper honored `AGENTS_REPO_ROOT` for packaged config but left project discovery at `process.cwd()`, so a worktree/CI run consumed the checked-out project's host-specific committed state. Commit `c31afd4` adds the RED regression and binds default project discovery to the explicit repo root. Focused compatibility + journey verification is **13 pass / 0 fail**. The repaired full floor is **1774 pass / 6 skip / 0 fail**, 7,873 assertions across 300 files in 281.72 seconds.
+
+**Repo is bun-only and pins Bun 1.2.21.** Use `bunx bun@1.2.21` when the active machine Bun differs. `run typecheck` invokes `tsc --noEmit`; `test --timeout 30000 ./test/` is the CI-equivalent suite and takes roughly 275–590 seconds depending on host. Ignore any instruction mentioning `pnpm <area>:test` — see the drift note in §9.
 
 **Commit prefixes** come from `.ai/rules/01_git.md`: `[chore]`, `[docs]`, `[test]`, `[refactor]`, `[feat]`-style area tags. **No AI/LLM attribution in commit messages or PR bodies** — repo rule, strictly enforced.
 
 **Notion via `ntn` CLI** (the Notion MCP server needs OAuth unavailable in non-interactive sessions):
 - `ntn api /v1/pages/<id> -X PATCH -d '<json>'` for properties — fast and reliable.
-- `ntn pages update <id> --content "<markdown>"` **replaces the whole page** and **times out on large pages** (I24 failed at both 2min and 10min). Always re-fetch and verify state before retrying a timed-out write — in every observed case nothing partial was written, but confirm rather than assume.
+- `ntn pages edit <id> --content "<markdown>"` **replaces the whole page** and can time out on large pages. Always re-fetch and verify state before retrying a timed-out write; never assume a partial or absent write.
 - Block-level append (`PATCH /v1/blocks/<id>/children`) **rejects the `after` parameter** on this API version, so appends land at page end — which is the wrong place for newest-first thread entries. This is why §8's deferred item is still open.
 - Endpoint paths need explicit `-X GET` on `ntn api` or you get `invalid_request_url`.
-- Thread entries in live practice stack **newest-first above** the `📖 Issue Thread conventions` toggle (I174 precedent), even though the AGENTS.md card says "immediately below the toggle". Follow the live practice; the discrepancy is logged as drift.
+- The governing AGENTS.md contract requires thread entries **newest-first immediately below** the `📖 Issue Thread conventions` toggle. Do not reproduce older pages' above-toggle placement; report any API limitation before mutating the page.
 
 **GitHub quirks seen:** merging a stacked PR does **not** auto-retarget its child if the base branch still exists — retarget explicitly with `gh pr edit <n> --base main`. And `gh pr merge` can bounce once on stale mergeability right after a base change; re-check `gh pr view <n> --json mergeable` and retry (verify with `git merge-base --is-ancestor main <branch>` that a conflict is actually impossible before retrying).
 
@@ -130,28 +132,23 @@ This matters doubly for I177, whose target files are exactly that cluster.
 
 **Gate status: G1+G2 approved owner-as-reviewer per D7.** If the tracker row still reads `G1 Review` when you pick this up, record the pass first (property update + Issue Status table + thread entry), then set Owner Status → `Building`.
 
-**Plan**: `.ai/tasks/cl0176_card_source_path_reform_task_plan.md` — on branch `remy/I176-card-source-path-reform` (PR #71), not yet on `main`. Work on that branch with **incremental commits, one per phase**.
+**Plan**: `.ai/tasks/cl0176_card_source_path_reform_task_plan.md` — amended on branch `remy/I176-card-source-path-reform` (PR #71), not yet on `main`. Work on that branch with **incremental commits by RED→GREEN vertical slice**.
 
 **Verified before handoff** — you are not starting from an unvalidated plan:
 - Every file:line citation checked line-exact against the current tree: `readCardSourceState` @ `cli/core/card-source.ts:426`, `publishCard` @ `cli/core/card-store.ts:774`, `createCardSource` @ `cli/core/card-store.ts:321`.
 - Nothing is implemented yet — confirmed by signature probe: `resolveCardSourceDir` and `resolveSourcesRoot` still exist, `readCardSourceState(agentsDir, name)` unchanged, no `--from` flag, no `cli/commands/config.ts`.
-- Regression floor: **1773 pass / 6 skip / 0 fail** on `ab060ff`.
+- Repaired implementation floor: **1774 pass / 6 skip / 0 fail**, 7,873 assertions across 300 files in 281.72 seconds under Bun 1.2.21.
 
-### Two amendments to the plan, resolved after it was written
+### Execution-readiness amendments now incorporated
 
-**(a) Phase 2i (`worker/mind/checkpoint.ts`) is NOT the hard problem the plan calls it.** The plan says "the trickiest… investigate the exact resolution during execution" and floats a `--source-dir` flag fallback. It isn't needed. The file is 65 lines; the resolver appears once, inside a loop already guarded by `existsSync` (`cli/commands/worker/mind/checkpoint.ts:42-48`):
-
-```ts
-const sourceDirs: Record<string, string> = {};
-for (const card of index?.cards ?? []) {
-  const dir = resolveCardSourceDir(this.context.agentsDir, card.card);
-  if (existsSync(dir)) { sourceDirs[card.card] = dir; }
-}
-```
-
-Post-reform this becomes a one-line swap to the catalog resolver — `resolveSourceDirByName(agentsDir, card.card)` — and the existing `existsSync` guard already handles the not-found case gracefully. No new flag.
-
-**(b) Consequence — a phase-ordering wrinkle to fix.** Phase 2i now consumes `resolveSourceDirByName`, which **Phase 3b builds**. As written, Phase 2 runs before Phase 3. Either move 2i to after 3b, or hoist 3b (the catalog-checkout resolver) into Phase 2. Decide before starting Phase 2; note it in the plan when you do.
+- The catalog resolver precedes every consumer, including publish, release, source commands, and checkpoint.
+- Checkpoint is not a one-line synchronous swap: resolution is asynchronous, project `sourceOverrides` precede catalog lookup, and changed content without a source must still raise `MIND_CHECKPOINT_NO_SOURCE`.
+- The existing `cli/core/user-config.ts` remains intact; strict user preferences use a dedicated module and an explicit release-readiness contract update.
+- Existing `machine.json policy.authoring.scope` migrates losslessly rather than becoming invalid under a hard schema removal.
+- CLI grammar covers optional positional names, `--from`, path normalization, manifest-name matching, and catalog ambiguity.
+- `card release`, command registration, diagnostics typing/tests, capture destinations, store-seed legacy behavior, and `removeCardSourceForTests` are in scope.
+- The candidate test surface is at least 54 files; tests are interleaved RED→GREEN instead of deferred to a late phase.
+- Real-machine source deletion is removed from I176. The issue inventories and reports legacy sources; any deletion is separately confirmed.
 
 ### Highest-leverage sequencing (from the plan, still accurate)
 

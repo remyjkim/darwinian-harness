@@ -19,7 +19,7 @@ test("runRelease dry-run proposes version without publishing", async () => {
   if (!scope || !cardName) {
     throw new Error("invalid card name");
   }
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", scope, cardName);
+  const sourceRoot = join(fixture.root, "card-sources", cardName);
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(
     join(sourceRoot, "card.json"),
@@ -28,7 +28,7 @@ test("runRelease dry-run proposes version without publishing", async () => {
   await mkdir(join(sourceRoot, "skills", "alpha"), { recursive: true });
   await writeFile(join(sourceRoot, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: alpha\n---\n");
 
-  const result = await runRelease(fixture.agentsDir, "@me/release");
+  const result = await runRelease(fixture.agentsDir, sourceRoot);
   expect(result.ok).toBe(true);
   expect(result.dryRun).toBe(true);
   expect(result.proposedVersion).toBe("1.0.1");

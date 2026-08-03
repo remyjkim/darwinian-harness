@@ -6,20 +6,25 @@ import { createInterface } from "node:readline/promises";
 import { captureProjectAsCard } from "../../core/card-capture";
 import { createCapabilityCardFromDefaults } from "../../core/card-from-defaults";
 import { isCardUnscopedName } from "../../core/card-manifest";
-import { createCardSource, readMachineConfig } from "../../core/card-store";
+import { assertCardSourceDestinationAvailable, createCardSource } from "../../core/card-store";
+import { normalizeCardName } from "../../core/card-store";
 import { probeAuthoringScope, resolveScopeForCardNew } from "../../core/authoring-scope";
 import { defaultProbeGh, defaultProbeGit } from "../../core/authoring-scope-probes";
 import { BaseCommand } from "../base";
+import { loadUserPreferences, mutateUserPreferences } from "../../core/user-preferences";
+import { expandHomePath } from "../../core/paths";
+import { join, resolve } from "node:path";
 
 export class CardNewCommand extends BaseCommand {
   static override paths = [["card", "new"]];
 
   static override usage = BaseCommand.Usage({
     category: "Cards",
-    description: "Create an editable Card source under ~/.agents/drwn/sources.",
+    description: "Create an editable Card source repository.",
     details: `
-      Creates a source directory with card.json, skills/, and mcp-servers/.
-      Unscoped names require --scope or a saved authoring.scope in machine.json.
+      Creates a source directory with card.json, skills/, and mcp-servers/
+      beneath the current directory or an explicit --into collection.
+      Unscoped names require --scope or defaultAuthorScope in user preferences.
       By default the source directory is initialized as a git repository.
       Use --from-project to snapshot the current project's selected Worker
       closure and explicit overlays as a self-contained card source.
@@ -49,6 +54,8 @@ export class CardNewCommand extends BaseCommand {
     description: "Scope to apply to an unscoped card name (e.g., @your-handle). Auto-derived from gh / git config on first use.",
   });
 
+  into = Option.String("--into", { description: "Parent directory for the new Card source repository." });
+
   noGit = Option.Boolean("--no-git", false, {
     description: "Do not initialize a git repository in the new source directory.",
   });
@@ -62,13 +69,14 @@ export class CardNewCommand extends BaseCommand {
       this.context.stderr.write("Use either --from-project or --from-defaults, not both.\n");
       return 1;
     }
-    const machine = await readMachineConfig(this.context.agentsDir);
+    const preferences = await loadUserPreferences(this.context.agentsDir);
 
-    let scopeForCreate: string | undefined = this.scope ?? machine.policy.authoring?.scope;
+    let scopeForCreate: string | undefined = this.scope ?? preferences.defaultAuthorScope;
+    let shouldPersistScope = isCardUnscopedName(this.name) && this.scope !== undefined;
     if (isCardUnscopedName(this.name) && !scopeForCreate) {
       const resolved = await resolveScopeForCardNew({
         explicit: this.scope,
-        savedScope: machine.policy.authoring?.scope,
+        savedScope: preferences.defaultAuthorScope,
         isInteractive: process.stdin.isTTY === true && process.stdout.isTTY === true,
         probe: () => probeAuthoringScope({ runGh: defaultProbeGh, runGit: defaultProbeGit }),
         prompt: async (suggested) => {
@@ -91,6 +99,18 @@ export class CardNewCommand extends BaseCommand {
         return 1;
       }
       scopeForCreate = resolved.scope;
+      shouldPersistScope = resolved.source === "derived" || resolved.source === "explicit";
+    }
+    const fullName = normalizeCardName(this.name, scopeForCreate);
+    const authorScope = fullName.split("/")[0]!;
+    const parentDir = resolve(this.context.cwd, expandHomePath(this.into ?? ".", this.context.homeDir));
+    const sourceDir = join(parentDir, fullName.split("/").at(-1)!);
+    if (shouldPersistScope && preferences.defaultAuthorScope !== authorScope) {
+      assertCardSourceDestinationAvailable(sourceDir);
+      await mutateUserPreferences(this.context.agentsDir, (current) => ({
+        preferences: { ...current, defaultAuthorScope: authorScope },
+        value: undefined,
+      }));
     }
 
     if (this.fromDefaults) {
@@ -101,6 +121,7 @@ export class CardNewCommand extends BaseCommand {
           repoRoot: this.context.repoRoot,
           homeDir: this.context.homeDir,
           name: this.name,
+          sourceDir,
           scope: scopeForCreate,
           noGit: this.noGit,
         });
@@ -111,7 +132,7 @@ export class CardNewCommand extends BaseCommand {
       this.context.stdout.write(`Created capability card ${captured.name}: ${captured.sourceDir}\n`);
       this.context.stdout.write(`Skills captured: ${captured.skillCount}\n`);
       this.context.stdout.write(`MCP servers captured: ${captured.serverCount}\n`);
-      this.context.stdout.write(`Next: drwn card publish ${captured.name}\n`);
+      this.context.stdout.write(`Next: drwn card publish --from ${captured.sourceDir}\n`);
       return 0;
     }
 
@@ -124,6 +145,7 @@ export class CardNewCommand extends BaseCommand {
           homeDir: this.context.homeDir,
           projectPath: this.projectPath ?? this.context.cwd,
           name: this.name,
+          sourceDir,
           scope: scopeForCreate,
           noGit: this.noGit,
         });
@@ -137,13 +159,13 @@ export class CardNewCommand extends BaseCommand {
       this.context.stdout.write(`MCP servers captured: ${captured.serverCount}\n`);
       this.context.stdout.write(`Extensions captured: ${captured.extensionCount}\n`);
       this.context.stdout.write(`Targets captured: ${captured.targetCount}\n`);
-      this.context.stdout.write(`Next: drwn card publish ${captured.name}\n`);
+      this.context.stdout.write(`Next: drwn card publish --from ${captured.sourceDir}\n`);
       return 0;
     }
     let source;
     try {
       source = await createCardSource({
-        agentsDir: this.context.agentsDir,
+        sourceDir,
         name: this.name,
         scope: scopeForCreate,
         noGit: this.noGit,
@@ -153,6 +175,7 @@ export class CardNewCommand extends BaseCommand {
       return 1;
     }
     this.context.stdout.write(`Created card source ${source.name}: ${source.sourceDir}\n`);
+    this.context.stdout.write(`Next: drwn card publish --from ${source.sourceDir}\n`);
     return 0;
   }
 }

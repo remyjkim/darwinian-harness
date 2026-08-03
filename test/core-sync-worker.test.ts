@@ -7,7 +7,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { validateCardManifest } from "../cli/core/card-manifest";
 import { syncRepository } from "../cli/core/sync";
-import { cleanupTempRoots, envFor, installProjectWorkers, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, installProjectWorkers, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 import { applyProjectCardSpecs } from "../cli/core/card-project";
 import { buildProjectStatusV1 } from "../cli/core/diagnostics";
 
@@ -21,8 +21,7 @@ async function publishWorkerFixture(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   options: { instructions?: unknown; identity?: unknown; kind?: "card" | "blueprint"; skillBody?: string } = {},
 ) {
-  expect((await runAgentsCli(["card", "new", "@me/mind", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "mind");
+  const sourceDir = await createCatalogCardSource(fixture, "@me/mind");
   const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
   if (options.kind) manifest.kind = options.kind;
   if (options.instructions !== undefined) manifest.instructions = options.instructions;
@@ -177,9 +176,7 @@ async function publishAggregateFixture(fixture: Awaited<ReturnType<typeof scaffo
     ["@me/member-b", "beta", "server-b", null],
     ["@me/other", "other", "server-other", null],
   ] as const) {
-    expect((await runAgentsCli(["card", "new", name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
-    const [, scope, cardName] = name.match(/^(@[^/]+)\/(.+)$/)!;
-    const sourceDir = join(fixture.agentsDir, "drwn", "sources", scope!, cardName!);
+    const sourceDir = await createCatalogCardSource(fixture, name);
     const manifestPath = join(sourceDir, "card.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     manifest.skills = { include: [skill] };
@@ -197,8 +194,8 @@ async function publishAggregateFixture(fixture: Awaited<ReturnType<typeof scaffo
     expect((await runAgentsCli(["card", "publish", name], envFor(fixture))).exitCode).toBe(0);
   }
 
-  expect((await runAgentsCli(["card", "new", "@me/aggregate", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  const blueprintPath = join(fixture.agentsDir, "drwn", "sources", "@me", "aggregate", "card.json");
+  const blueprintDir = await createCatalogCardSource(fixture, "@me/aggregate", { kind: "blueprint" });
+  const blueprintPath = join(blueprintDir, "card.json");
   const blueprint = JSON.parse(await readFile(blueprintPath, "utf8"));
   blueprint.kind = "blueprint";
   blueprint.composedFrom = ["@me/member-a@1.0.0", "@me/member-b@1.0.0"];

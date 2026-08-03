@@ -5,7 +5,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveWorkerGraph } from "../cli/core/worker-graph";
-import { cleanupTempRoots, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -20,10 +20,9 @@ async function publishBlueprint(
   const version = options.version ?? "1.0.0";
   const match = options.name.match(/^(@[^/]+)\/(.+)$/);
   if (!match) throw new Error(`Use a scoped card name in tests: ${options.name}`);
-  const [, scope, cardName] = match;
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", scope!, cardName!);
+  const sourceRoot = join(fixture.root, "card-catalog", "cards", match[2]!);
   if (!(await Bun.file(join(sourceRoot, "card.json")).exists())) {
-    expect((await runAgentsCli(["card", "new", options.name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    await createCatalogCardSource(fixture, options.name, { kind: "blueprint" });
   }
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());

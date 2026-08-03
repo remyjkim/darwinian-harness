@@ -52,8 +52,8 @@ describe("Operator release contract", () => {
   });
 
   test.each([
-    ["source tag", (profile: Record<string, unknown>) => { profile.source = "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1"; }],
-    ["version", (profile: Record<string, unknown>) => { profile.version = "2.0.1"; }],
+    ["source tag", (profile: Record<string, unknown>) => { profile.source = "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.0"; }],
+    ["version", (profile: Record<string, unknown>) => { profile.version = "2.0.0"; }],
     ["commit", (profile: Record<string, unknown>) => { profile.commit = "f".repeat(40); }],
     ["tree", (profile: Record<string, unknown>) => { profile.treeSha = "e".repeat(40); }],
     ["integrity", (profile: Record<string, unknown>) => { profile.integrity = `sha256-${"d".repeat(64)}`; }],

@@ -2,8 +2,9 @@
 // ABOUTME: Keeps source inventory distinct from published card versions.
 
 import { Option } from "clipanion";
-import { listCardSources } from "../../../core/card-source";
-import { renderJson, renderTable } from "../../../core/output";
+import { inventoryLegacyCardSources } from "../../../core/legacy-card-sources";
+import { renderJson } from "../../../core/output";
+import { loadUserPreferences } from "../../../core/user-preferences";
 import { BaseCommand } from "../../base";
 
 export class CardSourceListCommand extends BaseCommand {
@@ -11,11 +12,11 @@ export class CardSourceListCommand extends BaseCommand {
 
   static override usage = BaseCommand.Usage({
     category: "Cards",
-    description: "List editable card sources under ~/.agents/drwn/sources.",
+    description: "Explain how to locate editable Card source repositories.",
     details: `
-      Lists local source directories used by card authors before publishing.
-      This command is read-only; published card versions remain under
-      ~/.agents/drwn/cards and are listed with drwn card list.
+      Editable Card sources are ordinary repositories and are no longer stored
+      in a machine-wide source directory. Inspect configured catalog checkouts
+      or pass an explicit source path to source commands.
     `,
     examples: [
       ["List editable sources", "drwn card source list"],
@@ -28,17 +29,27 @@ export class CardSourceListCommand extends BaseCommand {
   });
 
   async execute() {
-    const sources = await listCardSources(this.context.agentsDir);
+    const message = "card source list is deprecated: editable sources are ordinary repositories; inspect configured catalogCheckouts or pass a source path to card source show/doctor.";
+    const preferences = await loadUserPreferences(this.context.agentsDir);
+    const legacyInventory = await inventoryLegacyCardSources({
+      agentsDir: this.context.agentsDir,
+      homeDir: this.context.homeDir,
+      catalogCheckouts: preferences.catalogCheckouts,
+    });
     if (this.json) {
-      this.context.stdout.write(renderJson({ sources }));
-      return 0;
+      this.context.stdout.write(renderJson({ deprecated: true, message, legacyInventory }));
+      return 1;
     }
-    this.context.stdout.write(
-      renderTable(
-        ["name", "version", "status", "path"],
-        sources.map((source) => [source.name, source.version ?? "unknown", source.ok ? "ok" : "issues", source.path]),
-      ),
-    );
-    return 0;
+    this.context.stderr.write(`${message}\n`);
+    if (legacyInventory.entries.length === 0) {
+      this.context.stderr.write(`Legacy source inventory: none at ${legacyInventory.root}\n`);
+    } else {
+      this.context.stderr.write("Legacy source inventory (read-only):\n");
+      for (const entry of legacyInventory.entries) {
+        this.context.stderr.write(`- ${entry.status}: ${entry.name ?? "invalid manifest"} (${entry.legacyPath})${entry.canonicalPath ? ` -> ${entry.canonicalPath}` : ""}\n`);
+      }
+    }
+    this.context.stderr.write(`${legacyInventory.guidance}\n`);
+    return 1;
   }
 }

@@ -133,3 +133,14 @@ test("checkpointMind writes DB edits back into card sources and refuses outside-
     /outside/i,
   );
 });
+
+test("checkpointMind preserves MIND_CHECKPOINT_NO_SOURCE when changed content has no authoring source", async () => {
+  const { server, client } = start();
+  await seedMind(client, "m1", v1);
+  const persona = server.readFile("/minds/m1/persona.md")!;
+  await client.put("/minds/m1/persona.md", persona.replace("Plain.", "Plain, changed."));
+
+  await expect(checkpointMind(client, "m1", v1, { sourceDirs: {} })).rejects.toMatchObject({
+    code: "MIND_CHECKPOINT_NO_SOURCE",
+  });
+});

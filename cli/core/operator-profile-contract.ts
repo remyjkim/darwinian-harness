@@ -17,6 +17,18 @@ export const DARWINIAN_OPERATOR_SKILL_IDS = [
 export const DARWINIAN_OPERATOR_PROFILE = {
   id: "darwinian-operator",
   displayName: "Recommended Darwinian Operator",
+  source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1",
+  name: "@darwinian/operator",
+  version: "2.0.1",
+  commit: "33e3aa7a4cc37bbc462efad8aa50400d940ab0d5",
+  treeSha: "c9623c0bc4998c625cc9fefa0ed4fc929e71f0d9",
+  integrity: "sha256-e29b7f089df854e8f7f186778fa83de15717712fd710902d642114327b52f380",
+  skills: DARWINIAN_OPERATOR_SKILL_IDS,
+  mcpServers: [],
+} as const;
+
+export const DARWINIAN_OPERATOR_V200_PIN = {
+  id: "darwinian-operator",
   source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.0",
   name: "@darwinian/operator",
   version: "2.0.0",
@@ -48,6 +60,23 @@ export const operatorProfilePinSchema = z.object({
   skills: exactIds(DARWINIAN_OPERATOR_PROFILE.skills, "Operator skills"),
   mcpServers: exactIds(DARWINIAN_OPERATOR_PROFILE.mcpServers, "Operator MCP servers"),
 }).strict();
+
+export const operatorV200ProfilePinSchema = z.object({
+  id: z.literal(DARWINIAN_OPERATOR_V200_PIN.id),
+  source: z.literal(DARWINIAN_OPERATOR_V200_PIN.source),
+  name: z.literal(DARWINIAN_OPERATOR_V200_PIN.name),
+  version: z.literal(DARWINIAN_OPERATOR_V200_PIN.version),
+  commit: z.literal(DARWINIAN_OPERATOR_V200_PIN.commit),
+  treeSha: z.literal(DARWINIAN_OPERATOR_V200_PIN.treeSha),
+  integrity: z.literal(DARWINIAN_OPERATOR_V200_PIN.integrity),
+  skills: exactIds(DARWINIAN_OPERATOR_V200_PIN.skills, "Operator v2.0.0 skills"),
+  mcpServers: exactIds(DARWINIAN_OPERATOR_V200_PIN.mcpServers, "Operator v2.0.0 MCP servers"),
+}).strict();
+
+export const supportedOperatorProfilePinSchema = z.union([
+  operatorProfilePinSchema,
+  operatorV200ProfilePinSchema,
+]);
 
 export const operatorProfileDescriptorSchema = operatorProfilePinSchema.extend({
   displayName: z.literal(DARWINIAN_OPERATOR_PROFILE.displayName),

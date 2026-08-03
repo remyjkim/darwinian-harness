@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { removeCardSourceSkill } from "../../../core/card-source";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceRemoveSkillCommand extends BaseCommand {
   static override paths = [["card", "source", "remove-skill"]];
@@ -41,9 +42,9 @@ export class CardSourceRemoveSkillCommand extends BaseCommand {
   async execute() {
     let result;
     try {
+      const source = await resolveCommandCardSource(this.context, { input: this.cardName });
       result = await removeCardSourceSkill({
-        agentsDir: this.context.agentsDir,
-        cardName: this.cardName,
+        sourceDir: source.sourceDir,
         skillName: this.skillName,
         keepFiles: this.keepFiles,
         dryRun: this.dryRun,

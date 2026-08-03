@@ -17,7 +17,7 @@ async function scaffoldSource(options?: { complete?: boolean; missingBeliefMd?: 
   const root = await createTempRoot("card-publish-mind-");
   tempRoots.push(root);
   const agentsDir = join(root, "agents");
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "mind");
+  const sourceDir = join(root, "card-sources", "mind");
   await mkdir(sourceDir, { recursive: true });
   await writeFile(
     join(sourceDir, "card.json"),
@@ -45,21 +45,21 @@ async function scaffoldSource(options?: { complete?: boolean; missingBeliefMd?: 
 }
 
 test("publishCard rejects missing persona directories declared in the manifest", async () => {
-  const { agentsDir } = await scaffoldSource();
+  const { agentsDir, sourceDir } = await scaffoldSource();
 
-  await expect(publishCard(agentsDir, "@me/mind")).rejects.toThrow("missing persona directory");
+  await expect(publishCard(agentsDir, sourceDir)).rejects.toThrow("missing persona directory");
 });
 
 test("publishCard rejects bundled beliefs missing BELIEF.md", async () => {
-  const { agentsDir } = await scaffoldSource({ missingBeliefMd: true });
+  const { agentsDir, sourceDir } = await scaffoldSource({ missingBeliefMd: true });
 
-  await expect(publishCard(agentsDir, "@me/mind")).rejects.toThrow("missing BELIEF.md");
+  await expect(publishCard(agentsDir, sourceDir)).rejects.toThrow("missing BELIEF.md");
 });
 
 test("publishCard succeeds for complete mind content and integrity covers new files", async () => {
-  const { agentsDir } = await scaffoldSource({ complete: true });
+  const { agentsDir, sourceDir } = await scaffoldSource({ complete: true });
 
-  const published = await publishCard(agentsDir, "@me/mind");
+  const published = await publishCard(agentsDir, sourceDir);
   const resolved = await resolveCard(agentsDir, "@me/mind@1.0.0");
   const before = await computeCardIntegrity(published.versionDir);
   const personaPath = join(published.versionDir, "persona", "voice", "PERSONA.md");

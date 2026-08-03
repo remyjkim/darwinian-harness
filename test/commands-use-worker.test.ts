@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   cleanupTempRoots,
+  createCatalogCardSource,
   envFor,
   publishCardWithSkills,
   runAgentsCli,
@@ -86,7 +87,7 @@ test("use refuses to select a Blueprint member as the Worker root", async () => 
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await publishCardWithSkills(fixture, { name: "@me/member", skills: ["member-skill"] });
-  expect((await runAgentsCli(["worker", "new", "@me/blueprint", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  await createCatalogCardSource(fixture, "@me/blueprint", { kind: "blueprint" });
   expect((await runAgentsCli(
     ["worker", "compose", "@me/blueprint", "--add", "@me/member@1.0.0"],
     envFor(fixture),

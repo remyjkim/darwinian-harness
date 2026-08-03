@@ -6,7 +6,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as git from "../cli/core/git";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -23,7 +23,7 @@ async function createEmptyBareRemote(prefix: string) {
 }
 
 async function publishMindCard(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  expect((await runAgentsCli(["card", "new", "@team/mind", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  await createCatalogCardSource(fixture, "@team/mind");
   expect((await runAgentsCli(["card", "source", "add-persona", "@team/mind", "voice", "--visibility", "private"], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "publish", "@team/mind"], envFor(fixture))).exitCode).toBe(0);
 }

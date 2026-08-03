@@ -14,7 +14,10 @@ Before removing project state:
 3. Record the non-secret project declaration and resolved Card refs for audit purposes.
 4. Confirm credentials are stored outside the project. Never include `.env`, OAuth tokens, API keys, or `credentials.json` in the snapshot.
 
-Do not remove source repositories under `~/.agents/drwn/sources`, published Card repositories, or unrelated machine inventory.
+Do not remove ordinary Card source repositories, configured catalog checkouts,
+published Card repositories, or unrelated machine inventory. If a legacy
+`~/.agents/drwn/sources/` tree exists, inventory it separately; this project
+reset does not authorize deleting it.
 
 ## Remove Unsupported Project State
 

@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig, writeTestCardLock } from "./helpers";
+import { cleanupTempRoots, createCatalogCardSource, envFor, publishCardWithSkills, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig, writeTestCardLock } from "./helpers";
 
 const tempRoots: string[] = [];
 afterEach(async () => cleanupTempRoots(tempRoots));
@@ -55,8 +55,7 @@ test("up re-grants instruction consent in-range when content changes on version 
   tempRoots.push(fixture.root);
 
   // Create a card with instructions, publish 1.0.0
-  expect((await runAgentsCli(["card", "new", "@me/upregrant", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "upregrant");
+  const sourceDir = await createCatalogCardSource(fixture, "@me/upregrant");
   const manifestPath = join(sourceDir, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.instructions = { text: "Original instruction content." };

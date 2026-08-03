@@ -99,6 +99,6 @@ test("diagnostics count scoped Card, source, and package records instead of scop
   const sections = await buildDiagnosticsSections(fixture.repoRoot, fixture.agentsDir, fixture.homeDir);
 
   expect(sections.store.cardCount).toBe(2);
-  expect(sections.store.sourceCount).toBe(2);
+  expect(sections.store.legacySourceCount).toBe(2);
   expect(sections.store.skillBundleCount).toBe(2);
 });

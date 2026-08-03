@@ -2,16 +2,44 @@
 // ABOUTME: The written files land in the git working tree for review; publishing them creates the next baseline.
 
 import { Option } from "clipanion";
-import { existsSync } from "node:fs";
 import { createMindDbClient } from "../../../core/mind-store/client";
 import { resolveBgdbConfig } from "../../../core/mind-store/config";
 import { readMindIndex } from "../../../core/mind-store/ledger";
 import { loadProjectMindCards, resolveMindId } from "../../../core/mind-store/project";
 import { checkpointMind } from "../../../core/mind-store/rebase";
 import { renderJson } from "../../../core/output";
-import { resolveCardSourceDir } from "../../../core/store-paths";
+import { loadConfigLocal } from "../../../core/config-local";
+import { resolveCardSourceInput } from "../../../core/card-source-input";
+import { loadUserPreferences } from "../../../core/user-preferences";
+import { DrwnError } from "../../../core/errors";
 import { BaseCommand } from "../../base";
 import { requireProjectRoot } from "../../card/project-command";
+
+export async function resolveCheckpointSourceDirs(options: {
+  cardNames: string[];
+  projectRoot: string;
+  homeDir: string;
+  catalogCheckouts: string[];
+  sourceOverrides?: Record<string, string>;
+}) {
+  const sourceDirs: Record<string, string> = {};
+  for (const cardName of options.cardNames) {
+    try {
+      const override = options.sourceOverrides?.[cardName];
+      const source = await resolveCardSourceInput({
+        input: cardName,
+        ...(override ? { from: override } : {}),
+        cwd: options.projectRoot,
+        homeDir: options.homeDir,
+        catalogCheckouts: options.catalogCheckouts,
+      });
+      sourceDirs[cardName] = source.sourceDir;
+    } catch (error) {
+      if (!(error instanceof DrwnError) || error.code !== "CARD_SOURCE_NOT_FOUND") throw error;
+    }
+  }
+  return sourceDirs;
+}
 
 export class WorkerMindCheckpointCommand extends BaseCommand {
   static override paths = [["worker", "mind", "checkpoint"]];
@@ -39,13 +67,15 @@ export class WorkerMindCheckpointCommand extends BaseCommand {
       const client = createMindDbClient(resolveBgdbConfig());
       const cards = await loadProjectMindCards(projectRoot);
       const index = await readMindIndex(client, mindId);
-      const sourceDirs: Record<string, string> = {};
-      for (const card of index?.cards ?? []) {
-        const dir = resolveCardSourceDir(this.context.agentsDir, card.card);
-        if (existsSync(dir)) {
-          sourceDirs[card.card] = dir;
-        }
-      }
+      const local = await loadConfigLocal(projectRoot);
+      const preferences = await loadUserPreferences(this.context.agentsDir);
+      const sourceDirs = await resolveCheckpointSourceDirs({
+        cardNames: (index?.cards ?? []).map((card) => card.card),
+        projectRoot,
+        homeDir: this.context.homeDir,
+        catalogCheckouts: preferences.catalogCheckouts,
+        sourceOverrides: local?.sourceOverrides,
+      });
       const result = await checkpointMind(client, mindId, cards, { sourceDirs });
       if (this.json) {
         this.context.stdout.write(renderJson({ mindId, ...result }));

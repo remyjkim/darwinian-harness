@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { readCardSourceState } from "../../../core/card-source";
 import { renderJson, renderTable } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceShowCommand extends BaseCommand {
   static override paths = [["card", "source", "show"]];
@@ -13,13 +14,13 @@ export class CardSourceShowCommand extends BaseCommand {
     category: "Cards",
     description: "Show an editable card source.",
     details: `
-      Reads a named local source under ~/.agents/drwn/sources and prints its
-      manifest fields, bundled skills, MCP files, and any source-level issues.
+      Reads a source path, or a uniquely matched Card name from configured
+      catalog checkouts, and prints its manifest and source-level issues.
       This inspects editable source state, not published immutable versions.
     `,
     examples: [
-      ["Show a source", "drwn card source show @your-handle/backend"],
-      ["Show a source as JSON", "drwn card source show @your-handle/backend --json"],
+      ["Show a source", "drwn card source show ./cards/backend"],
+      ["Show a catalog source as JSON", "drwn card source show @your-handle/backend --json"],
     ],
   });
 
@@ -30,7 +31,8 @@ export class CardSourceShowCommand extends BaseCommand {
   });
 
   async execute() {
-    const state = await readCardSourceState(this.context.agentsDir, this.name);
+    const source = await resolveCommandCardSource(this.context, { input: this.name });
+    const state = await readCardSourceState(source.sourceDir);
     if (this.json) {
       this.context.stdout.write(renderJson(state));
       return state.manifest ? 0 : 1;
