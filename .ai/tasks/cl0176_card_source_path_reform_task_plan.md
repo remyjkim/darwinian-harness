@@ -184,7 +184,7 @@ Manual commands use a fresh `mktemp -d` path assigned to `AGENTS_DIR`; never use
 - [x] Reproduce the inherited Ubuntu-equivalent legacy-wrapper failure.
 - [x] Add a RED regression proving explicit `repoRoot` must also drive project discovery.
 - [x] Fix `sync-mcp.ts`, rerun compatibility + journey tests, and commit separately.
-- [ ] Rerun the full tracked suite after the fix and record the new floor.
+- [x] Rerun the full tracked suite after the fix and record the new floor: **1774 pass / 6 skip / 0 fail**, 7,873 assertions across 300 files in 281.72 seconds under Bun 1.2.21.
 
 ### Phase 1 — Preferences and unified source resolution
 

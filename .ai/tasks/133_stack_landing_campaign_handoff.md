@@ -95,7 +95,7 @@ Three things a worktree does **not** give you here:
 
 1. **The submodule does not come along.** Without the init above you get ~31 phantom failures (below). This is the most common hour-loser.
 2. **The gitignored harness configs are absent.** `.claude/settings.json` and `.codex/hooks.json` hold *absolute* paths into `/Users/pureicis/dev/darwinian-minds/.agents/drwn/generated/hooks/`; being gitignored, they do not exist in a new worktree, so drwn's projected hooks will not fire there. Harmless for test work — surprising if you expect hook behavior.
-3. **⚠️ It gives NO isolation from the machine-global drwn store.** This is the real risk in I176: Phase 3 writes `~/.agents/drwn/config.json` and **Phase 6a deletes `~/.agents/drwn/sources/`** — both mutate the operator's actual machine regardless of which worktree you sit in. For every manual CLI verification (Phase 7's `drwn card new` / `card publish --from` / `config set`), redirect the store first:
+3. **⚠️ It gives NO isolation from the machine-global drwn store.** This is the real risk in I176: preference/config commands write beneath the active Agents directory, and legacy-source inventory may inspect `~/.agents/drwn/sources/`. For every manual CLI verification (Phase 7's `drwn card new` / `card publish --from` / `config set`), redirect the store first:
 
    ```bash
    export AGENTS_DIR=/tmp/drwn-i176-scratch
@@ -103,7 +103,7 @@ Three things a worktree does **not** give you here:
 
    Verified: `cli/context.ts:28` reads `process.env.AGENTS_DIR ?? resolveAgentsDir(homeDir)`, so this redirects the entire store — it is the supported knob and I176 leaves it unchanged.
 
-   Only run against the real `~/.agents` deliberately, and **confirm with Remy before Phase 6a's deletion** — it removes `~/.agents/drwn/sources/` from the operator's actual machine. The automated suite is already safe: `test/helpers.ts:175-181` (`envFor`) sets `AGENTS_DIR` to a per-fixture temp store on every CLI invocation.
+   Only run against the real `~/.agents` deliberately. I176 inventories and classifies the legacy source tree; it does **not** delete the real `~/.agents/drwn/sources/`. Any later deletion is a separate destructive operation requiring explicit confirmation. The automated suite is already safe: `test/helpers.ts:175-181` (`envFor`) sets `AGENTS_DIR` to a per-fixture temp store on every CLI invocation.
 
 **Testing — the submodule is mandatory.** `darwinian-worker-skills` is a git submodule holding the operator profile's cards/skills. A fresh worktree without it produces **~31 phantom `ENOENT` failures**, all in the operator / machine-profile / release-gate cluster (`e2e-operator-profile-contract`, `core-machine-config`, `core-defaults`, `release-readiness`, `scripts-verify-*`). They fail identically on clean `main`, so they are not regressions. Always:
 
@@ -113,7 +113,7 @@ git submodule update --init darwinian-worker-skills && bun install && bun run ty
 
 This matters doubly for I177, whose target files are exactly that cluster.
 
-**Baseline correction — Ubuntu was already red after post-stack hygiene.** Under the pinned Bun 1.2.21 runtime, the tracked suite reproduced **1772 pass / 6 skip / 1 fail** in `user journeys > legacy wrapper user sees plausible equivalent dry-run intent`. Root cause: the compatibility wrapper honored `AGENTS_REPO_ROOT` for packaged config but left project discovery at `process.cwd()`, so a worktree/CI run consumed the checked-out project's host-specific committed state. Commit `c31afd4` adds the RED regression and binds default project discovery to the explicit repo root. Its focused compatibility + journey verification is 13 pass / 0 fail; the full repaired floor must be recorded before implementation continues.
+**Baseline correction — Ubuntu was already red after post-stack hygiene.** Under the pinned Bun 1.2.21 runtime, the tracked suite reproduced **1772 pass / 6 skip / 1 fail** in `user journeys > legacy wrapper user sees plausible equivalent dry-run intent`. Root cause: the compatibility wrapper honored `AGENTS_REPO_ROOT` for packaged config but left project discovery at `process.cwd()`, so a worktree/CI run consumed the checked-out project's host-specific committed state. Commit `c31afd4` adds the RED regression and binds default project discovery to the explicit repo root. Focused compatibility + journey verification is **13 pass / 0 fail**. The repaired full floor is **1774 pass / 6 skip / 0 fail**, 7,873 assertions across 300 files in 281.72 seconds.
 
 **Repo is bun-only and pins Bun 1.2.21.** Use `bunx bun@1.2.21` when the active machine Bun differs. `run typecheck` invokes `tsc --noEmit`; `test --timeout 30000 ./test/` is the CI-equivalent suite and takes roughly 275–590 seconds depending on host. Ignore any instruction mentioning `pnpm <area>:test` — see the drift note in §9.
 
@@ -121,10 +121,10 @@ This matters doubly for I177, whose target files are exactly that cluster.
 
 **Notion via `ntn` CLI** (the Notion MCP server needs OAuth unavailable in non-interactive sessions):
 - `ntn api /v1/pages/<id> -X PATCH -d '<json>'` for properties — fast and reliable.
-- `ntn pages update <id> --content "<markdown>"` **replaces the whole page** and **times out on large pages** (I24 failed at both 2min and 10min). Always re-fetch and verify state before retrying a timed-out write — in every observed case nothing partial was written, but confirm rather than assume.
+- `ntn pages edit <id> --content "<markdown>"` **replaces the whole page** and can time out on large pages. Always re-fetch and verify state before retrying a timed-out write; never assume a partial or absent write.
 - Block-level append (`PATCH /v1/blocks/<id>/children`) **rejects the `after` parameter** on this API version, so appends land at page end — which is the wrong place for newest-first thread entries. This is why §8's deferred item is still open.
 - Endpoint paths need explicit `-X GET` on `ntn api` or you get `invalid_request_url`.
-- Thread entries in live practice stack **newest-first above** the `📖 Issue Thread conventions` toggle (I174 precedent), even though the AGENTS.md card says "immediately below the toggle". Follow the live practice; the discrepancy is logged as drift.
+- The governing AGENTS.md contract requires thread entries **newest-first immediately below** the `📖 Issue Thread conventions` toggle. Do not reproduce older pages' above-toggle placement; report any API limitation before mutating the page.
 
 **GitHub quirks seen:** merging a stacked PR does **not** auto-retarget its child if the base branch still exists — retarget explicitly with `gh pr edit <n> --base main`. And `gh pr merge` can bounce once on stale mergeability right after a base change; re-check `gh pr view <n> --json mergeable` and retry (verify with `git merge-base --is-ancestor main <branch>` that a conflict is actually impossible before retrying).
 
@@ -137,7 +137,7 @@ This matters doubly for I177, whose target files are exactly that cluster.
 **Verified before handoff** — you are not starting from an unvalidated plan:
 - Every file:line citation checked line-exact against the current tree: `readCardSourceState` @ `cli/core/card-source.ts:426`, `publishCard` @ `cli/core/card-store.ts:774`, `createCardSource` @ `cli/core/card-store.ts:321`.
 - Nothing is implemented yet — confirmed by signature probe: `resolveCardSourceDir` and `resolveSourcesRoot` still exist, `readCardSourceState(agentsDir, name)` unchanged, no `--from` flag, no `cli/commands/config.ts`.
-- Regression floor: **1773 pass / 6 skip / 0 fail** on `ab060ff`.
+- Repaired implementation floor: **1774 pass / 6 skip / 0 fail**, 7,873 assertions across 300 files in 281.72 seconds under Bun 1.2.21.
 
 ### Execution-readiness amendments now incorporated
 
