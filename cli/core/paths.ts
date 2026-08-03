@@ -72,6 +72,10 @@ export function resolveMachineProfilesRegistryPath(repoRoot: string) {
   return join(resolvePackagedRegistryDir(repoRoot), "machine-profiles.json");
 }
 
+export function resolveMachineWorkersRegistryPath(repoRoot: string) {
+  return join(resolvePackagedRegistryDir(repoRoot), "machine-workers.json");
+}
+
 export function expandHomePath(pathValue: string, homeDir: string) {
   if (pathValue === "~") {
     return homeDir;

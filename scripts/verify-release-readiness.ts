@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { DARWINIAN_OPERATOR_PROFILE, DARWINIAN_OPERATOR_REGISTRY } from "../cli/core/operator-profile-contract";
+import { parseMachineWorkerRegistry } from "../cli/core/machine-worker-contract";
 import { gte } from "../cli/core/semver-utils";
 import { verifyOperatorContract } from "./verify-operator-contract";
 
@@ -200,6 +201,29 @@ function verifyDocsPresence() {
 }
 
 type SourceOverrides = Record<string, string>;
+
+export function verifyRecommendedMachineWorkerContract(
+  root = repoRoot,
+  overrides: SourceOverrides = {},
+): CheckResult {
+  const pathValue = "registry/machine-workers.json";
+  const content = Object.hasOwn(overrides, pathValue)
+    ? overrides[pathValue]!
+    : existsSync(join(root, pathValue))
+      ? readFileSync(join(root, pathValue), "utf8")
+      : "";
+  try {
+    if (!content) throw new Error(`${pathValue} is missing`);
+    parseMachineWorkerRegistry(JSON.parse(content));
+    return { name: "recommended machine Worker contract", ok: true };
+  } catch (error) {
+    return {
+      name: "recommended machine Worker contract",
+      ok: false,
+      details: `${pathValue}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
 
 export function verifyStoreExportSecurity(root = repoRoot, overrides: SourceOverrides = {}) {
   const issues: string[] = [];
@@ -1270,6 +1294,7 @@ async function main() {
   checks.push(verifyDocsPresence());
   checks.push(verifyWorkerContract());
   checks.push(verifySemanticMindContract());
+  checks.push(verifyRecommendedMachineWorkerContract());
   checks.push(verifyMachineContract());
   checks.push(await verifyOperatorContract());
   checks.push(verifyMachineInventoryContract());
