@@ -65,6 +65,11 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
       `Stored credentials target client ${creds.clientId}; run \`drwn login\` again for ${profile.clientId}.`,
     );
   }
+  if (creds.issuer !== profile.issuer) {
+    throw new NotAuthenticatedError(
+      `Stored credentials were issued by ${creds.issuer}; run \`drwn login\` again for ${profile.issuer}.`,
+    );
+  }
 
   if (!tokenExpiresWithin(creds.expiresAt, REFRESH_SKEW_MS)) {
     assertJwtAudience(creds.accessToken, profile.resource, { issuer: creds.issuer, requireUnexpired: true });

@@ -18,9 +18,10 @@ function fakeJwt(
   email = "x@y.z",
   exp = Math.floor(Date.now() / 1000) + 900,
   audience = "https://api.darwinian.dev",
+  issuer = "https://auth.darwinian.dev/api/auth",
 ): string {
   return `${b64({ alg: "none" })}.${b64({
-    iss: "https://auth.darwiniantools.com/api/auth",
+    iss: issuer,
     aud: audience,
     sub: "user_123",
     email,
@@ -55,7 +56,7 @@ describe("resolveToken", () => {
     const credentialsPath = join(tmp, "credentials.json");
     await writeCredentials(credentialsPath, {
       version: 2,
-      issuer: "https://auth.darwiniantools.com/api/auth",
+      issuer: "https://auth.darwinian.dev/api/auth",
       clientId: "drwn-cli",
       resource: "https://api.darwinian.dev",
       accessToken: fakeJwt(),
@@ -108,7 +109,7 @@ describe("resolveToken", () => {
     const credentialsPath = join(tmp, "credentials.json");
     await writeCredentials(credentialsPath, {
       version: 2,
-      issuer: "https://auth.darwiniantools.com/api/auth",
+      issuer: "https://auth.darwinian.dev/api/auth",
       clientId: "drwn-cli",
       resource: "https://api-staging-main.darwinian.dev",
       accessToken: fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev"),
@@ -122,13 +123,34 @@ describe("resolveToken", () => {
       .rejects.toThrow("Stored credentials target https://api-staging-main.darwinian.dev; run `drwn login` again for https://api.darwinian.dev.");
   });
 
+  test("asks for a fresh login when stored credentials came from the retired hub", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const retiredIssuer = "https://auth.darwiniantools.com/api/auth";
+    await writeCredentials(credentialsPath, {
+      version: 2,
+      issuer: retiredIssuer,
+      clientId: "drwn-cli",
+      resource: "https://api.darwinian.dev",
+      accessToken: fakeJwt("legacy@example.com", undefined, undefined, retiredIssuer),
+      refreshToken: "refresh-legacy",
+      expiresAt: new Date(Date.now() + 900_000).toISOString(),
+      user_email: "legacy@example.com",
+      saved_at: "2026-06-03T00:00:00Z",
+    });
+
+    await expect(resolveToken({ credentialsPath, env: {} })).rejects.toThrow(
+      "Stored credentials were issued by https://auth.darwiniantools.com/api/auth; run `drwn login` again for https://auth.darwinian.dev/api/auth.",
+    );
+  });
+
   test("uses a non-production credential when the explicit resource override matches", async () => {
     tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
     const credentialsPath = join(tmp, "credentials.json");
     const stagingToken = fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev");
     await writeCredentials(credentialsPath, {
       version: 2,
-      issuer: "https://auth.darwiniantools.com/api/auth",
+      issuer: "https://auth.darwinian.dev/api/auth",
       clientId: "drwn-cli",
       resource: "https://api-staging-main.darwinian.dev",
       accessToken: stagingToken,

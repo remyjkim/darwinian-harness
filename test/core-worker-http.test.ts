@@ -17,7 +17,7 @@ function b64(value: unknown): string {
 
 function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): string {
   return `${b64({ alg: "none" })}.${b64({
-    iss: "https://auth.darwiniantools.com/api/auth",
+    iss: "https://auth.darwinian.dev/api/auth",
     aud: "https://api.darwinian.dev",
     sub: "user_123",
     email,
@@ -30,7 +30,7 @@ function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): st
 function storedV2Credential(overrides: Partial<{ accessToken: string; expiresAt: string }> = {}) {
   return {
     version: 2 as const,
-    issuer: "https://auth.darwiniantools.com/api/auth",
+    issuer: "https://auth.darwinian.dev/api/auth",
     clientId: "drwn-cli" as const,
     resource: "https://api.darwinian.dev",
     accessToken: overrides.accessToken ?? fakeJwt(),
