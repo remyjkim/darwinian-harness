@@ -72,6 +72,18 @@ describe("machine capability release gate", () => {
     expect(result.details).toContain("public whole-Store export must remain unavailable");
   });
 
+  test("enforces the separate strict user-preferences contract", () => {
+    const preferences = readFileSync(join(repoRoot, "cli/core/user-preferences.ts"), "utf8");
+    const result = verifyMachineContract(repoRoot, {
+      "cli/core/user-preferences.ts": preferences
+        .replace('z.literal("drwn.user-preferences")', "z.string()")
+        .replace("}).strict();", "}).passthrough();"),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("cli/core/user-preferences.ts is missing");
+  });
+
   test("release JSON includes the machine capability contract gate", async () => {
     const proc = Bun.spawn(["bun", "run", "verify:release", "--json"], {
       cwd: repoRoot,
