@@ -1,4 +1,4 @@
-// ABOUTME: Verifies release readiness pins the drwn 0.9.0 semantic Worker Mind contract.
+// ABOUTME: Verifies release readiness preserves the semantic Worker Mind contract in the current drwn release.
 // ABOUTME: Rejects numbered-memory readers, weak indexes, and version-floor regression.
 
 import { describe, expect, test } from "bun:test";

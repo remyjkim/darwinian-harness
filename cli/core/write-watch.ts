@@ -57,7 +57,12 @@ export async function loadLinkedSourceRoots(projectRoot: string, extraRoots: str
 
 export function collectWriteWatchPaths(projectRoot: string, linkedSourceRoots: string[] = []) {
   const linked = linkedSourceRoots.map((path) => normalizeWatchPath(path)).filter((path) => path && existsSync(path));
-  return [join(projectRoot, ".agents", "drwn"), ...linked];
+  return [
+    join(projectRoot, ".agents", "drwn"),
+    join(projectRoot, "AGENTS.md"),
+    join(projectRoot, ".claude", "CLAUDE.md"),
+    ...linked,
+  ];
 }
 
 export { createRecursiveWatcher, type RecursiveWatcher } from "./write-watch-recursive";
@@ -72,6 +77,15 @@ export function startWriteWatch(options: WriteWatchOptions) {
   let linkedRoots: string[] = [];
   const linkedWatchers = new Map<string, RecursiveWatcher>();
   const polledFiles: Array<{ path: string; listener: StatsListener }> = [];
+  const observedFileState = new Map<string, string>();
+  const fileState = (path: string) => {
+    try {
+      const stats = Bun.file(path);
+      return `${stats.size}:${stats.lastModified}`;
+    } catch {
+      return "absent";
+    }
+  };
 
   const closeLinkedWatchers = () => {
     for (const watcher of linkedWatchers.values()) {
@@ -108,6 +122,9 @@ export function startWriteWatch(options: WriteWatchOptions) {
     try {
       await refreshLinkedWatchers();
       await options.onTrigger();
+      for (const file of polledFiles) {
+        observedFileState.set(file.path, fileState(file.path));
+      }
     } finally {
       inProgress = false;
       if (queued) {
@@ -130,10 +147,14 @@ export function startWriteWatch(options: WriteWatchOptions) {
   };
 
   const watchPolledFile = (path: string) => {
+    observedFileState.set(path, fileState(path));
     const listener: StatsListener = (current, previous) => {
       if (current.mtimeMs === previous.mtimeMs && current.size === previous.size) {
         return;
       }
+      const currentState = fileState(path);
+      if (observedFileState.get(path) === currentState) return;
+      observedFileState.set(path, currentState);
       schedule(path);
     };
     watchFile(path, { interval: Math.max(50, Math.min(500, debounceMs)), persistent: true }, listener);
@@ -157,6 +178,8 @@ export function startWriteWatch(options: WriteWatchOptions) {
       }));
     }
   }
+  watchPolledFile(join(options.projectRoot, "AGENTS.md"));
+  watchPolledFile(join(options.projectRoot, ".claude", "CLAUDE.md"));
 
   void refreshLinkedWatchers();
 

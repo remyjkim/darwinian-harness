@@ -1,0 +1,14 @@
+{
+  "card": "@curation-labs/ai-narratives-worker",
+  "treeSha": "bf072e02ed765b113a3f62402e40dbc0e407ed59",
+  "integrity": "sha256-efff033dd654c8d7d419c6f6a2fe2878495206639b4d7be3b8239f1e6858b2c8",
+  "manifest": {
+    "files": [
+      {
+        "path": "card.json",
+        "exec": false,
+        "hash": "04f72cc45e603e261d524f7577cfb25931f9bd3ba37104ff448335fc2c114d8b"
+      }
+    ]
+  }
+}

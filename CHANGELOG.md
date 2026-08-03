@@ -20,6 +20,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Explicit Worker-instructions V1 projection. Cards can author inline or
+  Card-relative instructions, consumers grant exact-content/version-range
+  consent, and full project writes compose consented bytes into a
+  byte-preserving managed block in root `AGENTS.md`.
+- Claude instruction adapter management for `.claude/CLAUDE.md`, including
+  foreign valid-import preservation, opt-in managed-block insertion, ownership
+  drift protection, and owned-only cleanup.
+- Stable `instructionDelivery` status/doctor evidence, machine-local
+  cross-machine consent acknowledgement, and strict frozen
+  `OrgWorkerBundleV1` consumer conformance.
+- Fresh-project organization Worker materialization from an immutable
+  bundle/artifact snapshot handoff, with frozen compatibility and version-floor
+  checks, exact artifact and external-consent verification, transactional
+  config/lock, project-owned vendor trees, resumable journals, append-only
+  `worker-materialization-receipt@1` evidence, and idempotent operation IDs.
+- Ownership-bounded `drwn install --reconcile` and `--remove` flows. Reconcile
+  repairs only prior materialization-owned drift; removal preserves unrelated
+  roots, local consent, overlays, adapters, and user bytes while retaining a
+  chained removed-state tombstone.
+- Additive local-only `orgWorkerMaterialization` status/doctor diagnostics,
+  including consent provenance and evidence-closed
+  absent/current/drifted/blocked/removed/unknown classification.
 - OpenCode target (disabled by default). `drwn write` merges managed MCP servers
   into `opencode.json` (project) and `~/.config/opencode/opencode.json`
   (machine) under the `mcp` key with per-server ownership, foreign-key
@@ -40,6 +62,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reads `.claude/skills/` and `.codex/skills/`, so `drwn write --target=cursor`
   and cursor-only projects now receive skills; targets with no enabled reader
   no longer receive skill writes.
+
+### Changed
+
+- Prepared the local `1.0.0` Darwinian Worker candidate required by the frozen
+  organization Worker-materialization compatibility profile. Existing project
+  and semantic Mind lock floors remain unchanged.
 
 ### Fixed
 

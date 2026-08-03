@@ -2,7 +2,9 @@
 // ABOUTME: Supports listing registered projects and bulk update across them.
 
 import { Option } from "clipanion";
-import { listRegisteredProjects, unregisterProject, updateAllRegisteredProjects } from "../core/project-registry";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { listRegisteredProjects, pruneStaleProjects, unregisterProject, updateAllRegisteredProjects } from "../core/project-registry";
 import { renderJson } from "../core/output";
 import { BaseCommand } from "./base";
 
@@ -46,6 +48,7 @@ export class ProjectsUpdateCommand extends BaseCommand {
   all = Option.Boolean("--all", false, { description: "Update every registered project." });
   fetch = Option.Boolean("--fetch", true, { description: "Fetch git remotes before checking outdated cards." });
   dryRun = Option.Boolean("--dry-run", false, { description: "Preview without updating." });
+  json = Option.Boolean("--json", false, { description: "Emit machine-readable JSON output." });
 
   async execute() {
     if (!this.all) {
@@ -60,11 +63,15 @@ export class ProjectsUpdateCommand extends BaseCommand {
       dryRun: this.dryRun,
     });
     if (results.length === 0) {
-      this.context.stdout.write("No registered projects.\n");
+      this.context.stdout.write(this.json ? renderJson({ projects: [] }) : "No registered projects.\n");
       return 0;
     }
-    for (const entry of results) {
-      this.context.stdout.write(`${entry.projectRoot}: ${entry.message}\n`);
+    if (this.json) {
+      this.context.stdout.write(renderJson({ projects: results }));
+    } else {
+      for (const entry of results) {
+        this.context.stdout.write(`${entry.projectRoot}: ${entry.message}\n`);
+      }
     }
     return 0;
   }
@@ -96,6 +103,43 @@ export class ProjectsUnregisterCommand extends BaseCommand {
     this.context.stdout.write(this.json
       ? renderJson(result)
       : `${result.removed ? this.dryRun ? "Would unregister" : "Unregistered" : "Project was not registered"}: ${result.projectRoot}\n`);
+    return 0;
+  }
+}
+
+export class ProjectsPruneCommand extends BaseCommand {
+  static override paths = [["projects", "prune"]];
+
+  static override usage = BaseCommand.Usage({
+    category: "General",
+    description: "Remove stale project roots from the machine project registry.",
+    details: `
+      Iterates ~/.agents/drwn/projects.json and removes entries whose
+      .agents/drwn/config.json no longer exists. Use this to clean up
+      registrations left behind by deleted or moved project checkouts.
+    `,
+    examples: [
+      ["Preview stale entries", "drwn projects prune --dry-run"],
+      ["Remove stale entries", "drwn projects prune"],
+    ],
+  });
+
+  dryRun = Option.Boolean("--dry-run", false, { description: "Preview without removing." });
+  json = Option.Boolean("--json", false, { description: "Emit machine-readable JSON output." });
+
+  async execute() {
+    const result = await pruneStaleProjects(this.context.agentsDir, { dryRun: this.dryRun });
+    const output = { ...result, dryRun: this.dryRun };
+    if (this.json) {
+      this.context.stdout.write(renderJson(output));
+    } else if (result.pruned.length === 0) {
+      this.context.stdout.write("No stale project registrations found.\n");
+    } else {
+      for (const projectRoot of result.pruned) {
+        this.context.stdout.write(`${this.dryRun ? "Would remove" : "Removed"} stale: ${projectRoot}\n`);
+      }
+      this.context.stdout.write(`${this.dryRun ? "Would prune" : "Pruned"} ${result.pruned.length} stale registration(s); ${result.remaining} remaining.\n`);
+    }
     return 0;
   }
 }

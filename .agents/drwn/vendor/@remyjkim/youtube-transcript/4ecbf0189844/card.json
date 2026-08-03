@@ -1,0 +1,10 @@
+{
+  "name": "@remyjkim/youtube-transcript",
+  "version": "1.0.1",
+  "description": "Capture a YouTube (or bgng-supported) URL as a transcript, save it locally, and upload it to BeginningDB with chronological and by-channel mirrored placements.",
+  "skills": {
+    "include": [
+      "youtube-transcript"
+    ]
+  }
+}

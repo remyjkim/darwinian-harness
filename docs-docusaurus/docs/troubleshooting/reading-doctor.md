@@ -33,6 +33,21 @@ This is deliberate. The doctor and the write pipeline share one diagnostics engi
   "surfaceNotes": [],
   "platformChecks": [],
   "projectConfigIssues": [],
+  "instructionDelivery": {
+    "state": "current",
+    "adapter": "owned",
+    "consentEvidence": [],
+    "issues": []
+  },
+  "orgWorkerMaterialization": {
+    "state": "current",
+    "bundleDigest": "sha256:...",
+    "workerId": "worker:...",
+    "blueprintDigest": "sha256:...",
+    "lastVerifiedReceiptId": "worker-materialization-...",
+    "instructionConsentSource": "organization",
+    "issues": []
+  },
   "cards": { "configuredRefs": [], "lockedVersions": [], "warnings": [] },
   "store": { "path": "...", "initialized": true, "schemaVersion": 1, "cardCount": 0, "sourceCount": 0, "skillBundleCount": 0, "mcpServerCount": 0 },
   "writeRecord": { "path": "...", "present": true, "corrupt": false, "managedPathCount": 0, "lastWriteAt": "...", "lastWriteHarnessVersion": "..." }
@@ -40,6 +55,9 @@ This is deliberate. The doctor and the write pipeline share one diagnostics engi
 ```
 
 Each of the top-level arrays maps to one detector category below.
+The project-only instruction/materialization sections use their own bounded
+issue arrays. The materialization section omits instruction content, evidence
+paths, secrets, and organization readiness.
 
 ## Detector Categories
 
@@ -93,6 +111,28 @@ drwn write
 ```
 
 Use `drwn card untrust @your-handle/backend` to revoke consent.
+
+### Instruction delivery and organization Worker materialization
+
+`instructionDelivery` reports local consent/projection/adapter health.
+`orgWorkerMaterialization` independently classifies local handoff evidence as
+`absent`, `current`, `drifted`, `blocked`, `removed`, or `unknown`
+(`compatible` is reserved and not emitted by V1).
+
+Error-severity issues in either section make doctor exit non-zero. For
+materialization, common codes are:
+
+- `ORG_WORKER_OPERATION_INCOMPLETE`;
+- `ORG_WORKER_EVIDENCE_MALFORMED|ORPHANED|MISSING`;
+- `ORG_WORKER_PROJECT_STATE_DRIFT`;
+- `ORG_WORKER_RECEIPT_MISMATCH`;
+- `ORG_WORKER_ARTIFACT_DRIFT`;
+- `ORG_WORKER_PROJECTION_DRIFT`;
+- `ORG_WORKER_REMOVAL_DRIFT`.
+
+Doctor never resumes, reconciles, or removes. Preserve evidence, retry an
+incomplete operation with the same operation ID, or use the exact immutable
+handoff with `drwn install --reconcile`/`--remove`.
 
 ### Platform checks
 

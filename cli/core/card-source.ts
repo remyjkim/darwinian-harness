@@ -11,6 +11,7 @@ import {
   type MindContentVisibility,
 } from "./card-manifest";
 import { writeAtomically } from "./fs";
+import { resolveManifestInstructionContribution } from "./instruction-contribution";
 import { findLibraryMcpServer, findLibrarySkill } from "./library";
 import { validateMcpLibraryServer } from "./mcp-library";
 import { findRepoSkill } from "./skills";
@@ -160,6 +161,9 @@ export interface CardSourceManifestPatch {
   stability?: string;
   lastValidatedWith?: string;
   testStatusBadge?: string;
+  instructionsText?: string;
+  instructionsPath?: string;
+  clearInstructions?: boolean;
 }
 
 function issue(code: string, message: string, path?: string): CardSourceIssue {
@@ -1017,11 +1021,47 @@ export async function patchCardSourceManifest(options: {
   setField("testStatusBadge", manifest.testStatusBadge, options.patch.testStatusBadge, () => {
     nextManifest.testStatusBadge = options.patch.testStatusBadge;
   });
+  if (
+    [
+      options.patch.instructionsText !== undefined,
+      options.patch.instructionsPath !== undefined,
+      options.patch.clearInstructions === true,
+    ].filter(Boolean).length > 1
+  ) {
+    throw new Error(
+      "Use only one of instructionsText, instructionsPath, or clearInstructions.",
+    );
+  }
+  setField(
+    "instructions",
+    manifest.instructions,
+    options.patch.instructionsText !== undefined
+      ? { text: options.patch.instructionsText }
+      : options.patch.instructionsPath !== undefined
+        ? { path: options.patch.instructionsPath }
+        : options.patch.clearInstructions
+          ? null
+          : undefined,
+    () => {
+      if (options.patch.clearInstructions) delete nextManifest.instructions;
+      else if (options.patch.instructionsText !== undefined) {
+        nextManifest.instructions = { text: options.patch.instructionsText };
+      } else if (options.patch.instructionsPath !== undefined) {
+        nextManifest.instructions = { path: options.patch.instructionsPath };
+      }
+    },
+  );
 
   if (changes.length === 0) {
     throw new Error("No manifest fields were provided to update.");
   }
   assertValidCardManifest(nextManifest);
+  if (
+    options.patch.instructionsText !== undefined ||
+    options.patch.instructionsPath !== undefined
+  ) {
+    resolveManifestInstructionContribution(nextManifest, state.sourceDir);
+  }
 
   if (!dryRun) {
     assertStoreWritable();

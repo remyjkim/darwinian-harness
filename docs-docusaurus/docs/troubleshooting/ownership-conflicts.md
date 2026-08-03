@@ -43,6 +43,13 @@ drwn mcp write --force
 
 This narrow scope is the whole point. `--force` is not a "trust me, wipe the file" flag; it is "trust me, the drift inside the drwn-managed region is intentional and you should publish over it."
 
+Organization Worker materialization has a separate ownership boundary.
+`drwn write --force` cannot establish bundle ownership or repair its vendor,
+receipt, record, or tombstone evidence. When
+`orgWorkerMaterialization` reports drift, preserve the evidence and use the
+exact handoff with `drwn install --reconcile`; use `--remove` only for verified
+owned cleanup.
+
 ## Decision tree
 
 When `drwn write` aborts, ask one question: was the edit inside the managed region intentional, or did another tool write over us?

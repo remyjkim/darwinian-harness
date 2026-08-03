@@ -1,7 +1,7 @@
 // ABOUTME: Implements `drwn card source set` for semantic source manifest edits.
 // ABOUTME: Updates common card.json fields without requiring manual JSON edits.
 
-import { Option } from "clipanion";
+import { Option, UsageError } from "clipanion";
 import { patchCardSourceManifest } from "../../../core/card-source";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
@@ -54,6 +54,18 @@ export class CardSourceSetCommand extends BaseCommand {
     description: "Set card.json testStatusBadge.",
   });
 
+  instructionsText = Option.String("--instructions-text", {
+    description: "Set inline explicit Worker instructions.",
+  });
+
+  instructionsPath = Option.String("--instructions-path", {
+    description: "Set a Card-relative explicit Worker instructions file.",
+  });
+
+  clearInstructions = Option.Boolean("--clear-instructions", false, {
+    description: "Remove explicit Worker instructions from the manifest.",
+  });
+
   dryRun = Option.Boolean("--dry-run", false, {
     description: "Preview source changes without writing.",
   });
@@ -63,6 +75,17 @@ export class CardSourceSetCommand extends BaseCommand {
   });
 
   async execute() {
+    if (
+      [
+        this.instructionsText !== undefined,
+        this.instructionsPath !== undefined,
+        this.clearInstructions,
+      ].filter(Boolean).length > 1
+    ) {
+      throw new UsageError(
+        "Use only one of --instructions-text, --instructions-path, or --clear-instructions.",
+      );
+    }
     let result;
     try {
       result = await patchCardSourceManifest({
@@ -76,6 +99,9 @@ export class CardSourceSetCommand extends BaseCommand {
           stability: this.stability,
           lastValidatedWith: this.lastValidatedWith,
           testStatusBadge: this.testStatusBadge,
+          instructionsText: this.instructionsText,
+          instructionsPath: this.instructionsPath,
+          clearInstructions: this.clearInstructions,
         },
         dryRun: this.dryRun,
       });

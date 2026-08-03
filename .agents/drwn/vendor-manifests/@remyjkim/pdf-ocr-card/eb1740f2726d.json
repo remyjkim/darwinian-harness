@@ -1,0 +1,29 @@
+{
+  "card": "@remyjkim/pdf-ocr-card",
+  "treeSha": "eb1740f2726d5a55c807e5438d6838b2aec20217",
+  "integrity": "sha256-f6219468f039f0782120de4b1d9a30e1403f2bf5c9533dc705e99d176a49e090",
+  "manifest": {
+    "files": [
+      {
+        "path": "card.json",
+        "exec": false,
+        "hash": "49fa5e11bdc5de68f04b9fd09a8d46d2aa638d9506d059fb4667160e2f29dd38"
+      },
+      {
+        "path": "README.md",
+        "exec": false,
+        "hash": "0a0bc43a04c47404c9dc42ec81c493d902bd4ab0bdc178a52502fc3e3174335f"
+      },
+      {
+        "path": "skills/marker-pdf-conversion/scripts/convert-pdf.sh",
+        "exec": true,
+        "hash": "a64dd8d826e8ed39de3e27826df26860ef97b8523b30ea2caf8aaf7eaeb459ba"
+      },
+      {
+        "path": "skills/marker-pdf-conversion/SKILL.md",
+        "exec": false,
+        "hash": "d8b7e99027a8e4be63d84b12270ab6c6bb1a418d46d89c160595fbf81126c77c"
+      }
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "wireVersion": "worker-materialization-receipt-negative-fixtures@1",
+  "fixtures": [
+    {
+      "id": "wrong-wire-version",
+      "mutation": "wrong_wire_version",
+      "expectedCode": "ORG_WORKER_RECEIPT_INVALID"
+    },
+    {
+      "id": "path-receipt-id",
+      "mutation": "path_receipt_id",
+      "expectedCode": "ORG_WORKER_RECEIPT_INVALID"
+    },
+    {
+      "id": "cross-action-outcome",
+      "mutation": "cross_action_outcome",
+      "expectedCode": "ORG_WORKER_RECEIPT_INVALID"
+    },
+    {
+      "id": "failed-success-check",
+      "mutation": "failed_success_check",
+      "expectedCode": "ORG_WORKER_RECEIPT_INVALID"
+    },
+    {
+      "id": "missing-required-check",
+      "mutation": "missing_required_check",
+      "expectedCode": "ORG_WORKER_RECEIPT_INVALID"
+    },
+    {
+      "id": "unsorted-verified-pins",
+      "mutation": "unsorted_verified_pins",
+      "expectedCode": "ORG_WORKER_RECEIPT_INVALID"
+    },
+    {
+      "id": "instruction-content",
+      "mutation": "instruction_content",
+      "expectedCode": "ORG_WORKER_RECEIPT_INVALID"
+    }
+  ]
+}

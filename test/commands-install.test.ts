@@ -35,6 +35,45 @@ async function scaffoldLockedGitProject(options?: { vendor?: boolean }) {
   return { fixture, remote, projectDir };
 }
 
+async function writeOrgWorkerBundle(
+  projectDir: string,
+  card: NonNullable<Awaited<ReturnType<typeof loadCardLock>>>["cards"][number],
+) {
+  const path = join(projectDir, "org-worker-bundle.json");
+  await writeFile(
+    path,
+    JSON.stringify({
+      wireVersion: "org-worker-bundle@1",
+      sourceBlueprint: {
+        id: "blueprint:test:1",
+        revision: 1,
+        digest: `sha256:${"1".repeat(64)}`,
+      },
+      workerId: "worker:test",
+      artifactPins: [
+        {
+          artifactId: "artifact:test-worker-root",
+          kind: "worker_root",
+          name: card.name,
+          version: card.version,
+          integrity: card.integrity.replace("sha256-", "sha256:"),
+          origin: card.requested,
+          provenanceRefs: ["provenance:test-worker-root"],
+          resolutionSnapshotRef: "resolution:test-worker-root",
+        },
+      ],
+      orderedWorkerRoots: ["artifact:test-worker-root"],
+      activeWorkerRoot: "artifact:test-worker-root",
+      projectOverlay: {},
+      contributionConsents: [],
+      minimumWorkerVersion: "1.0.0",
+      logicalEnvironmentClass: "project_workspace",
+      materializationReceiptVersion: "worker-materialization-receipt@1",
+    }),
+  );
+  return path;
+}
+
 test("install --no-write bootstraps missing git-origin Cards without projection", async () => {
   const { fixture, projectDir } = await scaffoldLockedGitProject();
 
@@ -82,6 +121,92 @@ test("install --frozen succeeds from committed vendor bytes without a machine st
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain("Installed 1 card(s).");
   expect(existsSync(resolveCardBareRepoPath(fixture.agentsDir, "@team/backend"))).toBe(false);
+});
+
+test("install rejects an incomplete Org Worker materialization handoff", async () => {
+  const { fixture, projectDir } = await scaffoldLockedGitProject({
+    vendor: true,
+  });
+  const card = (await loadCardLock(projectDir))!.cards[0]!;
+  const bundlePath = await writeOrgWorkerBundle(projectDir, card);
+
+  const unsafe = await runAgentsCli(
+    ["install", "--org-worker-bundle", bundlePath, "--no-write"],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(unsafe.exitCode).not.toBe(0);
+  expect(`${unsafe.stdout}\n${unsafe.stderr}`).toMatch(
+    /requires.*--worker-artifact-snapshot.*--operation-id/i,
+  );
+
+  const result = await runAgentsCli(
+    [
+      "install",
+      "--frozen",
+      "--org-worker-bundle",
+      bundlePath,
+      "--no-write",
+    ],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toMatch(
+    /requires.*--worker-artifact-snapshot.*--operation-id/i,
+  );
+});
+
+test("install rejects an incompatible OrgWorkerBundleV1 before lock hydration or receipt writes", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const projectDir = join(fixture.root, "project");
+  await writeSupportedProjectConfig(projectDir);
+  const bundle = JSON.parse(
+    await readFile(
+      new URL("./fixtures/org-worker-bundle-v1/gtm.valid.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  bundle.logicalEnvironmentClass = "container_runtime";
+  const bundlePath = join(projectDir, "org-worker-bundle.json");
+  await writeFile(bundlePath, JSON.stringify(bundle));
+
+  const result = await runAgentsCli(
+    [
+      "install",
+      "--frozen",
+      "--org-worker-bundle",
+      bundlePath,
+      "--worker-artifact-snapshot",
+      new URL(
+        "./fixtures/org-worker-materialization-v1/snapshot.valid.json",
+        import.meta.url,
+      ).pathname,
+      "--operation-id",
+      "operation:incompatible",
+      "--no-write",
+    ],
+    envFor(fixture),
+    projectDir,
+  );
+
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain(
+    "ORG_WORKER_ENVIRONMENT_UNSUPPORTED",
+  );
+  expect(existsSync(cardLockPath(projectDir))).toBe(false);
+  expect(
+    existsSync(
+      join(
+        projectDir,
+        ".agents",
+        "drwn",
+        "receipts",
+        "org-worker-bundle-install.json",
+      ),
+    ),
+  ).toBe(false);
 });
 
 test("install --frozen reports corrupt committed vendor bytes", async () => {

@@ -50,10 +50,24 @@ Enforcement flags:
 
 ```bash
 drwn write --strict-hooks   # fail if any hook policy file cannot be materialized
-drwn write --strict         # treat all warnings as errors
+drwn write --strict         # fail on version-floor or instruction-consent violations
+drwn write --apply-claude-adapter # add a managed import to a foreign Claude file
 ```
 
-`--strict-hooks` is relevant when you expect hook policies to be present; without it, missing policies are warnings rather than failures.
+`--strict-hooks` is relevant when you expect hook policies to be present;
+without it, missing policies are warnings rather than failures. `--strict`
+does not promote every warning: it enforces the supported Worker version floor
+and requires valid consent for every selected explicit instruction
+contribution.
+
+Full project writes compose consented Card instructions into one owned block in
+root `AGENTS.md`. Machine, target-only, MCP-only, and skills-only writes retain
+that block and its write-record ownership unchanged. An absent
+`.claude/CLAUDE.md` receives the exact `@../AGENTS.md` adapter. Foreign files are
+preserved; use `--apply-claude-adapter` to add a managed import block.
+
+See [Worker Instructions](../../concepts/worker-instructions) for consent,
+hashing, drift, cleanup, and adapter rules.
 
 When locked cards declare optional MCP servers, `drwn write` includes an optional MCP report. Human output lists each card server as active, skipped, or shadowed. JSON output includes the same data under `optionalMcpReport`. Skipped card MCPs can be enabled for the current project with:
 

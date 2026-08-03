@@ -11,6 +11,15 @@ import {
   hasHookConsentAck,
   recordHookConsentAck,
 } from "../core/hook-consent-ack";
+import {
+  buildInstructionConsentAckKey,
+  hasInstructionConsentAck,
+  recordInstructionConsentAck,
+} from "../core/instruction-consent-ack";
+import {
+  isInstructionConsentValid,
+  resolveExplicitInstructionContribution,
+} from "../core/instruction-contribution";
 import { renderJson, renderOptionalMcpReport, renderSyncResult } from "../core/output";
 import { DrwnError } from "../core/errors";
 import { findProjectConfig, resolveProjectRootFromConfigPath } from "../core/project";
@@ -92,7 +101,11 @@ export class WriteCommand extends BaseCommand {
   });
 
   strict = Option.Boolean("--strict", false, {
-    description: "Fail when this project's card.lock requires a newer drwn than you are running.",
+    description: "Fail on Worker version-floor or explicit instruction-consent violations.",
+  });
+
+  applyClaudeAdapter = Option.Boolean("--apply-claude-adapter", false, {
+    description: "Add a managed AGENTS.md import block to a foreign Claude adapter.",
   });
 
   watch = Option.Boolean("--watch", false, {
@@ -132,6 +145,8 @@ export class WriteCommand extends BaseCommand {
         target: this.target as "claude" | "codex" | "cursor" | undefined,
         force: this.force,
         strictHooks: this.strictHooks,
+        strict: this.strict,
+        applyClaudeAdapter: this.applyClaudeAdapter,
         forceMachineScope: this.root || this.user || this.scope === "machine",
         scope: this.scope as "machine" | "project" | undefined,
       });
@@ -176,6 +191,37 @@ export class WriteCommand extends BaseCommand {
             await recordHookConsentAck(this.context.agentsDir, ackKey);
             break;
           }
+          for (const card of consentState.activeCards) {
+            if (!card.instructionConsent) continue;
+            const contentRoot =
+              consentState.contentRootsByCard[card.name] ?? card.path;
+            const contribution = resolveExplicitInstructionContribution(
+              card,
+              contentRoot,
+            );
+            if (
+              !contribution ||
+              !isInstructionConsentValid(card, contribution)
+            ) {
+              continue;
+            }
+            const ackKey = buildInstructionConsentAckKey({
+              projectRoot,
+              card,
+            });
+            if (
+              await hasInstructionConsentAck(this.context.agentsDir, ackKey)
+            ) {
+              continue;
+            }
+            this.context.stderr.write(
+              `instructions present, consented by ${card.name} (${card.instructionConsent.consentedRange}) on another machine\n`,
+            );
+            await recordInstructionConsentAck(
+              this.context.agentsDir,
+              ackKey,
+            );
+          }
         }
       }
     }
@@ -204,6 +250,8 @@ export class WriteCommand extends BaseCommand {
         target: this.target as "claude" | "codex" | "cursor" | undefined,
         force: this.force,
         strictHooks: this.strictHooks,
+        strict: this.strict,
+        applyClaudeAdapter: this.applyClaudeAdapter,
         forceMachineScope: this.root || this.user || this.scope === "machine",
         scope: this.scope as "machine" | "project" | undefined,
       });

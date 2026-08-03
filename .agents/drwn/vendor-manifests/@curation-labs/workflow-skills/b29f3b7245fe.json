@@ -1,0 +1,244 @@
+{
+  "card": "@curation-labs/workflow-skills",
+  "treeSha": "b29f3b7245fe8efccf4c299834a09938a8586817",
+  "integrity": "sha256-7639dd5911ca888310b421ce6f9f3550d78eeec7e0c4e650202414d41e15b5eb",
+  "manifest": {
+    "files": [
+      {
+        "path": ".gitignore",
+        "exec": false,
+        "hash": "bb1eb882b81402169d1aa5061a66b8a81cae56e17c5ddb201a6a768585bf3ce0"
+      },
+      {
+        "path": "card.json",
+        "exec": false,
+        "hash": "a8ca043f7fe76d9513267922b8c7270a8aa5b5605312e428f51578767e9057c6"
+      },
+      {
+        "path": "docs/customization-decisions.md",
+        "exec": false,
+        "hash": "e7c251e94c49a65fd59ede18697201e8609f28f65ac30aecf0d7b58b3724d19e"
+      },
+      {
+        "path": "docs/maintenance-runbook.md",
+        "exec": false,
+        "hash": "3d92e5ee9bd5fe31b153de7cb2feb7b263a9e17ec020358b3cf55c7aa97e13c3"
+      },
+      {
+        "path": "hooks/org-conventions/policy.ts",
+        "exec": false,
+        "hash": "2f79ed50e3e768c7a9bc02540568d64d62a76ea260f6715ca67b85811d453ab4"
+      },
+      {
+        "path": "instructions.md",
+        "exec": false,
+        "hash": "985544eec9bc61f778bb165622c2270a1880554a29f1543ffd172c5766d3f2cb"
+      },
+      {
+        "path": "package.json",
+        "exec": false,
+        "hash": "8ef3e967adab35c3b7089f31bbc6c24739bd95be711b2922f774451a6afd798f"
+      },
+      {
+        "path": "README.md",
+        "exec": false,
+        "hash": "9b8edc965a41d61ed3ba6d5c096f0d048e2672ceab2a07259c1da209258b29af"
+      },
+      {
+        "path": "skills/brainstorming/SKILL.md",
+        "exec": false,
+        "hash": "38ac32b3895459b8d097051acf6171e313961cade1a30927669f0c2a81a7ddcf"
+      },
+      {
+        "path": "skills/dispatching-parallel-agents/SKILL.md",
+        "exec": false,
+        "hash": "c628917689ccc12ce9991615db6824d44c4fe71f8427cd959560aebe6a1a6476"
+      },
+      {
+        "path": "skills/executing-plans/SKILL.md",
+        "exec": false,
+        "hash": "49ccaaaf88c3127081214495cd5e97a90a7b8558787cbee4628e7d8be3b72e09"
+      },
+      {
+        "path": "skills/finishing-a-development-branch/SKILL.md",
+        "exec": false,
+        "hash": "c8cda5a31e333760bd862c39343068610fe96f2358d7fad4846c4f61df6ca383"
+      },
+      {
+        "path": "skills/incremental-commits/SKILL.md",
+        "exec": false,
+        "hash": "8ca14d59cbe01f32c13a3ae008dd25831b366318596310cf6c167f3ab39c32af"
+      },
+      {
+        "path": "skills/receiving-code-review/SKILL.md",
+        "exec": false,
+        "hash": "b258e07aef91c940ebd249b5619fac5cc03953546308031509cbe6bc714820d5"
+      },
+      {
+        "path": "skills/requesting-code-review/code-reviewer.md",
+        "exec": false,
+        "hash": "7f5328dca12cb200005ae9d4386f63a9b0acb735ece57f82db206b4a3189ccae"
+      },
+      {
+        "path": "skills/requesting-code-review/SKILL.md",
+        "exec": false,
+        "hash": "9377453c17c9accdb60683bb0db46d8ecb5d3cba45f49a915cb616b300a7971b"
+      },
+      {
+        "path": "skills/subagent-driven-development/code-quality-reviewer-prompt.md",
+        "exec": false,
+        "hash": "1d73f20f4bf882b9a9a6cfe6e4cfd7ad9916e5fc242b591be9e8e30c7184b6bb"
+      },
+      {
+        "path": "skills/subagent-driven-development/implementer-prompt.md",
+        "exec": false,
+        "hash": "9740dc8e425f9e1d6dc34599e0ba82e93aad7fedbcbb27b0bd67a4fa0e15a85e"
+      },
+      {
+        "path": "skills/subagent-driven-development/SKILL.md",
+        "exec": false,
+        "hash": "fa242d15af4da2235bb4eec561cd84da747129c0a95b9241d34155e9b6a50fa6"
+      },
+      {
+        "path": "skills/subagent-driven-development/spec-reviewer-prompt.md",
+        "exec": false,
+        "hash": "631980e472eec5394de8b89b69d432e54fd3f7f523ecf9afa7eb4cda0c9b2baf"
+      },
+      {
+        "path": "skills/systematic-debugging/condition-based-waiting-example.ts",
+        "exec": false,
+        "hash": "40ae5ebe497fdf310200e43fe986552546d0a22837c0d39e855db1cfd33eb88e"
+      },
+      {
+        "path": "skills/systematic-debugging/condition-based-waiting.md",
+        "exec": false,
+        "hash": "e89fec8400d6cd50f43407cec9fab50976ba4d55d0ec2eb51c0bd68036b54c26"
+      },
+      {
+        "path": "skills/systematic-debugging/CREATION-LOG.md",
+        "exec": false,
+        "hash": "b482ef9a918fbfc6c369729e8160633ddfa2332466dd362ee73f1527c239ef8b"
+      },
+      {
+        "path": "skills/systematic-debugging/defense-in-depth.md",
+        "exec": false,
+        "hash": "1e175fb86fc357e58c6aebf5441e481e1b7868b4380c0456b63a17eefbd18ba7"
+      },
+      {
+        "path": "skills/systematic-debugging/find-polluter.sh",
+        "exec": false,
+        "hash": "d74ee40d09fbefb7fbc21e93a3c196657c3279c761774ae7e6af5a3fb7ec34de"
+      },
+      {
+        "path": "skills/systematic-debugging/root-cause-tracing.md",
+        "exec": false,
+        "hash": "d18722dae9c4bf37282660018c0330406d285fa2dd029de0084e27a65bf2a1a1"
+      },
+      {
+        "path": "skills/systematic-debugging/SKILL.md",
+        "exec": false,
+        "hash": "762c4d47920a93c9bbf4c8e866970bd6c7696c7825fdb077d74ac27cbcb4e135"
+      },
+      {
+        "path": "skills/systematic-debugging/test-academic.md",
+        "exec": false,
+        "hash": "fe2ba480d78ac0d686dc025f41c2a32a43d642bf533f91b0c6053a04d35d6486"
+      },
+      {
+        "path": "skills/systematic-debugging/test-pressure-1.md",
+        "exec": false,
+        "hash": "0b6a915db0054577819834c79be9eb614e97bddba10d73768e1fbe91cfed048a"
+      },
+      {
+        "path": "skills/systematic-debugging/test-pressure-2.md",
+        "exec": false,
+        "hash": "b2030aeffba07050e8ad573ddf87486457c4a016a786bb326235bebd856f2016"
+      },
+      {
+        "path": "skills/systematic-debugging/test-pressure-3.md",
+        "exec": false,
+        "hash": "96b50a52e2c7989c9cf20fb752c47c1e9a3a70dc362f8f7989f8f5b64dac7708"
+      },
+      {
+        "path": "skills/test-driven-development/SKILL.md",
+        "exec": false,
+        "hash": "c50a5c4873b571446595730c634056a4f3209306f9cb576e6fa05c6c05da256c"
+      },
+      {
+        "path": "skills/test-driven-development/testing-anti-patterns.md",
+        "exec": false,
+        "hash": "bde453bc258f06543987477c837939afaa774ea2acbd9f308d702fc452bc4283"
+      },
+      {
+        "path": "skills/using-git-worktrees/SKILL.md",
+        "exec": false,
+        "hash": "9ee5d674dfb5ec1fc595be4cff8b70cf41d67f686640ad4ca4dd5c627cbb9d01"
+      },
+      {
+        "path": "skills/verification-before-completion/SKILL.md",
+        "exec": false,
+        "hash": "f3d700929d948414ebe2b9cd76c3b4dc9111bfaab1ee3651404861370ee0e42f"
+      },
+      {
+        "path": "skills/writing-plans/SKILL.md",
+        "exec": false,
+        "hash": "85e714acac2842ed99a38b87cce9634fc6203437ccc65ca5cb65b65b70d3da57"
+      },
+      {
+        "path": "test/card-contract.test.mjs",
+        "exec": false,
+        "hash": "96b127badb1845eee4e14125c33d2490972faf11ca5d7d70379b26cdb46afe00"
+      },
+      {
+        "path": "test/functional/catalog-dryrun.test.mjs",
+        "exec": false,
+        "hash": "c88288ed8be5e4f8da3a0939111b6efcc9589bef2c6098264467b54386a47e6f"
+      },
+      {
+        "path": "test/functional/drift-detection.test.mjs",
+        "exec": false,
+        "hash": "0968d9091f9554a0eac777fa6e88ddbfd1ba54ac00a114ce5305a2093a663d4f"
+      },
+      {
+        "path": "test/functional/helpers.mjs",
+        "exec": false,
+        "hash": "1a5cc9526d705f91184acf88c7414e99a9ff5dfe5bd538ce03ba1f7b86febee6"
+      },
+      {
+        "path": "test/functional/hook-execution.test.mjs",
+        "exec": false,
+        "hash": "e4617a36748e8cebb975d4531f0d6cdb06901a7ae83713464e29a6369e96154f"
+      },
+      {
+        "path": "test/functional/materialization.test.mjs",
+        "exec": false,
+        "hash": "2e7bb7acae5c06f65fd5a7b9da5aa37e2e087132c6d810ac88bb6aee19c6afe6"
+      },
+      {
+        "path": "test/functional/rules-resolution.test.mjs",
+        "exec": false,
+        "hash": "c567ba16ae41122fa87b998ceb4d31ec746926c35f3b3833a59a47aa6e6f42f5"
+      },
+      {
+        "path": "test/helpers.mjs",
+        "exec": false,
+        "hash": "302c3c68824229286d99e2a83c2ff53b98da4d294a4511721ae3d5ed7a9c6a6c"
+      },
+      {
+        "path": "test/hook-policy.test.mjs",
+        "exec": false,
+        "hash": "d8f153376a8bf31636a66806aaa8460ba6c62920ae8650e0ba8d4bbf2cf17f0a"
+      },
+      {
+        "path": "test/skill-content.test.mjs",
+        "exec": false,
+        "hash": "288c7e33414b9f0c0ffa4b4d39317111e18e535d614732f70d21e3058b977a56"
+      },
+      {
+        "path": "test/workflow-v0-4-contract.test.mjs",
+        "exec": false,
+        "hash": "f8b70ca1cf50c4dc3adffeaf22c4eb8b439f510a7418f9ee5c705347b97a9e05"
+      }
+    ]
+  }
+}

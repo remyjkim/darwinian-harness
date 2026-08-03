@@ -75,7 +75,24 @@ export class CardOutdatedCommand extends BaseCommand {
           outdated.map((entry) => [
             entry.name,
             entry.current,
-            entry.hookConsentRequiresRegrant ? `${entry.latest} (hook consent will require re-grant)` : entry.latest,
+            [
+              entry.latest,
+              ...(entry.hookConsentRequiresRegrant
+                ? ["hook consent will require re-grant"]
+                : []),
+              ...(entry.instructionConsentRequiresRegrant
+                ? ["instruction consent will require re-grant"]
+                : []),
+            ].length > 1
+              ? `${entry.latest} (${[
+                  ...(entry.hookConsentRequiresRegrant
+                    ? ["hook consent will require re-grant"]
+                    : []),
+                  ...(entry.instructionConsentRequiresRegrant
+                    ? ["instruction consent will require re-grant"]
+                    : []),
+                ].join("; ")})`
+              : entry.latest,
           ]),
         ),
       );

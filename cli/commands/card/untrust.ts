@@ -1,8 +1,8 @@
-// ABOUTME: Implements removal of explicit hook consent for locked Cards.
-// ABOUTME: Lets users stop materializing a card's hook policies without removing the card.
+// ABOUTME: Implements removal of explicit hook or instruction consent for locked Cards.
+// ABOUTME: Lets users stop selected materialization surfaces without removing the Card.
 
 import { Option, UsageError } from "clipanion";
-import { clearHookConsent } from "../../core/card-project";
+import { clearCardConsent } from "../../core/card-project";
 import { BaseCommand } from "../base";
 import { requireProjectRoot } from "./project-command";
 
@@ -11,10 +11,10 @@ export class CardUntrustCommand extends BaseCommand {
 
   static override usage = BaseCommand.Usage({
     category: "Cards",
-    description: "Remove hook trust from a locked card.",
+    description: "Remove hook or instruction trust from a locked card.",
     details: `
-      Clears hook consent from card.lock. The card can remain installed, but
-      drwn write will skip its hook policies until consent is recorded again.
+      Clears selected consent from card.lock. The Card remains installed, but
+      drwn write skips the selected contribution until consent is recorded again.
     `,
     examples: [["Untrust card hooks", "drwn card untrust @your-handle/backend --hooks"]],
   });
@@ -25,18 +25,30 @@ export class CardUntrustCommand extends BaseCommand {
     description: "Clear hook execution consent for this card.",
   });
 
+  instructions = Option.Boolean("--instructions", false, {
+    description: "Clear explicit instruction projection consent for this card.",
+  });
+
   async execute() {
-    if (!this.hooks) {
-      throw new UsageError("Specify --hooks to clear hook consent.");
+    if (!this.hooks && !this.instructions) {
+      throw new UsageError("Specify --hooks and/or --instructions to clear consent.");
     }
     let result;
     try {
-      result = await clearHookConsent(requireProjectRoot(this), this.context.agentsDir, this.spec);
+      result = await clearCardConsent(
+        requireProjectRoot(this),
+        this.context.agentsDir,
+        this.spec,
+        { hooks: this.hooks, instructions: this.instructions },
+      );
     } catch (error) {
       this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       return 1;
     }
-    this.context.stdout.write(`Untrusted hooks for ${result.card.name}@${result.card.version}\nWrote ${result.lockPath}\n`);
+    const untrusted = [this.hooks ? "hooks" : null, this.instructions ? "instructions" : null]
+      .filter(Boolean)
+      .join(" and ");
+    this.context.stdout.write(`Untrusted ${untrusted} for ${result.card.name}@${result.card.version}\nWrote ${result.lockPath}\n`);
     return 0;
   }
 }

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="description" content="Target architecture proposal: project drwn worker instructions through a canonical AGENTS.md managed block, per-target sub-worker surfaces, and an instructions-skill floor across Claude Code, Codex, Cursor, and OpenCode.">
+		<title>Canonical Instructions Projection for drwn · Architecture Proposal</title>
+		<link rel="stylesheet" href="assets/report-system.css">
+		<script type="module" src="assets/report-system.js" defer></script>
+	</head>
+	<body>
+		<a class="skip-link" href="#content">Skip to report content</a>
+		<nav class="site-nav" aria-label="Report library"><div class="site-nav__inner">
+			<a class="report-brand" href="https://github.com/curation-labs/hf-reports"><span class="report-brand__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Team reports</span></a>
+			<button class="site-nav__toggle" type="button" aria-expanded="false" aria-controls="site-nav-links">Menu</button>
+			<div class="site-nav__links" id="site-nav-links"><a href="https://github.com/curation-labs/hf-reports">Template library</a></div>
+		</div></nav>
+		<main class="report-shell" id="content">
+			<header class="report-mast" data-module="report-masthead" data-report-intent="proposal"><p class="kicker">Architecture Proposal · Proposal</p><h1>Canonical Instructions Projection for drwn</h1><p class="report-mast__lede">One set of composed worker instructions, three delivery layers, four coding agents: a managed AGENTS.md block for the main conversation, per-target sub-worker surfaces, and an instructions-skill floor everywhere else — all rendered from the single composer drwn already ships.</p>
+				<div class="report-meta" role="group" aria-label="Report metadata"><span class="pill" data-report-status>Lifecycle: Approved 22 July 2026</span><span class="pill">Owner: Remy K</span><span class="pill evidence">Confidence: Medium</span><span class="pill" data-report-updated>Updated: 22 July 2026</span></div>
+			</header>
+			<section class="report-section" aria-labelledby="reader-action-title" data-reader-action data-module="reader-action"><div class="reader-action-block"><div><p class="tag">Reader action · proposal</p><h2 id="reader-action-title">Approve the three-layer worker-instructions architecture and its phase-1 scope</h2><p>Approving adopts the consent-gated AGENTS.md projection (doc 125 B-Q1), rebriefs the sub-worker workstream from claude-only A+O to four-target A+O×N, and unblocks the GATE 1 docs-PR and the phase-1 task plan. The proposal changes how instructions are delivered; it does not change how they are authored, composed, or deployed.</p></div><dl><div><dt>Action owner</dt><dd>Remy K</dd></div><div><dt>Desired by</dt><dd>Date needed</dd></div></dl></div></section>
+			<div class="report-grid"><article data-numbered-content>
+					<section class="report-section" id="drivers" data-section-number="01" aria-labelledby="drivers-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">01</span><h2 id="drivers-title">Drivers</h2><p>A shipped pipeline with a missing last hop, and a new hard requirement on how the hop must be built.</p></header>
+
+						<div class="callout primary" data-module="callout"><p class="tag">Architecture driver</p><h3>Validated worker instructions never reach a local harness — and any fix must now serve all four supported agents</h3><p>Cards declare an <code>instructions</code> field that drwn validates, locks, and composes into a canonical artifact on every write, but no local harness surface consumes it — authors get a silent no-op (issue I24, analysis 100). Three constraints govern the fix: cross-CLI parity across Claude Code, Codex, Cursor, and OpenCode is a hard requirement (Remy, 22 Jul); projected instructions from a third-party card are instruction injection, so an ungated design is not acceptable (I24 criterion 4); and the existing composer must remain the only instruction source (I24 criterion 5).</p></div>
+					</section>
+
+					<section class="report-section" id="current-state" data-section-number="02" aria-labelledby="current-state-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">02</span><h2 id="current-state-title">Current state</h2><p>Everything up to delivery already works; delivery itself is a workaround.</p></header>
+
+						<div class="grid two" data-module="finding-card">
+							<article class="card primary"><p class="tag">Verified in repo · 22 Jul</p><h3>The canonical artifact is composed on every write and consumed only by deploy</h3><p>Shape validation lives in <code>card-manifest.ts</code>; <code>sync-worker.ts</code> composes explicit card instructions, Blueprint identity, and skill bodies into <code>instructions.md</code> for every applied root (lines 283, 356). Deployed workers consume it; <code>cli/</code> contains zero references to AGENTS.md, CLAUDE.md, or any instruction surface. The docs contract (<code>project-worker-v1.md:108</code>) promises the projection that was never built.</p></article>
+							<article class="card evidence"><p class="tag">Workaround in production</p><h3>Workers ship their instructions as a pull-strength skill, and authors cannot even set the field</h3><p>The Deep Research panel workers deliver their instructions as a bundled instructions-skill — pull-based, probabilistic triggering at user-message strength. Meanwhile <code>drwn card source set</code> has no <code>--instructions</code> flag, so the field the manifest advertises is only reachable by hand-editing card.json. Both facts are documented and agreed in the I24 team discussion.</p></article>
+						</div>
+					</section>
+
+					<section class="report-section" id="target-architecture" data-section-number="03" aria-labelledby="target-architecture-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">03</span><h2 id="target-architecture-title">Target architecture</h2><p>Three delivery layers, one composer, per-target adapters in the pattern the descriptor table already uses for MCP, skills, and hooks.</p></header>
+
+						<div class="sequence" data-module="sequence" role="group" aria-label="The three instruction delivery layers">
+							<div class="sequence-step"><span class="sequence-step__n">1</span><strong class="sequence-step__actor">Main worker instructions</strong><div class="sequence-step__body"><h3>AGENTS.md managed block, consent-gated</h3><p>The composed worker instructions render into a marker-delimited, hash-sentineled drwn block inside repository-root <code>AGENTS.md</code> — user sections untouched, drift detected, removal clean, using the managed-block idiom already contract-tested for opencode.json and .gitignore. Codex, OpenCode, and Cursor consume root AGENTS.md natively; Claude Code needs only a one-line <code>.claude/CLAUDE.md</code> import adapter (analysis 123). Projection requires instruction consent through the existing card-trust surface, auto-satisfied for first-party sources (doc 125 B-Q1).</p></div></div>
+							<div class="sequence-step"><span class="sequence-step__n">2</span><strong class="sequence-step__actor">Sub-worker instructions</strong><div class="sequence-step__body"><h3>A+O×N — one authored sub-worker file, four target surfaces</h3><p>Cards ship <code>agents/&lt;name&gt;.md</code> once; a descriptor-table field projects it per target: markdown passthrough to <code>.claude/agents/</code>, <code>.cursor/agents/</code>, and <code>.opencode/agents/</code> (where the body is the sub-worker's actual system prompt), and a markdown-to-TOML adapter for <code>.codex/agents/&lt;name&gt;.toml</code> mapping the body to <code>developer_instructions</code> — the same per-target format-writer class the MCP surface uses for json-merge versus toml-merge. Deploy consumes the identical file via <code>instructions: {path}</code>, so local and deployed instructions cannot diverge.</p></div></div>
+							<div class="sequence-step"><span class="sequence-step__n">3</span><strong class="sequence-step__actor">Universal floor</strong><div class="sequence-step__body"><h3>Instructions-skill, generated from the same composition</h3><p>A <code>&lt;worker&gt;-instructions</code> skill generated from the composed artifact (never hand-mirrored) keeps delivery alive wherever a push surface is absent, disabled, or broken. The AGENTS.md block references it by name, converting probabilistic pull toward deterministic load. Scaffolding (<code>card new --instructions-skill</code>) and a publish lint — worker cards with neither instructions nor an instructions-skill warn — close the original silent no-op.</p></div></div>
+						</div>
+
+						<div class="table-scroll" data-comparison-matrix data-module="comparison-matrix" tabindex="0" aria-label="Delivery coverage per target">
+							<table class="evidence-table"><caption>What each layer delivers on each supported coding agent</caption><thead><tr><th scope="col">Layer</th><th scope="col">Claude Code</th><th scope="col">Codex</th><th scope="col">Cursor</th><th scope="col">OpenCode</th></tr></thead><tbody>
+								<tr><th scope="row">AGENTS.md block (main)</th><td>via .claude/CLAUDE.md import adapter</td><td>native, layered chain</td><td>native root read</td><td>native, preferred over CLAUDE.md fallback</td></tr>
+								<tr><th scope="row">Sub-worker surfaces</th><td>.claude/agents/*.md — sub-worker system prompt</td><td>.codex/agents/*.toml — developer_instructions; multi_agent flag stable and enabled on 0.144.6 (verified locally)</td><td>.cursor/agents/ — format and strength are a verify item</td><td>.opencode/agents/*.md — body is the system prompt (verified from the binary's built-in docs)</td></tr>
+								<tr><th scope="row">Instructions-skill (floor)</th><td>native skills</td><td>native skills</td><td>native + .claude/skills compat</td><td>native; home-scope compat only — project .claude/skills is not discovered (verified live)</td></tr>
+							</tbody></table>
+						</div>
+					</section>
+
+					<section class="report-section" id="migration" data-section-number="04" aria-labelledby="migration-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">04</span><h2 id="migration-title">Migration</h2><p>Two phases, each independently shippable; the drwn-as-launcher convergence (I24 option F) stays an explicit horizon, not a phase.</p></header>
+
+						<div class="sequence" data-module="sequence" role="group" aria-label="Staged delivery plan">
+							<div class="sequence-step"><span class="sequence-step__n">1</span><strong class="sequence-step__actor">Phase 1 · main instructions</strong><div class="sequence-step__body"><h3>AGENTS.md block, adapter, consent, authoring</h3><p>Extract the shared managed-block helpers; add the <code>instructions</code> projection surface and a <code>sync-instructions</code> step reusing the existing composer; write the AGENTS.md block and the guarded <code>.claude/CLAUDE.md</code> adapter; gate on instruction consent via card trust; add <code>--instructions</code> to <code>card source set</code> and fix the contract line; doctor checks for block staleness and adapter presence. Roughly ten TDD tasks in the established test patterns, no schema migrations (doc 124 §4 as amended by doc 125 Part C).</p></div></div>
+							<div class="sequence-step"><span class="sequence-step__n">2</span><strong class="sequence-step__actor">Phase 2 · sub-worker instructions</strong><div class="sequence-step__body"><h3>Sub-worker content type and per-target writers</h3><p>Add the sub-worker card content type, a sub-worker-surface descriptor field, markdown writers for claude/cursor/opencode and the TOML adapter for codex, plus the instructions-skill scaffold and lint. Entry is gated on closing the harness verify items: cursor agents format, codex spawn honoring custom agent files (openai/codex #26868, #14579), and the live-verification pass the opencode target work established as precedent.</p></div></div>
+						</div>
+					</section>
+
+					<section class="report-section" id="risk" data-section-number="05" aria-labelledby="risk-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">05</span><h2 id="risk-title">Risk</h2><p>The two risks that shape the design, with the evidence behind each.</p></header>
+
+						<div class="table-scroll" data-module="evidence-table" tabindex="0" aria-label="Material risks and their evidence">
+							<table class="evidence-table"><caption>Material risks, evidence, and how the architecture answers them</caption><thead><tr><th scope="col">Signal</th><th scope="col">Evidence</th><th scope="col">Interpretation</th></tr></thead><tbody>
+								<tr><th scope="row">Projected instructions are an injection channel with repo-wide blast radius</th><td>I24 criterion 4: "a projected system prompt from a third-party card is silent prompt injection … ungated is not an answer." The AGENTS.md block lands in a committed file every collaborator's agent reads. The skill channel is already consent-free today — a third-party card's skill injects instructions whenever it triggers.</td><td>Consent-gate projection through the existing card-trust machinery (hook-consent precedent), auto-satisfied for first-party sources, CI-enforceable via strict mode. Document the consent-free skill sibling honestly rather than treating the question as new (doc 125 B-Q1, B-Q7).</td></tr>
+								<tr><th scope="row">Harness surfaces are young and move underneath the design</th><td>Codex <code>multi_agent</code> is stable and enabled on the installed 0.144.6, but upstream issues report custom agent TOMLs not honored on spawn in some versions (#26868, #14579). Cursor's agents-file format is undocumented. OpenCode 1.17.13 dropped project-level .claude/skills discovery — a doc-121 assumption falsified only by live verification.</td><td>Per-target adapters isolate breakage to one writer; verify items gate phase 2 rather than block phase 1; the instructions-skill floor keeps delivery alive when a push surface regresses. Re-verify against real binaries before each phase, as the opencode target work established.</td></tr>
+							</tbody></table>
+						</div>
+					</section>
+
+					<section class="report-section" id="decision" data-section-number="06" data-final-action aria-labelledby="decision-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">06</span><h2 id="decision-title">Decision</h2><p>What approval covers, and the two moves it unblocks.</p></header>
+
+						<div class="decision-block" data-module="decision-block">
+							<p class="tag">Reader move</p><h3>Approve the layered architecture, the consent posture, and the phase-1 scope</h3><p>Approval adopts the doc 125 recommendations — consent-gated activation (B-Q1), advisory-plus-fix-verb adapter handling (B-Q2), full block content (B-Q3), authoring folded into phase 1 (B-Q4) — and rebriefs the sub-worker workstream to four-target A+O×N. It does not commit phase 2, which stays gated on its verify items.</p>
+						</div>
+						<div class="responsive-table action-list" data-module="action-table" role="group" aria-label="Decisions and follow-on actions">
+							<div class="responsive-table__head" aria-hidden="true"><span>Action</span><span>Owner</span><span>Evidence of completion</span><span>Due</span><span>State</span></div>
+							<div class="responsive-row" data-action-row><div data-field="action"><span class="mobile-label">Action</span><strong>Approve the doc 125 decision points and the A+O×N rebrief</strong></div><div data-field="owner"><span class="mobile-label">Owner</span>Remy K</div><div data-field="evidence"><span class="mobile-label">Evidence of completion</span>Toggle entry on the I24 Notion page recording the decisions, per CL workflow v0.3 dual-surface rule.</div><div data-field="due"><span class="mobile-label">Due</span>22 July 2026</div><div data-field="state"><span class="mobile-label">State</span><span class="pill">Approved 072226 · I24 mirror pending</span></div></div>
+							<div class="responsive-row" data-action-row><div data-field="action"><span class="mobile-label">Action</span><strong>Open the GATE 1 docs-PR and the phase-1 task plan</strong></div><div data-field="owner"><span class="mobile-label">Owner</span>Remy K (direction) · drwn worker (artifacts)</div><div data-field="evidence"><span class="mobile-label">Evidence of completion</span>Docs-PR carrying analyses 124/125/126 (cl0024 relabel decision recorded) and a task plan in .ai/tasks with the TDD contract.</div><div data-field="due"><span class="mobile-label">Due</span>Date needed</div><div data-field="state"><span class="mobile-label">State</span><span class="pill">Ready — unblocked by approval</span></div></div>
+						</div>
+					</section>
+
+					<section class="report-section" id="sources" data-section-number="07" aria-labelledby="sources-title">
+						<header class="section-head"><span class="section-head__n" aria-hidden="true">07</span><h2 id="sources-title">Sources</h2><p>Every material claim traces to a repo analysis, the team discussion, or a live verification.</p></header>
+
+						<div class="source-register" data-source-register data-module="source-register">
+							<p class="tag">Exact source record</p>
+							<div class="source-row">
+								<a class="source" href="100_feature_card_instructions_projection_gap_analysis.md">Gap investigation: analysis 100</a>
+								<a class="source" href="101_feature_card_spine_delivery_design_options_analysis.md">Design options: analysis 101</a>
+								<a class="source" href="123_system_prompt_architecture_analysis.md">Cross-agent AGENTS.md research: analysis 123</a>
+								<a class="source" href="cl0024_worker-instructions-projection_target_architecture.md">Target architecture: analysis 124 (now cl0024)</a>
+								<a class="source" href="125_feature_canonical_instructions_projection_decision_analysis.md">Decision options and I24 port: analysis 125</a>
+								<a class="source" href="https://app.notion.com/p/curation-labs/I24-DW-Card-instructions-field-is-not-consumed-by-regular-card-apply-deploy-worker-only-39df1fbef8c2813ebc5ceabd396e9040">Team discussion: Notion issue I24</a>
+								<a class="source" href="https://github.com/openai/codex/issues/26868">Codex subagent spawn issue #26868</a>
+							</div>
+						</div>
+					</section>
+				</article><aside class="report-toc" aria-label="On this page"><strong>Report path</strong><a href="#drivers">01 · Drivers</a>
+					<a href="#current-state">02 · Current state</a>
+					<a href="#target-architecture">03 · Target architecture</a>
+					<a href="#migration">04 · Migration</a>
+					<a href="#risk">05 · Risk</a>
+					<a href="#decision">06 · Decision</a>
+					<a href="#sources">07 · Sources</a></aside></div>
+			<footer class="report-footer"><strong>Canonical Instructions Projection for drwn</strong><p>Template engineering.architecture-proposal v1.0.0 · Report system v0.1.0</p><p>Responsible owner Remy K · Last updated 22 July 2026</p></footer>
+		</main>
+	</body>
+</html>

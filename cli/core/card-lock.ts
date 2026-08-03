@@ -9,7 +9,7 @@ import { assertValidCardManifest, MEMORY_KINDS } from "./card-manifest";
 import { DrwnError } from "./errors";
 import { writeAtomically } from "./fs";
 import * as git from "./git";
-import { gte } from "./semver-utils";
+import { gte, validRange } from "./semver-utils";
 import { resolveCardBareRepoPath } from "./store-paths";
 import { DRWN_VERSION } from "./version";
 import {
@@ -44,6 +44,11 @@ export interface CardLockEntry {
   hookConsent?: {
     consentedAt: string;
     consentedRange: string;
+  };
+  instructionConsent?: {
+    consentedAt: string;
+    consentedRange: string;
+    contentDigest: `sha256-${string}`;
   };
   registry: null;
   origin: CardOrigin;
@@ -291,6 +296,7 @@ function validateCardLockEntry(input: unknown, source: string): CardLockEntry {
     throw new Error(`${source}.memory must match manifest.memory`);
   }
   const hookConsent = validateHookConsent(input.hookConsent, source);
+  const instructionConsent = validateInstructionConsent(input.instructionConsent, source);
   if (input.registry !== null) throw new Error(`${source}.registry must be null`);
   const gitInfo = validateGitLockInfo(input.git, origin, source);
   return {
@@ -307,6 +313,7 @@ function validateCardLockEntry(input: unknown, source: string): CardLockEntry {
     ...(beliefs ? { beliefs } : {}),
     ...(memory ? { memory } : {}),
     ...(hookConsent ? { hookConsent } : {}),
+    ...(instructionConsent ? { instructionConsent } : {}),
     registry: null,
     origin,
     ...(gitInfo ? { git: gitInfo } : {}),
@@ -371,6 +378,37 @@ function validateHookConsent(input: unknown, source: string): CardLockEntry["hoo
     throw new Error(`${source}.hookConsent.consentedAt must be an ISO timestamp`);
   }
   return { consentedAt: input.consentedAt, consentedRange: input.consentedRange };
+}
+
+function validateInstructionConsent(
+  input: unknown,
+  source: string,
+): CardLockEntry["instructionConsent"] | undefined {
+  if (input === undefined) return undefined;
+  if (!isObject(input)) throw new Error(`${source}.instructionConsent must be an object`);
+  const unknown = Object.keys(input).filter(
+    (key) => !["consentedAt", "consentedRange", "contentDigest"].includes(key),
+  );
+  if (unknown.length > 0) {
+    throw new Error(`${source}.instructionConsent has unsupported field(s): ${unknown.join(", ")}`);
+  }
+  assertString(input.consentedAt, `${source}.instructionConsent.consentedAt`);
+  assertString(input.consentedRange, `${source}.instructionConsent.consentedRange`);
+  assertString(input.contentDigest, `${source}.instructionConsent.contentDigest`);
+  if (Number.isNaN(Date.parse(input.consentedAt)) || new Date(input.consentedAt).toISOString() !== input.consentedAt) {
+    throw new Error(`${source}.instructionConsent.consentedAt must be an ISO timestamp`);
+  }
+  if (!validRange(input.consentedRange)) {
+    throw new Error(`${source}.instructionConsent.consentedRange must be a valid semver range`);
+  }
+  if (!/^sha256-[a-f0-9]{64}$/.test(input.contentDigest)) {
+    throw new Error(`${source}.instructionConsent.contentDigest must be a sha256 digest`);
+  }
+  return {
+    consentedAt: input.consentedAt,
+    consentedRange: input.consentedRange,
+    contentDigest: input.contentDigest as `sha256-${string}`,
+  };
 }
 
 function validateGitLockInfo(input: unknown, origin: CardOrigin, source: string): GitLockInfo | undefined {

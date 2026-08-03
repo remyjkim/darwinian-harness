@@ -136,6 +136,43 @@ describe("drwn.write-record V1", () => {
     expect(loadWriteRecord(recordPath, "project")?.managedPaths[0]).toMatchObject({ surface: "hook", target: "cursor" });
   });
 
+  test("accepts target-agnostic project instructions and rejects them at machine scope", async () => {
+    const root = await createTempRoot("write-record-v1-");
+    tempRoots.push(root);
+    const recordPath = join(root, "write-record.json");
+    const instructionEntry = {
+      path: "AGENTS.md",
+      kind: "managed-fields" as const,
+      surface: "instructions" as const,
+      fields: ["drwn:instructions"],
+      fieldHashes: {
+        "drwn:instructions": `sha256-${"d".repeat(64)}`,
+      },
+    };
+    const project = {
+      ...validRecord(),
+      managedPaths: [instructionEntry],
+    };
+
+    await writeFile(recordPath, `${JSON.stringify(project)}\n`);
+    expect(loadWriteRecord(recordPath, "project")?.managedPaths[0]).toEqual(instructionEntry);
+
+    await writeFile(
+      recordPath,
+      `${JSON.stringify({ ...project, scope: "machine" })}\n`,
+    );
+    expectInvalid(() => loadWriteRecord(recordPath, "machine"), "machine");
+
+    await writeFile(
+      recordPath,
+      `${JSON.stringify({
+        ...project,
+        managedPaths: [{ ...instructionEntry, target: "claude" }],
+      })}\n`,
+    );
+    expectInvalid(() => loadWriteRecord(recordPath, "project"), "instructions");
+  });
+
   test("machine records permit only machine skill and MCP ownership", async () => {
     const root = await createTempRoot("write-record-v1-");
     tempRoots.push(root);

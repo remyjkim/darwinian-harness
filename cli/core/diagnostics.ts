@@ -1,7 +1,9 @@
 // ABOUTME: Computes report-only diagnostics for skill symlinks, MCP drift, and generated file expectations.
 // ABOUTME: Shared by `drwn doctor` and `drwn status` to keep reporting logic centralized and testable.
 
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { evaluateVersionFloor, loadCardLock, type CardLockEntry, type VersionFloorStatus } from "./card-lock";
 import type { AmbientCollision } from "./ambient-policy";
@@ -43,7 +45,7 @@ import {
   resolveStoreRoot,
   resolveStoreSkillsRoot,
 } from "./store-paths";
-import { diffWriteRecord, loadWriteRecord, resolveProjectWriteRecordPath } from "./write-record";
+import { diffWriteRecord, hashManagedContent, loadWriteRecord, resolveProjectWriteRecordPath } from "./write-record";
 import { isHookConsentValid } from "./hook-consent";
 import { DRWN_VERSION } from "./version";
 import type { CanonicalConfig, RegistryServer } from "./types";
@@ -56,6 +58,33 @@ import {
 import { readMachineConfig } from "./card-store";
 import { DrwnError } from "./errors";
 import { verifyMachineProfilePin } from "./machine-profiles";
+import { parseManagedBlock } from "./managed-block";
+import {
+  CLAUDE_ADAPTER_BLOCK_MARKERS,
+  INSTRUCTION_BLOCK_MARKERS,
+} from "./sync-instructions";
+import { instructionCompositionForState } from "./sync-project-instructions";
+import {
+  loadOrgWorkerMaterializationRecord,
+  type OrgWorkerMaterializationRecordV1,
+} from "./org-worker-materialization-record";
+import { loadOrgWorkerMaterializationJournal } from "./org-worker-materialization-journal";
+import {
+  computeWorkerMaterializationReceiptDigest,
+  parseWorkerMaterializationReceipt,
+  resolveWorkerMaterializationReceiptPath,
+  resolveWorkerMaterializationReceiptsRoot,
+  type WorkerMaterializationReceiptV1,
+} from "./worker-materialization-receipt";
+import { transactionPaths } from "./project-state-transaction";
+import { resolveProjectVendorTree } from "./vendor";
+import {
+  loadVendorManifestSidecar,
+  resolveVendorManifestSidecarPath,
+  validateSidecarSelfConsistency,
+  verifyVendorTreeAgainstLock,
+} from "./vendor-manifest";
+import { computeWorkerArtifactGitTreeSha } from "./org-worker-artifact-snapshot";
 
 export interface PlatformCheck {
   name: string;
@@ -175,6 +204,62 @@ export interface ProjectStatusV1 {
     enforcement: "target-native";
   };
   projection: { current: boolean; issues: string[] };
+  instructionDelivery: {
+    state: "absent" | "current" | "drifted" | "blocked";
+    instructionId?: string;
+    contentDigest?: string;
+    ownershipHash?: string;
+    consentEvidence: Array<{
+      card: string;
+      kind: "local_card_consent" | "org_worker_bundle_consent";
+      evidenceId: string;
+    }>;
+    adapter: "absent" | "owned" | "foreign-valid" | "foreign-missing" | "drifted";
+    issues: Array<{
+      code:
+        | "INSTRUCTIONS_BLOCK_MALFORMED"
+        | "INSTRUCTIONS_CONTENT_STALE"
+        | "INSTRUCTIONS_OWNERSHIP_DRIFT"
+        | "INSTRUCTIONS_ID_STALE"
+        | "INSTRUCTIONS_CONSENT_REQUIRED"
+        | "INSTRUCTIONS_ORG_CONSENT_INVALID"
+        | "CLAUDE_ADAPTER_MISSING"
+        | "CLAUDE_ADAPTER_DRIFT";
+      severity: "error" | "warning" | "advisory";
+    }>;
+  };
+  orgWorkerMaterialization?: OrgWorkerMaterializationStatus;
+}
+
+export type OrgWorkerMaterializationIssueCode =
+  | "ORG_WORKER_OPERATION_INCOMPLETE"
+  | "ORG_WORKER_EVIDENCE_MALFORMED"
+  | "ORG_WORKER_EVIDENCE_ORPHANED"
+  | "ORG_WORKER_EVIDENCE_MISSING"
+  | "ORG_WORKER_PROJECT_STATE_DRIFT"
+  | "ORG_WORKER_RECEIPT_MISMATCH"
+  | "ORG_WORKER_ARTIFACT_DRIFT"
+  | "ORG_WORKER_PROJECTION_DRIFT"
+  | "ORG_WORKER_REMOVAL_DRIFT";
+
+export interface OrgWorkerMaterializationStatus {
+  state:
+    | "absent"
+    | "compatible"
+    | "current"
+    | "drifted"
+    | "blocked"
+    | "removed"
+    | "unknown";
+  bundleDigest?: string;
+  workerId?: string;
+  blueprintDigest?: string;
+  lastVerifiedReceiptId?: string;
+  instructionConsentSource?: "local" | "organization" | "mixed";
+  issues: Array<{
+    code: OrgWorkerMaterializationIssueCode;
+    severity: "error" | "warning" | "advisory";
+  }>;
 }
 
 export interface MachineStatusCapability {
@@ -215,6 +300,538 @@ export interface MachineStatusV1 {
     issues: string[];
   };
   inventory: { skillCount: number; mcpServerCount: number };
+}
+
+function materializationIdentity(
+  record: OrgWorkerMaterializationRecordV1,
+): Pick<
+  OrgWorkerMaterializationStatus,
+  | "bundleDigest"
+  | "workerId"
+  | "blueprintDigest"
+  | "lastVerifiedReceiptId"
+> {
+  return {
+    bundleDigest: record.sourceBundle.digest,
+    workerId: record.sourceBundle.workerId,
+    blueprintDigest: record.sourceBundle.blueprintDigest,
+    lastVerifiedReceiptId: record.lastVerifiedReceiptId,
+  };
+}
+
+function digestBytes(bytes: string): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]) {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
+}
+
+const MAX_DIAGNOSTIC_RECEIPT_BYTES = 65_536;
+const MAX_DIAGNOSTIC_RECEIPTS = 1_024;
+
+async function readDiagnosticReceipt(
+  projectRoot: string,
+  receiptId: string,
+) {
+  const path = resolveWorkerMaterializationReceiptPath(
+    projectRoot,
+    receiptId,
+  );
+  const stats = await lstat(path);
+  if (
+    stats.isSymbolicLink() ||
+    !stats.isFile() ||
+    stats.size > MAX_DIAGNOSTIC_RECEIPT_BYTES
+  ) {
+    throw new Error("invalid receipt evidence");
+  }
+  const receipt = parseWorkerMaterializationReceipt(
+    JSON.parse(await readFile(path, "utf8")),
+  );
+  if (receipt.receiptId !== receiptId) {
+    throw new Error("receipt identity mismatch");
+  }
+  return receipt;
+}
+
+/**
+ * Classifies only durable evidence in the project checkout. It deliberately
+ * performs no remote lookup and returns bounded codes rather than local paths
+ * or evidence content.
+ */
+export async function inspectOrgWorkerMaterialization(
+  projectRoot: string,
+): Promise<OrgWorkerMaterializationStatus> {
+  let record: OrgWorkerMaterializationRecordV1 | null = null;
+  try {
+    record = await loadOrgWorkerMaterializationRecord(projectRoot);
+  } catch {
+    return {
+      state: "unknown",
+      issues: [
+        {
+          code: "ORG_WORKER_EVIDENCE_MALFORMED",
+          severity: "error",
+        },
+      ],
+    };
+  }
+
+  let journal;
+  try {
+    journal = await loadOrgWorkerMaterializationJournal(projectRoot);
+  } catch {
+    return {
+      state: "unknown",
+      ...(record ? materializationIdentity(record) : {}),
+      issues: [
+        {
+          code: "ORG_WORKER_EVIDENCE_MALFORMED",
+          severity: "error",
+        },
+      ],
+    };
+  }
+  if (journal) {
+    return {
+      state: "blocked",
+      ...(record ? materializationIdentity(record) : {}),
+      issues: [
+        {
+          code: "ORG_WORKER_OPERATION_INCOMPLETE",
+          severity: "error",
+        },
+      ],
+    };
+  }
+
+  if (!record) {
+    const receiptsRoot =
+      resolveWorkerMaterializationReceiptsRoot(projectRoot);
+    try {
+      if (
+        existsSync(receiptsRoot) &&
+        readdirSync(receiptsRoot).length > 0
+      ) {
+        return {
+          state: "unknown",
+          issues: [
+            {
+              code: "ORG_WORKER_EVIDENCE_ORPHANED",
+              severity: "error",
+            },
+          ],
+        };
+      }
+    } catch {
+      return {
+        state: "unknown",
+        issues: [
+          {
+            code: "ORG_WORKER_EVIDENCE_MALFORMED",
+            severity: "error",
+          },
+        ],
+      };
+    }
+    return { state: "absent", issues: [] };
+  }
+
+  const issues: OrgWorkerMaterializationStatus["issues"] = [];
+  let hasMissingEvidence = false;
+  const add = (
+    code: OrgWorkerMaterializationIssueCode,
+    kind: "missing" | "mismatch" = "mismatch",
+  ) => {
+    if (!issues.some((issue) => issue.code === code)) {
+      issues.push({ code, severity: "error" });
+    }
+    if (kind === "missing") hasMissingEvidence = true;
+  };
+
+  const paths = transactionPaths(projectRoot);
+  let configBytes: string | null = null;
+  let lockBytes: string | null = null;
+  try {
+    [configBytes, lockBytes] = await Promise.all([
+      readFile(paths.configTarget, "utf8"),
+      readFile(paths.lockTarget, "utf8"),
+    ]);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      add("ORG_WORKER_EVIDENCE_MISSING", "missing");
+    } else {
+      add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+    }
+  }
+  if (
+    configBytes !== null &&
+    lockBytes !== null &&
+    (digestBytes(configBytes) !== record.projectState.configDigest ||
+      digestBytes(lockBytes) !== record.projectState.lockDigest)
+  ) {
+    add("ORG_WORKER_PROJECT_STATE_DRIFT");
+  }
+
+  let lock: Awaited<ReturnType<typeof loadCardLock>> = null;
+  if (lockBytes !== null) {
+    try {
+      lock = await loadCardLock(projectRoot);
+    } catch {
+      add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+    }
+  }
+
+  let receipt;
+  let priorVerifiedReceipt:
+    | WorkerMaterializationReceiptV1
+    | undefined;
+  try {
+    receipt = await readDiagnosticReceipt(
+      projectRoot,
+      record.lastVerifiedReceiptId,
+    );
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      add("ORG_WORKER_EVIDENCE_MISSING", "missing");
+    } else {
+      add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+    }
+  }
+  if (receipt) {
+    const removed = record.materializationState === "removed";
+    const verifiedPins = record.artifactBindings.map(
+      ({ artifactPinRef }) => artifactPinRef,
+    );
+    const activeConsentIds = record.instructionConsentEvidence.map(
+      ({ consentId }) => consentId,
+    );
+    const expectedAction = removed
+      ? "remove"
+      : (["materialize", "reconcile"] as const).includes(
+            receipt.action as "materialize" | "reconcile",
+          )
+        ? receipt.action
+        : null;
+    const projectionMatches = removed
+      ? receipt.instructionProjection.state === "removed" &&
+        receipt.instructionProjection.adapterState ===
+          record.projection.adapterState
+      : receipt.instructionProjection.state ===
+          (record.projection.instructionId ? "current" : "absent") &&
+        receipt.instructionProjection.instructionId ===
+          (record.projection.instructionId ?? undefined) &&
+        receipt.instructionProjection.contentDigest ===
+          (record.projection.contentDigest ?? undefined) &&
+        receipt.instructionProjection.ownershipHash ===
+          (record.projection.ownershipHash ?? undefined) &&
+        receipt.instructionProjection.adapterState ===
+          record.projection.adapterState;
+    if (
+      receipt.receiptId !== record.lastVerifiedReceiptId ||
+      expectedAction === null ||
+      receipt.action !== expectedAction ||
+      receipt.outcome !== (removed ? "removed" : "verified") ||
+      receipt.sourceBundle.digest !== record.sourceBundle.digest ||
+      receipt.sourceBundle.workerId !== record.sourceBundle.workerId ||
+      receipt.sourceBundle.sourceBlueprint.id !==
+        record.sourceBundle.blueprintId ||
+      receipt.sourceBundle.sourceBlueprint.revision !==
+        record.sourceBundle.blueprintRevision ||
+      receipt.sourceBundle.sourceBlueprint.digest !==
+        record.sourceBundle.blueprintDigest ||
+      receipt.projectState.configDigest !==
+        record.projectState.configDigest ||
+      receipt.projectState.lockDigest !==
+        record.projectState.lockDigest ||
+      !sameStrings(
+        receipt.projectState.orderedRootNames,
+        record.projectState.orderedRootNames,
+      ) ||
+      receipt.projectState.activeWorker !==
+        record.projectState.activeWorker ||
+      !sameStrings(
+        receipt.artifactVerification.verifiedPinRefs,
+        verifiedPins,
+      ) ||
+      (!removed &&
+        !sameStrings(receipt.verifiedConsentIds, activeConsentIds)) ||
+      !projectionMatches
+    ) {
+      add("ORG_WORKER_RECEIPT_MISMATCH");
+    }
+
+    if (removed) {
+      if (!receipt.priorReceiptDigest) {
+        add("ORG_WORKER_RECEIPT_MISMATCH");
+      } else {
+        try {
+          const receiptRoot =
+            resolveWorkerMaterializationReceiptsRoot(projectRoot);
+          const entries = readdirSync(receiptRoot, {
+            withFileTypes: true,
+          });
+          if (
+            entries.length > MAX_DIAGNOSTIC_RECEIPTS ||
+            entries.some(
+              (entry) =>
+                !entry.isFile() ||
+                entry.isSymbolicLink() ||
+                !/^[A-Za-z0-9._-]+\.json$/.test(entry.name),
+            )
+          ) {
+            add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+          } else {
+            const priorMatches = [];
+            for (const entry of entries) {
+              if (
+                entry.name === `${record.lastVerifiedReceiptId}.json`
+              ) {
+                continue;
+              }
+              const candidateId = entry.name.slice(0, -5);
+              const candidatePath = join(receiptRoot, entry.name);
+              const candidateStats = await lstat(candidatePath);
+              if (
+                candidateStats.isSymbolicLink() ||
+                !candidateStats.isFile() ||
+                candidateStats.size >
+                  MAX_DIAGNOSTIC_RECEIPT_BYTES
+              ) {
+                throw new Error("invalid receipt evidence");
+              }
+              const candidate = await readDiagnosticReceipt(
+                projectRoot,
+                candidateId,
+              );
+              if (
+                computeWorkerMaterializationReceiptDigest(candidate) ===
+                receipt.priorReceiptDigest
+              ) {
+                priorMatches.push(candidate);
+              }
+            }
+            const prior = priorMatches[0];
+            if (priorMatches.length === 0) {
+              add("ORG_WORKER_EVIDENCE_MISSING", "missing");
+            } else if (
+              priorMatches.length !== 1 ||
+              !prior ||
+              prior.outcome !== "verified" ||
+              (prior.action !== "materialize" &&
+                prior.action !== "reconcile") ||
+              prior.sourceBundle.digest !==
+                record.sourceBundle.digest ||
+              prior.sourceBundle.workerId !==
+                record.sourceBundle.workerId ||
+              prior.sourceBundle.sourceBlueprint.id !==
+                record.sourceBundle.blueprintId ||
+              prior.sourceBundle.sourceBlueprint.revision !==
+                record.sourceBundle.blueprintRevision ||
+              prior.sourceBundle.sourceBlueprint.digest !==
+                record.sourceBundle.blueprintDigest ||
+              !sameStrings(
+                prior.artifactVerification.verifiedPinRefs,
+                verifiedPins,
+              ) ||
+              !sameStrings(
+                receipt.verifiedConsentIds,
+                prior.verifiedConsentIds,
+              )
+            ) {
+              add("ORG_WORKER_RECEIPT_MISMATCH");
+            } else {
+              priorVerifiedReceipt = prior;
+            }
+          }
+        } catch {
+          add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+        }
+      }
+    }
+  }
+
+  if (lock) {
+    const cardsByName = new Map(
+      lock.cards.map((card) => [card.name, card]),
+    );
+    for (const binding of record.artifactBindings) {
+      const card = cardsByName.get(binding.cardName);
+      const vendorDir = resolveProjectVendorTree(
+        projectRoot,
+        binding.cardName,
+        binding.treeSha,
+      );
+      if (record.materializationState === "removed" && !card) {
+        if (
+          existsSync(vendorDir) ||
+          existsSync(
+            resolveVendorManifestSidecarPath(
+              projectRoot,
+              binding.cardName,
+              binding.treeSha,
+            ),
+          )
+        ) {
+          add("ORG_WORKER_REMOVAL_DRIFT");
+        }
+        continue;
+      }
+      if (
+        !card ||
+        card.version !== binding.version ||
+        card.integrity !== binding.integrity ||
+        card.treeSha !== binding.treeSha ||
+        card.git?.commit !== binding.gitCommit
+      ) {
+        add(
+          record.materializationState === "removed"
+            ? "ORG_WORKER_REMOVAL_DRIFT"
+            : "ORG_WORKER_PROJECT_STATE_DRIFT",
+        );
+        continue;
+      }
+      if (!existsSync(vendorDir)) {
+        add("ORG_WORKER_EVIDENCE_MISSING", "missing");
+        continue;
+      }
+      try {
+        const verified = await verifyVendorTreeAgainstLock(
+          vendorDir,
+          binding.integrity,
+        );
+        if (!verified.ok) {
+          add("ORG_WORKER_ARTIFACT_DRIFT");
+          continue;
+        }
+        if (
+          (await computeWorkerArtifactGitTreeSha(vendorDir)) !==
+          binding.treeSha
+        ) {
+          add("ORG_WORKER_ARTIFACT_DRIFT");
+        }
+        const sidecar = await loadVendorManifestSidecar(
+          resolveVendorManifestSidecarPath(
+            projectRoot,
+            binding.cardName,
+            binding.treeSha,
+          ),
+        );
+        if (!sidecar) {
+          add("ORG_WORKER_EVIDENCE_MISSING", "missing");
+        } else if (
+          sidecar.card !== binding.cardName ||
+          sidecar.treeSha !== binding.treeSha ||
+          sidecar.integrity !== binding.integrity ||
+          !validateSidecarSelfConsistency(sidecar, {
+            projectRoot,
+            vendorDir,
+          }).ok
+        ) {
+          add("ORG_WORKER_ARTIFACT_DRIFT");
+        }
+      } catch {
+        add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+      }
+    }
+  }
+
+  if (record.materializationState === "removed") {
+    const instructionsPath = join(projectRoot, "AGENTS.md");
+    if (existsSync(instructionsPath)) {
+      try {
+        const block = parseManagedBlock(
+          new Uint8Array(await readFile(instructionsPath)),
+          INSTRUCTION_BLOCK_MARKERS,
+        );
+        if (block.state === "malformed") {
+          add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+        } else if (
+          block.state === "present" &&
+          (
+            priorVerifiedReceipt?.projectState.orderedRootNames ??
+            record.artifactBindings.map(({ cardName }) => cardName)
+          ).some((rootName) =>
+            new TextDecoder()
+              .decode(block.block)
+              .includes(`Instruction-ID: worker:${rootName}\n`),
+          )
+        ) {
+          add("ORG_WORKER_REMOVAL_DRIFT");
+        }
+      } catch {
+        add("ORG_WORKER_EVIDENCE_MALFORMED", "missing");
+      }
+    }
+  }
+
+  const hasLocalConsent = Boolean(
+    lock?.cards.some((card) => card.instructionConsent),
+  );
+  const hasOrgConsent =
+    record.materializationState !== "removed" &&
+    record.instructionConsentEvidence.length > 0;
+  const instructionConsentSource =
+    hasLocalConsent && hasOrgConsent
+      ? "mixed"
+      : hasOrgConsent
+        ? "organization"
+        : hasLocalConsent
+          ? "local"
+          : undefined;
+
+  return {
+    state:
+      issues.length === 0
+        ? record.materializationState === "removed"
+          ? "removed"
+          : "current"
+        : hasMissingEvidence
+          ? "unknown"
+          : "drifted",
+    ...materializationIdentity(record),
+    ...(instructionConsentSource
+      ? { instructionConsentSource }
+      : {}),
+    issues,
+  };
+}
+
+export async function buildEffectiveStateForDiagnostics(
+  options: Parameters<typeof buildEffectiveState>[0],
+) {
+  try {
+    return await buildEffectiveState(options);
+  } catch (error) {
+    if (
+      !(error instanceof DrwnError) ||
+      error.code !== "ORG_WORKER_MATERIALIZATION_DRIFT"
+    ) {
+      throw error;
+    }
+    return buildEffectiveState({
+      ...options,
+      organizationInstructionConsent: {
+        workerId: "diagnostics",
+        artifactPinRefsByCard: {},
+        evidence: [],
+      },
+    });
+  }
 }
 
 export async function buildMachineStatusV1(
@@ -361,6 +978,129 @@ function projectItem(
   return { id, sourceKind, sourceId, sourcePath, target, health };
 }
 
+function inspectInstructionDelivery(
+  state: EffectiveState,
+): ProjectStatusV1["instructionDelivery"] {
+  const issues: ProjectStatusV1["instructionDelivery"]["issues"] = [];
+  const composition = instructionCompositionForState(state);
+  for (const excluded of composition.excluded) {
+    issues.push({
+      code:
+        excluded.expectedEvidenceKind === "org_worker_bundle_consent"
+          ? "INSTRUCTIONS_ORG_CONSENT_INVALID"
+          : "INSTRUCTIONS_CONSENT_REQUIRED",
+      severity: "error",
+    });
+  }
+  let record: ReturnType<typeof loadWriteRecord> = null;
+  try {
+    record = loadWriteRecord(state.recordPath, "project");
+  } catch (error) {
+    if (!(error instanceof DrwnError) || error.code !== "WRITE_RECORD_INVALID") {
+      throw error;
+    }
+  }
+  const instructionEntry = record?.managedPaths.find(
+    (entry) => entry.surface === "instructions" && entry.path === "AGENTS.md",
+  );
+  const expectedOwnership =
+    instructionEntry?.kind === "managed-fields"
+      ? instructionEntry.fieldHashes["drwn:instructions"]
+      : undefined;
+  const agentsPath = join(state.projectRoot!, "AGENTS.md");
+  const agentsBytes = existsSync(agentsPath)
+    ? new Uint8Array(readFileSync(agentsPath))
+    : new Uint8Array();
+  const parsed = parseManagedBlock(agentsBytes, INSTRUCTION_BLOCK_MARKERS);
+  let ownershipHash: string | undefined;
+  let instructionId: string | undefined;
+  let stateValue: ProjectStatusV1["instructionDelivery"]["state"] = "absent";
+  if (parsed.state === "malformed") {
+    issues.push({ code: "INSTRUCTIONS_BLOCK_MALFORMED", severity: "error" });
+    stateValue = "blocked";
+  } else if (parsed.state === "present") {
+    ownershipHash = hashManagedContent(parsed.block);
+    const blockText = new TextDecoder().decode(parsed.block);
+    instructionId = blockText.match(/^Instruction-ID:\s*(.+)$/m)?.[1];
+    const expectedId = `worker:${state.workerSelection?.selectedRoot?.name ?? "none"}`;
+    if (instructionId !== expectedId) {
+      issues.push({ code: "INSTRUCTIONS_ID_STALE", severity: "error" });
+    }
+    if (!expectedOwnership || ownershipHash !== expectedOwnership) {
+      issues.push({ code: "INSTRUCTIONS_OWNERSHIP_DRIFT", severity: "error" });
+    }
+    if (
+      composition.contentDigest &&
+      !blockText.includes(`Content-Digest: ${composition.contentDigest}`)
+    ) {
+      issues.push({ code: "INSTRUCTIONS_CONTENT_STALE", severity: "error" });
+    }
+    stateValue = issues.some((issue) => issue.severity === "error")
+      ? "drifted"
+      : "current";
+  } else if (composition.bytes) {
+    issues.push({ code: "INSTRUCTIONS_CONTENT_STALE", severity: "error" });
+    stateValue = "drifted";
+  }
+
+  const adapterPath = join(state.projectRoot!, ".claude", "CLAUDE.md");
+  let adapter: ProjectStatusV1["instructionDelivery"]["adapter"] = "absent";
+  if (existsSync(adapterPath)) {
+    const bytes = new Uint8Array(readFileSync(adapterPath));
+    const text = new TextDecoder().decode(bytes);
+    const adapterEntry = record?.managedPaths.find(
+      (entry) =>
+        entry.surface === "instructions" &&
+        entry.path === ".claude/CLAUDE.md",
+    );
+    const adapterBlock = parseManagedBlock(bytes, CLAUDE_ADAPTER_BLOCK_MARKERS);
+    if (adapterBlock.state === "malformed") {
+      adapter = "drifted";
+      issues.push({ code: "CLAUDE_ADAPTER_DRIFT", severity: "warning" });
+    } else if (
+      adapterEntry?.kind === "managed-content" &&
+      hashManagedContent(bytes) === adapterEntry.contentHash
+    ) {
+      adapter = "owned";
+    } else if (
+      adapterEntry?.kind === "managed-fields" &&
+      adapterBlock.state === "present" &&
+      hashManagedContent(adapterBlock.block) ===
+        adapterEntry.fieldHashes["drwn:claude-adapter"]
+    ) {
+      adapter = "owned";
+    } else if (/^\s*@\.\.\/AGENTS\.md\s*$/m.test(text)) {
+      adapter = "foreign-valid";
+    } else if (adapterEntry) {
+      adapter = "drifted";
+      issues.push({ code: "CLAUDE_ADAPTER_DRIFT", severity: "warning" });
+    } else {
+      adapter = "foreign-missing";
+      if (composition.bytes) {
+        issues.push({ code: "CLAUDE_ADAPTER_MISSING", severity: "advisory" });
+      }
+    }
+  } else if (composition.bytes) {
+    issues.push({ code: "CLAUDE_ADAPTER_MISSING", severity: "advisory" });
+  }
+
+  return {
+    state: stateValue,
+    ...(instructionId ? { instructionId } : {}),
+    ...(composition.contentDigest
+      ? { contentDigest: composition.contentDigest }
+      : {}),
+    ...(ownershipHash ? { ownershipHash } : {}),
+    consentEvidence: composition.included.map((item) => ({
+      card: item.card,
+      kind: item.evidenceKind,
+      evidenceId: item.evidenceId,
+    })),
+    adapter,
+    issues,
+  };
+}
+
 export async function buildProjectStatusV1(options: {
   repoRoot: string;
   agentsDir: string;
@@ -369,7 +1109,9 @@ export async function buildProjectStatusV1(options: {
 }): Promise<ProjectStatusV1 | null> {
   if (!options.projectConfigPath) return null;
   const projectRoot = resolveProjectRootFromConfigPath(options.projectConfigPath);
-  const state = await buildEffectiveState({
+  const orgWorkerMaterialization =
+    await inspectOrgWorkerMaterialization(projectRoot);
+  const state = await buildEffectiveStateForDiagnostics({
     repoRoot: options.repoRoot,
     agentsDir: options.agentsDir,
     homeDir: options.homeDir,
@@ -452,12 +1194,46 @@ export async function buildProjectStatusV1(options: {
     declaredSkillIds: skillItems.map((entry) => entry.id),
     declaredMcpIds: mcpItems.map((entry) => entry.id),
   });
-  const projection = await planRepositoryProjection({
-    repoRoot: options.repoRoot,
-    agentsDir: options.agentsDir,
-    homeDir: options.homeDir,
-    cwd: projectRoot,
-  });
+  let projection: { current: boolean; issues: string[] };
+  try {
+    projection = await planRepositoryProjection({
+      repoRoot: options.repoRoot,
+      agentsDir: options.agentsDir,
+      homeDir: options.homeDir,
+      cwd: projectRoot,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof DrwnError) ||
+      error.code !== "ORG_WORKER_MATERIALIZATION_DRIFT"
+    ) {
+      throw error;
+    }
+    projection = {
+      current: false,
+      issues: ["ORG_WORKER_MATERIALIZATION_DRIFT"],
+    };
+  }
+  const instructionDelivery = inspectInstructionDelivery(state);
+  if (
+    orgWorkerMaterialization.state === "current" &&
+    (instructionDelivery.state === "drifted" ||
+      instructionDelivery.state === "blocked" ||
+      (orgWorkerMaterialization.instructionConsentSource !== undefined &&
+        instructionDelivery.state !== "current"))
+  ) {
+    orgWorkerMaterialization.state = "drifted";
+    if (
+      !orgWorkerMaterialization.issues.some(
+        ({ code }) => code === "ORG_WORKER_PROJECTION_DRIFT",
+      )
+    ) {
+      orgWorkerMaterialization.issues.push({
+        code: "ORG_WORKER_PROJECTION_DRIFT",
+        severity: "error",
+      });
+    }
+  }
   return {
     schema: "drwn.project-status",
     schemaVersion: 1,
@@ -474,6 +1250,8 @@ export async function buildProjectStatusV1(options: {
       enforcement: "target-native",
     },
     projection: { current: projection.current, issues: projection.issues },
+    instructionDelivery,
+    orgWorkerMaterialization,
   };
 }
 
@@ -482,7 +1260,7 @@ export async function buildStatusReport(repoRoot: string, agentsDir: string, hom
   let projectSummary: ReturnType<typeof summarizeProjectConfig> | undefined;
 
   if (projectConfigPath) {
-    const state = await buildEffectiveState({
+    const state = await buildEffectiveStateForDiagnostics({
       repoRoot,
       agentsDir,
       homeDir,
@@ -578,7 +1356,7 @@ export async function buildDiagnosticsSections(
   ]);
   const loadedConfig = await loadEffectiveConfig(repoConfig, agentsDir);
   const projectState = projectConfigPath
-    ? await buildEffectiveState({
+    ? await buildEffectiveStateForDiagnostics({
         repoRoot,
         agentsDir,
         homeDir,
@@ -1110,7 +1888,7 @@ export async function buildDoctorReportWithProject(
     loadRegistry(repoRoot),
     buildSkillInventory(repoRoot, agentsDir, homeDir),
   ]);
-  const state = await buildEffectiveState({
+  const state = await buildEffectiveStateForDiagnostics({
     repoRoot,
     agentsDir,
     homeDir,
@@ -1178,8 +1956,25 @@ export async function buildDoctorReportWithProject(
     projectConfigIssues: [...report.projectConfigIssues, ...issues],
     ambientMcpCollisions: selectedAmbientCollisions(state),
   };
-  const projection = await planRepositoryProjection({ repoRoot, agentsDir, homeDir, cwd: projectRoot });
-  scopedReport.projectConfigIssues.push(...projection.issues);
+  try {
+    const projection = await planRepositoryProjection({
+      repoRoot,
+      agentsDir,
+      homeDir,
+      cwd: projectRoot,
+    });
+    scopedReport.projectConfigIssues.push(...projection.issues);
+  } catch (error) {
+    if (
+      !(error instanceof DrwnError) ||
+      error.code !== "ORG_WORKER_MATERIALIZATION_DRIFT"
+    ) {
+      throw error;
+    }
+    scopedReport.projectConfigIssues.push(
+      "ORG_WORKER_MATERIALIZATION_DRIFT",
+    );
+  }
   const sections = await buildDiagnosticsSections(repoRoot, agentsDir, homeDir, projectConfigPath);
   return {
     ...scopedReport,

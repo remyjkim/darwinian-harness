@@ -2,7 +2,7 @@
 // ABOUTME: Protects validation, dry-run output, and store read-only behavior for source manifests.
 
 import { afterEach, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
@@ -88,6 +88,88 @@ test("set updates Wave 2 quality fields", async () => {
   expect(manifest.stability).toBe("stable");
   expect(manifest.lastValidatedWith).toBe("1.2.3");
   expect(manifest.testStatusBadge).toBe("https://example.com/status.svg");
+});
+
+test("set authors, replaces, and clears explicit instructions with conflict validation", async () => {
+  const fixture = await scaffoldSourceFixture();
+  const sourceDir = join(
+    fixture.agentsDir,
+    "drwn",
+    "sources",
+    "@me",
+    "example",
+  );
+
+  const inline = await runAgentsCli(
+    [
+      "card",
+      "source",
+      "set",
+      "@me/example",
+      "--instructions-text",
+      "Operate carefully.",
+    ],
+    envFor(fixture),
+  );
+  expect(inline.exitCode).toBe(0);
+  expect((await readManifest(fixture)).instructions).toEqual({
+    text: "Operate carefully.",
+  });
+
+  await writeFile(join(sourceDir, "INSTRUCTIONS.md"), "Use the source file.\n");
+  const path = await runAgentsCli(
+    [
+      "card",
+      "source",
+      "set",
+      "@me/example",
+      "--instructions-path",
+      "INSTRUCTIONS.md",
+    ],
+    envFor(fixture),
+  );
+  expect(path.exitCode).toBe(0);
+  expect((await readManifest(fixture)).instructions).toEqual({
+    path: "INSTRUCTIONS.md",
+  });
+
+  const missing = await runAgentsCli(
+    [
+      "card",
+      "source",
+      "set",
+      "@me/example",
+      "--instructions-path",
+      "MISSING.md",
+    ],
+    envFor(fixture),
+  );
+  expect(missing.exitCode).not.toBe(0);
+  expect((await readManifest(fixture)).instructions).toEqual({
+    path: "INSTRUCTIONS.md",
+  });
+
+  const conflict = await runAgentsCli(
+    [
+      "card",
+      "source",
+      "set",
+      "@me/example",
+      "--instructions-text",
+      "x",
+      "--instructions-path",
+      "x.md",
+    ],
+    envFor(fixture),
+  );
+  expect(conflict.exitCode).not.toBe(0);
+
+  const cleared = await runAgentsCli(
+    ["card", "source", "set", "@me/example", "--clear-instructions"],
+    envFor(fixture),
+  );
+  expect(cleared.exitCode).toBe(0);
+  expect((await readManifest(fixture)).instructions).toBeUndefined();
 });
 
 test("set rejects missing patch flags and invalid values without writing", async () => {

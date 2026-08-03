@@ -9,6 +9,7 @@ import { validateCardManifest } from "../cli/core/card-manifest";
 import { syncRepository } from "../cli/core/sync";
 import { cleanupTempRoots, envFor, installProjectWorkers, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 import { applyProjectCardSpecs } from "../cli/core/card-project";
+import { buildProjectStatusV1 } from "../cli/core/diagnostics";
 
 const tempRoots: string[] = [];
 
@@ -80,7 +81,17 @@ test("syncRepository emits explicit card instructions at the canonical project p
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await publishWorkerFixture(fixture, { instructions: { text: "Use compact worker instructions." } });
-  const { projectDir, syncOptions } = await createProjectWithCard(fixture);
+  const { projectDir, configPath, syncOptions } = await createProjectWithCard(fixture);
+  expect(
+    (
+      await runAgentsCli(
+        ["card", "trust", "@me/mind", "--instructions"],
+        envFor(fixture),
+        projectDir,
+      )
+    ).exitCode,
+  ).toBe(0);
+  await writeFile(join(projectDir, "AGENTS.md"), "# User-owned project notes\n");
 
   const result = await syncRepository(syncOptions);
   const instructionsPath = join(projectDir, ".agents", "drwn", "generated", "instructions.md");
@@ -90,21 +101,41 @@ test("syncRepository emits explicit card instructions at the canonical project p
   expect(result.managedPaths?.some((entry) =>
     entry.kind === "managed-content" && entry.path === ".agents/drwn/generated/instructions.md"
   )).toBe(true);
+  const agents = await readFile(join(projectDir, "AGENTS.md"), "utf8");
+  expect(agents).toContain("<!-- drwn:instructions:start -->");
+  expect(agents).toContain("Use compact worker instructions.");
+  expect(agents).toEndWith("# User-owned project notes\n");
+  expect(await readFile(join(projectDir, ".claude", "CLAUDE.md"), "utf8")).toBe(
+    "@../AGENTS.md\n",
+  );
+  const repeated = await syncRepository(syncOptions);
+  expect(repeated.changes.some((change) => change.includes("AGENTS.md"))).toBe(false);
+  const status = await buildProjectStatusV1({
+    repoRoot: fixture.repoRoot,
+    agentsDir: fixture.agentsDir,
+    homeDir: fixture.homeDir,
+    projectConfigPath: configPath,
+  });
+  expect(status?.instructionDelivery).toMatchObject({
+    state: "current",
+    adapter: "owned",
+    issues: [],
+  });
 });
 
-test("syncRepository falls back to skill instructions with frontmatter stripped", async () => {
+test("syncRepository never falls back to bundled skill instructions", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await publishWorkerFixture(fixture, { skillBody: "\nFollow alpha task handling.\n" });
   const { projectDir, syncOptions } = await createProjectWithCard(fixture);
 
-  await syncRepository(syncOptions);
-  const content = await readFile(join(projectDir, ".agents", "drwn", "generated", "instructions.md"), "utf8");
-
-  expect(content).toContain("Follow alpha task handling.");
-  expect(content).not.toContain("name: alpha");
-  expect(content).not.toContain("---");
-  expect(content.endsWith("\n")).toBe(true);
+  const result = await syncRepository(syncOptions);
+  expect(
+    existsSync(join(projectDir, ".agents", "drwn", "generated", "instructions.md")),
+  ).toBe(false);
+  expect(existsSync(join(projectDir, "AGENTS.md"))).toBe(false);
+  expect(existsSync(join(projectDir, ".claude", "CLAUDE.md"))).toBe(false);
+  expect(result.warnings.join("\n")).not.toContain("Follow alpha task handling.");
 });
 
 test("syncRepository materializes isolated worker bundles and cleans removed workers", async () => {
@@ -220,7 +251,7 @@ test("syncRepository materializes one aggregate bundle per Worker root", async (
   expect(existsSync(join(otherDir, "skills", "alpha"))).toBe(false);
   expect(existsSync(join(otherDir, "skills", "other"))).toBe(true);
   expect(existsSync(join(aggregateDir, "hooks", "claude", "composer.mjs"))).toBe(true);
-  expect(await readFile(join(aggregateDir, "instructions.md"), "utf8")).toContain("Coordinate the aggregate Worker.");
+  expect(existsSync(join(aggregateDir, "instructions.md"))).toBe(false);
   const aggregateMcp = JSON.parse(await readFile(join(aggregateDir, "mcp", "servers.json"), "utf8"));
   expect(Object.keys(aggregateMcp.mcpServers).sort()).toEqual(["server-a", "server-b"]);
   expect(aggregateMcp.mcpServers["project-only"]).toBeUndefined();

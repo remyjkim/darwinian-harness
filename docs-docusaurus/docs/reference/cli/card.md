@@ -224,6 +224,30 @@ drwn card audit
 
 `drwn card audit` is a v1.1 placeholder — it makes the planned command discoverable but does not yet produce a diff output.
 
+## Instruction Authoring and Consent
+
+Declare inline or Card-relative explicit instructions:
+
+```bash
+drwn card source set @your-handle/backend --instructions-text "Operate carefully."
+drwn card source set @your-handle/backend --instructions-path INSTRUCTIONS.md
+drwn card source set @your-handle/backend --clear-instructions
+```
+
+Grant or revoke projection consent:
+
+```bash
+drwn card trust @your-handle/backend --instructions
+drwn card trust @your-handle/backend --hooks --instructions --range "^1.0.0"
+drwn card untrust @your-handle/backend --instructions
+```
+
+The range must include the locked version. Instruction consent also pins the
+exact canonical content digest and is dropped when that content changes.
+`--hooks` and `--instructions` may be granted or revoked together atomically.
+
+See [Worker Instructions](../../concepts/worker-instructions).
+
 ## Typical Source Authoring
 
 The canonical authoring sequence from empty source to published card:

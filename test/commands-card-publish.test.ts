@@ -32,6 +32,46 @@ async function updateCardSource(
   }
 }
 
+/**
+ * Publish a card that declares a hook policy + explicit instructions, so a
+ * subsequent re-publish can exercise the consent-impact report.
+ */
+async function publishCardWithHookAndInstructions(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  options: { version: string; hookContent: string; instructionText: string },
+): Promise<void> {
+  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
+  if (!await Bun.file(join(sourceRoot, "card.json")).exists()) {
+    expect((await runAgentsCli(["card", "new", "@me/policy", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  }
+  const manifestPath = join(sourceRoot, "card.json");
+  const manifest = JSON.parse(await Bun.file(manifestPath).text());
+  manifest.version = options.version;
+  manifest.hooks = { include: ["org-conventions"] };
+  manifest.instructions = { text: options.instructionText };
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const hookDir = join(sourceRoot, "hooks", "org-conventions");
+  await mkdir(hookDir, { recursive: true });
+  await writeFile(join(hookDir, "policy.ts"), options.hookContent);
+
+  const published = await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture));
+  expect(published.exitCode).toBe(0);
+}
+
+async function mutatePolicyCardSource(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  options: { version: string; hookContent: string; instructionText: string },
+): Promise<void> {
+  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
+  const manifestPath = join(sourceRoot, "card.json");
+  const manifest = JSON.parse(await Bun.file(manifestPath).text());
+  manifest.version = options.version;
+  manifest.instructions = { text: options.instructionText };
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(join(sourceRoot, "hooks", "org-conventions", "policy.ts"), options.hookContent);
+}
+
 test("card publish rejects structural major change declared as patch", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
@@ -87,3 +127,83 @@ test("card publish can diff against an immutable version that predates the curre
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain("Published @me/backend@0.2.0");
 });
+
+test("card publish reports consent impact when hook and instruction content change", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+
+  await publishCardWithHookAndInstructions(fixture, {
+    version: "1.0.0",
+    hookContent: `export default { policyKind: "observer", async beforeToolCall() { return { action: "allow" }; } };`,
+    instructionText: "Original instruction content.",
+  });
+
+  await mutatePolicyCardSource(fixture, {
+    version: "1.1.0",
+    hookContent: `export default { policyKind: "observer", async beforeToolCall() { return { action: "allow", additionalContext: "CHANGED" }; } };`,
+    instructionText: "Updated instruction content with new conventions.",
+  });
+
+  const result = await runAgentsCli(["card", "publish", "@me/policy"], envFor(fixture));
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain("Published @me/policy@1.1.0");
+  expect(result.stdout).toContain("Consent impact");
+  expect(result.stdout).toContain("hooks:");
+  expect(result.stdout.toLowerCase()).toContain("changed");
+  expect(result.stdout).toContain("instructions:");
+});
+
+test("card publish --json includes consentImpact object", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+
+  await publishCardWithHookAndInstructions(fixture, {
+    version: "1.0.0",
+    hookContent: `export default { policyKind: "observer", async beforeToolCall() { return { action: "allow" }; } };`,
+    instructionText: "Original.",
+  });
+
+  await mutatePolicyCardSource(fixture, {
+    version: "1.1.0",
+    hookContent: `export default { policyKind: "observer", async beforeToolCall() { return { action: "allow", additionalContext: "X" }; } };`,
+    instructionText: "Changed content.",
+  });
+
+  const result = await runAgentsCli(["card", "publish", "@me/policy", "--json"], envFor(fixture));
+
+  expect(result.exitCode).toBe(0);
+  const parsed = JSON.parse(result.stdout);
+  expect(parsed.name).toBe("@me/policy");
+  expect(parsed.version).toBe("1.1.0");
+  expect(parsed.consentImpact).toBeDefined();
+  expect(parsed.consentImpact.hooks.changed).toBe(true);
+  expect(parsed.consentImpact.instructions.changed).toBe(true);
+});
+
+test("card publish reports no consent impact when only description changes", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+
+  await publishCardWithHookAndInstructions(fixture, {
+    version: "1.0.0",
+    hookContent: `export default { policyKind: "observer", async beforeToolCall() { return { action: "allow" }; } };`,
+    instructionText: "Stable instruction.",
+  });
+
+  // Same hook + instruction content, only bump version + description
+  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
+  const manifestPath = join(sourceRoot, "card.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  manifest.version = "1.0.1";
+  manifest.description = "New description only.";
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  const result = await runAgentsCli(["card", "publish", "@me/policy", "--json"], envFor(fixture));
+
+  expect(result.exitCode).toBe(0);
+  const parsed = JSON.parse(result.stdout);
+  expect(parsed.consentImpact.hooks.changed).toBe(false);
+  expect(parsed.consentImpact.instructions.changed).toBe(false);
+});
+

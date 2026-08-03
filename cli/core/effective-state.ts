@@ -1,6 +1,7 @@
 // ABOUTME: Builds the effective drwn state shared by write and capture flows.
 // ABOUTME: Keeps project card, overlay, registry, and target resolution in one place.
 
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   AmbientMcpCollisionError,
@@ -11,7 +12,7 @@ import {
   inspectAmbientMcpDefinitions,
   type AmbientMcpInspectionError,
 } from "./ambient-capabilities";
-import type { CardLockEntry, ProjectLockV1, WorkerRootLockEntry } from "./card-lock";
+import { cardLockPath, type CardLockEntry, type ProjectLockV1, type WorkerRootLockEntry } from "./card-lock";
 import { mergeCardManifestsIntoProjectConfig } from "./card-project";
 import { collectCardServerDefinitions, mergeCardServerDefinitionsIntoRegistry, type CardServerDefinition } from "./card-mcp";
 import { loadCardLock } from "./card-lock";
@@ -40,6 +41,8 @@ import type { SkillSyncOverrides } from "./skills";
 import { DrwnError } from "./errors";
 import { assertWorkerCapabilityCompatibility } from "./card-skill-resolver";
 import { getExtension } from "./extensions/registry";
+import type { OrganizationInstructionConsentContext } from "./instruction-consent-evidence";
+import { loadOrgWorkerInstructionConsentContext } from "./org-worker-materialization-record";
 
 import type { ResolvedCardMode } from "./mode-resolution";
 
@@ -69,6 +72,7 @@ export interface EffectiveState {
   ambientMcpErrors: AmbientMcpInspectionError[];
   skillSelection?: SkillSyncOverrides;
   machineCapabilities: ResolvedMachineCapabilities | null;
+  organizationInstructionConsent: OrganizationInstructionConsentContext | null;
   recordPath: string;
   scopeRoot: string;
   scopedOptions: NormalizedSyncOptions;
@@ -293,6 +297,8 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
   const contentRootsByCard: Record<string, string> = {};
   const vendorEligible = new Set<string>();
   const overlayWarnings: string[] = [];
+  let organizationInstructionConsent =
+    normalized.organizationInstructionConsent ?? null;
   const cardsSourcePath = process.env.CARDS_SOURCE_PATH ?? null;
 
   if (projectConfigPath) {
@@ -302,6 +308,21 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
       overlayWarnings.push("config.local.json activeWorker overrides committed activeWorker");
     }
     const cardLock = projectRoot ? await loadCardLock(projectRoot) : null;
+    if (
+      !organizationInstructionConsent &&
+      projectRoot &&
+      projectConfigPath
+    ) {
+      organizationInstructionConsent =
+        await loadOrgWorkerInstructionConsentContext({
+          projectRoot,
+          configBytes: await readFile(projectConfigPath, "utf8"),
+          lockBytes: cardLock
+            ? await readFile(cardLockPath(projectRoot), "utf8")
+            : "",
+          lock: cardLock,
+        });
+    }
     const localLock = projectRoot ? await loadCardLockLocal(projectRoot) : null;
     workerSelection = selectProjectWorker({ projectConfig, committedLock: cardLock, configLocal, localLock });
     projectConfig = mergeProjectWithLocal(projectConfig, configLocal);
@@ -451,6 +472,7 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
     ambientMcpErrors,
     skillSelection,
     machineCapabilities,
+    organizationInstructionConsent,
     recordPath: projectRoot ? resolveProjectWriteRecordPath(projectRoot) : resolveGlobalWriteRecordPath(normalized.agentsDir),
     scopeRoot,
     scopedOptions,

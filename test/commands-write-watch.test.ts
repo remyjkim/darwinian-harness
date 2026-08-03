@@ -87,6 +87,8 @@ describe("write-watch helpers", () => {
     await mkdir(linked, { recursive: true });
     const paths = collectWriteWatchPaths(root, [`file:${linked}`]);
     expect(paths).toContain(join(root, ".agents", "drwn"));
+    expect(paths).toContain(join(root, "AGENTS.md"));
+    expect(paths).toContain(join(root, ".claude", "CLAUDE.md"));
     expect(paths).toContain(linked);
     expect(paths.some((path) => path.startsWith("file:"))).toBe(false);
   });
@@ -181,11 +183,20 @@ describe("startWriteWatch", () => {
     runs = 0;
     exerciseSingleFlight = true;
     await writeFile(configPath, '{"version":2}\n');
-    await Bun.sleep(30);
+    // Wait until run 1 has started and is blocked on the release promise (activeRuns
+    // is 1 and release is set), instead of guessing with a fixed sleep. A fixed sleep
+    // races the watcher's debounce: if run 1 has not started when the next write lands,
+    // the two writes coalesce into one trigger and the follow-up never queues.
+    expect(
+      await waitForCondition(() => activeRuns === 1 && release !== undefined),
+    ).toBe(true);
     await writeFile(configPath, '{"version":3}\n');
-    await Bun.sleep(30);
+    // The second write arrives while run 1 is still in flight; single-flight must queue
+    // exactly one follow-up. Release run 1, then wait for the follow-up to complete
+    // rather than assuming a fixed 150 ms is enough under load.
     release?.();
-    await Bun.sleep(150);
+    expect(await waitForCondition(() => runs >= 2)).toBe(true);
+    expect(await waitForStableValue(() => runs)).toBe(true);
     stop();
     expect(runs).toBeGreaterThanOrEqual(2);
     expect(maxActiveRuns).toBe(1);

@@ -115,6 +115,7 @@ function portableCardEntry(card: CardLockEntry): CardLockEntry {
     skills: [...card.skills],
     hooks: [...card.hooks],
     ...(card.hookConsent ? { hookConsent: card.hookConsent } : {}),
+    ...(card.instructionConsent ? { instructionConsent: card.instructionConsent } : {}),
     registry: null,
     origin: card.origin,
     git: portableGit(card.git),

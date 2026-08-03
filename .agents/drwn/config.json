@@ -1,0 +1,13 @@
+{
+  "schema": "drwn.project-config",
+  "schemaVersion": 1,
+  "workers": [
+    "@curation-labs/ai-narratives-worker@1.1.0"
+  ],
+  "activeWorker": "@curation-labs/ai-narratives-worker",
+  "mcpServers": {
+    "notion": {
+      "enabled": false
+    }
+  }
+}

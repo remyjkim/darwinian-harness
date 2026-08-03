@@ -8,7 +8,7 @@ import {
   validateCardLockfile,
   type CardLockEntry,
 } from "./card-lock";
-import { collectCardMetaWarnings } from "./card-project";
+import { collectCardMetaWarnings, carryCardConsent } from "./card-project";
 import { cardNamesEqual, parseCardRef, type ResolveCardOptions } from "./card-store";
 import { DrwnError } from "./errors";
 import { validateProjectConfig } from "./project";
@@ -73,21 +73,11 @@ function parseSnapshot(snapshot: ProjectStateSnapshot): CurrentProjectState {
   return { config, graph: { roots: lock.workerRoots, cards: lock.cards } };
 }
 
-function preserveHookConsent(previousCards: CardLockEntry[], nextCards: CardLockEntry[], warnings: string[]) {
+async function preserveConsent(previousCards: CardLockEntry[], nextCards: CardLockEntry[], warnings: string[]) {
   const previousByName = new Map(previousCards.map((card) => [card.name, card]));
-  return nextCards.map((card) => {
-    const previous = previousByName.get(card.name);
-    if (!previous?.hookConsent) return card;
-    if (satisfies(card.version, previous.hookConsent.consentedRange, { includePrerelease: true })) {
-      return { ...card, hookConsent: previous.hookConsent };
-    }
-    if (card.hooks.length > 0) {
-      warnings.push(
-        `${card.name} hook consent dropped: locked ${card.version} is outside consent range ${previous.hookConsent.consentedRange}. Run drwn card trust ${card.name} --hooks to re-consent.`,
-      );
-    }
-    return card;
-  });
+  return Promise.all(
+    nextCards.map((card) => carryCardConsent(card, previousByName.get(card.name), warnings)),
+  );
 }
 
 function assertRootInstalled(graph: ResolvedWorkerGraph, name: string) {
@@ -107,7 +97,7 @@ async function prepareMutation(
   const current = parseSnapshot(snapshot);
   const resolved = await resolveWorkerGraph(agentsDir, nextSpecs, options);
   const warnings: string[] = [];
-  const cardsWithConsent = preserveHookConsent(current.graph.cards, resolved.cards, warnings);
+  const cardsWithConsent = await preserveConsent(current.graph.cards, resolved.cards, warnings);
   const locked = await backfillLockTreeShas(agentsDir, cardsWithConsent);
   warnings.push(...await collectCardMetaWarnings(agentsDir, locked, options));
   const graph = { roots: resolved.roots, cards: locked };

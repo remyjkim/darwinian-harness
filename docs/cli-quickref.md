@@ -225,13 +225,18 @@ General commands:
 - `drwn update [rootName] [--dry-run] [--write]`
 - `drwn use <rootNameOrRef>|--none [--no-write] [--dry-run]`
 - `drwn install [--frozen] [--no-write] [--json]`
+- `drwn install --frozen --org-worker-bundle <json> --worker-artifact-snapshot <json> --operation-id <id> [--dry-run] [--no-write] [--reconcile|--remove] [--json]`
+- `drwn projects list`
+- `drwn projects update --all [--fetch] [--dry-run] [--json]`
+- `drwn projects unregister <projectRoot> [--dry-run] [--json]`
+- `drwn projects prune [--dry-run] [--json]`
 
 Card commands:
 
 - `drwn card new <name> --scope @scope`
 - `drwn card new <name> --from-project [projectPath]`
 - `drwn card new <name> --from-defaults`
-- `drwn card publish <name>`
+- `drwn card publish <name> [--json] [--force-bump-mismatch]`
 - `drwn card catalog publish <cardRef> --catalog <scope|git-url|path> --mode <local|direct>`
 - `drwn card source list`
 - `drwn card source show <name>`
@@ -240,15 +245,15 @@ Card commands:
 - `drwn card source remove-skill <name> <skillName>`
 - `drwn card source add-hook <name> <policyName>`
 - `drwn card source remove-hook <name> <policyName>`
-- `drwn card source set <name> [options]`
+- `drwn card source set <name> [--instructions-text <text>|--instructions-path <relative-path>|--clear-instructions] [options]`
 - `drwn card source add-mcp <name> <serverName>`
 - `drwn card source remove-mcp <name> <serverName>`
 - `drwn card outdated [--check]`
 - `drwn card list`
 - `drwn card show <cardRef>`
 - `drwn card status [--explain]`
-- `drwn card trust <name> --hooks [--range <semverRange>]`
-- `drwn card untrust <name> --hooks`
+- `drwn card trust <name> (--hooks|--instructions) [--range <semverRange>]`
+- `drwn card untrust <name> (--hooks|--instructions)`
 - `drwn card audit`
 - `drwn card diff <beforeRef> <afterRef>`
 - `drwn card deprecate <cardRef>`
@@ -278,6 +283,23 @@ Card hooks:
 - `hooks.exclude` can skip a policy by bare policy name or by `@scope/card:policy-name`.
 - drwn hook consent only gates drwn materialization. Codex project-local hooks may still require Codex's own `/hooks` review/trust flow before they run.
 
+Card instructions:
+
+- Authors declare exactly one explicit source with `--instructions-text` or
+  `--instructions-path`; `--clear-instructions` removes it. A path must be a
+  readable regular UTF-8 file inside the Card source.
+- Consumers review and grant exact-content consent with
+  `drwn card trust <card> --instructions`. The lock records a semver range and
+  canonical content digest. Version-range or content changes drop consent.
+- A normal `drwn write` excludes unconsented contributions and warns.
+  `drwn write --strict` fails before instruction projection.
+- Consented contributions compose into one owned block in root `AGENTS.md`.
+  User bytes outside the block are preserved exactly. Unrecorded or malformed
+  reserved markers and ownership drift fail closed.
+- Claude reads the canonical file through `.claude/CLAUDE.md`. An absent adapter
+  is created; a foreign valid import is preserved; a foreign missing import is
+  advisory unless `--apply-claude-adapter` is supplied.
+
 Typical source authoring:
 
 ```bash
@@ -289,6 +311,19 @@ drwn card source set @your-handle/backend --description "Backend review harness"
 drwn card source doctor @your-handle/backend
 drwn card publish @your-handle/backend
 ```
+
+Publishing a new version of an existing card prints a **consent-impact report**
+showing which surfaces changed content between the previous and newly-published
+version. Pass `--json` for machine-readable output (`consentImpact` field):
+
+```bash
+drwn card publish @your-handle/backend --json
+```
+
+When hooks or instructions changed, consumers must re-trust. If the new version
+is still within a project's consented range, `drwn up` and `drwn update`
+auto-re-grant consent (updating the digest, preserving the range). Out-of-range
+changes fail loud with the exact `drwn card trust` command.
 
 Publish a card to a shared Git catalog after pushing the card repo:
 
@@ -427,6 +462,9 @@ Run only one side when needed:
 drwn write --mcp-only
 drwn write --skills-only
 ```
+
+These partial writes retain instruction files and instruction ownership
+unchanged. Instruction projection is project-only and target-agnostic.
 
 Limit write to one target:
 
@@ -698,7 +736,9 @@ are immutable; `current` is an atomic regular pointer. Referenced inventory
 cannot be removed with a force bypass. Removal and GC use tombstone recovery,
 and GC is a dry-run by default. Reference-sensitive writes follow
 `inventory -> machine -> project`; stale registered roots are repaired with
-`drwn projects unregister <root>`.
+`drwn projects unregister <root>` or removed in bulk with
+`drwn projects prune` (which removes entries whose `.agents/drwn/config.json`
+no longer exists).
 
 ## Extensions
 
@@ -809,6 +849,74 @@ Useful flags:
 - `--include-skill` sets `extensions.beads.includeSkill: true` so write derives `beads-task-tracking`
 
 Setup never runs `bd init --force` or `bd doctor --fix` by default. Beads MCP remains optional and is not enabled by `drwn extensions setup beads`.
+
+## Immutable organization Worker handoff
+
+A fresh project can consume a complete, immutable
+`OrgWorkerBundleV1`/artifact packet without fetching or resolving a local
+source:
+
+```bash
+drwn install --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:provision:0001
+```
+
+The three handoff arguments are atomic and require `--frozen`. The snapshot
+file's parent is the packet root. The supported V1 profile accepts
+directory-backed Worker-root and Card artifacts, `project_workspace`, an empty
+project overlay, and `worker-materialization-receipt@1`. Compatibility, bundle,
+artifact, version-floor, or consent failures occur before project mutation.
+Bundle hook consent is rejected with
+`ORG_WORKER_HOOK_CONSENT_UNSUPPORTED` until a versioned profile defines its
+projection evidence.
+
+Every snapshot entry declares
+`darwinian-card-tree-directory@1`, a safe relative content path, content-tree
+digest, Git tree/commit, integrity, and exact Card identity. Symlink/traversal
+substitution and missing/extra artifacts fail closed.
+
+Planning modes never emit a success receipt:
+
+```bash
+drwn install --dry-run --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:preview:0001
+```
+
+`--no-write` has the same no-mutation/no-success-receipt boundary. These modes
+derive the requested-state plan; for reconcile/remove they do not inspect the
+prior record or prove that an owned mutation is feasible. Successful
+materialization commits config and lock together, vendors verified bytes,
+projects instructions, reads back all owned state, then appends a receipt and
+the bounded local materialization record. A retained journal resumes the same
+operation ID after interruption; a changed request with the same ID fails.
+
+Organization instruction consent remains external evidence and is never
+written as local Card consent. Status reports the source as `local`,
+`organization`, or `mixed`.
+
+Use the exact original handoff for ownership-bounded repair or removal:
+
+```bash
+drwn install --reconcile --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:reconcile:0001
+
+drwn install --remove --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:remove:0001
+```
+
+Reconcile repairs only record-owned drift. Removal deletes only no-longer-needed
+owned bytes: unrelated roots, overlays, user bytes, adapters still required by
+a retained projection, and local consent on retained Cards remain. It then
+leaves a tombstone and a receipt chained to the prior verified receipt.
+Unsupported artifact/overlay kinds remain fail-closed.
 
 ## Per-project configuration
 
@@ -936,8 +1044,15 @@ It reports:
 - machine schema, profile, capability provenance, and projection ownership issues
 - missing generated config files
 - project config issues
+- local Worker materialization state, stable identities, receipt evidence,
+  consent source, incomplete journals, artifact/projection drift, and removed
+  tombstones
 
-It does not mutate local state. Unresolved `skills.include` names are a separate write-time contract: `drwn write` fails before mutation, while `doctor` reports the same problem in diagnostics output.
+It does not mutate local state. Materialization diagnostics use only local
+bounded evidence and never claim organization readiness. Error-severity
+materialization issues make `doctor` exit non-zero. Unresolved `skills.include`
+names are a separate write-time contract: `drwn write` fails before mutation,
+while `doctor` reports the same problem in diagnostics output.
 
 ## Optional extensions
 

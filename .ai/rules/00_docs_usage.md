@@ -26,6 +26,15 @@ backend_v1/.ai/
 
 ---
 
+## Terminology
+
+- "Agent" appears only when naming an external harness surface or file (`AGENTS.md`, `.claude/agents/`, `.codex/agents/`, `developer_instructions`). drwn concepts are **workers, cards, instructions, personas** — never "agents". (`~/.agents` is a storage path, not a concept.)
+- The composed instruction artifact is the **worker instructions** (inputs: per-card `instructions` fields); its delivery is **instructions projection**; a card-bundled spawnable definition is a **sub-worker**; the pull-strength fallback skill is the **instructions-skill**. "Spine" appears only as an attributed historical citation (I24, analyses 100/101).
+- "Ratification" is reserved for org doctrine (CL org program); drwn documents say **approve**.
+- Cross-repo glossary and conflict register: Notion "072226 Architect ↔ drwn worker blueprint" page.
+
+---
+
 ## 1. RULES Directory (`rules/`)
 
 **Purpose**: Define standards, conventions, and rules for the project.

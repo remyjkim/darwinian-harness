@@ -21,6 +21,10 @@ import {
 import { syncSkills as syncSkillsCore } from "./skills";
 import { syncHooks } from "./hook-generator/sync-hooks";
 import { syncWorkers } from "./worker-generator/sync-worker";
+import {
+  instructionCompositionForState,
+  syncProjectInstructions,
+} from "./sync-project-instructions";
 import { ensureParentDir, lstatSafe, realpathSafe } from "./fs";
 import { backupExistingPath, writeManagedFile } from "./managed-file";
 import {
@@ -292,6 +296,9 @@ export function cleanupRemovedManagedPaths(
     if (!existsSync(absolutePath) && lstatSafe(absolutePath) === null) {
       continue;
     }
+    if (entry.surface === "instructions") {
+      continue;
+    }
     if (entry.kind === "managed-content") {
       const stats = lstatSafe(absolutePath);
       if (stats?.isFile() && hashManagedContent(readFileSync(absolutePath)) === entry.contentHash) {
@@ -404,6 +411,9 @@ export function verifyManagedPaths(
     return;
   }
   for (const entry of previous) {
+    if (entry.surface === "instructions") {
+      continue;
+    }
     if (entry.kind === "managed-fields" && isCodexMcpEntry(entry) && Object.keys(entry.fieldHashes).length > 0) {
       const absolutePath = managedPathToAbsolute(scopeRoot, entry.path);
       if (!existsSync(absolutePath)) {
@@ -682,10 +692,26 @@ export async function syncRepository(options: SyncOptions = {}): Promise<SyncRes
     state.contentRootsByCard = recomputeContentRootsByCard(state, {
       allowPlanningFallback: Boolean(state.normalized.dryRun),
     });
+    const composition = instructionCompositionForState(state);
+    if (state.scopedOptions.strict && composition.excluded.length > 0) {
+      throw new Error(
+        `Explicit instruction consent required for: ${composition.excluded
+          .map((item) => item.card)
+          .join(", ")}`,
+      );
+    }
     const workersResult = await syncWorkers(state);
     result.changes.push(...workersResult.changes);
     result.warnings.push(...workersResult.warnings);
     result.managedPaths?.push(...(workersResult.managedPaths ?? []));
+    const instructionsResult = syncProjectInstructions({
+      state,
+      previousManagedPaths: previousRecord?.managedPaths ?? [],
+      composition,
+    });
+    result.changes.push(...instructionsResult.changes);
+    result.warnings.push(...instructionsResult.warnings);
+    result.managedPaths?.push(...(instructionsResult.managedPaths ?? []));
   }
 
   if (!state.normalized.skillsOnly) {

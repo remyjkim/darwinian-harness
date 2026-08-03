@@ -3,8 +3,14 @@
 
 import { Option } from "clipanion";
 import { formatAmbientCollision } from "../core/ambient-policy";
-import { answerWhy, buildDiagnosticsSections, buildProjectStatusV1, buildStatusReport, explainStatus } from "../core/diagnostics";
-import { buildEffectiveState } from "../core/effective-state";
+import {
+  answerWhy,
+  buildDiagnosticsSections,
+  buildEffectiveStateForDiagnostics,
+  buildProjectStatusV1,
+  buildStatusReport,
+  explainStatus,
+} from "../core/diagnostics";
 import { DrwnError } from "../core/errors";
 import { resolveProjectRootFromConfigPath } from "../core/project";
 import { renderJson, renderTable } from "../core/output";
@@ -118,7 +124,7 @@ export class StatusCommand extends BaseCommand {
       let cardModes: Record<string, { mode: string; reason: string; lane: string; sourcePath?: string }> | undefined;
       if (status.project) {
         const projectRoot = resolveProjectRootFromConfigPath(status.project.configPath);
-        const state = await buildEffectiveState({
+        const state = await buildEffectiveStateForDiagnostics({
           repoRoot: this.context.repoRoot,
           agentsDir: this.context.agentsDir,
           homeDir: this.context.homeDir,
@@ -171,13 +177,23 @@ export class StatusCommand extends BaseCommand {
       output += `  Extension overrides: ${status.project.extensionOverrides.join(", ") || "none"}\n`;
       output += `  Target overrides:  ${status.project.targetOverrides.join(", ") || "none"}\n`;
       const projectRoot = resolveProjectRootFromConfigPath(status.project.configPath);
-      const state = await buildEffectiveState({
+      const state = await buildEffectiveStateForDiagnostics({
         repoRoot: this.context.repoRoot,
         agentsDir: this.context.agentsDir,
         homeDir: this.context.homeDir,
         cwd: projectRoot,
       });
       output += `  Active Worker:      ${state.workerSelection?.activeWorker ?? "none"}\n`;
+      const projectStatus = await buildProjectStatusV1({
+        repoRoot: this.context.repoRoot,
+        agentsDir: this.context.agentsDir,
+        homeDir: this.context.homeDir,
+        projectConfigPath: status.project.configPath,
+      });
+      if (projectStatus) {
+        output += `  Instruction delivery: ${projectStatus.instructionDelivery.state} (Claude adapter: ${projectStatus.instructionDelivery.adapter})\n`;
+        output += `  Worker materialization: ${projectStatus.orgWorkerMaterialization?.state ?? "absent"}\n`;
+      }
       if (state.ambientCollisions.length > 0) {
         output += "\nAmbient MCP collisions:\n";
         output += `${state.ambientCollisions.map((collision) => `  - ${formatAmbientCollision(collision)}`).join("\n")}\n`;
