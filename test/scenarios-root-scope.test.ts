@@ -1,11 +1,19 @@
-// ABOUTME: Verifies `drwn write --root` materializes machine defaults into user-scope tool configs.
+// ABOUTME: Verifies `drwn write --root` materializes the active machine Worker into user-scope tool configs.
 // ABOUTME: Protects per-server MCP ownership, drift detection, removal, and project isolation.
 
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { lstat, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import {
+  cleanupTempRoots,
+  createFixtureRegistry,
+  envFor,
+  installMachineBlueprint,
+  publishMachineBlueprint,
+  runAgentsCli,
+  scaffoldCliFixture,
+} from "./helpers";
 import { loadWriteRecord } from "../cli/core/write-record";
 import { resolveGlobalWriteRecordPath } from "../cli/core/store-paths";
 
@@ -29,8 +37,20 @@ async function runWriteRoot(fixture: Awaited<ReturnType<typeof scaffoldCliFixtur
 }
 
 async function ensureContext7Default(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  const result = await runAgentsCli(["machine", "mcp", "enable", "context7", "--json"], envFor(fixture));
-  expect(result.exitCode).toBe(0);
+  await installMachineBlueprint(fixture, {
+    skills: ["alpha"],
+    servers: { context7: createFixtureRegistry().servers.context7 },
+  });
+}
+
+async function clearActiveMachineWorker(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+) {
+  const result = await runAgentsCli(
+    ["use", "--root", "--none", "--no-write"],
+    envFor(fixture),
+  );
+  expect(result.exitCode, result.stderr).toBe(0);
 }
 
 test("write --root surgically adds default MCPs to user-scope tool configs", async () => {
@@ -190,8 +210,7 @@ test("write --root removes the last drwn-owned MCP entry without touching hand-m
   });
   expect((await runWriteRoot(fixture)).exitCode).toBe(0);
 
-  const remove = await runAgentsCli(["machine", "mcp", "disable", "context7", "--json"], envFor(fixture));
-  expect(remove.exitCode).toBe(0);
+  await clearActiveMachineWorker(fixture);
   const rewrite = await runWriteRoot(fixture);
   expect(rewrite.exitCode).toBe(0);
 
@@ -217,7 +236,7 @@ test("removing a capability preserves drifted prior-owned MCP entries for every 
   const cursor = await readJson(fixture.cursorConfig);
   cursor.mcpServers.context7.command = "drifted-cursor";
   await writeJson(fixture.cursorConfig, cursor);
-  expect((await runAgentsCli(["machine", "mcp", "disable", "context7"], envFor(fixture))).exitCode).toBe(0);
+  await clearActiveMachineWorker(fixture);
 
   const result = await runWriteRoot(fixture);
 
@@ -233,7 +252,7 @@ test("removing a capability preserves a prior-owned MCP config whose path change
   tempRoots.push(fixture.root);
   await ensureContext7Default(fixture);
   expect((await runWriteRoot(fixture, ["--target=cursor"])).exitCode).toBe(0);
-  expect((await runAgentsCli(["machine", "mcp", "disable", "context7"], envFor(fixture))).exitCode).toBe(0);
+  await clearActiveMachineWorker(fixture);
   await rm(fixture.cursorConfig, { force: true });
   await mkdir(fixture.cursorConfig, { recursive: true });
   await writeFile(join(fixture.cursorConfig, "sentinel"), "foreign\n");
@@ -246,7 +265,7 @@ test("removing a capability preserves a prior-owned MCP config whose path change
   expect((JSON.parse(result.stdout).warnings as string[]).some((warning) => warning.includes("preserved user-owned path"))).toBe(true);
 });
 
-test("write --root with no machine MCP defaults leaves user-scope MCP files unchanged", async () => {
+test("write --root with no active machine Worker leaves user-scope MCP files unchanged", async () => {
   const fixture = await scaffoldCliFixture({ curatedSkillNames: [] });
   tempRoots.push(fixture.root);
   const repoConfig = await readJson(join(fixture.repoRoot, "registry", "config.json"));
@@ -266,7 +285,7 @@ test("write --root with no machine MCP defaults leaves user-scope MCP files unch
   expect(result.exitCode).toBe(0);
   expect(await readFile(fixture.claudeUserMcp, "utf8")).toBe(beforeClaude);
   expect(await readFile(fixture.codexConfig, "utf8")).toBe(beforeCodex);
-  expect(JSON.parse(result.stdout).warnings.join("\n")).toContain("no explicit machine MCP servers");
+  expect(JSON.parse(result.stdout).warnings.join("\n")).toContain("no active machine Worker MCP servers");
 });
 
 test("write --root ignores project config and leaves project MCP files untouched", async () => {
@@ -488,17 +507,33 @@ test("target-limited machine writes retain ownership and bytes for unselected ta
 test("mode-limited machine writes retain ownership for the unselected capability surface", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture))).exitCode).toBe(0);
-  await ensureContext7Default(fixture);
+  const fullRef = await publishMachineBlueprint(fixture, {
+    rootName: "@me/full-worker",
+    memberName: "@me/full-capabilities",
+    skills: ["alpha"],
+    servers: { context7: createFixtureRegistry().servers.context7 },
+  });
+  const mcpRef = await publishMachineBlueprint(fixture, {
+    rootName: "@me/mcp-worker",
+    memberName: "@me/mcp-capabilities",
+    servers: { context7: createFixtureRegistry().servers.context7 },
+  });
+  const { applyMachineWorkerRoots } = await import("../cli/core/worker-machine");
+  await applyMachineWorkerRoots(fixture.agentsDir, [fullRef, mcpRef], {
+    active: "@me/full-worker",
+  });
   expect((await runAgentsCli(["write", "--scope", "machine"], envFor(fixture))).exitCode).toBe(0);
-  expect((await runAgentsCli(["machine", "skill", "disable", "alpha"], envFor(fixture))).exitCode).toBe(0);
-  expect((await runAgentsCli(["machine", "mcp", "disable", "context7"], envFor(fixture))).exitCode).toBe(0);
+  expect((await runAgentsCli(
+    ["use", "@me/mcp-worker", "--root", "--no-write"],
+    envFor(fixture),
+  )).exitCode).toBe(0);
 
   const skillsOnly = await runAgentsCli(["write", "--scope", "machine", "--skills-only"], envFor(fixture));
   expect(skillsOnly.exitCode).toBe(0);
   expect(existsSync(join(fixture.homeDir, ".claude", "skills", "alpha"))).toBe(false);
   expect((await readJson(fixture.claudeUserMcp)).mcpServers.context7).toBeDefined();
 
+  await clearActiveMachineWorker(fixture);
   const mcpOnly = await runAgentsCli(["write", "--scope", "machine", "--mcp-only"], envFor(fixture));
   expect(mcpOnly.exitCode).toBe(0);
   expect((await readJson(fixture.claudeUserMcp)).mcpServers?.context7).toBeUndefined();
@@ -516,11 +551,7 @@ test("write --root with empty defaults but prior ownership prunes without emitti
 
   // Remove the default via the CLI — empties the active server set but the
   // write-record still records prior ownership.
-  const remove = await runAgentsCli(
-    ["machine", "mcp", "disable", "context7", "--json"],
-    envFor(fixture),
-  );
-  expect(remove.exitCode).toBe(0);
+  await clearActiveMachineWorker(fixture);
 
   const result = await runWriteRoot(fixture);
 

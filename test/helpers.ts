@@ -206,6 +206,8 @@ export async function publishCardWithSkills(
     version?: string;
     skills: string[];
     servers?: Record<string, unknown>;
+    instructions?: { text: string };
+    hooks?: string[];
   },
 ): Promise<string> {
   const version = options.version ?? "1.0.0";
@@ -229,12 +231,26 @@ export async function publishCardWithSkills(
   if (options.servers) {
     manifest.servers = options.servers;
   }
+  if (options.instructions) {
+    manifest.instructions = options.instructions;
+  }
+  if (options.hooks && options.hooks.length > 0) {
+    manifest.hooks = { include: options.hooks };
+  }
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   for (const skill of options.skills) {
     const skillDir = join(sourceRoot, "skills", skill);
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${skill}\ndescription: ${skill}\n---\n`);
+  }
+  for (const hook of options.hooks ?? []) {
+    const hookDir = join(sourceRoot, "hooks", hook);
+    await mkdir(hookDir, { recursive: true });
+    await writeFile(
+      join(hookDir, "policy.ts"),
+      "export default { policyKind: 'observer' };\n",
+    );
   }
 
   const published = await runAgentsCli(["card", "publish", options.name, "--from", sourceRoot], envFor(fixture));
@@ -243,13 +259,15 @@ export async function publishCardWithSkills(
   return (await resolveCard(fixture.agentsDir, `${scope}/${cardName}@${version}`)).dir;
 }
 
-export async function installMachineBlueprint(
+export async function publishMachineBlueprint(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   options: {
     rootName?: string;
     memberName?: string;
     skills?: string[];
     servers?: Record<string, unknown>;
+    instructions?: { text: string };
+    hooks?: string[];
   } = {},
 ) {
   const rootName = options.rootName ?? "@me/machine-worker";
@@ -258,6 +276,8 @@ export async function installMachineBlueprint(
     name: memberName,
     skills: options.skills ?? [],
     servers: options.servers,
+    instructions: options.instructions,
+    hooks: options.hooks,
   });
   const sourceDir = await createCatalogCardSource(fixture, rootName, {
     kind: "blueprint",
@@ -272,8 +292,23 @@ export async function installMachineBlueprint(
     envFor(fixture),
   );
   expect(published.exitCode, published.stderr).toBe(0);
+  return `${rootName}@1.0.0`;
+}
+
+export async function installMachineBlueprint(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  options: {
+    rootName?: string;
+    memberName?: string;
+    skills?: string[];
+    servers?: Record<string, unknown>;
+    instructions?: { text: string };
+    hooks?: string[];
+  } = {},
+) {
+  const ref = await publishMachineBlueprint(fixture, options);
   const { applyMachineWorkerRoots } = await import("../cli/core/worker-machine");
-  return applyMachineWorkerRoots(fixture.agentsDir, [`${rootName}@1.0.0`]);
+  return applyMachineWorkerRoots(fixture.agentsDir, [ref]);
 }
 
 export async function publishExactOperatorProfile(

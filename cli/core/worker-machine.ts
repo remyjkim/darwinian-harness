@@ -15,6 +15,10 @@ import { mutateMachineConfig } from "./machine-config";
 import { resolveMachineConfigPath } from "./store-paths";
 import type { MachineConfig } from "./types";
 import { resolveWorkerGraph, type ResolvedWorkerGraph } from "./worker-graph";
+import { resolveMachineCapabilities } from "./defaults";
+import { resolveExplicitInstructionContribution } from "./instruction-contribution";
+import { satisfies, validRange } from "./semver-utils";
+import { machineConsentScope } from "./consent-scope";
 
 export interface MachineWorkerMutation {
   machineConfigPath: string;
@@ -29,6 +33,17 @@ export interface MachineWorkerMutation {
 export interface MachineWorkerMutationOptions extends ResolveCardOptions {
   dryRun?: boolean;
   validateGraph?: (graph: ResolvedWorkerGraph) => void;
+}
+
+export interface MachineCardConsentMutation {
+  lockPath: string;
+  card: CardLockEntry;
+  scope: ReturnType<typeof machineConsentScope>;
+}
+
+export interface MachineCardConsentSurfaces {
+  hooks: boolean;
+  instructions: boolean;
 }
 
 function currentGraph(config: MachineConfig): ResolvedWorkerGraph {
@@ -202,4 +217,132 @@ export async function useMachineWorker(
       value: mutationValue(agentsDir, updated, next.warnings, options.dryRun),
     };
   }, { dryRun: options.dryRun });
+}
+
+async function mutateMachineCardConsent(
+  agentsDir: string,
+  cardNameOrRef: string,
+  surfaces: MachineCardConsentSurfaces,
+  options: { clear: boolean; range?: string },
+): Promise<MachineCardConsentMutation> {
+  return mutateMachineConfig(agentsDir, async (config) => {
+    const lock = config.capabilities.workerLock;
+    if (!lock || config.capabilities.activeWorker === null) {
+      throw new DrwnError(
+        "MACHINE_WORKER_NOT_SELECTED",
+        "Select an active machine Worker Blueprint before changing Card consent",
+      );
+    }
+    assertSupportedLock(lock);
+    const capabilities = await resolveMachineCapabilities({
+      repoRoot: "",
+      agentsDir,
+    });
+    const requestedName = parseCardRef(cardNameOrRef).name;
+    const target = capabilities.activeCards.find((card) =>
+      cardNamesEqual(card.name, requestedName)
+    );
+    if (!target) {
+      const installed = lock.cards.some((card) =>
+        cardNamesEqual(card.name, requestedName)
+      );
+      throw new DrwnError(
+        installed ? "MACHINE_CARD_NOT_ACTIVE" : "MACHINE_CARD_NOT_LOCKED",
+        installed
+          ? `Card ${requestedName} is not in the active machine Worker closure`
+          : `Card is not in machine Worker lock: ${requestedName}`,
+      );
+    }
+
+    let nextTarget: CardLockEntry;
+    if (options.clear) {
+      nextTarget = { ...target };
+      if (surfaces.hooks) delete nextTarget.hookConsent;
+      if (surfaces.instructions) delete nextTarget.instructionConsent;
+    } else {
+      const consentedRange = options.range ?? `^${target.version}`;
+      if (
+        !validRange(consentedRange) ||
+        !satisfies(target.version, consentedRange, { includePrerelease: true })
+      ) {
+        throw new Error(
+          `Consent range must be valid and include locked version ${target.version}: ${consentedRange}`,
+        );
+      }
+      if (surfaces.hooks && target.hooks.length === 0) {
+        throw new Error(`Card ${target.name} does not declare hooks`);
+      }
+      const contribution = surfaces.instructions
+        ? resolveExplicitInstructionContribution(
+            target,
+            capabilities.contentRootsByCard[target.name] ?? target.path,
+          )
+        : null;
+      if (surfaces.instructions && !contribution) {
+        throw new Error(`Card ${target.name} does not declare explicit instructions`);
+      }
+      const now = new Date().toISOString();
+      const hookConsent = surfaces.hooks
+        ? target.hookConsent?.consentedRange === consentedRange
+          ? target.hookConsent
+          : { consentedAt: now, consentedRange }
+        : target.hookConsent;
+      const instructionConsent = surfaces.instructions && contribution
+        ? target.instructionConsent?.consentedRange === consentedRange &&
+            target.instructionConsent.contentDigest === contribution.contentDigest
+          ? target.instructionConsent
+          : {
+              consentedAt: now,
+              consentedRange,
+              contentDigest: contribution.contentDigest,
+            }
+        : target.instructionConsent;
+      nextTarget = {
+        ...target,
+        ...(hookConsent ? { hookConsent } : {}),
+        ...(instructionConsent ? { instructionConsent } : {}),
+      };
+    }
+
+    const nextLock: ProjectLockV1 = {
+      ...lock,
+      cards: lock.cards.map((card) =>
+        cardNamesEqual(card.name, target.name) ? nextTarget : card
+      ),
+    };
+    const updated: MachineConfig = {
+      ...config,
+      capabilities: { ...config.capabilities, workerLock: nextLock },
+    };
+    return {
+      config: updated,
+      value: {
+        lockPath: resolveMachineConfigPath(agentsDir),
+        card: nextTarget,
+        scope: machineConsentScope(config.capabilities.activeWorker),
+      },
+    };
+  });
+}
+
+export async function setMachineCardConsent(
+  agentsDir: string,
+  cardNameOrRef: string,
+  surfaces: MachineCardConsentSurfaces,
+  range?: string,
+) {
+  return mutateMachineCardConsent(agentsDir, cardNameOrRef, surfaces, {
+    clear: false,
+    range,
+  });
+}
+
+export async function clearMachineCardConsent(
+  agentsDir: string,
+  cardNameOrRef: string,
+  surfaces: MachineCardConsentSurfaces,
+) {
+  return mutateMachineCardConsent(agentsDir, cardNameOrRef, surfaces, {
+    clear: true,
+  });
 }

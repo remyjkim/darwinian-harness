@@ -3,6 +3,7 @@
 
 import { Option, UsageError } from "clipanion";
 import { clearCardConsent } from "../../core/card-project";
+import { clearMachineCardConsent } from "../../core/worker-machine";
 import { BaseCommand } from "../base";
 import { requireProjectRoot } from "./project-command";
 
@@ -29,18 +30,31 @@ export class CardUntrustCommand extends BaseCommand {
     description: "Clear explicit instruction projection consent for this card.",
   });
 
+  scope = Option.String("--scope", "project", {
+    description: "Consent scope: project or machine.",
+  });
+
   async execute() {
     if (!this.hooks && !this.instructions) {
       throw new UsageError("Specify --hooks and/or --instructions to clear consent.");
     }
+    if (this.scope !== "project" && this.scope !== "machine") {
+      throw new UsageError(`Unsupported consent scope: ${this.scope}. Use project or machine.`);
+    }
     let result;
     try {
-      result = await clearCardConsent(
-        requireProjectRoot(this),
-        this.context.agentsDir,
-        this.spec,
-        { hooks: this.hooks, instructions: this.instructions },
-      );
+      result = this.scope === "machine"
+        ? await clearMachineCardConsent(
+            this.context.agentsDir,
+            this.spec,
+            { hooks: this.hooks, instructions: this.instructions },
+          )
+        : await clearCardConsent(
+            requireProjectRoot(this),
+            this.context.agentsDir,
+            this.spec,
+            { hooks: this.hooks, instructions: this.instructions },
+          );
     } catch (error) {
       this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       return 1;

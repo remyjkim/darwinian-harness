@@ -589,7 +589,7 @@ export async function syncMcp(
 
   if (options.writeScope === "machine" && serverCount === 0 && !hasPriorMcpOwnership) {
     result.warnings.push(
-      "drwn write --root: no explicit machine MCP servers configured. Enable one with `drwn machine mcp enable <server-id>` first.",
+      "drwn write --root: no active machine Worker MCP servers to project.",
     );
     return result;
   }
