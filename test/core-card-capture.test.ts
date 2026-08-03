@@ -170,7 +170,7 @@ test("captureProjectAsCard refuses to overwrite an existing source", async () =>
       name: "@me/captured",
       sourceDir,
     }),
-  ).rejects.toThrow(/Card source already exists/);
+  ).rejects.toThrow(/Card source destination already exists/);
 });
 
 test("captureProjectAsCard copies selected hooks after applying project exclusions", async () => {

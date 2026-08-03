@@ -220,7 +220,7 @@ describe("drwn status", () => {
     expect(parsed.profile).toMatchObject({
       id: "darwinian-operator",
       name: "@darwinian/operator",
-      version: "2.0.0",
+      version: profile.version,
       commit: profile.commit,
       treeSha: profile.treeSha,
       integrity: profile.integrity,
