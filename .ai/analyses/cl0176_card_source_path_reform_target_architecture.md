@@ -3,11 +3,24 @@
 
 # [I176] Card Source Path Reform — Target Architecture (GATE 1)
 
-**Status**: Design proposal (2026-07-31), submitted for G1 review 2026-08-03. Pre-launch; open to breaking changes.
+**Status**: Ratified for execution 2026-08-03 with the implementation clarifications below. Pre-launch; breaking change approved.
 **Issue**: [I176] · **Owner**: Remy K · **Reviewer**: Minseung Lee · **Branch**: `remy/I176-card-source-path-reform`
 **Plan**: [`../tasks/cl0176_card_source_path_reform_task_plan.md`](../tasks/cl0176_card_source_path_reform_task_plan.md) (GATE 2)
 **Scope**: the drwn CLI's card-authoring/publish lifecycle (`cli/`).
 **Related**: `drwn-lab/.ai/analyses/02_projection_verifier_design.md` (projection internals), `drwn-lab/.ai/knowledges/05_card_version_bump_guide.md` (the 5-stage pipeline this simplifies), the darwinian-cards consolidation (17 registered cards).
+
+## Execution clarifications (binding)
+
+These clarifications resolve the readiness findings discovered after the original proposal. They override narrower or conflicting language later in this document.
+
+1. **One source-input contract.** A shared resolver accepts an explicit path (`--from`, plain path, `file:` path, relative path, absolute path, or `~` path) or a bare card name. Explicit paths are normalized and validated first. Bare names search configured catalog checkouts by manifest name. Missing and ambiguous matches fail with stable guidance; the manifest remains authoritative for card identity.
+2. **CLI grammar.** `card publish`, `worker publish`, and `card release` accept either an optional card name or `--from <path>`. Supplying both is allowed only when the supplied name matches `card.json`; otherwise it fails. Supplying neither fails with usage guidance. `card source *` commands take a source path or a resolvable bare name.
+3. **User preferences are additive infrastructure.** The existing `cli/core/user-config.ts` machine-policy loader remains intact. The new `~/.agents/drwn/config.json` preference schema is implemented in a dedicated module and deliberately updates the release-readiness contract that previously treated this path only as a retired prototype fallback.
+4. **Authoring-scope migration is lossless.** Existing `machine.json policy.authoring.scope` is copied into `defaultAuthorScope` on first preference read/write, with the machine field retained for compatibility during the migration transaction and removed only after the preference write succeeds. Strict readers accept the legacy field until migration is complete.
+5. **Checkpoint resolution is explicit and asynchronous.** Mind checkpoint resolves each card through project `sourceOverrides` first, then configured catalog checkouts. A missing mapping remains a `MIND_CHECKPOINT_NO_SOURCE` error when changed DB content must be written; it is not treated as a successful no-op.
+6. **Migration is inventory-driven.** I176 stops creating and depending on `sources/`, but does not blindly delete the operator's real store. The command reports legacy source inventory and migration guidance. Real-machine deletion is a separate confirmed operation after every source is classified as canonical, migrated, or intentionally retained.
+7. **Canonical source collection.** `darwinian-cards` is the collection checkout for the individual card source repositories. Name resolution searches its `cards/` entries by `card.json.name`; it does not turn the collection into a second copy of card contents.
+8. **TDD and CI baseline.** Every behavior is implemented as a RED→GREEN increment. The inherited legacy-wrapper CI failure is repaired first. Verification uses Bun 1.2.21, initialized submodules, typecheck, release readiness, and the full tracked test suite.
 
 ## 1. The problem
 
@@ -204,6 +217,7 @@ That's it. No `sources/` dir, no sync, no "which copy is authoritative."
 - `cli/core/diagnostics.ts` (1: sourceCount diagnostic — remove or redefine)
 - `cli/commands/card/new.ts` (createCardSource call → CWD creation)
 - `cli/commands/card/publish.ts` (add `--from` flag)
+- `cli/commands/card/release.ts` + `cli/core/release-pipeline.ts` (use the same source-input contract)
 - `cli/commands/card/fork.ts` (resolveCardSourceDir → explicit path)
 - `cli/commands/card/link.ts` (the project-scoped link — stays, but the default path changes)
 - `cli/commands/card/source/*.ts` (all 15 subcommands → accept path)
@@ -220,7 +234,7 @@ New concept: a machine-local list of catalog checkout paths, stored in `~/.agent
 }
 ```
 
-When a `drwn card source *` or `publish` command receives a bare name (no `--from`), it resolves the name against the catalog checkouts: for each checkout, look for `cards/<basename>/card.json`, read the manifest, match the `name` field. First match wins.
+When a `drwn card source *`, `publish`, or `release` command receives a bare name (no `--from`), it resolves the name against the catalog checkouts: for each checkout, inspect entries under `cards/`, read each `card.json`, and match the manifest `name`. Paths expand `~` against the command context's resolved home directory. Zero matches fail with setup guidance; multiple matches fail as ambiguous instead of silently choosing a checkout.
 
 This is **optional machinery** — `--from <path>` always works without it. The registry just makes `drwn card publish @scope/name` convenient when you have a catalog checkout.
 
@@ -297,13 +311,13 @@ Since this is pre-launch, there are no external consumers to break. The migratio
 3. **Update `drwn card new`** to create in CWD.
 4. **Remove `resolveCardSourceDir` / `resolveSourcesRoot`** from `store-paths.ts`.
 5. **Update docs** (README, cli-quickref, the knowledge docs) to the new model.
-6. **Delete `sources/`** from existing machines — the consolidation already moved all card sources to `darwinian-cards/cards/`; the `sources/` copies are redundant. A `drwn sources migrate` command (or manual deletion) cleans them up.
+6. **Inventory legacy `sources/`** on existing machines and stop recreating it. Classify each source as canonical in `darwinian-cards`, migrated elsewhere, or intentionally retained. Deletion is a separately confirmed operator action after that inventory is complete.
 7. **Update the lab's knowledge docs** (05_card_version_bump_guide.md, 02_drwn_lab_operations.md) to reflect the new Stage 1 (no `rsync` needed — publish directly from the catalog checkout).
 
 ### What about the 25 existing sources on this machine?
 
 The consolidation already created git repos + `darwinian-cards` submodules for the 17 active cards. Their `sources/` copies are redundant. After the implementation:
-- For the 17 registered cards: delete the `sources/` copy; publish from `darwinian-cards/cards/<name>/` via `--from` or name resolution.
+- For the 17 registered cards: verify the catalog checkout and source repository identity, then publish from `darwinian-cards/cards/<name>/` via `--from` or name resolution. The redundant store copy may be deleted only after confirmation.
 - For the 5 unregistered stubs (chief, l6-mind-probe, etc.): they stay as-is until cleaned up (they're not published anyway).
 - For the 3 deferred monorepo cards (l6-mind-card, believer-interview, notion-token): handle when their monorepo structure is resolved.
 
