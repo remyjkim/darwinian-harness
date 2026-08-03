@@ -24,6 +24,12 @@ test("ensureGitignoreEntries appends drwn block once and preserves user lines", 
   expect(first).toContain("node_modules/");
   expect(first).toContain("# drwn");
   expect(first).toContain("config.local.json");
+  expect(first).toContain(
+    ".agents/drwn/org-worker-materialization.json",
+  );
+  expect(first).toContain(
+    ".agents/drwn/.org-worker-materialization-journal.json",
+  );
   expect(first).toContain(".claude/skills/");
 
   await ensureGitignoreEntries(root);
@@ -55,6 +61,7 @@ test("opencode hygiene ignores only the generated plugin, never opencode.json", 
   expect(entries).not.toContain("opencode.json");
   expect(entries).not.toContain(".opencode/");
   expect(entries).toContain(".opencode/plugins/drwn-hooks.js");
+  expect(entries).toContain(".agents/drwn/receipts/");
 });
 
 test("ensureVendorGitattributes writes vendor hygiene attributes", async () => {

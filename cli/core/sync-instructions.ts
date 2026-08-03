@@ -3,9 +3,12 @@
 
 import type { CardLockEntry } from "./card-lock";
 import {
-  isInstructionConsentValid,
   resolveExplicitInstructionContribution,
 } from "./instruction-contribution";
+import {
+  resolveEffectiveInstructionConsent,
+  type OrganizationInstructionConsentContext,
+} from "./instruction-consent-evidence";
 import {
   parseManagedBlock,
   removeManagedBlock,
@@ -29,6 +32,12 @@ export interface InstructionComposition {
   excluded: Array<{
     card: string;
     reason: "consent_required" | "consent_stale";
+    expectedEvidenceKind?: "org_worker_bundle_consent";
+  }>;
+  included: Array<{
+    card: string;
+    evidenceKind: "local_card_consent" | "org_worker_bundle_consent";
+    evidenceId: string;
   }>;
 }
 
@@ -46,35 +55,67 @@ function concatenate(parts: readonly Uint8Array[]): Uint8Array {
 export function composeConsentedInstructions(input: {
   cards: readonly CardLockEntry[];
   contentRootsByCard: Readonly<Record<string, string>>;
+  organizationConsent?: OrganizationInstructionConsentContext | null;
 }): InstructionComposition {
   const contributions: Uint8Array[] = [];
   const excluded: InstructionComposition["excluded"] = [];
+  const included: InstructionComposition["included"] = [];
   for (const card of input.cards) {
     const contribution = resolveExplicitInstructionContribution(
       card,
       input.contentRootsByCard[card.name] ?? card.path,
     );
     if (!contribution) continue;
-    if (!isInstructionConsentValid(card, contribution)) {
+    const artifactPinRef =
+      input.organizationConsent?.artifactPinRefsByCard[card.name];
+    const resolution = resolveEffectiveInstructionConsent({
+      card,
+      contribution,
+      evidence: input.organizationConsent?.evidence ?? [],
+      ...(artifactPinRef && input.organizationConsent
+        ? {
+            organizationBinding: {
+              workerId: input.organizationConsent.workerId,
+              artifactPinRef,
+            },
+          }
+        : {}),
+    });
+    if (!resolution.authorized) {
       excluded.push({
         card: card.name,
-        reason: card.instructionConsent ? "consent_stale" : "consent_required",
+        reason: resolution.reason,
+        ...(artifactPinRef
+          ? {
+              expectedEvidenceKind:
+                "org_worker_bundle_consent" as const,
+            }
+          : {}),
       });
       continue;
     }
+    included.push({
+      card: card.name,
+      evidenceKind: resolution.evidence.kind,
+      evidenceId:
+        resolution.evidence.kind === "local_card_consent"
+          ? resolution.evidence.cardName
+          : resolution.evidence.consentId,
+    });
     if (contributions.length > 0) {
       contributions.push(new TextEncoder().encode("\n"));
     }
     contributions.push(contribution.bytes);
   }
   if (contributions.length === 0) {
-    return { bytes: null, contentDigest: null, excluded };
+    return { bytes: null, contentDigest: null, excluded, included };
   }
   const bytes = concatenate(contributions);
   return {
     bytes,
     contentDigest: hashManagedContent(bytes) as `sha256-${string}`,
     excluded,
+    included,
   };
 }
 

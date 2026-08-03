@@ -2,6 +2,7 @@
 // ABOUTME: Proves strict preflight, byte ownership, idempotence, drift safety, adapters, and cleanup.
 
 import { afterEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -14,6 +15,10 @@ import {
   writeSupportedProjectConfig,
 } from "./helpers";
 import { resolveInstructionConsentAckPath } from "../cli/core/instruction-consent-ack";
+import { loadCardLock } from "../cli/core/card-lock";
+import { resolveExplicitInstructionContribution } from "../cli/core/instruction-contribution";
+import { syncRepository } from "../cli/core/sync";
+import { writeOrgWorkerMaterializationRecord } from "../cli/core/org-worker-materialization-record";
 
 const tempRoots: string[] = [];
 
@@ -302,4 +307,173 @@ test("write acknowledges imported instruction consent once per machine and exact
   const second = await runAgentsCli(["write"], envFor(fixture), projectDir);
   expect(second.exitCode, second.stderr).toBe(0);
   expect(second.stderr).not.toContain("on another machine");
+});
+
+test("external organization consent projects exact bytes without becoming local consent", async () => {
+  const { fixture, projectDir } = await setupInstructionProject();
+  const lock = await loadCardLock(projectDir);
+  const locked = lock!.cards[0]!;
+  const contribution = resolveExplicitInstructionContribution(
+    locked,
+    locked.path,
+  )!;
+  const organizationConsent = {
+    workerId: "worker:operator",
+    artifactPinRefsByCard: {
+      [locked.name]: "artifact:operator",
+    },
+    evidence: [
+      {
+        kind: "org_worker_bundle_consent" as const,
+        bundleDigest: `sha256:${"2".repeat(64)}` as const,
+        sourceBlueprint: {
+          id: "blueprint:operator:1",
+          revision: 1,
+          digest: `sha256:${"3".repeat(64)}` as const,
+        },
+        consentId: "consent:operator-instructions",
+        workerId: "worker:operator",
+        artifactPinRef: "artifact:operator",
+        consentedRange: ">=1.0.0 <2.0.0",
+        contentDigest: contribution.contentDigest,
+        ratifierRef: "actor:owner",
+        evidenceRefs: ["evidence:ratification"],
+        projectionSurface: "worker_instructions" as const,
+      },
+    ],
+  };
+  const options = {
+    repoRoot: fixture.repoRoot,
+    agentsDir: fixture.agentsDir,
+    homeDir: fixture.homeDir,
+    cwd: projectDir,
+  };
+
+  const authorized = await syncRepository({
+    ...options,
+    organizationInstructionConsent: organizationConsent,
+  });
+  expect(authorized.warnings).not.toMatchObject([
+    expect.stringContaining("consent excluded"),
+  ]);
+  expect(await readFile(join(projectDir, "AGENTS.md"), "utf8")).toContain(
+    "Use the reviewed operating procedure.",
+  );
+  expect((await loadCardLock(projectDir))!.cards[0]!.instructionConsent).toBeUndefined();
+  const externalBeforeLocalCommands = structuredClone(organizationConsent);
+  expect(
+    (
+      await runAgentsCli(
+        ["card", "trust", locked.name, "--instructions"],
+        envFor(fixture),
+        projectDir,
+      )
+    ).exitCode,
+  ).toBe(0);
+  expect((await loadCardLock(projectDir))!.cards[0]!.instructionConsent).toBeDefined();
+  expect(organizationConsent).toEqual(externalBeforeLocalCommands);
+  expect(
+    (
+      await runAgentsCli(
+        ["card", "untrust", locked.name, "--instructions"],
+        envFor(fixture),
+        projectDir,
+      )
+    ).exitCode,
+  ).toBe(0);
+  expect((await loadCardLock(projectDir))!.cards[0]!.instructionConsent).toBeUndefined();
+  expect(organizationConsent).toEqual(externalBeforeLocalCommands);
+
+  const durableLock = (await loadCardLock(projectDir))!;
+  const configBytes = await readFile(
+    join(projectDir, ".agents", "drwn", "config.json"),
+    "utf8",
+  );
+  const lockBytes = await readFile(
+    join(projectDir, ".agents", "drwn", "card.lock"),
+    "utf8",
+  );
+  const sha256 = (bytes: string) =>
+    `sha256:${createHash("sha256").update(bytes).digest("hex")}` as const;
+  await writeOrgWorkerMaterializationRecord(projectDir, {
+    schema: "drwn.org-worker-materialization",
+    schemaVersion: 1,
+    sourceBundle: {
+      digest: organizationConsent.evidence[0]!.bundleDigest,
+      workerId: organizationConsent.workerId,
+      blueprintId:
+        organizationConsent.evidence[0]!.sourceBlueprint.id,
+      blueprintRevision:
+        organizationConsent.evidence[0]!.sourceBlueprint.revision,
+      blueprintDigest:
+        organizationConsent.evidence[0]!.sourceBlueprint.digest,
+    },
+    projectState: {
+      configDigest: sha256(configBytes),
+      lockDigest: sha256(lockBytes),
+      orderedRootNames: durableLock.workerRoots.map(({ name }) => name),
+      activeWorker: durableLock.workerRoots[0]!.name,
+    },
+    artifactBindings: durableLock.cards.map((card) => ({
+      artifactPinRef:
+        organizationConsent.artifactPinRefsByCard[card.name]!,
+      cardName: card.name,
+      version: card.version,
+      integrity: card.integrity,
+      treeSha: card.treeSha!,
+      gitCommit: card.git!.commit,
+    })),
+    instructionConsentEvidence:
+      organizationConsent.evidence.map((evidence) => ({
+        consentId: evidence.consentId,
+        artifactPinRef: evidence.artifactPinRef,
+        contentDigest: evidence.contentDigest,
+        consentedRange: evidence.consentedRange,
+        ratifierRef: evidence.ratifierRef,
+        evidenceRefs: evidence.evidenceRefs,
+      })),
+    projection: {
+      instructionId: `worker:${durableLock.workerRoots[0]!.name}`,
+      contentDigest: contribution.contentDigest,
+      ownershipHash: `sha256-${"4".repeat(64)}`,
+      adapterState: "owned",
+    },
+    lastVerifiedReceiptId: "receipt:test:organization-consent",
+  });
+  const ordinaryWrite = await runAgentsCli(
+    ["write"],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(ordinaryWrite.exitCode, ordinaryWrite.stderr).toBe(0);
+  expect(`${ordinaryWrite.stdout}\n${ordinaryWrite.stderr}`).not.toContain(
+    "consent excluded",
+  );
+
+  const beforeStrict = await fileSnapshot(join(projectDir, "AGENTS.md"));
+  await expect(
+    syncRepository({
+      ...options,
+      strict: true,
+      organizationInstructionConsent: {
+        ...organizationConsent,
+        evidence: [],
+      },
+    }),
+  ).rejects.toThrow(/instruction consent required/i);
+  expect(await fileSnapshot(join(projectDir, "AGENTS.md"))).toEqual(
+    beforeStrict,
+  );
+
+  const missing = await syncRepository({
+    ...options,
+    organizationInstructionConsent: {
+      ...organizationConsent,
+      evidence: [],
+    },
+  });
+  expect(missing.warnings).toContain(
+    `${locked.name} organization instruction consent excluded: consent_required. Verify Org Worker materialization evidence.`,
+  );
+  expect((await loadCardLock(projectDir))!.cards[0]!.instructionConsent).toBeUndefined();
 });

@@ -60,6 +60,28 @@ Do not repair ownership drift by deleting user content. Inspect the marked
 region and write record first; `--force` can replace only a recorded owned
 block.
 
+### Organization Worker materialization
+
+Project status adds `orgWorkerMaterialization` alongside instruction delivery.
+It classifies only local bounded evidence:
+
+- `current`/`removed`: exact project digests, receipt source/action/outcome,
+  artifact and consent identities, no live journal, and consistent projection
+  or tombstone;
+- `blocked`: a valid incomplete operation journal;
+- `drifted`: complete valid evidence with a state mismatch;
+- `unknown`: orphaned, malformed, unsafe, or missing evidence;
+- `absent`: no materialization evidence.
+
+`compatible` is reserved in the additive V1 type for a future
+pre-materialization local-evidence profile and is not currently emitted.
+Stable bundle, Worker, blueprint, and last-receipt identities may be returned.
+The `orgWorkerMaterialization` section does not return paths, instruction
+content, secrets, or organization readiness; other longstanding diagnostics
+sections may still include their documented local paths.
+Error-severity issues make doctor unhealthy. Diagnostics never repair: use the
+exact handoff with `drwn install --reconcile` or `--remove`.
+
 ## Status: As-Written vs As-Active, Plus Provenance
 
 `drwn status` has three modes:

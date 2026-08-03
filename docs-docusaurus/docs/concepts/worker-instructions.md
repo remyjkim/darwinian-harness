@@ -104,3 +104,25 @@ instruction consents to the Worker layer. The consumer verifies pins, ranges,
 and content digests without network resolution. Organization grants, protocols,
 and provenance references stay opaque and are not applied by instruction
 projection.
+
+The handoff's organization consent remains external evidence in the bounded
+materialization record. It is never converted to a Card's local
+`instructionConsent`. Composition records the evidence kind and stable consent
+ID; diagnostics summarize the source as `local`, `organization`, or `mixed`
+without exposing the contribution bytes.
+
+Fresh materialization requires the bundle, its
+`worker-artifact-snapshot@1`, every referenced immutable Card tree, an explicit
+operation ID, and `--frozen`. `--dry-run`/`--no-write` validate without a
+success receipt. A write emits `worker-materialization-receipt@1` only after
+config, lock, vendor bytes, instruction block, ownership, and adapter
+postconditions pass read-back.
+
+V1 rejects bundle hook consent with
+`ORG_WORKER_HOOK_CONSENT_UNSUPPORTED`. Hook evidence cannot materialize until a
+versioned profile defines the exact hook projection and ownership mapping.
+
+Reconcile and remove use the prior materialization record as their ownership
+boundary. They cannot adopt foreign markers or overwrite user bytes. Removal
+leaves a tombstone, clears organization consent from effective composition, and
+chains its receipt to the prior verified receipt.

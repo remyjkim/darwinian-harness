@@ -70,7 +70,7 @@ describe("OrgWorkerBundleV1 consumer", () => {
       version: "1.0.0",
       path: "/unused",
       integrity:
-        "sha256-2222222222222222222222222222222222222222222222222222222222222222",
+        "sha256-dc71165b300a88ab4bafd0bc6a32dc82afe106ac2b40102ac08cd74985edc092",
       manifest: {
         name: "gtm-worker",
         version: "1.0.0",
@@ -115,7 +115,7 @@ describe("OrgWorkerBundleV1 consumer", () => {
       version: "1.0.0",
       path: "/unused",
       integrity:
-        "sha256-2222222222222222222222222222222222222222222222222222222222222222",
+        "sha256-dc71165b300a88ab4bafd0bc6a32dc82afe106ac2b40102ac08cd74985edc092",
       manifest: {
         name: "gtm-worker",
         version: "1.0.0",
@@ -143,11 +143,13 @@ describe("OrgWorkerBundleV1 consumer", () => {
       bundle,
       activeWorker: "gtm-worker",
       resolvedCards: [{ card, contentRoot: "/unused" }],
+      workerVersion: "1.0.0",
     });
     const second = verifyFrozenOrgWorkerBundleInstall({
       bundle,
       activeWorker: "gtm-worker",
       resolvedCards: [{ card, contentRoot: "/unused" }],
+      workerVersion: "1.0.0",
     });
     expect(second).toEqual(first);
     expect(first).toMatchObject({
@@ -165,7 +167,30 @@ describe("OrgWorkerBundleV1 consumer", () => {
         resolvedCards: [
           { card: { ...card, origin: "file" }, contentRoot: "/unused" },
         ],
+        workerVersion: "1.0.0",
       }),
     ).toThrow(/frozen.*origin/i);
+  });
+
+  test("fails compatibility preflight before inspecting existing project state", async () => {
+    const candidate = await golden();
+    candidate.logicalEnvironmentClass = "container_runtime";
+
+    try {
+      verifyFrozenOrgWorkerBundleInstall({
+        bundle: parseOrgWorkerBundleV1(candidate),
+        activeWorker: "not-the-bundle-worker",
+        resolvedCards: [],
+        workerVersion: "1.0.0",
+      });
+      throw new Error("expected compatibility rejection");
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "ORG_WORKER_ENVIRONMENT_UNSUPPORTED",
+      });
+      expect((error as Error).message).toBe(
+        "Unsupported logical environment class: container_runtime",
+      );
+    }
   });
 });

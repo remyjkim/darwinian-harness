@@ -123,7 +123,7 @@ test("install --frozen succeeds from committed vendor bytes without a machine st
   expect(existsSync(resolveCardBareRepoPath(fixture.agentsDir, "@team/backend"))).toBe(false);
 });
 
-test("install consumes an immutable OrgWorkerBundleV1 only in frozen mode and records a bounded receipt", async () => {
+test("install rejects an incomplete Org Worker materialization handoff", async () => {
   const { fixture, projectDir } = await scaffoldLockedGitProject({
     vendor: true,
   });
@@ -137,7 +137,7 @@ test("install consumes an immutable OrgWorkerBundleV1 only in frozen mode and re
   );
   expect(unsafe.exitCode).not.toBe(0);
   expect(`${unsafe.stdout}\n${unsafe.stderr}`).toMatch(
-    /bundle.*--frozen/i,
+    /requires.*--worker-artifact-snapshot.*--operation-id/i,
   );
 
   const result = await runAgentsCli(
@@ -151,9 +151,53 @@ test("install consumes an immutable OrgWorkerBundleV1 only in frozen mode and re
     envFor(fixture),
     projectDir,
   );
-  expect(result.exitCode).toBe(0);
-  const receipt = JSON.parse(
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toMatch(
+    /requires.*--worker-artifact-snapshot.*--operation-id/i,
+  );
+});
+
+test("install rejects an incompatible OrgWorkerBundleV1 before lock hydration or receipt writes", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const projectDir = join(fixture.root, "project");
+  await writeSupportedProjectConfig(projectDir);
+  const bundle = JSON.parse(
     await readFile(
+      new URL("./fixtures/org-worker-bundle-v1/gtm.valid.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  bundle.logicalEnvironmentClass = "container_runtime";
+  const bundlePath = join(projectDir, "org-worker-bundle.json");
+  await writeFile(bundlePath, JSON.stringify(bundle));
+
+  const result = await runAgentsCli(
+    [
+      "install",
+      "--frozen",
+      "--org-worker-bundle",
+      bundlePath,
+      "--worker-artifact-snapshot",
+      new URL(
+        "./fixtures/org-worker-materialization-v1/snapshot.valid.json",
+        import.meta.url,
+      ).pathname,
+      "--operation-id",
+      "operation:incompatible",
+      "--no-write",
+    ],
+    envFor(fixture),
+    projectDir,
+  );
+
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain(
+    "ORG_WORKER_ENVIRONMENT_UNSUPPORTED",
+  );
+  expect(existsSync(cardLockPath(projectDir))).toBe(false);
+  expect(
+    existsSync(
       join(
         projectDir,
         ".agents",
@@ -161,16 +205,8 @@ test("install consumes an immutable OrgWorkerBundleV1 only in frozen mode and re
         "receipts",
         "org-worker-bundle-install.json",
       ),
-      "utf8",
     ),
-  );
-  expect(receipt).toMatchObject({
-    wireVersion: "org-worker-bundle-install-receipt@1",
-    workerId: "worker:test",
-    activeWorker: "@team/backend",
-    verifiedArtifactPins: ["artifact:test-worker-root"],
-  });
-  expect(JSON.stringify(receipt)).not.toMatch(/credential|token|secret/i);
+  ).toBe(false);
 });
 
 test("install --frozen reports corrupt committed vendor bytes", async () => {

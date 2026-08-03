@@ -1,0 +1,18 @@
+{
+  "wireVersion": "worker-artifact-snapshot@1",
+  "sourceBundleDigest": "sha256:6597b05cdad254375332d56a23f4d052c61bae6c8836b3f24e0f80c8eb4eaa48",
+  "artifacts": [
+    {
+      "artifactPinRef": "artifact:gtm-worker-root",
+      "kind": "worker_root",
+      "name": "gtm-worker",
+      "version": "1.0.0",
+      "integrity": "sha256:dc71165b300a88ab4bafd0bc6a32dc82afe106ac2b40102ac08cd74985edc092",
+      "treeSha": "1fb0a826d6fc73bb52c0a22e6e2925e2783701a5",
+      "gitCommit": "bbd7924d12a1cf8818755ea49c1858875e7bdac7",
+      "contentFormat": "darwinian-card-tree-directory@1",
+      "contentTreeDigest": "sha256:a06bee250bd14c0e505a8b881c75bdafe1d17711fe5d9b44adaf16c5db590ce0",
+      "contentPath": "artifacts/gtm-worker-root"
+    }
+  ]
+}

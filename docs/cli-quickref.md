@@ -225,6 +225,7 @@ General commands:
 - `drwn update [rootName] [--dry-run] [--write]`
 - `drwn use <rootNameOrRef>|--none [--no-write] [--dry-run]`
 - `drwn install [--frozen] [--no-write] [--json]`
+- `drwn install --frozen --org-worker-bundle <json> --worker-artifact-snapshot <json> --operation-id <id> [--dry-run] [--no-write] [--reconcile|--remove] [--json]`
 
 Card commands:
 
@@ -830,6 +831,74 @@ Useful flags:
 
 Setup never runs `bd init --force` or `bd doctor --fix` by default. Beads MCP remains optional and is not enabled by `drwn extensions setup beads`.
 
+## Immutable organization Worker handoff
+
+A fresh project can consume a complete, immutable
+`OrgWorkerBundleV1`/artifact packet without fetching or resolving a local
+source:
+
+```bash
+drwn install --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:provision:0001
+```
+
+The three handoff arguments are atomic and require `--frozen`. The snapshot
+file's parent is the packet root. The supported V1 profile accepts
+directory-backed Worker-root and Card artifacts, `project_workspace`, an empty
+project overlay, and `worker-materialization-receipt@1`. Compatibility, bundle,
+artifact, version-floor, or consent failures occur before project mutation.
+Bundle hook consent is rejected with
+`ORG_WORKER_HOOK_CONSENT_UNSUPPORTED` until a versioned profile defines its
+projection evidence.
+
+Every snapshot entry declares
+`darwinian-card-tree-directory@1`, a safe relative content path, content-tree
+digest, Git tree/commit, integrity, and exact Card identity. Symlink/traversal
+substitution and missing/extra artifacts fail closed.
+
+Planning modes never emit a success receipt:
+
+```bash
+drwn install --dry-run --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:preview:0001
+```
+
+`--no-write` has the same no-mutation/no-success-receipt boundary. These modes
+derive the requested-state plan; for reconcile/remove they do not inspect the
+prior record or prove that an owned mutation is feasible. Successful
+materialization commits config and lock together, vendors verified bytes,
+projects instructions, reads back all owned state, then appends a receipt and
+the bounded local materialization record. A retained journal resumes the same
+operation ID after interruption; a changed request with the same ID fails.
+
+Organization instruction consent remains external evidence and is never
+written as local Card consent. Status reports the source as `local`,
+`organization`, or `mixed`.
+
+Use the exact original handoff for ownership-bounded repair or removal:
+
+```bash
+drwn install --reconcile --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:reconcile:0001
+
+drwn install --remove --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:remove:0001
+```
+
+Reconcile repairs only record-owned drift. Removal deletes only no-longer-needed
+owned bytes: unrelated roots, overlays, user bytes, adapters still required by
+a retained projection, and local consent on retained Cards remain. It then
+leaves a tombstone and a receipt chained to the prior verified receipt.
+Unsupported artifact/overlay kinds remain fail-closed.
+
 ## Per-project configuration
 
 Use per-project config when a project needs a reproducible declared harness independent of machine intent.
@@ -956,8 +1025,15 @@ It reports:
 - machine schema, profile, capability provenance, and projection ownership issues
 - missing generated config files
 - project config issues
+- local Worker materialization state, stable identities, receipt evidence,
+  consent source, incomplete journals, artifact/projection drift, and removed
+  tombstones
 
-It does not mutate local state. Unresolved `skills.include` names are a separate write-time contract: `drwn write` fails before mutation, while `doctor` reports the same problem in diagnostics output.
+It does not mutate local state. Materialization diagnostics use only local
+bounded evidence and never claim organization readiness. Error-severity
+materialization issues make `doctor` exit non-zero. Unresolved `skills.include`
+names are a separate write-time contract: `drwn write` fails before mutation,
+while `doctor` reports the same problem in diagnostics output.
 
 ## Optional extensions
 

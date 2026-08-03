@@ -76,6 +76,63 @@ drwn projects unregister /absolute/stale/root
 Unregister refuses a valid project that still declares standalone inventory
 references. Remove those declarations in the project first.
 
+## Organization Worker materialization is blocked, drifted, or unknown
+
+**Symptom.** `drwn status --json` or `drwn doctor --json` reports
+`orgWorkerMaterialization.state` as `blocked`, `drifted`, or `unknown`.
+
+**Likely cause.**
+
+- `blocked`: an interrupted operation left a valid recovery journal;
+- `drifted`: otherwise valid config, lock, vendor, receipt, projection, or
+  tombstone evidence no longer matches;
+- `unknown`: required evidence is missing, malformed, orphaned, oversized, or
+  unsafe to follow.
+
+**Diagnostic.**
+
+```bash
+drwn status --json
+drwn doctor --json
+```
+
+Issue codes are intentionally bounded and omit instruction content, local
+paths, and secrets. These commands inspect local evidence only; they do not
+report organization readiness.
+
+Use the code to narrow the evidence class:
+
+- `ORG_WORKER_OPERATION_INCOMPLETE`: retry the same action and operation ID;
+- `ORG_WORKER_PROJECT_STATE_DRIFT`,
+  `ORG_WORKER_ARTIFACT_DRIFT`, or
+  `ORG_WORKER_PROJECTION_DRIFT`: review and reconcile with the exact handoff;
+- `ORG_WORKER_RECEIPT_MISMATCH` or
+  `ORG_WORKER_REMOVAL_DRIFT`: preserve all evidence and stop removal until the
+  chain/tombstone is understood;
+- `ORG_WORKER_EVIDENCE_MISSING|MALFORMED|ORPHANED`: do not repair by hand or
+  follow unsafe receipt paths.
+
+**Resolution.** Preserve the journal, receipts, and materialization record.
+Retry the interrupted action with the same operation ID. For drift, use the
+exact original immutable bundle and artifact snapshot with a new operation ID:
+
+```bash
+drwn install --reconcile --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:reconcile:0001
+```
+
+Use `--remove` instead only when the desired outcome is owned cleanup. Do not
+delete evidence, edit receipt files, lower the bundle's version floor, copy
+organization consent into local consent, or use `--force` to claim unrelated
+bytes. Unsupported overlays and artifact kinds require a compatible producer
+packet or a newer Worker release.
+
+If a faulty release requires a broad rollback, the operator/deployment layer
+must externally fence new materialization operations first. There is no
+`drwn` operation-fence command.
+
 ## Cross-References
 
 - [Ownership and Write Records](../concepts/ownership-and-write-records) for the meta-block and ledger model

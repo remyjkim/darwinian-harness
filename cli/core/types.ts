@@ -2,6 +2,7 @@
 // ABOUTME: Centralizes registry, config, target, and sync result types to avoid drift.
 
 import type { OptionalMcpReport } from "./mcp-report";
+import type { OrganizationInstructionConsentContext } from "./instruction-consent-evidence";
 
 export type Transport = "stdio" | "http" | "sse" | "platform-provided";
 export type TargetName = "claude" | "codex" | "cursor" | "opencode";
@@ -204,6 +205,7 @@ export interface SyncOptions {
   applyClaudeAdapter?: boolean;
   forceMachineScope?: boolean;
   scope?: "machine" | "project";
+  organizationInstructionConsent?: OrganizationInstructionConsentContext;
 }
 
 export interface CardModeReadout {
@@ -240,4 +242,5 @@ export interface NormalizedSyncOptions {
   applyClaudeAdapter?: boolean;
   forceMachineScope?: boolean;
   scope?: "machine" | "project";
+  organizationInstructionConsent?: OrganizationInstructionConsentContext;
 }

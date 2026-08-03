@@ -5,8 +5,13 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 
 import type { CardLockEntry } from "./card-lock";
+import { DrwnError } from "./errors";
 import { resolveExplicitInstructionContribution } from "./instruction-contribution";
+import { assertOrgWorkerCompatibility } from "./org-worker-compatibility";
 import { satisfies, validRange } from "./semver-utils";
+
+export const ORG_WORKER_BUNDLE_DIGEST_DOMAIN =
+  "darwinian:org-worker-bundle:v1\n";
 
 const id = z.string().min(1).max(160);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/);
@@ -68,18 +73,36 @@ const bundleSchema = z
     contributionConsents: z.array(contributionConsent).max(128),
     minimumWorkerVersion: z.string().regex(/^[0-9]+\.[0-9]+\.[0-9]+$/),
     logicalEnvironmentClass: z.string().min(1).max(80),
-    materializationReceiptVersion: z.literal(
-      "worker-materialization-receipt@1",
-    ),
+    materializationReceiptVersion: z.string().min(1).max(80),
   })
   .strict();
 
 export type OrgWorkerBundleV1 = z.infer<typeof bundleSchema>;
 
-function unique(values: readonly string[], label: string): Set<string> {
+function semanticError(
+  code:
+    | "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH"
+    | "ORG_WORKER_ROOT_ORDER_INVALID"
+    | "ORG_WORKER_ACTIVE_ROOT_INVALID"
+    | "ORG_WORKER_CONSENT_INVALID",
+  message: string,
+): never {
+  throw new DrwnError(code, message);
+}
+
+function unique(
+  values: readonly string[],
+  label: string,
+  code:
+    | "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH"
+    | "ORG_WORKER_ROOT_ORDER_INVALID"
+    | "ORG_WORKER_CONSENT_INVALID",
+): Set<string> {
   const result = new Set<string>();
   for (const value of values) {
-    if (result.has(value)) throw new Error(`Duplicate ${label}: ${value}`);
+    if (result.has(value)) {
+      semanticError(code, `Org Worker bundle has duplicate ${label}`);
+    }
     result.add(value);
   }
   return result;
@@ -105,20 +128,57 @@ function rejectForbiddenKeys(value: unknown, path = ""): void {
 
 export function parseOrgWorkerBundleV1(candidate: unknown): OrgWorkerBundleV1 {
   rejectForbiddenKeys(candidate);
-  const bundle = bundleSchema.parse(candidate);
+  const parsed = bundleSchema.safeParse(candidate);
+  if (!parsed.success) {
+    const topLevelPaths = new Set(
+      parsed.error.issues.map(({ path }) => path[0]),
+    );
+    if (topLevelPaths.has("orderedWorkerRoots")) {
+      semanticError(
+        "ORG_WORKER_ROOT_ORDER_INVALID",
+        "Org Worker root order is malformed",
+      );
+    }
+    if (topLevelPaths.has("activeWorkerRoot")) {
+      semanticError(
+        "ORG_WORKER_ACTIVE_ROOT_INVALID",
+        "Org Worker active root is malformed",
+      );
+    }
+    if (topLevelPaths.has("contributionConsents")) {
+      semanticError(
+        "ORG_WORKER_CONSENT_INVALID",
+        "Org Worker contribution consent is malformed",
+      );
+    }
+    throw parsed.error;
+  }
+  const bundle = parsed.data;
   const pinIds = unique(
     bundle.artifactPins.map((pin) => pin.artifactId),
     "artifact pin",
+    "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH",
   );
-  unique(bundle.contributionConsents.map((item) => item.consentId), "consent");
-  unique(bundle.orderedWorkerRoots, "ordered Worker root");
+  unique(
+    bundle.contributionConsents.map((item) => item.consentId),
+    "consent",
+    "ORG_WORKER_CONSENT_INVALID",
+  );
+  unique(
+    bundle.orderedWorkerRoots,
+    "ordered Worker root",
+    "ORG_WORKER_ROOT_ORDER_INVALID",
+  );
   const pinsById = new Map(
     bundle.artifactPins.map((pin) => [pin.artifactId, pin]),
   );
   for (const root of bundle.orderedWorkerRoots) {
     const pin = pinsById.get(root);
     if (!pin || pin.kind !== "worker_root") {
-      throw new Error(`Ordered Worker root is not a pinned worker_root: ${root}`);
+      semanticError(
+        "ORG_WORKER_ROOT_ORDER_INVALID",
+        "Org Worker root order references a non-root artifact",
+      );
     }
   }
   if (
@@ -126,33 +186,45 @@ export function parseOrgWorkerBundleV1(candidate: unknown): OrgWorkerBundleV1 {
     (!pinIds.has(bundle.activeWorkerRoot) ||
       !bundle.orderedWorkerRoots.includes(bundle.activeWorkerRoot))
   ) {
-    throw new Error(
-      `Active Worker root is not in ordered pinned roots: ${bundle.activeWorkerRoot}`,
+    semanticError(
+      "ORG_WORKER_ACTIVE_ROOT_INVALID",
+      "Active Worker root is not in the ordered root set",
     );
   }
   for (const consent of bundle.contributionConsents) {
     if (consent.workerId !== bundle.workerId) {
-      throw new Error(`Contribution consent Worker mismatch: ${consent.consentId}`);
+      semanticError(
+        "ORG_WORKER_CONSENT_INVALID",
+        "Org Worker contribution consent has a Worker mismatch",
+      );
     }
     if (!pinIds.has(consent.artifactPinRef)) {
-      throw new Error(
-        `Contribution consent has dangling artifact pin: ${consent.consentId}`,
+      semanticError(
+        "ORG_WORKER_CONSENT_INVALID",
+        "Org Worker contribution consent references an unknown artifact",
       );
     }
     if (!validRange(consent.consentedVersionRange)) {
-      throw new Error(`Invalid consented version range: ${consent.consentId}`);
+      semanticError(
+        "ORG_WORKER_CONSENT_INVALID",
+        "Org Worker contribution consent has an invalid version range",
+      );
     }
     const expectedSurface =
       consent.contributionKind === "instructions"
         ? "worker_instructions"
         : "worker_lifecycle_hooks";
     if (consent.projectionSurface !== expectedSurface) {
-      throw new Error(
-        `Contribution consent surface mismatch: ${consent.consentId}`,
+      semanticError(
+        "ORG_WORKER_CONSENT_INVALID",
+        "Org Worker contribution consent has a surface mismatch",
       );
     }
     if (consent.evidenceRefs.length === 0) {
-      throw new Error(`Contribution consent lacks evidence: ${consent.consentId}`);
+      semanticError(
+        "ORG_WORKER_CONSENT_INVALID",
+        "Org Worker contribution consent lacks evidence",
+      );
     }
   }
   return bundle;
@@ -178,32 +250,49 @@ export function verifyOrgWorkerBundleInstructions(
     .map((consent) => {
       const pin = pins.get(consent.artifactPinRef)!;
       const resolved = cards.get(pin.name);
-      if (!resolved) throw new Error(`Resolved Card missing for pin ${pin.artifactId}`);
+      if (!resolved) {
+        throw new DrwnError(
+          "ORG_WORKER_ARTIFACT_BYTES_MISSING",
+          "Resolved Card bytes are missing for an Org Worker artifact",
+        );
+      }
       if (
         resolved.card.version !== pin.version ||
         normalizeDigest(resolved.card.integrity) !== normalizeDigest(pin.integrity)
       ) {
-        throw new Error(`Resolved Card identity mismatch for pin ${pin.artifactId}`);
+        semanticError(
+          "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH",
+          "Resolved Card identity does not match its Org Worker pin",
+        );
       }
       if (
         !satisfies(resolved.card.version, consent.consentedVersionRange, {
           includePrerelease: true,
         })
       ) {
-        throw new Error(`Instruction consent version mismatch: ${consent.consentId}`);
+        semanticError(
+          "ORG_WORKER_CONSENT_INVALID",
+          "Org Worker instruction consent version does not match",
+        );
       }
       const contribution = resolveExplicitInstructionContribution(
         resolved.card,
         resolved.contentRoot,
       );
       if (!contribution) {
-        throw new Error(`Explicit instructions missing for pin ${pin.artifactId}`);
+        semanticError(
+          "ORG_WORKER_CONSENT_INVALID",
+          "Org Worker instruction consent lacks explicit instruction bytes",
+        );
       }
       if (
         normalizeDigest(contribution.contentDigest) !==
         normalizeDigest(consent.contentDigest)
       ) {
-        throw new Error(`Instruction content digest mismatch: ${consent.consentId}`);
+        semanticError(
+          "ORG_WORKER_CONSENT_INVALID",
+          "Org Worker instruction content digest does not match",
+        );
       }
       return {
         artifactPinRef: pin.artifactId,
@@ -228,7 +317,7 @@ function canonicalJson(value: unknown): string {
   }
   if (typeof value === "object") {
     return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(
         ([key, child]) =>
           `${JSON.stringify(key)}:${canonicalJson(child)}`,
@@ -236,6 +325,15 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   throw new Error("OrgWorkerBundleV1 contains a non-canonical value");
+}
+
+export function computeOrgWorkerBundleDigest(
+  bundle: OrgWorkerBundleV1,
+): `sha256:${string}` {
+  return `sha256:${createHash("sha256")
+    .update(ORG_WORKER_BUNDLE_DIGEST_DOMAIN)
+    .update(canonicalJson(bundle))
+    .digest("hex")}`;
 }
 
 export interface FrozenOrgWorkerBundleInstallReceipt {
@@ -253,11 +351,16 @@ export interface FrozenOrgWorkerBundleInstallReceipt {
 export function verifyFrozenOrgWorkerBundleInstall(input: {
   bundle: OrgWorkerBundleV1;
   activeWorker: string;
+  workerVersion?: string;
   resolvedCards: readonly {
     card: CardLockEntry;
     contentRoot: string;
   }[];
 }): FrozenOrgWorkerBundleInstallReceipt {
+  assertOrgWorkerCompatibility({
+    bundle: input.bundle,
+    workerVersion: input.workerVersion,
+  });
   const activePin = input.bundle.artifactPins.find(
     (pin) => pin.artifactId === input.bundle.activeWorkerRoot,
   );
@@ -266,8 +369,9 @@ export function verifyFrozenOrgWorkerBundleInstall(input: {
     activePin.kind !== "worker_root" ||
     activePin.name !== input.activeWorker
   ) {
-    throw new Error(
-      "Frozen OrgWorkerBundleV1 active Worker does not match the selected project Worker",
+    semanticError(
+      "ORG_WORKER_ACTIVE_ROOT_INVALID",
+      "Frozen Org Worker active root does not match the selected project Worker",
     );
   }
   const cards = new Map(
@@ -278,14 +382,18 @@ export function verifyFrozenOrgWorkerBundleInstall(input: {
     if (pin.kind !== "card" && pin.kind !== "worker_root") continue;
     const resolved = cards.get(pin.name);
     if (!resolved) {
-      throw new Error(`Frozen artifact pin is unresolved: ${pin.artifactId}`);
+      throw new DrwnError(
+        "ORG_WORKER_ARTIFACT_BYTES_MISSING",
+        "Frozen Org Worker artifact bytes are missing",
+      );
     }
     if (
       resolved.card.origin === "file" ||
       resolved.card.origin === "npm"
     ) {
-      throw new Error(
-        `Frozen install forbids local or package substitution origin for ${pin.artifactId}`,
+      semanticError(
+        "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH",
+        "Frozen Org Worker artifact origin forbids local or package substitution",
       );
     }
     if (
@@ -293,8 +401,9 @@ export function verifyFrozenOrgWorkerBundleInstall(input: {
       normalizeDigest(resolved.card.integrity) !==
         normalizeDigest(pin.integrity)
     ) {
-      throw new Error(
-        `Frozen artifact identity mismatch for ${pin.artifactId}`,
+      semanticError(
+        "ORG_WORKER_ARTIFACT_IDENTITY_MISMATCH",
+        "Frozen Org Worker artifact identity does not match",
       );
     }
     verifiedArtifactPins.push(pin.artifactId);
@@ -305,9 +414,7 @@ export function verifyFrozenOrgWorkerBundleInstall(input: {
   );
   return {
     wireVersion: "org-worker-bundle-install-receipt@1",
-    bundleDigest: `sha256:${createHash("sha256")
-      .update(canonicalJson(input.bundle))
-      .digest("hex")}`,
+    bundleDigest: computeOrgWorkerBundleDigest(input.bundle),
     sourceBlueprint: input.bundle.sourceBlueprint,
     workerId: input.bundle.workerId,
     activeWorker: input.activeWorker,

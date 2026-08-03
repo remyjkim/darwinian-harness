@@ -178,6 +178,89 @@ without network resolution or local-source substitution. Organization grants,
 protocols, and provenance references remain opaque evidence. The bundle cannot
 claim credentials, harness files, applied state, or current readiness.
 
+The supported materialization profile is
+`drwn-org-worker-materialization@1`. A complete handoff contains immutable
+bundle JSON, `worker-artifact-snapshot@1`, and every referenced directory-backed
+Card tree. The snapshot path's parent is the packet root. V1 accepts Worker-root
+and Card artifacts for `project_workspace`, an empty project overlay, and
+`worker-materialization-receipt@1`; unsupported environments, overlays,
+artifact kinds, receipt versions, or a Worker version below
+`minimumWorkerVersion` fail before project mutation.
+
+Each snapshot entry uses
+`contentFormat: "darwinian-card-tree-directory@1"` and a relative,
+non-traversing `contentPath` below that concrete non-symlink packet root.
+Verification closes the bundle pin against version/integrity, canonical raw
+content-tree digest, Git tree SHA, Git commit, and strict Card manifest. Bundle
+hook consent is retained as evidence but rejected with
+`ORG_WORKER_HOOK_CONSENT_UNSUPPORTED` until this profile defines a proven hook
+projection mapping.
+
+Apply the handoff only with all three identities and frozen mode:
+
+```bash
+drwn install --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:provision:0001
+```
+
+`--dry-run` and `--no-write` perform compatibility, artifact, and consent
+verification and derive the requested-state plan, but create no config, lock,
+journal, record, projection, or success receipt. For reconcile/remove, planning
+does not verify prior record ownership or claim the mutation is feasible. A
+successful write commits config and lock transactionally,
+vendors verified Card bytes into the project, projects instructions, reads all
+postconditions back, then appends a `worker-materialization-receipt@1` and a
+bounded materialization record. A retained operation journal resumes the same
+operation ID after interruption; reusing an ID for different bundle, snapshot,
+or action bytes fails.
+
+Organization consent remains external evidence in the materialization record;
+it is never copied into a Card's local `instructionConsent`. The instruction
+composer labels local and organization evidence separately, and diagnostics
+report `local`, `organization`, or `mixed` provenance without instruction
+content.
+
+Repair and removal require the exact prior materialization record and handoff:
+
+```bash
+drwn install --reconcile --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:reconcile:0001
+
+drwn install --remove --frozen \
+  --org-worker-bundle ./packet/org-worker-bundle.json \
+  --worker-artifact-snapshot ./packet/snapshot.json \
+  --operation-id operation:remove:0001
+```
+
+Reconcile repairs only record-owned config/lock, vendor, projection, adapter,
+and ownership drift. Removal deletes only no-longer-desired, proven
+bundle-owned roots, Cards, vendor trees, projection, and adapter bytes.
+Artifacts/adapters required by a retained unrelated projection remain; local
+consent remains only on retained Cards. Unrelated overlays and user bytes
+remain. Removal leaves a non-authoritative tombstone and a chained `removed`
+receipt. Missing or drifted ownership evidence fails closed.
+
+`drwn status` and `drwn doctor` expose additive
+`orgWorkerMaterialization` local evidence with
+`absent|compatible|current|drifted|blocked|removed|unknown`. They do not query
+organization systems or report readiness. Foundry may envelope or reference
+the immutable Worker receipt in `organization-receipt@1` with
+`receiptKind: "worker_materialization"`. It verifies the domain-separated
+digest over the complete Worker receipt (including `receiptId`) and references
+or envelopes it without copying instruction content or mutable local paths.
+That mapping does not change Worker-local state or make either receipt an
+authorization/readiness grant.
+
+Rollback requires the operator/deployment layer to fence new operations
+externally; there is no `drwn` fence command. Preserve journals and append-only
+receipts, then use verified reconcile/remove flows. Never roll back by deleting
+evidence, lowering the version floor, converting organization consent to local
+consent, or overwriting foreign files.
+
 ## Runtime And Authentication State
 
 Cards may declare MCP definitions, but runtime installation and credentials remain operator state:

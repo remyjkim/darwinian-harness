@@ -1008,10 +1008,13 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
 
   const pkg = JSON.parse(source("package.json")) as { version?: string };
   const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
-  if (!pkg.version || !gte(pkg.version, "0.9.0")) {
-    issues.push("package version must be at least 0.9.0");
-  }
+  // The project Worker contract is pinned to the 1.0.0 materialization candidate (CL0024
+  // addendum A07). This is stricter than the semantic-Mind floor (0.9.0) below: the first
+  // supported project Worker release is 1.0.0, and a 0.9.x/0.10.x runtime must not pass as
+  // the 1.0.0 materialization candidate.
+  if (pkg.version !== "1.0.0") issues.push("package version must be 1.0.0");
   if (runtimeVersion !== pkg.version) issues.push("runtime version must match package version");
+  if (runtimeVersion !== "1.0.0") issues.push("runtime version must be 1.0.0");
 
   return {
     name: "project Worker contract",
