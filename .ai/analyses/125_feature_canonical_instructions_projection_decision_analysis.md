@@ -118,7 +118,7 @@ one consent concept, not two: `drwn card trust <card> --instructions` (or a comb
 capability-trust flag), auto-satisfied for cards authored in the local store's own
 sources. It is the smallest option that makes "ungated is not an answer" true, and it
 keeps CI enforceable via the existing `--strict` pattern. (d) is the fallback if consent
-friction proves real in practice; (a) is withdrawn. **Status: decided as recommended — Remy, 072226; folded into doc 124.**
+friction proves real in practice; (a) is withdrawn. **Status: decided as recommended — Remy, 072226; folded into doc 124. Amended 072326: the "auto-satisfied for cards authored in the local store's own sources" element was removed — consent is always explicit for every origin (cl0024_review01 R1-F03: `CardOrigin` cannot prove local authorship; darwinian-org analysis 08 `ContributionConsentSpec` requires ratifier-attributed explicit consent). The shipped implementation has no auto-grant path. Cite the cl0024 architecture D3, not this paragraph's recommendation text, for the consent contract.**
 
 ### B-Q2. Foreign `.claude/CLAUDE.md` handling (124 §7 Q2)
 

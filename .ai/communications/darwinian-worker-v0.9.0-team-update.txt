@@ -1,0 +1,66 @@
+Team update: Darwinian Worker v0.9.0
+
+We have completed the main prelaunch architecture implementation for the next Darwinian Worker CLI release. This is a hard cut to the first supported contract rather than a compatibility release for prototype configs and commands.
+
+What changed
+
+- Cards are reusable capability units. Cards compose into one ordered Blueprint, and that Blueprint defines a complete Worker capability closure.
+- Projects can keep multiple installed Worker roots as alternatives, but can select at most one active Worker. The former worker-stack model and command are gone.
+- Project config, lock, local overlay, generated Worker records, status, machine state, and inventory transfer now use clean, namespaced V1 schemas.
+- `drwn write` is a pure projection. It does not change project intent, lock state, requirements, or Worker selection, and it does not inherit machine defaults into project capabilities.
+- Project-declared capabilities and ambient user-home capabilities are now distinct in status/doctor output.
+- Projection ownership is recorded so drwn can update its own output without claiming foreign target files or same-ID MCP fields. `--force` repairs prior drwn-owned drift; it does not overwrite foreign state.
+- Machine inventory and machine activation are separate. Installing a standalone skill package or MCP record does not enable it.
+- Standalone inventory now has immutable package versions, atomic record/current-pointer persistence, one global mutation lock, fail-closed project-reference discovery, blocked referenced removals, and dry-run-first GC.
+- Portable inventory export/bundle/verify/sync is deterministic and additive. It excludes credentials, profiles, machine activation, Cards, project state, generated output, and runtime state; it is not a backup/restore format.
+- Whole-store export is no longer a public command path, closing the earlier risk of archiving credential-bearing store state.
+- The remote deploy payload contract remains unchanged.
+
+Recommended Darwinian Operator v2
+
+The guided machine setup profile is now pinned to @darwinian/operator@2.0.0 and contains exactly eight machine-safe skills:
+
+1. bootstrap-project
+2. manage-project-worker
+3. inspect-worker
+4. repair-worker
+5. author-card
+6. share-card
+7. manage-machine-inventory
+8. manage-machine-capabilities
+
+The profile exposes zero MCP servers. It does not carry Worker identity, persona, beliefs, semantic memory, hooks, permissions, governance, or project intent. Non-interactive/minimal setup starts with explicit empty machine capabilities. Guided setup offers this profile as an opt-out recommendation.
+
+Worker versus Mind
+
+The CLI now treats these as orthogonal concerns. A Worker is the selected project capability closure. A Mind is optional persona, belief, and BeginningDB-backed semantic memory state supplied by Mind-specific Cards and managed through `drwn worker mind`. The Operator profile remains focused on Worker and capability operation, not Mind behavior.
+
+Command model to use
+
+- Project roots and selection: `drwn add`, `drwn apply`, `drwn use`, `drwn pin`, `drwn update`, `drwn remove`
+- Projection: `drwn write --dry-run`, then `drwn write`
+- Inspection: `drwn status --json --explain`, `drwn card status --json --explain`, `drwn doctor --json`
+- Blueprint authoring: `drwn worker new`, `drwn worker compose`, `drwn worker publish`
+- Card authoring: `drwn card new`, `drwn card source ...`, `drwn card publish`
+- Standalone inventory: `drwn machine skill ...`, `drwn machine mcp ...`, `drwn machine inventory ...`
+- Machine activation: `drwn machine skill enable/disable`, `drwn machine mcp enable/disable`, followed by machine-scope write
+
+Do not use the retired `worker stack`, public `library`/`store`, curation, old project mutation under `drwn card`, or `install --no-apply` command models.
+
+Rollout impact
+
+Because this is prelaunch, existing development projects are expected to reset unsupported prototype config, locks, generated state, and old write records, then initialize and apply a published Blueprint under the V1 contract. Preserve authored Card sources and user-owned target configuration, and keep all credentials outside project/Card state.
+
+Repository and review status
+
+- CLI repository: https://github.com/remyjkim/darwinian-worker
+- Merged CI/release hermeticity PR: https://github.com/remyjkim/darwinian-worker/pull/51
+- Skills repository: https://github.com/remyjkim/darwinian-worker-skills
+- Skills update comparison: https://github.com/remyjkim/darwinian-worker-skills/compare/0c0a250...e4a6ca8
+- Skills commits: d46f7c9 (Operator contract) and e4a6ca8 (base Mind semantic memory alignment)
+- Published package: https://www.npmjs.com/package/darwinian/v/0.9.0
+- GitHub release: https://github.com/remyjkim/darwinian-worker/releases/tag/v0.9.0
+
+The skills commits were already pushed directly to main before the PR request, so there is no remaining branch delta from which GitHub can create a meaningful skills PR. The comparison above is the review surface for those changes.
+
+Before adopting the release in a consumer repo, run `drwn status --json --explain`, reset unsupported prototype state deliberately, apply/select the intended Blueprint, preview with `drwn write --dry-run --json`, and confirm the final state with `drwn doctor --json`.
