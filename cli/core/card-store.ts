@@ -24,13 +24,11 @@ import { assertSourceTrusted, loadEffectiveTrustedSourcesPolicy } from "./truste
 import {
   assertStoreWritable,
   resolveCardBareRepoPath,
-  resolveCardSourceDir,
   resolveCardsRoot,
   resolveCatalogsDir,
   resolveExtractedPath,
   resolveExtractedRoot,
   resolveMachineConfigPath,
-  resolveSourcesRoot,
   resolveStoreGeneratedDir,
   resolveStoreMcpServersDir,
   resolveStoreMetadataPath,
@@ -318,8 +316,7 @@ export function cardNamesEqual(refOrName: string, name: string) {
 }
 
 export async function createCardSource(options: {
-  sourceDir?: string;
-  agentsDir?: string;
+  sourceDir: string;
   name: string;
   scope?: string;
   noGit?: boolean;
@@ -330,16 +327,7 @@ export async function createCardSource(options: {
     throw new Error("Unscoped card names require --scope or machine authoring.scope");
   }
   const fullName = normalizeCardName(options.name, options.scope);
-  if (options.agentsDir) await ensureStoreInitialized(options.agentsDir);
-  if (options.scope && options.agentsDir && !options.sourceDir) {
-    const machine = await readMachineConfig(options.agentsDir);
-    machine.policy.authoring = { ...(machine.policy.authoring ?? {}), scope: options.scope };
-    await writeMachineConfig(options.agentsDir, machine);
-  }
-
-  const sourceDir = options.sourceDir
-    ? resolve(options.sourceDir)
-    : resolveCardSourceDir(options.agentsDir!, fullName);
+  const sourceDir = resolve(options.sourceDir);
   if (existsSync(join(sourceDir, "card.json"))) {
     throw new Error(`Card source already exists: ${fullName}`);
   }
@@ -363,11 +351,11 @@ export async function createCardSource(options: {
   return { name: fullName, sourceDir, manifestPath: join(sourceDir, "card.json") };
 }
 
-export async function readCardSourceManifest(sourceDirOrAgentsDir: string, legacyName?: string): Promise<CardManifest> {
-  const sourceDir = legacyName ? resolveCardSourceDir(sourceDirOrAgentsDir, legacyName) : resolve(sourceDirOrAgentsDir);
+export async function readCardSourceManifest(sourceInput: string): Promise<CardManifest> {
+  const sourceDir = resolve(sourceInput);
   const manifestPath = join(sourceDir, "card.json");
   if (!existsSync(manifestPath)) {
-    throw new Error(`Card source not found: ${legacyName ?? sourceDir}`);
+    throw new Error(`Card source not found: ${sourceDir}`);
   }
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as CardManifest;
   assertValidCardManifest(manifest);
@@ -774,7 +762,7 @@ async function listBareRepos(agentsDir: string): Promise<Array<{ name: string; p
 export async function publishCard(agentsDir: string, sourceInput: string, options: PublishCardOptions = {}) {
   assertStoreWritable();
   await ensureStoreInitialized(agentsDir);
-  const sourceDir = existsSync(join(sourceInput, "card.json")) ? resolve(sourceInput) : resolveCardSourceDir(agentsDir, sourceInput);
+  const sourceDir = resolve(sourceInput);
   const manifest = await readCardSourceManifest(sourceDir);
   for (const [skillName, upstreamRef] of Object.entries(manifest.skills?.upstream ?? {})) {
     try {
@@ -999,8 +987,8 @@ export async function deprecateCardVersion(agentsDir: string, ref: string, messa
   return resolved;
 }
 
-export async function removeCardSourceForTests(sourceDirOrAgentsDir: string, legacyName?: string) {
-  rmSync(legacyName ? resolveCardSourceDir(sourceDirOrAgentsDir, legacyName) : resolve(sourceDirOrAgentsDir), { recursive: true, force: true });
+export async function removeCardSourceForTests(sourceInput: string) {
+  rmSync(resolve(sourceInput), { recursive: true, force: true });
 }
 
 export function cardPathParts(name: string) {

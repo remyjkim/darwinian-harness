@@ -38,6 +38,7 @@ test("card new --from-defaults captures explicit machine skills into a capabilit
   expect(existsSync(join(sourceDir, "skills", "alpha", "SKILL.md"))).toBe(true);
   const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
   expect(manifest.skills?.include).toEqual(["alpha"]);
+  expect(result.stdout).toContain(`drwn card publish --from ${sourceDir}`);
 });
 
 test("card new --from-defaults flattens profile and explicit skills without profile identity", async () => {

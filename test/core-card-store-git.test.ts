@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { applyProjectCardSpecs } from "../cli/core/card-project";
 import { loadCardLock } from "../cli/core/card-lock";
 import { createCardSource, publishCard, resolveCard } from "../cli/core/card-store";
@@ -25,8 +25,8 @@ afterEach(async () => {
 });
 
 async function createSource(agentsDir: string, version = "1.0.0", skills = ["alpha"]) {
-  await createCardSource({ agentsDir, name: "@me/backend", noGit: true });
-  const sourceDir = join(agentsDir, "drwn", "sources", "@me", "backend");
+  const sourceDir = join(dirname(agentsDir), "card-sources", "backend");
+  await createCardSource({ sourceDir, name: "@me/backend", noGit: true });
   const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
   manifest.version = version;
   manifest.skills = { include: skills };
@@ -58,9 +58,9 @@ describe("Git-backed card store", () => {
     const root = await createTempRoot("card-store-git-");
     tempRoots.push(root);
     const agentsDir = join(root, ".agents");
-    await createSource(agentsDir);
+    const sourceDir = await createSource(agentsDir);
 
-    const published = await publishCard(agentsDir, "@me/backend");
+    const published = await publishCard(agentsDir, sourceDir);
 
     const bareRepo = resolveCardBareRepoPath(agentsDir, "@me/backend");
     expect(published.versionDir).toStartWith(resolveExtractedRoot(agentsDir));
@@ -75,16 +75,15 @@ describe("Git-backed card store", () => {
     const root = await createTempRoot("card-store-git-");
     tempRoots.push(root);
     const agentsDir = join(root, ".agents");
-    await createSource(agentsDir, "1.0.0", ["alpha"]);
-    await publishCard(agentsDir, "@me/backend");
-    const sourceDir = join(agentsDir, "drwn", "sources", "@me", "backend");
+    const sourceDir = await createSource(agentsDir, "1.0.0", ["alpha"]);
+    await publishCard(agentsDir, sourceDir);
     const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
     manifest.version = "1.1.0";
     manifest.skills = { include: ["alpha", "beta"] };
     await writeFile(join(sourceDir, "card.json"), `${JSON.stringify(manifest, null, 2)}\n`);
     await mkdir(join(sourceDir, "skills", "beta"), { recursive: true });
     await writeFile(join(sourceDir, "skills", "beta", "SKILL.md"), "# beta\n");
-    await publishCard(agentsDir, "@me/backend");
+    await publishCard(agentsDir, sourceDir);
 
     const resolved = await resolveCard(agentsDir, "@me/backend@^1.0.0");
 
@@ -101,8 +100,8 @@ describe("Git-backed card store", () => {
     const agentsDir = join(root, ".agents");
     const projectRoot = join(root, "project");
     await writeSupportedProjectConfig(projectRoot);
-    await createSource(agentsDir);
-    await publishCard(agentsDir, "@me/backend");
+    const sourceDir = await createSource(agentsDir);
+    await publishCard(agentsDir, sourceDir);
 
     await applyProjectCardSpecs(projectRoot, agentsDir, ["@me/backend@^1.0.0"]);
 

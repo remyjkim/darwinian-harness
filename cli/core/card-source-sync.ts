@@ -10,7 +10,6 @@ import { DrwnError } from "./errors";
 import { formatUpstreamRef, parseUpstreamRef } from "./git-ref";
 import * as git from "./git";
 import { readCardSourceManifest } from "./card-store";
-import { resolveCardSourceDir } from "./store-paths";
 
 export interface SyncCardSourceResult {
   synced: string[];
@@ -128,7 +127,7 @@ export async function syncCardSource(
   sourceInput: string,
   options: { check?: boolean } = {},
 ): Promise<SyncCardSourceResult> {
-  const sourceDir = existsSync(join(sourceInput, "card.json")) ? resolve(sourceInput) : resolveCardSourceDir(agentsDir, sourceInput);
+  const sourceDir = resolve(sourceInput);
   const manifest = await readCardSourceManifest(sourceDir);
   const upstream = manifest.skills?.upstream ?? {};
   const syncState = await readUpstreamSyncState(sourceDir);

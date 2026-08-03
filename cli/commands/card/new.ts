@@ -100,6 +100,7 @@ export class CardNewCommand extends BaseCommand {
       scopeForCreate = resolved.scope;
     }
     const fullName = normalizeCardName(this.name, scopeForCreate);
+    const authorScope = fullName.split("/")[0]!;
     const parentDir = resolve(this.context.cwd, expandHomePath(this.into ?? ".", this.context.homeDir));
     const sourceDir = join(parentDir, fullName.split("/").at(-1)!);
 
@@ -119,10 +120,16 @@ export class CardNewCommand extends BaseCommand {
         this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
         return 1;
       }
+      if (preferences.defaultAuthorScope !== authorScope) {
+        await mutateUserPreferences(this.context.agentsDir, (current) => ({
+          preferences: { ...current, defaultAuthorScope: authorScope },
+          value: undefined,
+        }));
+      }
       this.context.stdout.write(`Created capability card ${captured.name}: ${captured.sourceDir}\n`);
       this.context.stdout.write(`Skills captured: ${captured.skillCount}\n`);
       this.context.stdout.write(`MCP servers captured: ${captured.serverCount}\n`);
-      this.context.stdout.write(`Next: drwn card publish ${captured.name}\n`);
+      this.context.stdout.write(`Next: drwn card publish --from ${captured.sourceDir}\n`);
       return 0;
     }
 
@@ -143,13 +150,19 @@ export class CardNewCommand extends BaseCommand {
         this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
         return 1;
       }
+      if (preferences.defaultAuthorScope !== authorScope) {
+        await mutateUserPreferences(this.context.agentsDir, (current) => ({
+          preferences: { ...current, defaultAuthorScope: authorScope },
+          value: undefined,
+        }));
+      }
       this.context.stdout.write(`Captured card source ${captured.name}: ${captured.sourceDir}\n`);
       this.context.stdout.write(`Skills captured: ${captured.skillCount}\n`);
       this.context.stdout.write(`Hooks captured: ${captured.hookCount}\n`);
       this.context.stdout.write(`MCP servers captured: ${captured.serverCount}\n`);
       this.context.stdout.write(`Extensions captured: ${captured.extensionCount}\n`);
       this.context.stdout.write(`Targets captured: ${captured.targetCount}\n`);
-      this.context.stdout.write(`Next: drwn card publish ${captured.name}\n`);
+      this.context.stdout.write(`Next: drwn card publish --from ${captured.sourceDir}\n`);
       return 0;
     }
     let source;
@@ -164,9 +177,9 @@ export class CardNewCommand extends BaseCommand {
       this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       return 1;
     }
-    if (scopeForCreate && preferences.defaultAuthorScope !== scopeForCreate) {
+    if (preferences.defaultAuthorScope !== authorScope) {
       await mutateUserPreferences(this.context.agentsDir, (current) => ({
-        preferences: { ...current, defaultAuthorScope: scopeForCreate },
+        preferences: { ...current, defaultAuthorScope: authorScope },
         value: undefined,
       }));
     }

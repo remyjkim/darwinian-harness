@@ -5,9 +5,6 @@ import { doctorCardSource } from "./card-source";
 import { syncCardSource } from "./card-source-sync";
 import { publishCard } from "./card-store";
 import { isStrictSemver } from "./semver-utils";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { resolveCardSourceDir } from "./store-paths";
 
 export interface ReleasePipelineOptions {
   bump?: "major" | "minor" | "patch";
@@ -21,7 +18,6 @@ export interface ReleasePipelineStep {
 }
 
 export async function runRelease(agentsDir: string, sourceDir: string, options: ReleasePipelineOptions = {}) {
-  sourceDir = existsSync(join(sourceDir, "card.json")) ? sourceDir : resolveCardSourceDir(agentsDir, sourceDir);
   const steps: ReleasePipelineStep[] = [];
   const sync = await syncCardSource(agentsDir, sourceDir, { check: true });
   steps.push({

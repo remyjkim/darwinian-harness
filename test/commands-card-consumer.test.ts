@@ -18,7 +18,7 @@ async function publishCard(fixture: Awaited<ReturnType<typeof scaffoldCliFixture
 }
 
 async function publishCardWithHook(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "policy");
+  const sourceDir = join(fixture.root, "card-catalog", "cards", "policy");
   await publishCardWithSkills(fixture, { name: "@me/policy", version: "1.0.0", skills: [] });
   const manifestPath = join(sourceDir, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));

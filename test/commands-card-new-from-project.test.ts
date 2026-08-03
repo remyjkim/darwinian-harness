@@ -5,6 +5,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { loadUserPreferences } from "../cli/core/user-preferences";
 import {
   cleanupTempRoots,
   envFor,
@@ -41,6 +42,8 @@ test("card new --from-project captures a project and the captured source can be 
   const manifest = JSON.parse(await readFile(join(sourceDir, "card.json"), "utf8"));
   expect(manifest.version).toBe("0.1.0");
   expect(manifest.skills.include).toEqual(["card-alpha", "beta"]);
+  expect(capture.stdout).toContain(`drwn card publish --from ${sourceDir}`);
+  expect((await loadUserPreferences(fixture.agentsDir)).defaultAuthorScope).toBe("@me");
 
   const publish = await runAgentsCli(["card", "publish", "--from", sourceDir], envFor(fixture));
   expect(publish.exitCode).toBe(0);

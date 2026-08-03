@@ -38,6 +38,7 @@ export class WorkerNewCommand extends BaseCommand {
       const preferences = await loadUserPreferences(this.context.agentsDir);
       const scope = this.scope ?? preferences.defaultAuthorScope;
       const fullName = normalizeCardName(this.name, scope);
+      const authorScope = fullName.split("/")[0]!;
       const parentDir = resolve(this.context.cwd, expandHomePath(this.into ?? ".", this.context.homeDir));
       const sourceDir = join(parentDir, fullName.split("/").at(-1)!);
       const created = await createCardSource({
@@ -47,9 +48,9 @@ export class WorkerNewCommand extends BaseCommand {
         noGit: this.noGit,
         kind: "blueprint",
       });
-      if (scope && preferences.defaultAuthorScope !== scope) {
+      if (preferences.defaultAuthorScope !== authorScope) {
         await mutateUserPreferences(this.context.agentsDir, (current) => ({
-          preferences: { ...current, defaultAuthorScope: scope },
+          preferences: { ...current, defaultAuthorScope: authorScope },
           value: undefined,
         }));
       }

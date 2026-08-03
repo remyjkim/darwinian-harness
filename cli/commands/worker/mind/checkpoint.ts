@@ -15,6 +15,32 @@ import { DrwnError } from "../../../core/errors";
 import { BaseCommand } from "../../base";
 import { requireProjectRoot } from "../../card/project-command";
 
+export async function resolveCheckpointSourceDirs(options: {
+  cardNames: string[];
+  projectRoot: string;
+  homeDir: string;
+  catalogCheckouts: string[];
+  sourceOverrides?: Record<string, string>;
+}) {
+  const sourceDirs: Record<string, string> = {};
+  for (const cardName of options.cardNames) {
+    try {
+      const override = options.sourceOverrides?.[cardName];
+      const source = await resolveCardSourceInput({
+        input: cardName,
+        ...(override ? { from: override } : {}),
+        cwd: options.projectRoot,
+        homeDir: options.homeDir,
+        catalogCheckouts: options.catalogCheckouts,
+      });
+      sourceDirs[cardName] = source.sourceDir;
+    } catch (error) {
+      if (!(error instanceof DrwnError) || error.code !== "CARD_SOURCE_NOT_FOUND") throw error;
+    }
+  }
+  return sourceDirs;
+}
+
 export class WorkerMindCheckpointCommand extends BaseCommand {
   static override paths = [["worker", "mind", "checkpoint"]];
 
@@ -43,22 +69,13 @@ export class WorkerMindCheckpointCommand extends BaseCommand {
       const index = await readMindIndex(client, mindId);
       const local = await loadConfigLocal(projectRoot);
       const preferences = await loadUserPreferences(this.context.agentsDir);
-      const sourceDirs: Record<string, string> = {};
-      for (const card of index?.cards ?? []) {
-        try {
-          const override = local?.sourceOverrides?.[card.card];
-          const source = await resolveCardSourceInput({
-            input: card.card,
-            ...(override ? { from: override } : {}),
-            cwd: projectRoot,
-            homeDir: this.context.homeDir,
-            catalogCheckouts: preferences.catalogCheckouts,
-          });
-          sourceDirs[card.card] = source.sourceDir;
-        } catch (error) {
-          if (!(error instanceof DrwnError) || error.code !== "CARD_SOURCE_NOT_FOUND") throw error;
-        }
-      }
+      const sourceDirs = await resolveCheckpointSourceDirs({
+        cardNames: (index?.cards ?? []).map((card) => card.card),
+        projectRoot,
+        homeDir: this.context.homeDir,
+        catalogCheckouts: preferences.catalogCheckouts,
+        sourceOverrides: local?.sourceOverrides,
+      });
       const result = await checkpointMind(client, mindId, cards, { sourceDirs });
       if (this.json) {
         this.context.stdout.write(renderJson({ mindId, ...result }));
