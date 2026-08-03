@@ -49,6 +49,74 @@ function recordGeneratedSymlink(scopeRoot: string, linkPath: string, targetPath:
   );
 }
 
+function plannedHash(label: string) {
+  return hashManagedContent(`planned:${label}`);
+}
+
+function selectedRootsForProjection(state: EffectiveState) {
+  const selection = state.workerSelection;
+  if (!selection) return [];
+  if (state.scopedOptions.writeScope !== "machine") {
+    return selection.installedRoots;
+  }
+  return selection.selectedRoot ? [selection.selectedRoot] : [];
+}
+
+export function planMachineWorkerManagedPaths(state: EffectiveState): ManagedPath[] {
+  if (state.scopedOptions.writeScope !== "machine") return [];
+  const roots = selectedRootsForProjection(state);
+  if (roots.length === 0) return [];
+  const generatedDir =
+    state.scopedOptions.generatedDir ??
+    resolveStoreGeneratedDir(state.scopedOptions.agentsDir);
+  const paths: ManagedPath[] = roots.map((root) =>
+    ownManagedPath(
+      {
+        path: managedPath(
+          state.scopeRoot,
+          resolveGeneratedWorkerDir(generatedDir, root.name),
+        ),
+        kind: "managed-directory" as const,
+        contentHash: plannedHash(`worker:${root.name}`),
+      },
+      { surface: "worker" },
+    ),
+  );
+  for (const name of ["workers.json", "active-worker.json"] as const) {
+    paths.push(
+      ownManagedPath(
+        {
+          path: managedPath(state.scopeRoot, join(generatedDir, name)),
+          kind: "managed-content",
+          contentHash: plannedHash(name),
+        },
+        { surface: "worker" },
+      ),
+    );
+  }
+  const composition = composeConsentedInstructions({
+    cards: state.activeCards,
+    contentRootsByCard: state.contentRootsByCard,
+    organizationConsent: state.organizationInstructionConsent,
+  });
+  if (composition.bytes) {
+    paths.push(
+      ownManagedPath(
+        {
+          path: managedPath(
+            state.scopeRoot,
+            join(generatedDir, "instructions.md"),
+          ),
+          kind: "managed-content",
+          contentHash: plannedHash("instructions.md"),
+        },
+        { surface: "worker" },
+      ),
+    );
+  }
+  return paths;
+}
+
 function ensureDirSymlink(linkPath: string, targetPath: string, dryRun: boolean, result: SyncResult) {
   const stats = lstatSafe(linkPath);
   if (stats) {
@@ -241,16 +309,20 @@ export async function syncWorkers(state: EffectiveState): Promise<SyncResult> {
   const result: SyncResult = { changes: [], warnings: [], managedPaths: [] };
   const generatedDir = state.scopedOptions.generatedDir ?? resolveStoreGeneratedDir(state.scopedOptions.agentsDir);
   const workersRoot = resolveGeneratedWorkersDir(generatedDir);
-  if (!state.scopedOptions.dryRun) {
-    mkdirSync(workersRoot, { recursive: true });
-  }
   const selection = state.workerSelection;
   if (!selection) {
     return result;
   }
+  const roots = selectedRootsForProjection(state);
+  if (state.scopedOptions.writeScope === "machine" && roots.length === 0) {
+    return result;
+  }
+  if (!state.scopedOptions.dryRun) {
+    mkdirSync(workersRoot, { recursive: true });
+  }
   const workers = [];
   const byName = new Map(selection.installedCards.map((card) => [card.name, card]));
-  for (const root of selection.installedRoots) {
+  for (const root of roots) {
     const closure = [root.name, ...root.members].map((name) => {
       const card = byName.get(name);
       if (!card) throw new Error(`Worker root ${root.name} references missing Card ${name}`);

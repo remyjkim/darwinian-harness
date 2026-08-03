@@ -6,7 +6,9 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expandHomePath, resolveToolPaths } from "./paths";
 import {
+  CLAUDE_HOOK_FIELD_PREFIX,
   CLAUDE_MCP_SERVER_HASH_PREFIX,
+  hashClaudeHookFields,
   mcpServerHashKey,
   codexUnsupportedHeaderKeys,
   hashCodexManagedServers,
@@ -19,12 +21,22 @@ import {
   renderJsonMcpConfig,
 } from "./mcp";
 import { syncSkills as syncSkillsCore } from "./skills";
-import { syncHooks } from "./hook-generator/sync-hooks";
-import { syncWorkers } from "./worker-generator/sync-worker";
+import {
+  planMachineHookManagedPaths,
+  syncHooks,
+} from "./hook-generator/sync-hooks";
+import {
+  planMachineWorkerManagedPaths,
+  syncWorkers,
+} from "./worker-generator/sync-worker";
 import {
   instructionCompositionForState,
+  planMachineInstructionManagedPaths,
+  syncMachineInstructions,
   syncProjectInstructions,
 } from "./sync-project-instructions";
+import { INSTRUCTION_BLOCK_MARKERS } from "./sync-instructions";
+import { parseManagedBlock } from "./managed-block";
 import { ensureParentDir, lstatSafe, realpathSafe } from "./fs";
 import { backupExistingPath, writeManagedFile } from "./managed-file";
 import {
@@ -142,6 +154,10 @@ export function planMachineManagedPaths(state: EffectiveState): ManagedPath[] {
     }
   }
 
+  planned.push(...planMachineWorkerManagedPaths(state));
+  planned.push(...planMachineInstructionManagedPaths(state));
+  planned.push(...planMachineHookManagedPaths(state));
+
   return uniqueManagedPaths(planned);
 }
 
@@ -153,6 +169,12 @@ export interface MachineProjectionConflict {
 }
 
 function managedPathAbsolute(state: EffectiveState, entry: ManagedPath) {
+  if (entry.path === ".claude/settings.json" && entry.surface === "hook") {
+    return expandHomePath(
+      state.effectiveConfig.targets.claude.configPath,
+      state.scopedOptions.homeDir,
+    );
+  }
   if (entry.path === ".claude.json") return machineTargetConfigPath(state, "claude");
   if (entry.path === ".codex/config.toml") return machineTargetConfigPath(state, "codex");
   if (entry.path === ".cursor/mcp.json") return machineTargetConfigPath(state, "cursor");
@@ -167,6 +189,45 @@ function inspectManagedFields(
   const stats = lstatSafe(absolutePath);
   if (!stats) return { invalid: false, values: {} };
   if (!stats.isFile() && !stats.isSymbolicLink()) return { invalid: true, values: {} };
+  if (entry.surface === "instructions") {
+    const parsed = parseManagedBlock(
+      new Uint8Array(readFileSync(absolutePath)),
+      INSTRUCTION_BLOCK_MARKERS,
+    );
+    if (parsed.state === "malformed") return { invalid: true, values: {} };
+    const hash =
+      parsed.state === "present" ? hashManagedContent(parsed.block) : "absent";
+    return {
+      invalid: false,
+      values: Object.fromEntries(
+        entry.fields.map((field) => [
+          field,
+          { present: parsed.state === "present", hash },
+        ]),
+      ),
+    };
+  }
+  if (
+    entry.surface === "hook" &&
+    entry.fields.some((field) => field.startsWith(CLAUDE_HOOK_FIELD_PREFIX))
+  ) {
+    const hashes = hashClaudeHookFields(
+      readFileSync(absolutePath, "utf8"),
+      entry.fields,
+    );
+    if (entry.fields.some((field) => !(field in hashes))) {
+      return { invalid: true, values: {} };
+    }
+    return {
+      invalid: false,
+      values: Object.fromEntries(
+        entry.fields.map((field) => [
+          field,
+          { present: hashes[field] !== "absent", hash: hashes[field]! },
+        ]),
+      ),
+    };
+  }
   if (isCodexMcpEntry(entry)) {
     const hashes = hashCodexManagedServers(readFileSync(absolutePath, "utf8"), entry.fields);
     if (entry.fields.some((field) => !(field in hashes))) return { invalid: true, values: {} };
@@ -297,6 +358,23 @@ export function cleanupRemovedManagedPaths(
       continue;
     }
     if (entry.surface === "instructions") {
+      continue;
+    }
+    if (entry.surface === "hook" && entry.kind === "managed-fields") {
+      try {
+        const stats = lstatSafe(absolutePath);
+        if (!stats?.isFile()) throw new Error("managed config is not a file");
+        const current = readFileSync(absolutePath, "utf8");
+        const next = mergeClaudeSettingsText(current, {}, {
+          hooks: {},
+          mcpServerOwnership: "none",
+        });
+        if (next.text !== current) {
+          writeManagedFile(absolutePath, next.text, dryRun, result);
+        }
+      } catch {
+        result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+      }
       continue;
     }
     if (entry.kind === "managed-content") {
@@ -705,6 +783,27 @@ export async function syncRepository(options: SyncOptions = {}): Promise<SyncRes
     result.warnings.push(...workersResult.warnings);
     result.managedPaths?.push(...(workersResult.managedPaths ?? []));
     const instructionsResult = syncProjectInstructions({
+      state,
+      previousManagedPaths: previousRecord?.managedPaths ?? [],
+      composition,
+    });
+    result.changes.push(...instructionsResult.changes);
+    result.warnings.push(...instructionsResult.warnings);
+    result.managedPaths?.push(...(instructionsResult.managedPaths ?? []));
+  } else {
+    const composition = instructionCompositionForState(state);
+    if (state.scopedOptions.strict && composition.excluded.length > 0) {
+      throw new Error(
+        `Explicit instruction consent required for: ${composition.excluded
+          .map((item) => item.card)
+          .join(", ")}`,
+      );
+    }
+    const workersResult = await syncWorkers(state);
+    result.changes.push(...workersResult.changes);
+    result.warnings.push(...workersResult.warnings);
+    result.managedPaths?.push(...(workersResult.managedPaths ?? []));
+    const instructionsResult = syncMachineInstructions({
       state,
       previousManagedPaths: previousRecord?.managedPaths ?? [],
       composition,

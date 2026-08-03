@@ -8,7 +8,11 @@ import type { CardLockEntry } from "../card-lock";
 import type { EffectiveState } from "../effective-state";
 import { isHookConsentValid } from "../hook-consent";
 import { expandHomePath, resolveToolPaths } from "../paths";
-import { type ClaudeHooksConfig, mergeClaudeSettingsText } from "../mcp";
+import {
+  hashDesiredClaudeHookFields,
+  type ClaudeHooksConfig,
+  mergeClaudeSettingsText,
+} from "../mcp";
 import { writeManagedFile } from "../managed-file";
 import { assertStoreWritable, resolveGeneratedHooksDir, resolveStoreGeneratedDir } from "../store-paths";
 import type { SyncResult, TargetName } from "../types";
@@ -19,6 +23,10 @@ import { resolveHookRuntimes } from "./runtime-selection";
 import { resolveDrwnHookCommand, signalHooksConfig } from "./sync-signals";
 
 const COMMAND_TIMEOUT_SECONDS = 30;
+
+function plannedHash(label: string) {
+  return hashManagedContent(`planned:${label}`);
+}
 
 async function readTextIfExists(pathValue: string, fallback: string) {
   try {
@@ -189,6 +197,93 @@ function hasOwnedClaudeHooks(settingsText: string) {
   }
 }
 
+export function planMachineHookManagedPaths(state: EffectiveState): ManagedPath[] {
+  if (
+    state.scopedOptions.writeScope !== "machine" ||
+    state.scopedOptions.mcpOnly ||
+    state.scopedOptions.skillsOnly
+  ) {
+    return [];
+  }
+  const projectHookConfig = state.projectConfigWithCards?.hooks ?? state.projectConfig?.hooks;
+  const exclusions = new Set(projectHookConfig?.exclude ?? []);
+  const planningResult: SyncResult = { changes: [], warnings: [], managedPaths: [] };
+  const policies = collectPolicies(
+    state.activeCards,
+    exclusions,
+    planningResult,
+    state.normalized.strictHooks ?? false,
+    state.contentRootsByCard,
+  );
+  const hasPolicies = policies.length > 0;
+  const signalsEnabled = projectHookConfig?.signals?.enabled === true;
+  if (!hasPolicies && !signalsEnabled) return [];
+  const generatedDir =
+    state.scopedOptions.generatedDir ??
+    resolveStoreGeneratedDir(state.scopedOptions.agentsDir);
+  const runtimes = resolveHookRuntimes({
+    effectiveConfig: state.effectiveConfig,
+    projectConfig: state.projectConfigWithCards ?? state.projectConfig,
+    target: state.scopedOptions.target,
+  });
+  const paths: ManagedPath[] = [];
+
+  for (const runtime of runtimes) {
+    const outputDir = resolveGeneratedHooksDir(generatedDir, runtime);
+    const target: ProjectionTarget =
+      runtime === "claude-code" ? "claude" : runtime;
+    if (hasPolicies) {
+      const composerPath = join(
+        outputDir,
+        runtime === "mastra" ? "composer.ts" : "composer.mjs",
+      );
+      paths.push(recordManagedContent(
+        state.scopeRoot,
+        composerPath,
+        plannedHash(`hook:${runtime}`),
+        target,
+      ));
+    }
+    if (runtime === "claude-code") {
+      const desiredHooks = mergeClaudeHookConfigs(
+        hasPolicies
+          ? claudeHooksConfig(join(outputDir, "composer.mjs"))
+          : {},
+        signalsEnabled ? signalHooksConfig(resolveDrwnHookCommand()) : {},
+      );
+      const fieldHashes = hashDesiredClaudeHookFields(desiredHooks);
+      if (Object.keys(fieldHashes).length > 0) {
+        paths.push({
+          path: ".claude/settings.json",
+          kind: "managed-fields",
+          surface: "hook",
+          target: "claude",
+          fields: Object.keys(fieldHashes),
+          fieldHashes,
+        });
+      }
+      continue;
+    }
+    if (!hasPolicies) continue;
+    const targetPath = runtime === "codex"
+      ? join(state.scopeRoot, ".codex", "hooks.json")
+      : runtime === "cursor"
+        ? join(state.scopeRoot, ".cursor", "hooks.json")
+        : runtime === "opencode"
+          ? join(state.scopeRoot, ".config", "opencode", "plugins", "drwn-hooks.js")
+          : null;
+    if (targetPath) {
+      paths.push(recordManagedContent(
+        state.scopeRoot,
+        targetPath,
+        plannedHash(`hook-target:${runtime}`),
+        target,
+      ));
+    }
+  }
+  return paths;
+}
+
 export async function syncHooks(state: EffectiveState, previousManagedPaths: ManagedPath[] = []): Promise<SyncResult> {
   const result: SyncResult = { changes: [], warnings: [], managedPaths: [] };
   const projectHookConfig = state.projectConfigWithCards?.hooks ?? state.projectConfig?.hooks;
@@ -247,14 +342,17 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
         ...(state.scopedOptions.writeScope === "machine" ? { mcpServerOwnership: "none" as const } : {}),
       });
       writeManagedFile(settingsPath, next.text, state.scopedOptions.dryRun, result);
-      result.managedPaths?.push({
-        path: ".claude/settings.json",
-        kind: "managed-fields",
-        surface: "hook",
-        target: "claude",
-        fields: Object.keys(next.fieldHashes),
-        fieldHashes: next.fieldHashes,
-      });
+      const hookFieldHashes = hashDesiredClaudeHookFields(desiredHooks);
+      if (Object.keys(hookFieldHashes).length > 0) {
+        result.managedPaths?.push({
+          path: ".claude/settings.json",
+          kind: "managed-fields",
+          surface: "hook",
+          target: "claude",
+          fields: Object.keys(hookFieldHashes),
+          fieldHashes: hookFieldHashes,
+        });
+      }
       continue;
     }
 

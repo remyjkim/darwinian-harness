@@ -136,7 +136,7 @@ describe("drwn.write-record V1", () => {
     expect(loadWriteRecord(recordPath, "project")?.managedPaths[0]).toMatchObject({ surface: "hook", target: "cursor" });
   });
 
-  test("accepts target-agnostic project instructions and rejects them at machine scope", async () => {
+  test("accepts project instructions and requires target-specific machine instruction ownership", async () => {
     const root = await createTempRoot("write-record-v1-");
     tempRoots.push(root);
     const recordPath = join(root, "write-record.json");
@@ -170,10 +170,26 @@ describe("drwn.write-record V1", () => {
         managedPaths: [{ ...instructionEntry, target: "claude" }],
       })}\n`,
     );
-    expectInvalid(() => loadWriteRecord(recordPath, "project"), "instructions");
+    expect(loadWriteRecord(recordPath, "project")?.managedPaths[0]).toMatchObject({
+      surface: "instructions",
+      target: "claude",
+    });
+
+    await writeFile(
+      recordPath,
+      `${JSON.stringify({
+        ...project,
+        scope: "machine",
+        managedPaths: [{ ...instructionEntry, target: "codex" }],
+      })}\n`,
+    );
+    expect(loadWriteRecord(recordPath, "machine")?.managedPaths[0]).toMatchObject({
+      surface: "instructions",
+      target: "codex",
+    });
   });
 
-  test("machine records permit only machine skill and MCP ownership", async () => {
+  test("machine records permit every supported projection surface", async () => {
     const root = await createTempRoot("write-record-v1-");
     tempRoots.push(root);
     const recordPath = join(root, "write-record.json");
@@ -192,10 +208,15 @@ describe("drwn.write-record V1", () => {
     await writeFile(recordPath, `${JSON.stringify(machine)}\n`);
     expect(loadWriteRecord(recordPath, "machine")).toEqual(machine);
 
-    await writeFile(recordPath, `${JSON.stringify({
-      ...machine,
-      managedPaths: [{ ...machine.managedPaths[0], surface: "worker", target: undefined }],
-    })}\n`);
-    expectInvalid(() => loadWriteRecord(recordPath, "machine"), "machine");
+    for (const entry of [
+      { ...machine.managedPaths[0], surface: "worker" as const, target: undefined },
+      { ...machine.managedPaths[0], surface: "hook" as const, target: "claude" as const },
+    ]) {
+      await writeFile(recordPath, `${JSON.stringify({
+        ...machine,
+        managedPaths: [entry],
+      })}\n`);
+      expect(loadWriteRecord(recordPath, "machine")?.managedPaths[0]?.surface).toBe(entry.surface);
+    }
   });
 });

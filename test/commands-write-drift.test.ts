@@ -4,7 +4,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import {
+  cleanupTempRoots,
+  createFixtureRegistry,
+  installMachineBlueprint,
+  runAgentsCli,
+  scaffoldCliFixture,
+} from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -20,10 +26,19 @@ function envFor(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
   };
 }
 
+async function installMachineCapabilities(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+) {
+  await installMachineBlueprint(fixture, {
+    skills: ["alpha"],
+    servers: { context7: createFixtureRegistry().servers.context7 },
+  });
+}
+
 test("write refuses when a drwn-owned user-scope Claude MCP server has been hand-edited", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["machine", "mcp", "enable", "context7"], envFor(fixture))).exitCode).toBe(0);
+  await installMachineCapabilities(fixture);
   expect((await runAgentsCli(["write"], envFor(fixture))).exitCode).toBe(0);
   const settings = JSON.parse(await readFile(fixture.claudeUserMcp, "utf8"));
   settings.mcpServers.context7.command = "node";
@@ -39,7 +54,7 @@ test("write refuses when a drwn-owned user-scope Claude MCP server has been hand
 test("write --force overwrites Claude drift", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["machine", "mcp", "enable", "context7"], envFor(fixture))).exitCode).toBe(0);
+  await installMachineCapabilities(fixture);
   expect((await runAgentsCli(["write"], envFor(fixture))).exitCode).toBe(0);
   const settings = JSON.parse(await readFile(fixture.claudeUserMcp, "utf8"));
   settings.mcpServers.context7.command = "node";
@@ -56,7 +71,7 @@ for (const variant of ["different", "identical"] as const) {
   test(`first machine write rejects an ${variant} unowned skill directory`, async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture))).exitCode).toBe(0);
+    await installMachineCapabilities(fixture);
     const destination = join(fixture.homeDir, ".claude", "skills", "alpha");
     await mkdir(join(fixture.homeDir, ".claude", "skills"), { recursive: true });
     if (variant === "identical") {
@@ -81,7 +96,7 @@ for (const variant of ["different", "identical"] as const) {
 test("machine write --force cannot claim an unowned skill directory", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture))).exitCode).toBe(0);
+  await installMachineCapabilities(fixture);
   const destination = join(fixture.homeDir, ".claude", "skills", "alpha");
   await mkdir(destination, { recursive: true });
   await writeFile(join(destination, "SKILL.md"), "foreign content\n");

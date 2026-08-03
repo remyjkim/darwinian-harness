@@ -1,5 +1,5 @@
-// ABOUTME: Applies the consented instruction composition to the repository-root AGENTS.md block.
-// ABOUTME: Uses prior exact-block ownership to preserve foreign bytes and fail closed on drift.
+// ABOUTME: Applies consented Worker instructions to project and supported machine-scope adapters.
+// ABOUTME: Uses exact managed-block ownership to preserve foreign bytes and fail closed on drift.
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +18,11 @@ import { ownManagedPath, type ManagedPath } from "./write-record";
 
 const OWNERSHIP_FIELD = "drwn:instructions";
 
+const MACHINE_INSTRUCTION_ADAPTERS = [
+  { target: "claude" as const, path: ".claude/CLAUDE.md" },
+  { target: "codex" as const, path: ".codex/AGENTS.md" },
+] as const;
+
 export function instructionCompositionForState(
   state: EffectiveState,
 ): InstructionComposition {
@@ -26,6 +31,133 @@ export function instructionCompositionForState(
     contentRootsByCard: state.contentRootsByCard,
     organizationConsent: state.organizationInstructionConsent,
   });
+}
+
+function instructionWarnings(composition: InstructionComposition) {
+  return composition.excluded.map(
+    (item) =>
+      item.expectedEvidenceKind === "org_worker_bundle_consent"
+        ? `${item.card} organization instruction consent excluded: ${item.reason}. Verify Org Worker materialization evidence.`
+        : `${item.card} explicit instructions excluded: ${item.reason}. Run drwn card trust ${item.card} --instructions.`,
+  );
+}
+
+function assertStrictInstructionConsent(
+  state: EffectiveState,
+  composition: InstructionComposition,
+) {
+  if (state.scopedOptions.strict && composition.excluded.length > 0) {
+    throw new Error(
+      `Explicit instruction consent required for: ${composition.excluded
+        .map((item) => item.card)
+        .join(", ")}`,
+    );
+  }
+}
+
+function selectedMachineInstructionAdapters(state: EffectiveState) {
+  if (
+    state.scopedOptions.writeScope !== "machine" ||
+    state.scopedOptions.mcpOnly ||
+    state.scopedOptions.skillsOnly
+  ) {
+    return [];
+  }
+  return MACHINE_INSTRUCTION_ADAPTERS.filter(
+    (adapter) =>
+      !state.scopedOptions.target || state.scopedOptions.target === adapter.target,
+  );
+}
+
+export function planMachineInstructionManagedPaths(
+  state: EffectiveState,
+  composition = instructionCompositionForState(state),
+): ManagedPath[] {
+  if (!composition.bytes) return [];
+  const ownershipHash = planInstructionProjection({
+    currentBytes: new Uint8Array(),
+    composition,
+    instructionId: `worker:${state.workerSelection?.selectedRoot?.name ?? "none"}`,
+  }).ownershipHash;
+  if (!ownershipHash) return [];
+  return selectedMachineInstructionAdapters(state).map((adapter) =>
+    ownManagedPath(
+      {
+        path: adapter.path,
+        kind: "managed-fields" as const,
+        fields: [OWNERSHIP_FIELD],
+        fieldHashes: { [OWNERSHIP_FIELD]: ownershipHash },
+      },
+      { surface: "instructions", target: adapter.target },
+    ),
+  );
+}
+
+export function syncMachineInstructions(input: {
+  state: EffectiveState;
+  previousManagedPaths: readonly ManagedPath[];
+  composition?: InstructionComposition;
+}): SyncResult {
+  const result: SyncResult = { changes: [], warnings: [], managedPaths: [] };
+  const adapters = selectedMachineInstructionAdapters(input.state);
+  if (adapters.length === 0) return result;
+  const composition =
+    input.composition ?? instructionCompositionForState(input.state);
+  result.warnings.push(...instructionWarnings(composition));
+  assertStrictInstructionConsent(input.state, composition);
+
+  for (const adapter of adapters) {
+    const previous = input.previousManagedPaths.find(
+      (entry) =>
+        entry.surface === "instructions" &&
+        entry.kind === "managed-fields" &&
+        entry.path === adapter.path,
+    );
+    const previousOwnershipHash =
+      previous?.kind === "managed-fields"
+        ? previous.fieldHashes[OWNERSHIP_FIELD]
+        : undefined;
+    const path = join(input.state.scopeRoot, adapter.path);
+    const currentBytes = existsSync(path)
+      ? new Uint8Array(readFileSync(path))
+      : new Uint8Array();
+    const plan = planInstructionProjection({
+      currentBytes,
+      composition,
+      instructionId: `worker:${
+        input.state.workerSelection?.selectedRoot?.name ?? "none"
+      }`,
+      previousOwnershipHash,
+      force: input.state.scopedOptions.force,
+    });
+    if (plan.changed) {
+      if (plan.bytes.byteLength === 0) {
+        result.changes.push(`remove ${path}`);
+        if (!input.state.scopedOptions.dryRun) rmSync(path, { force: true });
+      } else {
+        writeManagedBytes(
+          path,
+          plan.bytes,
+          input.state.scopedOptions.dryRun,
+          result,
+        );
+      }
+    }
+    if (plan.ownershipHash) {
+      result.managedPaths?.push(
+        ownManagedPath(
+          {
+            path: adapter.path,
+            kind: "managed-fields",
+            fields: [OWNERSHIP_FIELD],
+            fieldHashes: { [OWNERSHIP_FIELD]: plan.ownershipHash },
+          },
+          { surface: "instructions", target: adapter.target },
+        ),
+      );
+    }
+  }
+  return result;
 }
 
 export function syncProjectInstructions(input: {
@@ -45,21 +177,8 @@ export function syncProjectInstructions(input: {
   }
   const composition =
     input.composition ?? instructionCompositionForState(input.state);
-  result.warnings.push(
-    ...composition.excluded.map(
-      (item) =>
-        item.expectedEvidenceKind === "org_worker_bundle_consent"
-          ? `${item.card} organization instruction consent excluded: ${item.reason}. Verify Org Worker materialization evidence.`
-          : `${item.card} explicit instructions excluded: ${item.reason}. Run drwn card trust ${item.card} --instructions.`,
-    ),
-  );
-  if (input.state.scopedOptions.strict && composition.excluded.length > 0) {
-    throw new Error(
-      `Explicit instruction consent required for: ${composition.excluded
-        .map((item) => item.card)
-        .join(", ")}`,
-    );
-  }
+  result.warnings.push(...instructionWarnings(composition));
+  assertStrictInstructionConsent(input.state, composition);
 
   const previous = input.previousManagedPaths.find(
     (entry) =>

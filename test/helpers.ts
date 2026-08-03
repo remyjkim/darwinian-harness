@@ -243,6 +243,39 @@ export async function publishCardWithSkills(
   return (await resolveCard(fixture.agentsDir, `${scope}/${cardName}@${version}`)).dir;
 }
 
+export async function installMachineBlueprint(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  options: {
+    rootName?: string;
+    memberName?: string;
+    skills?: string[];
+    servers?: Record<string, unknown>;
+  } = {},
+) {
+  const rootName = options.rootName ?? "@me/machine-worker";
+  const memberName = options.memberName ?? "@me/machine-capabilities";
+  await publishCardWithSkills(fixture, {
+    name: memberName,
+    skills: options.skills ?? [],
+    servers: options.servers,
+  });
+  const sourceDir = await createCatalogCardSource(fixture, rootName, {
+    kind: "blueprint",
+  });
+  const manifestPath = join(sourceDir, "card.json");
+  const manifest = JSON.parse(await Bun.file(manifestPath).text());
+  manifest.kind = "blueprint";
+  manifest.composedFrom = [`${memberName}@1.0.0`];
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const published = await runAgentsCli(
+    ["card", "publish", rootName],
+    envFor(fixture),
+  );
+  expect(published.exitCode, published.stderr).toBe(0);
+  const { applyMachineWorkerRoots } = await import("../cli/core/worker-machine");
+  return applyMachineWorkerRoots(fixture.agentsDir, [`${rootName}@1.0.0`]);
+}
+
 export async function publishExactOperatorProfile(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
 ) {
