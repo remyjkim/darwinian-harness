@@ -80,6 +80,31 @@ Useful constants:
 
 ## 6. Operational knowledge you will otherwise learn the hard way
 
+**Where to work — use a worktree, but know what it does and does not isolate.**
+
+The previous session worked in the **primary tree** (`/Users/pureicis/dev/darwinian-minds`), using throwaway worktrees only for per-layer verification (all removed). For I176 — 7 phases, ~45 test files — prefer a dedicated worktree so `main` stays free:
+
+```bash
+git worktree add ~/.config/superpowers/worktrees/darwinian-worker/i176-card-source-path-reform remy/I176-card-source-path-reform
+cd ~/.config/superpowers/worktrees/darwinian-worker/i176-card-source-path-reform
+git submodule update --init darwinian-worker-skills   # REQUIRED — see below
+bun install
+```
+
+Three things a worktree does **not** give you here:
+
+1. **The submodule does not come along.** Without the init above you get ~31 phantom failures (below). This is the most common hour-loser.
+2. **The gitignored harness configs are absent.** `.claude/settings.json` and `.codex/hooks.json` hold *absolute* paths into `/Users/pureicis/dev/darwinian-minds/.agents/drwn/generated/hooks/`; being gitignored, they do not exist in a new worktree, so drwn's projected hooks will not fire there. Harmless for test work — surprising if you expect hook behavior.
+3. **⚠️ It gives NO isolation from the machine-global drwn store.** This is the real risk in I176: Phase 3 writes `~/.agents/drwn/config.json` and **Phase 6a deletes `~/.agents/drwn/sources/`** — both mutate the operator's actual machine regardless of which worktree you sit in. For every manual CLI verification (Phase 7's `drwn card new` / `card publish --from` / `config set`), redirect the store first:
+
+   ```bash
+   export AGENTS_DIR=/tmp/drwn-i176-scratch
+   ```
+
+   Verified: `cli/context.ts:28` reads `process.env.AGENTS_DIR ?? resolveAgentsDir(homeDir)`, so this redirects the entire store — it is the supported knob and I176 leaves it unchanged.
+
+   Only run against the real `~/.agents` deliberately, and **confirm with Remy before Phase 6a's deletion** — it removes `~/.agents/drwn/sources/` from the operator's actual machine. The automated suite is already safe: `test/helpers.ts:175-181` (`envFor`) sets `AGENTS_DIR` to a per-fixture temp store on every CLI invocation.
+
 **Testing — the submodule is mandatory.** `darwinian-worker-skills` is a git submodule holding the operator profile's cards/skills. A fresh worktree without it produces **~31 phantom `ENOENT` failures**, all in the operator / machine-profile / release-gate cluster (`e2e-operator-profile-contract`, `core-machine-config`, `core-defaults`, `release-readiness`, `scripts-verify-*`). They fail identically on clean `main`, so they are not regressions. Always:
 
 ```bash
