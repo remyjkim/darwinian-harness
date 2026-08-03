@@ -5,7 +5,7 @@
 
 > **For the implementation owner:** Execute this plan incrementally on `remy/I177-machine-scope-blueprint`. For every production behavior, demonstrate RED before GREEN, keep commits atomic, and record exact commands and results in the completion document.
 
-**Status**: Revised hard-cut plan; architecture and documentation gate in progress (2026-08-03)
+**Status**: Building; documentation, baseline, G1, and G2 gates complete (2026-08-03)
 
 **Issue**: [I177] · **Owner**: Remy K · **Reviewer**: Minseung Lee
 
@@ -194,6 +194,29 @@ rg -n 'schemaVersion.?1|capabilities\.(profile|skills|mcpServers)|machine (skill
 **Acceptance**: clean pinned baseline at `1fc03e6`; only catalogued V1 static-contract REDs on the forward docs commit; G1 Passed; G2 Passed; Owner Building; documentation still precedes production code.
 
 **Commit**: `[docs] record I177 design gate evidence` only if repository evidence changes.
+
+#### Executed baseline evidence — 2026-08-03
+
+- Clean detached worktree at
+  `1fc03e6910a8e2a391a9dd4d53a2ec9513d27c1d`, including submodule
+  `cdffddd3972592784287d28db42a36cb58623b79`.
+- macOS `15.6.1` (`24G90`), Apple Silicon (`arm64`), Bun `1.2.21`.
+- `bunx bun@1.2.21 install --frozen-lockfile`: passed.
+- `bunx bun@1.2.21 test ./test/`: `1,808` passed, `0` failed,
+  `6` intentionally skipped, `8,340` assertions across `306` files.
+- `bunx bun@1.2.21 run typecheck`: passed.
+- `QUALITY_GATE_TEST_MODE=1 bunx bun@1.2.21 run verify:release`: all
+  fourteen release checks passed.
+
+On forward documentation commit `47d1c6c`, the focused static suite reported
+`23` passed, `5` failed, and `134` assertions. Every failure is an expected V1
+guard that Task 8 replaces: two documentation assertions require the retired
+enable/disable and pinned-profile text, one machine-contract assertion requires
+the same retired text, and two release-JSON assertions cascade from that single
+machine-contract failure. Direct release readiness likewise passes thirteen
+checks and fails only `machine capability contract` for the retired
+`Recommended Darwinian Operator` / `drwn machine mcp enable` expectations. No
+runtime or unrelated regression appeared.
 
 ### Task 2 — Publish the recommended machine-defaults Card source
 
@@ -585,9 +608,9 @@ git diff --check
 - [x] I177 worktree updated onto merged main with submodule and dependencies present.
 - [x] Architecture/code/test/documentation audit completed.
 - [x] Hard-cut decision approved by the product owner.
-- [ ] Task 0 documentation gate verified and committed.
-- [ ] Fresh pinned I177 baseline recorded.
-- [ ] G1 passed and acknowledged.
-- [ ] G2 passed and acknowledged.
+- [x] Task 0 documentation gate verified and committed.
+- [x] Fresh pinned I177 baseline recorded.
+- [x] G1 passed and acknowledged.
+- [x] G2 passed and acknowledged.
 - [ ] Tasks 2–8 executed through recorded RED-GREEN-REFACTOR slices.
 - [ ] Task 9 final verification, G3, and completion evidence finished.
