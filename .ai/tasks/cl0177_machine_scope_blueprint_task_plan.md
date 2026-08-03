@@ -240,7 +240,9 @@ bunx bun@1.2.21 test --timeout 30000 test/core-machine-worker-contract.test.ts t
 **GREEN**
 
 1. Verify the current immutable release refs for intended member Cards.
-2. Create the source with `drwn worker new` and compose only valid plain Card releases.
+2. Create the bootstrap `v1.0.0` source with `drwn worker new` and compose only
+   valid plain Card releases. This breaks the descriptor/resolver circular
+   dependency but is not the G3 release candidate.
 3. Initialize/verify its independent Git repository, commit the source, configure its dedicated remote, push the issue/default branch, create and push immutable tag `v1.0.0`, then validate the tag/ref from a clean clone. `drwn worker publish` may populate the local Store but does not substitute for the remote/tag steps.
 4. Add the shipped descriptor and minimal validator.
 5. Make the contract test resolve the released Blueprint without catalog checkout fallback.
@@ -557,8 +559,11 @@ bunx bun@1.2.21 run typecheck
 5. Execute the manual guide using disposable `HOME`, `AGENTS_DIR`, project, and Card collection fixtures.
 6. Complete the Operator `2.0.2` release commit only after its payload passes
    against `drwn` `1.1.0`; then create and push the immutable Operator tag, pin
-   that accepted submodule commit/integrity in the parent, and rerun release
-   readiness from committed state.
+   that accepted submodule commit/integrity in the parent. Publish a new
+   immutable `machine-defaults` release whose composition names Operator
+   `2.0.2`, move `registry/machine-workers.json` from the bootstrap to that
+   release, and rerun release readiness from committed state. G3 must reject a
+   descriptor that still names bootstrap `v1.0.0`.
 7. Push the tested parent commit and require all CI jobs to pass.
 8. Request G3 review with a PR body containing `Testing & CI evidence`.
 9. Write the completion document with commits, test totals, manual artifacts, remaining non-goals, and rollback/reset guidance.

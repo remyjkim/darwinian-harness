@@ -137,6 +137,13 @@ It is authored with the existing Worker commands, published as an immutable Git 
 
 Initial composition is verified against real released refs before publication and is expected to include the current Operator, workflow-skills, knowledge-docs, and personal-harness Cards. If any intended member lacks a valid immutable release, publication stops rather than substituting ambient bytes.
 
+Task 2 may publish a bootstrap `machine-defaults` `v1.0.0` using the current
+already-released member refs so the resolver and descriptor can be built without
+a circular dependency. That bootstrap is not the G3 release candidate. After
+`drwn` `1.1.0` validates Operator `2.0.2`, Task 9 must publish a new immutable
+`machine-defaults` version containing that Operator release and move the shipped
+descriptor to it. G3 cannot pass while the descriptor still names the bootstrap.
+
 Guided `drwn init` discovers the recommended ref from a versioned descriptor such as `registry/machine-workers.json`. The descriptor pins the complete source ref; a contract module validates that descriptor. Non-interactive and declined setup remain empty.
 
 The Operator remains a normal Card member. The changed workflow payload is
