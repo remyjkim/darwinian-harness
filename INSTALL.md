@@ -75,7 +75,7 @@ Project authority lives under:
 
 Local development overrides use `config.local.json` and `card.lock.local`. Generated output and downstream tool files are disposable projections.
 
-Whole-Store export is disabled because the Store can contain credentials and operational state. `drwn store export` fails with `STORE_EXPORT_DISABLED_UNSAFE`.
+Whole-Store export is unavailable because machine state can contain credentials and operational data. Use the bounded, inventory-only export commands documented below instead.
 
 ## Mental Model
 

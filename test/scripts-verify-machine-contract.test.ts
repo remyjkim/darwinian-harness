@@ -17,11 +17,11 @@ describe("machine capability release gate", () => {
     });
   });
 
-  test("detects prototype readers and implicit optional or curated activation", () => {
-    const userConfig = readFileSync(join(repoRoot, "cli/core/user-config.ts"), "utf8");
+  test("detects V1 readers and ambient inventory activation", () => {
+    const machineConfig = readFileSync(join(repoRoot, "cli/core/machine-config.ts"), "utf8");
     const defaults = readFileSync(join(repoRoot, "cli/core/defaults.ts"), "utf8");
     const result = verifyMachineContract(repoRoot, {
-      "cli/core/user-config.ts": `${userConfig}\nconst prototypeMachine = input.defaults;\n`,
+      "cli/core/machine-config.ts": `${machineConfig}\nconst retired = machine.capabilities.profile;\n`,
       "cli/core/defaults.ts": defaults.replace(
         "const machine = await readMachineConfig(options.agentsDir);",
         "const curated = await listCuratedSkills(options.agentsDir);\n  const machine = await readMachineConfig(options.agentsDir);\n  void curated;",
@@ -29,47 +29,64 @@ describe("machine capability release gate", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.details).toContain("prototype machine field defaults");
+    expect(result.details).toContain("retired V1 machine field");
     expect(result.details).toContain("machine activation reads listCuratedSkills");
   });
 
-  test("detects curation registration, mutable profile ranges, and runtime profile fetches", () => {
+  test("detects curation registration, retired profile artifacts, and runtime resolution", () => {
     const index = readFileSync(join(repoRoot, "cli/index.ts"), "utf8");
-    const registry = readFileSync(join(repoRoot, "registry/machine-profiles.json"), "utf8");
     const defaults = readFileSync(join(repoRoot, "cli/core/defaults.ts"), "utf8");
     const result = verifyMachineContract(repoRoot, {
       "cli/index.ts": `${index}\ncli.register(SkillsCurateCommand);\n`,
-      "registry/machine-profiles.json": registry.replaceAll("#v2.0.1", "#^2.0.1"),
+      "registry/machine-profiles.json": '{"schema":"drwn.machine-profiles"}\n',
       "cli/core/defaults.ts": defaults.replace(
         "const machine = await readMachineConfig(options.agentsDir);",
-        "await resolveCard(options.agentsDir, '@darwinian/operator@^2.0.1');\n  const machine = await readMachineConfig(options.agentsDir);",
+        "await resolveCard(options.agentsDir, '@darwinian/operator@2.0.2');\n  const machine = await readMachineConfig(options.agentsDir);",
       ),
     });
 
     expect(result.ok).toBe(false);
     expect(result.details).toContain("retired curation command SkillsCurateCommand");
-    expect(result.details).toContain("exact Operator source");
-    expect(result.details).toContain("machine activation performs runtime profile resolution");
+    expect(result.details).toContain("retired machine profile artifact remains");
+    expect(result.details).toContain("machine activation reads resolveCard(");
   });
 
-  test("detects missing ownership coverage, stale Operator pins, and unsafe Store export", () => {
+  test("detects missing ownership coverage, active legacy docs, and unsafe Store export", () => {
     const ownershipTests = readFileSync(join(repoRoot, "test/scenarios-root-scope.test.ts"), "utf8");
-    const registry = readFileSync(join(repoRoot, "registry/machine-profiles.json"), "utf8");
+    const readme = readFileSync(join(repoRoot, "README.md"), "utf8");
     const index = readFileSync(join(repoRoot, "cli/index.ts"), "utf8");
     const result = verifyMachineContract(repoRoot, {
       "test/scenarios-root-scope.test.ts": ownershipTests.replace(
         'const foreignMcpTargets = ["claude", "codex", "cursor"] as const',
         "ownership case removed",
       ),
-      "registry/machine-profiles.json": registry.replaceAll("2.0.1", "2.0.2"),
+      "README.md": `${readme}\ndrwn machine skill enable alpha\n`,
       "cli/index.ts": `${index}\ncli.register(StoreExportCommand);\n`,
       "cli/commands/store/export.ts": "export class StoreExportCommand {}\n",
     });
 
     expect(result.ok).toBe(false);
     expect(result.details).toContain("foreign ownership coverage is missing");
-    expect(result.details).toContain("Operator version must be 2.0.1");
+    expect(result.details).toContain("prototype machine documentation remains");
     expect(result.details).toContain("public whole-Store export must remain unavailable");
+  });
+
+  test("rejects retired machine activation guidance anywhere in shipped documentation", () => {
+    const install = readFileSync(join(repoRoot, "INSTALL.md"), "utf8");
+    const machineReference = readFileSync(
+      join(repoRoot, "docs-docusaurus/docs/reference/cli/machine.md"),
+      "utf8",
+    );
+    const result = verifyMachineContract(repoRoot, {
+      "INSTALL.md": `${install}\ndrwn machine skill enable alpha\n`,
+      "docs-docusaurus/docs/reference/cli/machine.md": `${machineReference}\ndrwn machine mcp disable github\n`,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("prototype machine documentation remains in INSTALL.md");
+    expect(result.details).toContain(
+      "prototype machine documentation remains in docs-docusaurus/docs/reference/cli/machine.md",
+    );
   });
 
   test("enforces the separate strict user-preferences contract", () => {

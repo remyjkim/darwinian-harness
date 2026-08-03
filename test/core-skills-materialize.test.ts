@@ -2,13 +2,12 @@
 // ABOUTME: Pre-contract symlink state is never claimed; hand-edited owned copies trip drift protection.
 
 import { afterEach, expect, test } from "bun:test";
-import { lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
-import { createEmptyMachineConfig, writeMachineConfigFile } from "../cli/core/machine-config";
+import { cleanupTempRoots, installMachineBlueprint, scaffoldCliFixture } from "./helpers";
 import { syncRepository } from "../cli/core/sync";
 import { loadWriteRecord } from "../cli/core/write-record";
-import { resolveGlobalWriteRecordPath, resolveMachineConfigPath } from "../cli/core/store-paths";
+import { resolveGlobalWriteRecordPath } from "../cli/core/store-paths";
 
 const tempRoots: string[] = [];
 
@@ -28,9 +27,7 @@ function machineSyncOptions(fixture: Awaited<ReturnType<typeof scaffoldCliFixtur
 }
 
 async function selectAlphaForMachine(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  const machine = createEmptyMachineConfig();
-  machine.capabilities.skills = ["alpha"];
-  await writeMachineConfigFile(resolveMachineConfigPath(fixture.agentsDir), machine);
+  await installMachineBlueprint(fixture, { skills: ["alpha"] });
 }
 
 test("rejects a pre-contract symlink projection without claiming or replacing it", async () => {
@@ -66,6 +63,7 @@ test("refuses to overwrite a hand-edited copied skill without --force, succeeds 
   const claudeAlpha = join(fixture.homeDir, ".claude", "skills", "alpha");
 
   await syncRepository(machineSyncOptions(fixture));
+  chmodSync(join(claudeAlpha, "SKILL.md"), 0o644);
   writeFileSync(join(claudeAlpha, "SKILL.md"), "hand edited\n");
 
   await expect(syncRepository(machineSyncOptions(fixture))).rejects.toThrow(/drift/i);

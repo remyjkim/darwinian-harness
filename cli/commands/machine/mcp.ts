@@ -1,9 +1,8 @@
-// ABOUTME: Implements standalone MCP record lifecycle and explicit machine MCP selection.
-// ABOUTME: Persists secret references only and keeps bundled registry definitions immutable.
+// ABOUTME: Implements standalone MCP record inventory lifecycle commands.
+// ABOUTME: Rejects retired per-server activation in favor of machine Worker Blueprints.
 
 import { Option, UsageError } from "clipanion";
 import { readFile } from "node:fs/promises";
-import { addDefaultValue, removeDefaultValue } from "../../core/defaults";
 import {
   assertInventoryUnreferenced,
   scanInventoryReferenceReport,
@@ -11,7 +10,6 @@ import {
 } from "../../core/inventory-references";
 import { findStandaloneMcpRecord, listStandaloneMcpRecords } from "../../core/inventory";
 import { listLibraryMcpServers } from "../../core/library";
-import { mutateMachineConfig, readMachineConfigFile } from "../../core/machine-config";
 import {
   createMcpLibraryRecord,
   removeMcpLibraryRecord,
@@ -21,7 +19,6 @@ import {
 import { sanitizeMcpServerSecrets } from "../../core/mcp-secret-policy";
 import { renderJson, renderTable } from "../../core/output";
 import { loadRegistry } from "../../core/registry";
-import { resolveMachineConfigPath } from "../../core/store-paths";
 import type { RegistryServer } from "../../core/types";
 import { BaseCommand } from "../base";
 
@@ -44,12 +41,6 @@ async function reservedMcpIds(repoRoot: string) {
   return Object.keys((await loadRegistry(repoRoot)).servers).sort((a, b) => a.localeCompare(b));
 }
 
-function profileMcpProvenance(machine: Awaited<ReturnType<typeof readMachineConfigFile>>, id: string) {
-  return machine?.capabilities.profile?.mcpServers.includes(id)
-    ? [`profile:${machine.capabilities.profile.id}`]
-    : [];
-}
-
 abstract class McpJsonCommand extends BaseCommand {
   json = Option.Boolean("--json", false);
 
@@ -69,9 +60,6 @@ export class MachineMcpListCommand extends McpJsonCommand {
   });
 
   async execute() {
-    const machine = await readMachineConfigFile(resolveMachineConfigPath(this.context.agentsDir));
-    const explicit = new Set(machine?.capabilities.mcpServers ?? []);
-    const profile = new Set(machine?.capabilities.profile?.mcpServers ?? []);
     const records = await listStandaloneMcpRecords(this.context.agentsDir);
     const integrity = new Map(records.map((record) => [record.id, record.integrity]));
     const entries = (await listLibraryMcpServers(this.context.repoRoot, this.context.agentsDir)).map((entry) => ({
@@ -80,17 +68,13 @@ export class MachineMcpListCommand extends McpJsonCommand {
       owner: entry.source === "library" ? "standalone" as const : "registry" as const,
       transport: entry.server.transport,
       integrity: integrity.get(entry.id),
-      enabled: explicit.has(entry.id),
-      effectiveSources: [
-        ...(profile.has(entry.id) ? [`profile:${machine!.capabilities.profile!.id}`] : []),
-        ...(explicit.has(entry.id) ? ["explicit"] : []),
-      ],
+      activation: "inventory-only" as const,
     }));
     if (this.json) return this.output(entries, "");
     if (entries.length === 0) return this.output(entries, "No machine MCP definitions available.");
     this.context.stdout.write(renderTable(
-      ["id", "owner", "transport", "enabled"],
-      entries.map((entry) => [entry.id, entry.owner, entry.transport, entry.enabled ? "yes" : "no"]),
+      ["id", "owner", "transport", "activation"],
+      entries.map((entry) => [entry.id, entry.owner, entry.transport, entry.activation]),
     ));
     return 0;
   }
@@ -161,10 +145,10 @@ export class MachineMcpAddCommand extends McpJsonCommand {
       throw new UsageError(`MCP server ${this.serverId} already exists in standalone inventory.`);
     }
     if (this.dryRun) {
-      return this.output({ action: "would-add", id: this.serverId, server, enabled: false }, `Would add ${this.serverId}; not enabled.`);
+      return this.output({ action: "would-add", id: this.serverId, server, activation: "inventory-only" }, `Would add ${this.serverId} as inventory only.`);
     }
     const added = await createMcpLibraryRecord(this.context.agentsDir, this.serverId, server, { reservedIds });
-    return this.output({ ...added, enabled: false }, `Added ${this.serverId}; not enabled.`);
+    return this.output({ ...added, activation: "inventory-only" }, `Added ${this.serverId} as inventory only.`);
   }
 }
 
@@ -210,7 +194,7 @@ export class MachineMcpRemoveCommand extends McpReferenceMutationCommand {
   static override usage = BaseCommand.Usage({
     category: "Machine",
     description: "Remove one unreferenced standalone MCP record.",
-    details: "Removes <server-id> only after machine and known project references are empty. Repeated --project roots extend the scan; there is no force bypass.",
+    details: "Removes <server-id> only after known project references are empty. Repeated --project roots extend the scan; there is no force bypass.",
     examples: [["Preview removal", "drwn machine mcp remove notion --project ./consumer --dry-run"]],
   });
 
@@ -239,31 +223,10 @@ abstract class MachineMcpSelectionCommand extends McpJsonCommand {
   serverId = Option.String({ required: true });
   dryRun = Option.Boolean("--dry-run", false);
 
-  protected async setEnabled(enabled: boolean) {
-    if (enabled) {
-      const entry = (await listLibraryMcpServers(this.context.repoRoot, this.context.agentsDir))
-        .find((candidate) => candidate.id === this.serverId);
-      if (!entry || entry.server.transport === "platform-provided") {
-        throw new UsageError(`Machine MCP server is not available for explicit enablement: ${this.serverId}`);
-      }
-    }
-    const result = await mutateMachineConfig(this.context.agentsDir, (config) => {
-      const wasEnabled = config.capabilities.mcpServers.includes(this.serverId);
-      config.capabilities.mcpServers = enabled
-        ? addDefaultValue(config.capabilities.mcpServers, this.serverId)
-        : removeDefaultValue(config.capabilities.mcpServers, this.serverId);
-      return {
-        config,
-        value: {
-          wasEnabled,
-          remainingProvenance: enabled ? [] : profileMcpProvenance(config, this.serverId),
-        },
-      };
-    }, { dryRun: this.dryRun });
-    const action = enabled
-      ? result.wasEnabled ? "already-enabled" : this.dryRun ? "would-enable" : "enabled"
-      : result.wasEnabled ? this.dryRun ? "would-disable" : "disabled" : "already-disabled";
-    return this.output({ kind: "mcp", id: this.serverId, action, remainingProvenance: result.remainingProvenance }, `${action.replaceAll("-", " ")}: ${this.serverId}`);
+  protected setEnabled(_enabled: boolean): never {
+    throw new UsageError(
+      "Direct machine MCP activation was removed. Select a Worker Blueprint with `drwn apply --root <blueprint-ref>` or switch an installed Blueprint with `drwn use --root <blueprint-ref>`.",
+    );
   }
 }
 
@@ -271,9 +234,9 @@ export class MachineMcpEnableCommand extends MachineMcpSelectionCommand {
   static override paths = [["machine", "mcp", "enable"]];
   static override usage = BaseCommand.Usage({
     category: "Machine",
-    description: "Enable one explicit machine MCP capability.",
-    details: "Adds <server-id> to explicit machine capability intent without changing project declarations or inventory ownership.",
-    examples: [["Enable a server", "drwn machine mcp enable notion"]],
+    description: "Explain the replacement for retired direct machine MCP activation.",
+    details: "Always exits nonzero. Machine MCP definitions come only from the active Worker Blueprint closure.",
+    examples: [["Select a Worker Blueprint instead", "drwn apply --root <blueprint-ref>"]],
   });
   execute() { return this.setEnabled(true); }
 }
@@ -282,9 +245,9 @@ export class MachineMcpDisableCommand extends MachineMcpSelectionCommand {
   static override paths = [["machine", "mcp", "disable"]];
   static override usage = BaseCommand.Usage({
     category: "Machine",
-    description: "Disable one explicit machine MCP capability.",
-    details: "Removes <server-id> only from explicit machine intent and reports profile provenance when the capability remains effective.",
-    examples: [["Disable a server", "drwn machine mcp disable notion"]],
+    description: "Explain the replacement for retired direct machine MCP deactivation.",
+    details: "Always exits nonzero. Change or clear the selected machine Worker Blueprint instead.",
+    examples: [["Switch the active Worker Blueprint instead", "drwn use --root <blueprint-ref>"]],
   });
   execute() { return this.setEnabled(false); }
 }

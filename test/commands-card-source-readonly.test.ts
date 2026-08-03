@@ -52,7 +52,6 @@ test("source inspection under readonly uses legacy scope without migrating machi
   await mkdir(sourceDir, { recursive: true });
   await writeFile(join(sourceDir, "card.json"), `${JSON.stringify({ name: "@legacy/example", version: "1.0.0" })}\n`);
   const machine = createEmptyMachineConfig();
-  machine.policy.authoring = { scope: "@legacy" };
   const machinePath = resolveMachineConfigPath(fixture.agentsDir);
   await writeMachineConfigFile(machinePath, machine);
   const before = await readFile(machinePath, "utf8");

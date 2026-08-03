@@ -41,17 +41,6 @@ order: 3
 | `drwn card status` | Show configured refs, lock entries, and outdated cards |
 | `drwn card validate <ref>` | Resolve and validate one card ref without mutating project config |
 
-## Store Commands
-
-| Command | Description |
-|---------|-------------|
-| `drwn store status` | Show cards-era store status |
-| `drwn store migrate` | Migrate the pre-cards layout to `~/.agents/drwn` |
-| `drwn store migrate-to-git` | Convert legacy per-version card directories into bare Git repos |
-| `drwn store verify` | Verify Git-backed store health |
-| `drwn store gc` | Run Git maintenance in card repos |
-| `drwn store export --out <tar>` | Export the local store as a tar archive |
-
 ## Add Commands
 
 | Command | Description |
@@ -121,7 +110,6 @@ Use `--help` on any command for details:
 drwn --help
 drwn write --help
 drwn card --help
-drwn store --help
 drwn status --help
 drwn add skill --help
 drwn machine skill list --help

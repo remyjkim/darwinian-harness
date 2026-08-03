@@ -2,10 +2,9 @@
 // ABOUTME: Pins inactive installation, explicit selection, references, and package-scoped removal.
 
 import { afterEach, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createEmptyMachineConfig, initializeMachineConfig, readMachineConfigFile, writeMachineConfigFile } from "../cli/core/machine-config";
-import { createDarwinianOperatorPin } from "../cli/core/operator-profile-contract";
+import { initializeMachineConfig, readMachineConfigFile } from "../cli/core/machine-config";
 import { findStandaloneSkillPackageByName } from "../cli/core/inventory";
 import { registerProject } from "../cli/core/project-registry";
 import { resolveMachineConfigPath } from "../cli/core/store-paths";
@@ -51,7 +50,7 @@ test("machine skill list and show distinguish package and skill identity", async
     id: installed.skillName,
     owner: "standalone",
     packageName: installed.packageName,
-    enabled: false,
+    activation: "inventory-only",
   }));
 
   const skill = await runAgentsCli(["machine", "skill", "show", installed.skillName, "--json"], envFor(state));
@@ -78,29 +77,28 @@ test("machine skill install is inactive and dry-run leaves no managed package", 
   expect(JSON.parse(preview.stdout)).toMatchObject({
     action: "would-install",
     packageName: source.packageName,
-    enabled: false,
+    activation: "inventory-only",
   });
   expect(await findStandaloneSkillPackageByName(state.agentsDir, source.packageName)).toBeNull();
 
   const installed = await runAgentsCli(["machine", "skill", "install", source.bundleRoot, "--json"], envFor(state));
   expect(installed.exitCode).toBe(0);
-  expect(JSON.parse(installed.stdout)).toMatchObject({ action: "installed", packageName: source.packageName, enabled: false });
-  expect((await readMachineConfigFile(resolveMachineConfigPath(state.agentsDir)))?.capabilities.skills).toEqual([]);
+  expect(JSON.parse(installed.stdout)).toMatchObject({ action: "installed", packageName: source.packageName, activation: "inventory-only" });
+  expect((await readMachineConfigFile(resolveMachineConfigPath(state.agentsDir)))?.capabilities).toEqual({
+    activeWorker: null,
+    workerLock: null,
+  });
 
   const invalidFlags = await runAgentsCli(["machine", "skill", "install", source.bundleRoot, "--as", "renamed"], envFor(state));
   expect(invalidFlags.exitCode).not.toBe(0);
 });
 
-test("machine skill references disclose known scope and uninstall blocks declared intent", async () => {
+test("machine skill references disclose known project scope and uninstall blocks project intent", async () => {
   const state = await fixture();
   const installed = await createInstalledSkillBundle(state.agentsDir, {
     packageName: "@acme/referenced",
     skillName: "referenced-skill",
   });
-  const machinePath = resolveMachineConfigPath(state.agentsDir);
-  const machine = createEmptyMachineConfig();
-  machine.capabilities.skills = [installed.skillName];
-  await writeMachineConfigFile(machinePath, machine);
   const projectRoot = join(state.root, "project");
   await writeSupportedProjectConfig(projectRoot, { skills: { include: [installed.skillName], exclude: [] } });
   await registerProject(state.agentsDir, projectRoot);
@@ -113,7 +111,9 @@ test("machine skill references disclose known scope and uninstall blocks declare
     resource: { kind: "skill-package", packageName: installed.packageName },
     scope: { kind: "declared-known-scope", projectRoots: [projectRoot] },
   });
-  expect(JSON.parse(references.stdout).references).toHaveLength(2);
+  expect(JSON.parse(references.stdout).references).toEqual([
+    expect.objectContaining({ surface: "project", kind: "skill", id: installed.skillName, relation: "include" }),
+  ]);
 
   const blocked = await runAgentsCli(["machine", "skill", "uninstall", installed.packageName, "--json"], envFor(state));
   expect(blocked.exitCode).not.toBe(0);
@@ -132,10 +132,9 @@ test("machine skill update blocks dropping referenced IDs and switches current o
     version: "2.0.0",
     skillName: "new-skill",
   });
-  const machinePath = resolveMachineConfigPath(state.agentsDir);
-  const machine = createEmptyMachineConfig();
-  machine.capabilities.skills = [installed.skillName];
-  await writeMachineConfigFile(machinePath, machine);
+  const projectRoot = join(state.root, "project");
+  await writeSupportedProjectConfig(projectRoot, { skills: { include: [installed.skillName], exclude: [] } });
+  await registerProject(state.agentsDir, projectRoot);
 
   const blocked = await runAgentsCli([
     "machine", "skill", "update", installed.packageName, "--from", replacement.bundleRoot, "--json",
@@ -143,8 +142,7 @@ test("machine skill update blocks dropping referenced IDs and switches current o
   expect(blocked.exitCode).not.toBe(0);
   expect((await findStandaloneSkillPackageByName(state.agentsDir, installed.packageName))?.activeVersion).toBe("1.0.0");
 
-  machine.capabilities.skills = [];
-  await writeMachineConfigFile(machinePath, machine);
+  await writeSupportedProjectConfig(projectRoot, { skills: { include: [], exclude: [] } });
   const updated = await runAgentsCli([
     "machine", "skill", "update", installed.packageName, "--from", replacement.bundleRoot, "--json",
   ], envFor(state));
@@ -153,24 +151,17 @@ test("machine skill update blocks dropping referenced IDs and switches current o
   expect((await findStandaloneSkillPackageByName(state.agentsDir, installed.packageName))?.exportedSkillIds).toEqual(["new-skill"]);
 });
 
-test("machine skill enable and disable mutate only explicit intent and report remaining profile provenance", async () => {
+test("machine skill enable and disable fail with Blueprint guidance without mutating V2", async () => {
   const state = await fixture();
   const installed = await createInstalledSkillBundle(state.agentsDir, { skillName: "toggle-skill" });
-  const enabled = await runAgentsCli(["machine", "skill", "enable", installed.skillName, "--json"], envFor(state));
-  expect(enabled.exitCode).toBe(0);
-  expect(JSON.parse(enabled.stdout)).toMatchObject({ action: "enabled", id: installed.skillName });
-
   const machinePath = resolveMachineConfigPath(state.agentsDir);
-  const machine = (await readMachineConfigFile(machinePath))!;
-  machine.capabilities.profile = createDarwinianOperatorPin();
-  machine.capabilities.skills.push("bootstrap-project");
-  await writeMachineConfigFile(machinePath, machine);
-  const disabled = await runAgentsCli(["machine", "skill", "disable", "bootstrap-project", "--json"], envFor(state));
-  expect(disabled.exitCode).toBe(0);
-  expect(JSON.parse(disabled.stdout)).toMatchObject({
-    action: "disabled",
-    remainingProvenance: ["profile:darwinian-operator"],
-  });
-  expect((await readMachineConfigFile(machinePath))?.capabilities.skills).not.toContain("bootstrap-project");
-  expect(existsSync(machinePath)).toBe(true);
+  const before = await readFile(machinePath, "utf8");
+  const enabled = await runAgentsCli(["machine", "skill", "enable", installed.skillName, "--json"], envFor(state));
+  const disabled = await runAgentsCli(["machine", "skill", "disable", installed.skillName, "--json"], envFor(state));
+  for (const result of [enabled, disabled]) {
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("drwn apply --root");
+    expect(`${result.stdout}\n${result.stderr}`).toContain("drwn use --root");
+  }
+  expect(await readFile(machinePath, "utf8")).toBe(before);
 });

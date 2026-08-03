@@ -3,7 +3,6 @@
 
 import { isDeepStrictEqual } from "node:util";
 import type { CardLockEntry, WorkerRootLockEntry } from "./card-lock";
-import type { CardManifest } from "./card-manifest";
 import { DrwnError } from "./errors";
 import { createEmptyMachineConfig, readMachineConfigFile, writeMachineConfigFile } from "./machine-config";
 import {
@@ -32,16 +31,6 @@ function initUnavailable(message: string, cause?: unknown): DrwnError {
     message,
     ["Retry when the immutable Worker release is reachable, or rerun guided init and decline it."],
     cause,
-  );
-}
-
-export async function verifyMachineProfilePin(
-  _agentsDir: string,
-  _pin: unknown,
-): Promise<{ dir: string; manifest: CardManifest }> {
-  throw new DrwnError(
-    "MACHINE_PROFILE_RETIRED",
-    "Machine profiles are retired; select a machine Worker Blueprint with drwn apply --root or drwn use --root",
   );
 }
 

@@ -73,18 +73,19 @@ That first run gives you:
 - a planned-change preview
 - an explicit write step
 
-### Existing users
+### Select machine capabilities
 
-If you used a pre-cards version of `drwn`, inspect and migrate the local store
-before relying on the cards-era layout:
+Machine capabilities come only from one selected Worker Blueprint. Install and
+select that immutable root, then project its active Card closure:
 
 ```bash
-drwn store status
-drwn store migrate
-drwn store status
+drwn apply --root <blueprint-ref>
+drwn write --root
+drwn status --machine --json
 ```
 
-`drwn` warns when it detects a pre-cards layout, but migration is explicit.
+The V2 machine contract is a hard cut. Prototype profile/default selections are
+not read or migrated.
 
 ### Project-specific setup
 

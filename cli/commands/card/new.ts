@@ -29,7 +29,7 @@ export class CardNewCommand extends BaseCommand {
       Use --from-project to snapshot the current project's selected Worker
       closure and explicit overlays as a self-contained card source.
       Use --from-defaults to flatten the effective machine-safe skills and MCP
-      definitions into a normal Card without machine profile identity or policy.
+      definitions into a normal Card without machine Blueprint identity or policy.
     `,
     examples: [
       ["Create a scoped card source", "drwn card new backend --scope @your-handle"],

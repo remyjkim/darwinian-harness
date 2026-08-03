@@ -1,12 +1,11 @@
-// ABOUTME: Implements standalone skill package lifecycle and explicit machine skill selection.
-// ABOUTME: Keeps package identity, exported skill identity, and machine intent separate.
+// ABOUTME: Implements standalone skill package inventory lifecycle commands.
+// ABOUTME: Rejects retired per-skill activation in favor of machine Worker Blueprints.
 
 import { Option, UsageError } from "clipanion";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ensureStoreInitialized } from "../../core/card-store";
-import { addDefaultValue, removeDefaultValue } from "../../core/defaults";
 import {
   assertInventoryUnreferenced,
   scanInventoryReferenceReport,
@@ -19,7 +18,6 @@ import {
   listStandaloneSkillPackages,
 } from "../../core/inventory";
 import { listLibrarySkills } from "../../core/library";
-import { mutateMachineConfig, readMachineConfigFile } from "../../core/machine-config";
 import { renderJson, renderTable } from "../../core/output";
 import {
   classifySkillAddInput,
@@ -31,8 +29,6 @@ import {
   updateSkillPackage,
   type ExistingSkillRecord,
 } from "../../core/skill-packages";
-import { findAvailableSkill } from "../../core/skills";
-import { resolveMachineConfigPath } from "../../core/store-paths";
 import type { BundleManifest, BundleSkillEntry } from "../../core/types";
 import { BaseCommand } from "../base";
 
@@ -112,12 +108,6 @@ async function previewSource(options: {
   }
 }
 
-function profileSkillProvenance(machine: Awaited<ReturnType<typeof readMachineConfigFile>>, id: string) {
-  return machine?.capabilities.profile?.skills.includes(id)
-    ? [`profile:${machine.capabilities.profile.id}`]
-    : [];
-}
-
 abstract class SkillJsonCommand extends BaseCommand {
   json = Option.Boolean("--json", false);
 
@@ -132,14 +122,11 @@ export class MachineSkillListCommand extends SkillJsonCommand {
   static override usage = BaseCommand.Usage({
     category: "Machine",
     description: "List repository skills and standalone skill packages.",
-    details: "Lists typed package and skill entries. Inventory is inactive until a skill is explicitly enabled as a machine capability.",
+    details: "Lists typed package and skill inventory entries. Inventory is inactive unless a released Card providing the skill belongs to the active machine Worker closure.",
     examples: [["List as JSON", "drwn machine skill list --json"]],
   });
 
   async execute() {
-    const machine = await readMachineConfigFile(resolveMachineConfigPath(this.context.agentsDir));
-    const explicit = new Set(machine?.capabilities.skills ?? []);
-    const profile = new Set(machine?.capabilities.profile?.skills ?? []);
     const packages = await listStandaloneSkillPackages(this.context.agentsDir);
     const skills = await listLibrarySkills(this.context.repoRoot, this.context.agentsDir, this.context.homeDir);
     const entries = [
@@ -151,20 +138,16 @@ export class MachineSkillListCommand extends SkillJsonCommand {
         packageName: skill.sourceId,
         version: skill.sourceVersion,
         scope: skill.scope,
-        enabled: explicit.has(skill.id),
-        effectiveSources: [
-          ...(profile.has(skill.id) ? [`profile:${machine!.capabilities.profile!.id}`] : []),
-          ...(explicit.has(skill.id) ? ["explicit"] : []),
-        ],
+        activation: "inventory-only" as const,
       })),
     ];
     if (this.json) return this.output(entries, "");
     if (entries.length === 0) return this.output(entries, "No machine skills available.");
     this.context.stdout.write(renderTable(
-      ["kind", "id", "owner", "scope", "enabled"],
+      ["kind", "id", "owner", "scope", "activation"],
       entries.map((entry) => entry.kind === "skill-package"
         ? [entry.kind, entry.packageName, entry.owner, "-", "-"]
-        : [entry.kind, entry.id, entry.owner, entry.scope, entry.enabled ? "yes" : "no"]),
+        : [entry.kind, entry.id, entry.owner, entry.scope, entry.activation]),
     ));
     return 0;
   }
@@ -220,7 +203,7 @@ export class MachineSkillReferencesCommand extends SkillSelectorCommand {
   static override paths = [["machine", "skill", "references"]];
   static override usage = BaseCommand.Usage({
     category: "Machine",
-    description: "Report known machine and project references to a skill or package.",
+    description: "Report known project references to a standalone skill or package.",
     details: "Use <skill-id> or --package <package-name>. Repeated --project roots extend the declared known scan scope.",
     examples: [["Inspect package references", "drwn machine skill references --package @acme/toolkit --project ./consumer --json"]],
   });
@@ -280,7 +263,7 @@ export class MachineSkillInstallCommand extends SkillSourceCommand {
     const kind = validateSourceFlags(this.source, flags, false);
     if (this.dryRun) {
       const preview = await previewSource({ command: this, source: this.source, flags });
-      return this.output({ action: "would-install", ...preview, exportedSkillIds: preview.manifest.skills.map((skill) => skill.name).sort(), enabled: false }, `Would install ${preview.packageName}@${preview.version}; no skills enabled.`);
+      return this.output({ action: "would-install", ...preview, exportedSkillIds: preview.manifest.skills.map((skill) => skill.name).sort(), activation: "inventory-only" }, `Would install ${preview.packageName}@${preview.version} as inventory only.`);
     }
     await ensureStoreInitialized(this.context.agentsDir);
     const current = await currentSkillRecords(this);
@@ -303,8 +286,8 @@ export class MachineSkillInstallCommand extends SkillSourceCommand {
       packageName: installed.packageName,
       version: installed.activeVersion,
       exportedSkillIds: installed.manifest.skills.map((skill) => skill.name).sort(),
-      enabled: false,
-    }, `Installed ${installed.packageName}@${installed.activeVersion}; no skills enabled.`);
+      activation: "inventory-only",
+    }, `Installed ${installed.packageName}@${installed.activeVersion} as inventory only.`);
   }
 }
 
@@ -396,7 +379,7 @@ export class MachineSkillUninstallCommand extends SkillJsonCommand {
   static override usage = BaseCommand.Usage({
     category: "Machine",
     description: "Uninstall one unreferenced standalone skill package.",
-    details: "Uninstalls <package-name> only after machine and known project references are empty. Repeated --project roots extend the scan; there is no force bypass.",
+    details: "Uninstalls <package-name> only after known project references are empty. Repeated --project roots extend the scan; there is no force bypass.",
     examples: [["Preview uninstall", "drwn machine skill uninstall @acme/toolkit --project ./consumer --dry-run"]],
   });
   packageName = Option.String({ required: true });
@@ -427,29 +410,10 @@ abstract class MachineSkillSelectionCommand extends SkillJsonCommand {
   skillId = Option.String({ required: true });
   dryRun = Option.Boolean("--dry-run", false);
 
-  protected async setEnabled(enabled: boolean) {
-    if (enabled) {
-      const skill = await findAvailableSkill(this.context.repoRoot, this.context.agentsDir, this.skillId);
-      if (!skill) throw new UsageError(`Machine skill is not available: ${this.skillId}`);
-      if (skill.scope !== "shared") throw new UsageError(`Only shared skills may be enabled as machine capabilities: ${this.skillId}`);
-    }
-    const result = await mutateMachineConfig(this.context.agentsDir, (config) => {
-      const wasEnabled = config.capabilities.skills.includes(this.skillId);
-      config.capabilities.skills = enabled
-        ? addDefaultValue(config.capabilities.skills, this.skillId)
-        : removeDefaultValue(config.capabilities.skills, this.skillId);
-      return {
-        config,
-        value: {
-          wasEnabled,
-          remainingProvenance: enabled ? [] : profileSkillProvenance(config, this.skillId),
-        },
-      };
-    }, { dryRun: this.dryRun });
-    const action = enabled
-      ? result.wasEnabled ? "already-enabled" : this.dryRun ? "would-enable" : "enabled"
-      : result.wasEnabled ? this.dryRun ? "would-disable" : "disabled" : "already-disabled";
-    return this.output({ kind: "skill", id: this.skillId, action, remainingProvenance: result.remainingProvenance }, `${action.replaceAll("-", " ")}: ${this.skillId}`);
+  protected setEnabled(_enabled: boolean): never {
+    throw new UsageError(
+      "Direct machine skill activation was removed. Select a Worker Blueprint with `drwn apply --root <blueprint-ref>` or switch an installed Blueprint with `drwn use --root <blueprint-ref>`.",
+    );
   }
 }
 
@@ -457,9 +421,9 @@ export class MachineSkillEnableCommand extends MachineSkillSelectionCommand {
   static override paths = [["machine", "skill", "enable"]];
   static override usage = BaseCommand.Usage({
     category: "Machine",
-    description: "Enable one explicit machine skill capability.",
-    details: "Adds <skill-id> to explicit machine capability intent. Inventory remains separately owned and project declarations do not change.",
-    examples: [["Enable a skill", "drwn machine skill enable brainstorming"]],
+    description: "Explain the replacement for retired direct machine skill activation.",
+    details: "Always exits nonzero. Machine skills come only from the active Worker Blueprint closure.",
+    examples: [["Select a Worker Blueprint instead", "drwn apply --root <blueprint-ref>"]],
   });
   execute() { return this.setEnabled(true); }
 }
@@ -468,9 +432,9 @@ export class MachineSkillDisableCommand extends MachineSkillSelectionCommand {
   static override paths = [["machine", "skill", "disable"]];
   static override usage = BaseCommand.Usage({
     category: "Machine",
-    description: "Disable one explicit machine skill capability.",
-    details: "Removes <skill-id> only from explicit machine intent and reports profile provenance when the capability remains effective.",
-    examples: [["Disable a skill", "drwn machine skill disable brainstorming"]],
+    description: "Explain the replacement for retired direct machine skill deactivation.",
+    details: "Always exits nonzero. Change or clear the selected machine Worker Blueprint instead.",
+    examples: [["Switch the active Worker Blueprint instead", "drwn use --root <blueprint-ref>"]],
   });
   execute() { return this.setEnabled(false); }
 }

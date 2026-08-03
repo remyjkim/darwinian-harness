@@ -2,22 +2,25 @@
 // ABOUTME: Ensures the CLI can summarize repo, aggregation, target, and skill state consistently.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, envFor, publishCardWithSkills, publishExactOperatorProfile, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
-import { writeMachineConfig } from "../cli/core/card-store";
-import { createEmptyMachineConfig } from "../cli/core/machine-config";
-import { DARWINIAN_OPERATOR_SKILL_IDS } from "../cli/core/operator-profile-contract";
+import { resolveMachineConfigPath } from "../cli/core/store-paths";
+import {
+  cleanupTempRoots,
+  envFor,
+  installMachineBlueprint,
+  publishCardWithSkills,
+  publishMachineBlueprint,
+  runAgentsCli,
+  scaffoldCliFixture,
+  writeSupportedProjectConfig,
+} from "./helpers";
 
 const tempRoots: string[] = [];
 
 afterEach(async () => {
   await cleanupTempRoots(tempRoots);
 });
-
-async function installStatusProfile(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  return (await publishExactOperatorProfile(fixture)).profile;
-}
 
 describe("drwn status", () => {
   test("project JSON reports the supported declared-state and diagnostic ambient contract", async () => {
@@ -136,7 +139,7 @@ describe("drwn status", () => {
     expect(result.stdout).toContain(fixture.repoRoot);
     expect(result.stdout).toContain(fixture.agentsDir);
     expect(result.stdout).toContain("machineSchema");
-    expect(result.stdout).toContain("drwn.machine@1");
+    expect(result.stdout).toContain("drwn.machine@2");
     expect(result.stdout).toContain("resolvedSkillCount");
   });
 
@@ -154,9 +157,9 @@ describe("drwn status", () => {
     const parsed = JSON.parse(result.stdout);
     expect(parsed).toMatchObject({
       schema: "drwn.machine-status",
-      schemaVersion: 1,
-      config: { schema: "drwn.machine", schemaVersion: 1 },
-      profile: null,
+      schemaVersion: 2,
+      config: { schema: "drwn.machine", schemaVersion: 2 },
+      selection: { activeWorker: null, installedRoots: [], activeClosure: [] },
       capabilities: {
         skills: [],
         mcpServers: [],
@@ -178,22 +181,20 @@ describe("drwn status", () => {
     const parsed = JSON.parse(result.stdout);
     expect(parsed).toMatchObject({
       schema: "drwn.machine-status",
-      schemaVersion: 1,
-      config: { schema: "drwn.machine", schemaVersion: 1 },
+      schemaVersion: 2,
+      config: { schema: "drwn.machine", schemaVersion: 2 },
     });
     expect(parsed.project).toBeUndefined();
     expect(parsed.activeWorker).toBeUndefined();
   });
 
-  test("machine JSON reports profile and explicit provenance without secret-bearing definitions", async () => {
+  test("machine JSON reports selected roots, active closure, consent, integrity, and Worker provenance", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    const profile = await installStatusProfile(fixture);
-    const { ensureStoreInitialized } = await import("../cli/core/card-store");
-    const { seedMcpInventory } = await import("./mcp-inventory-fixture");
-    await ensureStoreInitialized(fixture.agentsDir);
-    await seedMcpInventory(fixture.agentsDir, {
-      version: 1,
+    const activeRef = await publishMachineBlueprint(fixture, {
+      rootName: "@me/active-worker",
+      memberName: "@me/active-capabilities",
+      skills: ["alpha"],
       servers: {
         github: {
           description: "GitHub",
@@ -204,10 +205,13 @@ describe("drwn status", () => {
         },
       },
     });
-    await writeMachineConfig(fixture.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile, skills: ["alpha"], mcpServers: ["github"] },
+    const inactiveRef = await publishMachineBlueprint(fixture, {
+      rootName: "@me/inactive-worker",
+      memberName: "@me/inactive-capabilities",
+      skills: ["inactive-skill"],
     });
+    const { applyMachineWorkerRoots } = await import("../cli/core/worker-machine");
+    await applyMachineWorkerRoots(fixture.agentsDir, [activeRef, inactiveRef], { active: "@me/active-worker" });
 
     const result = await runAgentsCli(["status", "--json"], {
       AGENTS_REPO_ROOT: fixture.repoRoot,
@@ -217,44 +221,46 @@ describe("drwn status", () => {
 
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout);
-    expect(parsed.profile).toMatchObject({
-      id: "darwinian-operator",
-      name: "@darwinian/operator",
-      version: profile.version,
-      commit: profile.commit,
-      treeSha: profile.treeSha,
-      integrity: profile.integrity,
-      status: "verified",
+    expect(parsed.selection).toMatchObject({
+      activeWorker: "@me/active-worker",
+      installedRoots: [
+        expect.objectContaining({ name: "@me/active-worker", selected: true }),
+        expect.objectContaining({ name: "@me/inactive-worker", selected: false }),
+      ],
     });
-    expect(parsed.capabilities.skills).toHaveLength(DARWINIAN_OPERATOR_SKILL_IDS.length + 1);
-    for (const id of DARWINIAN_OPERATOR_SKILL_IDS) {
-      expect(parsed.capabilities.skills).toContainEqual(
-        expect.objectContaining({ id, provenance: "profile", profileId: "darwinian-operator", status: "resolved" }),
-      );
+    expect(parsed.selection.activeClosure).toHaveLength(2);
+    for (const card of parsed.selection.activeClosure) {
+      expect(card).toEqual(expect.objectContaining({
+        integrity: expect.stringMatching(/^sha256-/),
+        treeSha: expect.stringMatching(/^[a-f0-9]{40}$/),
+        consent: { hooks: true, instructions: true },
+      }));
     }
     expect(parsed.capabilities.skills).toContainEqual(
-      expect.objectContaining({ id: "alpha", provenance: "explicit", status: "resolved" }),
+      expect.objectContaining({ id: "alpha", provenance: "worker", cardName: "@me/active-capabilities", status: "resolved" }),
     );
     expect(parsed.capabilities.mcpServers).toEqual([
-      expect.objectContaining({ id: "github", provenance: "explicit", status: "resolved" }),
+      expect.objectContaining({ id: "github", provenance: "worker", cardName: "@me/active-capabilities", status: "resolved" }),
     ]);
     expect(parsed.capabilities.counts).toEqual({
-      resolvedSkills: DARWINIAN_OPERATOR_SKILL_IDS.length + 1,
+      resolvedSkills: 1,
       missingSkills: 0,
       resolvedMcpServers: 1,
       missingMcpServers: 0,
     });
+    expect(result.stdout).not.toContain("inactive-skill");
     expect(result.stdout).not.toContain("status-secret-sentinel");
     expect(result.stdout).not.toContain("GITHUB_TOKEN");
   });
 
-  test("machine JSON reports unresolved explicit capabilities without exposing definitions", async () => {
+  test("machine JSON reports active closure integrity failure without repairing bytes", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await writeMachineConfig(fixture.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: null, skills: ["missing-skill"], mcpServers: ["missing-mcp"] },
-    });
+    const installed = await installMachineBlueprint(fixture, { skills: ["integrity-skill"] });
+    const member = installed.locked.find((card) => card.name === "@me/machine-capabilities")!;
+    const skillPath = join(member.path, "skills", "integrity-skill", "SKILL.md");
+    await chmod(skillPath, 0o644);
+    await writeFile(skillPath, "mutated\n");
 
     const result = await runAgentsCli(["status", "--json"], envFor(fixture));
 
@@ -264,15 +270,52 @@ describe("drwn status", () => {
       resolvedSkills: 0,
       missingSkills: 1,
       resolvedMcpServers: 0,
-      missingMcpServers: 1,
+      missingMcpServers: 0,
     });
     expect(parsed.projection).toMatchObject({ healthy: false, current: false, conflicts: [] });
     expect(parsed.projection.issues).toEqual(expect.arrayContaining([
-      expect.stringContaining("missing-skill"),
-      expect.stringContaining("missing-mcp"),
+      expect.stringContaining("MACHINE_WORKER_INTEGRITY_MISMATCH"),
     ]));
-    expect(result.stdout).not.toContain("command");
-    expect(result.stdout).not.toContain("env");
+    expect(await readFile(skillPath, "utf8")).toBe("mutated\n");
+  });
+
+  test("machine JSON rejects stale hook ranges and instruction digests as consent gaps", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    await installMachineBlueprint(fixture, {
+      hooks: ["guard"],
+      instructions: { text: "Follow the machine policy." },
+    });
+    const machinePath = resolveMachineConfigPath(fixture.agentsDir);
+    const machine = JSON.parse(await readFile(machinePath, "utf8"));
+    const member = machine.capabilities.workerLock.cards.find(
+      (card: { name: string }) => card.name === "@me/machine-capabilities",
+    );
+    member.hookConsent = {
+      consentedAt: "2026-08-03T00:00:00.000Z",
+      consentedRange: "<1.0.0",
+    };
+    member.instructionConsent = {
+      consentedAt: "2026-08-03T00:00:00.000Z",
+      consentedRange: "^1.0.0",
+      contentDigest: `sha256-${"0".repeat(64)}`,
+    };
+    await writeFile(machinePath, `${JSON.stringify(machine, null, 2)}\n`);
+
+    const result = await runAgentsCli(["status", "--json"], envFor(fixture));
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.selection.activeClosure).toContainEqual(
+      expect.objectContaining({
+        name: "@me/machine-capabilities",
+        consent: { hooks: false, instructions: false },
+      }),
+    );
+    expect(parsed.projection.issues).toEqual(expect.arrayContaining([
+      expect.stringContaining("hook consent"),
+      expect.stringContaining("instruction consent"),
+    ]));
   });
 
   test("shows project section when project config exists", async () => {

@@ -23,10 +23,11 @@ export type ResolvedSkillSource =
       scope: SkillScope;
     }
   | {
-      layer: "machine-profile" | "machine-explicit";
+      layer: "machine-worker";
       path: string;
       scope: SkillScope;
-      profileId?: "darwinian-operator";
+      cardName: string;
+      cardVersion: string;
     }
   | {
       layer: "missing";
@@ -104,10 +105,11 @@ export async function resolveSkillSource(
   const machineSource = machineSources?.[name];
   if (machineSource) {
     return {
-      layer: machineSource.source === "profile" ? "machine-profile" : "machine-explicit",
+      layer: "machine-worker",
       path: machineSource.path,
       scope: machineSource.scope,
-      profileId: machineSource.profileId,
+      cardName: machineSource.cardName,
+      cardVersion: machineSource.cardVersion,
     };
   }
 

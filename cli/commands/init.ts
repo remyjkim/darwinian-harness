@@ -11,7 +11,7 @@ import { loadConfig } from "../core/config";
 import { ensureBeadsProjectExtensionConfig, normalizeBeadsTargets } from "../core/extensions/beads";
 import { ensureParallelProjectExtensionConfig } from "../core/extensions/parallel";
 import { resolveInitMode, resolveRecommendedWorkerChoice } from "../core/interactivity";
-import { initializeMachineWorker } from "../core/machine-profiles";
+import { initializeMachineWorker } from "../core/machine-worker-init";
 import { ensureGitignoreEntries, ensureVendorGitattributes } from "../core/git-hygiene";
 import { registerProject } from "../core/project-registry";
 import { scaffoldProjectConfig } from "../core/project";

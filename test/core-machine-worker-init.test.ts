@@ -9,7 +9,7 @@ import { resolveCard } from "../cli/core/card-store";
 import {
   initializeMachineWorker,
   type MachineWorkerInitDescriptor,
-} from "../cli/core/machine-profiles";
+} from "../cli/core/machine-worker-init";
 import { createEmptyMachineConfig } from "../cli/core/machine-config";
 import { resolveMachineConfigPath } from "../cli/core/store-paths";
 import {

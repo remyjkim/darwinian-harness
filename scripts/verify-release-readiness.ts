@@ -3,8 +3,6 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isDeepStrictEqual } from "node:util";
-import { DARWINIAN_OPERATOR_PROFILE, DARWINIAN_OPERATOR_REGISTRY } from "../cli/core/operator-profile-contract";
 import { parseMachineWorkerRegistry } from "../cli/core/machine-worker-contract";
 import { gte } from "../cli/core/semver-utils";
 import { verifyOperatorContract } from "./verify-operator-contract";
@@ -681,11 +679,12 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
 
   requireTokens("cli/core/machine-config.ts", [
     'schema: z.literal("drwn.machine")',
-    "schemaVersion: z.literal(1)",
+    "schemaVersion: z.literal(2)",
     "capabilities: z.object",
-    "profile: profileSchema.nullable()",
-    "skills: uniqueIds",
-    "mcpServers: uniqueIds",
+    "activeWorker: canonicalCardName.nullable()",
+    "workerLock: z.unknown().nullable()",
+    "validateCardLockfile",
+    "machine Worker root",
     "MACHINE_CONFIG_INVALID",
     ".strict()",
   ]);
@@ -705,93 +704,85 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
   ]);
   requireTokens("cli/core/defaults.ts", [
     "resolveMachineCapabilities",
-    "verifyMachineProfilePin",
-    "machine.capabilities.skills",
-    "machine.capabilities.mcpServers",
+    "machine.capabilities.workerLock",
+    "machine.capabilities.activeWorker",
+    "verifyMachineCardContent",
+    "MACHINE_WORKER_INTEGRITY_MISMATCH",
+  ]);
+  requireTokens("cli/core/worker-machine.ts", [
+    "applyMachineWorkerRoots",
+    "useMachineWorker",
+    "assertBlueprintRoots",
+    "preserveConsent",
+  ]);
+  requireTokens("cli/core/diagnostics.ts", [
+    "buildMachineStatusV2",
+    "activeClosure",
+    'provenance: "worker"',
+    "resolveMachineCapabilities",
+  ]);
+  requireTokens("cli/core/card-from-defaults.ts", [
+    "resolveMachineCapabilities",
+    "capabilities.skills",
+    "capabilities.mcpServers",
+  ]);
+  requireTokens("cli/commands/machine/skill.ts", [
+    "Direct machine skill activation was removed",
+    "drwn apply --root",
+    "drwn use --root",
+  ]);
+  requireTokens("cli/commands/machine/mcp.ts", [
+    "Direct machine MCP activation was removed",
+    "drwn apply --root",
+    "drwn use --root",
   ]);
 
   const machineReaders = [
-    "cli/core/user-config.ts",
-    "cli/core/card-store.ts",
-    "cli/core/effective-state.ts",
+    "cli/core/machine-config.ts",
     "cli/core/defaults.ts",
+    "cli/core/effective-state.ts",
     "cli/core/diagnostics.ts",
+    "cli/core/card-from-defaults.ts",
+    "cli/core/inventory-references.ts",
+    "cli/commands/machine/skill.ts",
+    "cli/commands/machine/mcp.ts",
   ];
   for (const pathValue of machineReaders) {
     const content = source(pathValue);
-    for (const field of ["defaults", "optional", "parallel"] as const) {
-      if (new RegExp(`(?:machineConfig|machine|input)\\.${field}\\b`).test(content)) {
-        issues.push(`${pathValue} reads prototype machine field ${field}`);
-      }
+    for (const pattern of [
+      /(?:machine|config)\.capabilities\.profile\b/,
+      /(?:machine|config)\.capabilities\.skills\b/,
+      /(?:machine|config)\.capabilities\.mcpServers\b/,
+      /policy\.authoring\b/,
+    ]) {
+      if (pattern.test(content)) issues.push(`${pathValue} reads a retired V1 machine field`);
     }
-    if (content.includes("resolveUserConfigPath")) {
-      issues.push(`${pathValue} reads the prototype machine config path`);
+  }
+  if (/schemaVersion:\s*z\.literal\(1\)/.test(source("cli/core/machine-config.ts"))) {
+    issues.push("machine config still accepts schemaVersion 1");
+  }
+  for (const retiredPath of [
+    "cli/core/machine-profiles.ts",
+    "cli/core/operator-profile-contract.ts",
+    "registry/machine-profiles.json",
+  ]) {
+    if (Object.hasOwn(overrides, retiredPath) || existsSync(join(root, retiredPath))) {
+      issues.push(`retired machine profile artifact remains: ${retiredPath}`);
     }
   }
 
-  const defaultsSource = source("cli/core/defaults.ts");
-  const activation = sourceSlice(
-    defaultsSource,
-    "export async function resolveMachineCapabilities",
-    "export async function validateDefaultReferences",
-  );
+  const activation = sourceSlice(source("cli/core/defaults.ts"), "export async function resolveMachineCapabilities", "export async function validateDefaultReferences");
   for (const forbidden of [
     "listCuratedSkills",
     "resolveDefaultSkillNames",
     "resolveDefaultMcpNames",
     "config.optional",
     "config.parallel",
+    "listLibrarySkills",
+    "loadMcpLibrary",
+    "resolveCard(",
   ]) {
     if (activation.includes(forbidden)) issues.push(`machine activation reads ${forbidden}`);
-  }
-  if (activation.includes("resolveCard(")) {
-    issues.push("machine activation performs runtime profile resolution");
-  }
-
-  const profileSource = source("cli/core/machine-profiles.ts");
-  const offlineVerification = sourceSlice(
-    profileSource,
-    "export async function verifyMachineProfilePin",
-    "export async function initializeMachineCapabilities",
-  );
-  if (offlineVerification.includes("resolveCard(")) {
-    issues.push("pinned profile verification performs a runtime fetch");
-  }
-  requireTokens("cli/core/machine-profiles.ts", [
-    "computeIntegrityFromDir(dir)",
-    "Pinned profile bytes are missing",
-    "Pinned profile integrity changed",
-  ]);
-
-  let profile: Record<string, unknown> | null = null;
-  try {
-    const registry = JSON.parse(source("registry/machine-profiles.json")) as {
-      schema?: string;
-      schemaVersion?: number;
-      profiles?: Array<Record<string, unknown>>;
-    };
-    if (registry.schema !== "drwn.machine-profiles" || registry.schemaVersion !== 1 || registry.profiles?.length !== 1) {
-      issues.push("machine profile registry must contain exactly one V1 profile");
-    }
-    profile = registry.profiles?.[0] ?? null;
-  } catch {
-    issues.push("machine profile registry must be valid JSON");
-  }
-  if (profile) {
-    if (profile.id !== "darwinian-operator") issues.push("Operator profile ID must be darwinian-operator");
-    if (profile.name !== "@darwinian/operator") issues.push("Operator Card name must be @darwinian/operator");
-    if (profile.version !== DARWINIAN_OPERATOR_PROFILE.version) issues.push(`Operator version must be ${DARWINIAN_OPERATOR_PROFILE.version}`);
-    if (profile.source !== DARWINIAN_OPERATOR_PROFILE.source) {
-      issues.push("Operator profile must use the exact Operator source");
-    }
-    if (profile.commit !== DARWINIAN_OPERATOR_PROFILE.commit) issues.push("Operator commit pin changed");
-    if (profile.treeSha !== DARWINIAN_OPERATOR_PROFILE.treeSha) issues.push("Operator tree pin changed");
-    if (profile.integrity !== DARWINIAN_OPERATOR_PROFILE.integrity) {
-      issues.push("Operator integrity pin changed");
-    }
-    if (!isDeepStrictEqual(profile, DARWINIAN_OPERATOR_REGISTRY.profiles[0])) {
-      issues.push("Operator profile must deep-equal the centralized contract");
-    }
   }
 
   const index = source("cli/index.ts");
@@ -816,23 +807,29 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
     issues.push("foreign skill ownership coverage is missing");
   }
 
-  const forwardDocPaths = [
+  const forwardDocPaths = [...new Set([
     "README.md",
-    "docs/cli-quickref.md",
-    ".ai/knowledges/01_agents-cli-usage-guide.md",
-    ".ai/knowledges/02_per-project-config-guide.md",
-    ".ai/knowledges/03_npm-skill-bundles-guide.md",
-  ];
+    "INSTALL.md",
+    ...[...new Bun.Glob("**/*.md").scanSync({ cwd: join(root, "docs") })]
+      .filter((pathValue) => !pathValue.startsWith("plans/"))
+      .map((pathValue) => `docs/${pathValue}`),
+    ...[...new Bun.Glob("**/*.md").scanSync({ cwd: join(root, "docs-astro/src/content/docs") })]
+      .map((pathValue) => `docs-astro/src/content/docs/${pathValue}`),
+    ...[...new Bun.Glob("**/*.md").scanSync({ cwd: join(root, "docs-docusaurus/docs") })]
+      .map((pathValue) => `docs-docusaurus/docs/${pathValue}`),
+    ...[...new Bun.Glob("**/*.{md,html}").scanSync({ cwd: join(root, ".ai/knowledges") })]
+      .map((pathValue) => `.ai/knowledges/${pathValue}`),
+  ])];
   const forwardDocs = forwardDocPaths.map(source).join("\n");
   for (const token of [
     '"schema": "drwn.machine"',
-    '"schemaVersion": 1',
-    "Recommended Darwinian Operator",
-    "drwn machine skill enable",
-    "drwn machine mcp enable",
-    "drwn write --scope machine",
+    '"schemaVersion": 2',
+    "activeWorker",
+    "workerLock",
+    "drwn apply --root",
+    "drwn use --root",
+    "drwn write --root",
     "MACHINE_PROJECTION_CONFLICT",
-    "operator-owned runtime state",
   ]) {
     if (!forwardDocs.includes(token)) issues.push(`machine contract docs are missing ${token}`);
   }
@@ -844,6 +841,8 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
     /defaults\.(?:skills|mcpServers)/,
     /curated publication layer/i,
     /machine-wide active MCP defaults live/i,
+    /^\s*drwn machine (?:skill|mcp) (?:enable|disable)\b/m,
+    /Recommended Darwinian Operator profile/i,
   ];
   for (const pathValue of forwardDocPaths) {
     const content = source(pathValue);
@@ -854,6 +853,17 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
 
   const storeExportSecurity = verifyStoreExportSecurity(root, overrides);
   if (!storeExportSecurity.ok) issues.push(storeExportSecurity.details ?? "whole-Store export security is not enforced");
+
+  let packageVersion: string | undefined;
+  try {
+    packageVersion = (JSON.parse(source("package.json")) as { version?: string }).version;
+  } catch {
+    issues.push("package.json must be valid JSON");
+  }
+  const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
+  if (packageVersion !== "1.1.0") issues.push("package version must be 1.1.0");
+  if (runtimeVersion !== "1.1.0") issues.push("runtime version must be 1.1.0");
+  if (runtimeVersion !== packageVersion) issues.push("runtime version must match package version");
 
   return {
     name: "machine capability contract",
@@ -952,8 +962,13 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
   }
 
   const generator = source("cli/core/worker-generator/sync-worker.ts");
-  if (!generator.includes("for (const root of selection.installedRoots)")) {
-    issues.push("generated Worker sync does not iterate installed roots");
+  for (const token of [
+    "selectedRootsForProjection",
+    "return selection.installedRoots",
+    "return selection.selectedRoot ? [selection.selectedRoot] : []",
+    "for (const root of roots)",
+  ]) {
+    if (!generator.includes(token)) issues.push(`generated Worker sync is missing ${token}`);
   }
   if (/for\s*\(const card of state\.lockedCards\)/.test(generator)) {
     issues.push("generated Worker sync treats locked member Cards as roots");
@@ -1041,13 +1056,11 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
 
   const pkg = JSON.parse(source("package.json")) as { version?: string };
   const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
-  // The project Worker contract is pinned to the 1.0.0 materialization candidate (CL0024
-  // addendum A07). This is stricter than the semantic-Mind floor (0.9.0) below: the first
-  // supported project Worker release is 1.0.0, and a 0.9.x/0.10.x runtime must not pass as
-  // the 1.0.0 materialization candidate.
-  if (pkg.version !== "1.0.0") issues.push("package version must be 1.0.0");
+  // I177 advances the package/runtime line to 1.1.0 while preserving the V1 project
+  // Worker data contract and its older compatibility floor.
+  if (pkg.version !== "1.1.0") issues.push("package version must be 1.1.0");
   if (runtimeVersion !== pkg.version) issues.push("runtime version must match package version");
-  if (runtimeVersion !== "1.0.0") issues.push("runtime version must be 1.0.0");
+  if (runtimeVersion !== "1.1.0") issues.push("runtime version must be 1.1.0");
 
   return {
     name: "project Worker contract",

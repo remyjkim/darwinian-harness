@@ -1,6 +1,6 @@
 ---
-title: "Store And Migration"
-description: "The cards-era local store layout and explicit migration path."
+title: "Local State And Inventory"
+description: "The V2 machine state, immutable Card store, and standalone inventory boundaries."
 date: 2026-05-20
 order: 11
 ---
@@ -28,9 +28,8 @@ Cards-era `drwn` stores local user-managed inventory under:
 | Path | Purpose |
 |---|---|
 | `store.json` | Store metadata and schema version |
-| `machine.json` | Machine-scope overlay used outside configured projects |
+| `machine.json` | V2 machine Worker selection and immutable lock |
 | `cards/` | Per-card bare Git repositories |
-| `sources/` | Editable card source directories |
 | `skills/` | Package-backed skill bundles |
 | `mcp-servers/` | User MCP server definitions, one JSON file per server |
 | `generated/` | Machine-scope generated files such as Cursor MCP payloads |
@@ -40,48 +39,35 @@ Cards-era `drwn` stores local user-managed inventory under:
 | `url-card-map.json` | Cached Git URL to card-name mappings for repeat resolution |
 | `global-write-record.json` | Machine-scope materialization ownership record |
 
-## Inspect Store State
+## Inspect Machine State
 
 ```bash
-drwn store status
-drwn store status --json
+drwn status --machine
+drwn status --machine --json
 ```
 
-Store status reports whether the cards-era store exists, its schema version,
-inventory counts, and whether a pre-cards layout is still present.
+Machine status reports the selected Worker root, installed alternatives, active
+Card closure, integrity and consent state, projected capabilities, and
+projection currentness.
 
-## Migration
+## Hard-Cut Boundary
 
-Store migration has two explicit steps:
-
-| Source | Current path |
-|---|---|
-| Pre-cards library/packages layout | `~/.agents/drwn/` |
-| Per-version card directories | `~/.agents/drwn/cards/<scope>/<name>.git/` |
-
-Run migration explicitly:
+Machine V2 does not read or migrate prototype profile/default selections. The
+supported recovery path is to select a published Blueprint and project it:
 
 ```bash
-drwn store migrate
-drwn store migrate-to-git
+drwn apply --root <blueprint-ref>
+drwn write --root
 ```
 
-For structured output:
+Standalone skills and MCP records remain inventory only. Inspect or transfer
+them without activating them:
 
 ```bash
-drwn store migrate --json
-drwn store migrate-to-git --json
+drwn machine skill list
+drwn machine mcp list
+drwn machine inventory export --out ./inventory
 ```
-
-For unattended migration:
-
-```bash
-drwn store migrate --yes
-```
-
-Migration stages the new layout, validates it, archives the old layout, then
-activates `~/.agents/drwn`. Ordinary commands do not silently migrate state;
-they warn when a pre-cards layout is detected.
 
 ## Project Write Records
 

@@ -11,7 +11,8 @@ import type { CardLockEntry, ProjectLockV1, WorkerRootLockEntry } from "./card-l
 import { evaluateVersionFloor } from "./card-lock";
 import { assertValidCardManifest } from "./card-manifest";
 import { readMachineConfig } from "./card-store";
-import { collectCardServerDefinitions } from "./card-mcp";
+import { collectEffectiveCardServerDefinitions } from "./card-mcp";
+import { assertWorkerCapabilityCompatibility } from "./card-skill-resolver";
 import { computeIntegrityFromDir } from "./content-manifest";
 import { DrwnError } from "./errors";
 import { resolveExtractedPath } from "./store-paths";
@@ -235,6 +236,8 @@ export async function resolveMachineCapabilities(options: {
       })
     : [];
 
+  assertWorkerCapabilityCompatibility(activeCards);
+
   const contentRootsByCard: Record<string, string> = {};
   for (const card of activeCards) {
     contentRootsByCard[card.name] = await verifyMachineCardContent(options.agentsDir, card);
@@ -254,7 +257,7 @@ export async function resolveMachineCapabilities(options: {
     }
   }
 
-  const mcpServers = collectCardServerDefinitions(activeCards).map((definition) => ({
+  const mcpServers = collectEffectiveCardServerDefinitions(activeCards).map((definition) => ({
     id: definition.serverName,
     source: "worker" as const,
     cardName: definition.cardName,

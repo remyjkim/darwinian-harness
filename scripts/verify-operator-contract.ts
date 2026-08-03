@@ -1,9 +1,8 @@
-// ABOUTME: Verifies the canonical Operator source and pinned machine profile as one release contract.
+// ABOUTME: Verifies the canonical Operator Card source independently from machine activation.
 // ABOUTME: Runs offline and reports deterministic release-blocking issues without mutating repository state.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import { assertValidCardManifest, type CardManifest } from "../cli/core/card-manifest";
 import {
   computeContentManifest,
@@ -12,10 +11,9 @@ import {
   type ContentManifest,
 } from "../cli/core/content-manifest";
 import {
-  DARWINIAN_OPERATOR_PROFILE,
-  DARWINIAN_OPERATOR_REGISTRY,
+  DARWINIAN_OPERATOR_CARD,
   DARWINIAN_OPERATOR_SKILL_IDS,
-} from "../cli/core/operator-profile-contract";
+} from "../cli/core/operator-card-contract";
 import type { CheckResult } from "./verify-release-readiness";
 
 type SourceOverrides = Record<string, string>;
@@ -29,6 +27,7 @@ const retiredCommands = [
   /\bdrwn mind (?:list|use|clear)\b/,
   /\bdrwn (?:library|store)\b/,
   /\bdrwn skills (?:curate|uncurate)\b/,
+  /\bdrwn machine (?:skill|mcp) (?:enable|disable)\b/,
   /--no-apply\b/,
 ];
 
@@ -90,14 +89,8 @@ export async function verifyOperatorContract(
   overrides: SourceOverrides = {},
 ): Promise<CheckResult> {
   const issues: string[] = [];
-  const registryPath = "registry/machine-profiles.json";
-  try {
-    const registry = JSON.parse(source(root, registryPath, overrides));
-    if (!isDeepStrictEqual(registry, DARWINIAN_OPERATOR_REGISTRY)) {
-      issues.push("machine profile registry must deep-equal the centralized Operator contract");
-    }
-  } catch {
-    issues.push("machine profile registry must be valid JSON");
+  if (existsSync(join(root, "registry/machine-profiles.json")) || Object.hasOwn(overrides, "registry/machine-profiles.json")) {
+    issues.push("retired machine profile registry must not ship");
   }
 
   const manifestPath = `${OPERATOR_ROOT}/card.json`;
@@ -109,21 +102,27 @@ export async function verifyOperatorContract(
     issues.push("canonical Operator manifest must be valid");
   }
   if (manifest) {
-    if (manifest.name !== DARWINIAN_OPERATOR_PROFILE.name || manifest.version !== DARWINIAN_OPERATOR_PROFILE.version) {
-      issues.push("canonical Operator identity must match the centralized profile contract");
+    if (manifest.name !== DARWINIAN_OPERATOR_CARD.name || manifest.version !== DARWINIAN_OPERATOR_CARD.version) {
+      issues.push("canonical Operator identity must match the Operator Card contract");
     }
-    if (!sameJson(manifest.skills?.include ?? [], DARWINIAN_OPERATOR_PROFILE.skills)) {
+    if (!sameJson(manifest.skills?.include ?? [], DARWINIAN_OPERATOR_CARD.skills)) {
       issues.push("canonical Operator manifest must expose exactly eight approved skills");
     }
-    if (!sameJson(Object.keys(manifest.servers ?? {}), DARWINIAN_OPERATOR_PROFILE.mcpServers)) {
+    if (!sameJson(Object.keys(manifest.servers ?? {}), DARWINIAN_OPERATOR_CARD.mcpServers)) {
       issues.push("unapproved Operator MCP definition");
+    }
+    if (manifest.harness?.minVersion !== DARWINIAN_OPERATOR_CARD.minDrwnVersion) {
+      issues.push(`canonical Operator harness floor must be ${DARWINIAN_OPERATOR_CARD.minDrwnVersion}`);
+    }
+    if (manifest.lastValidatedWith !== undefined && manifest.lastValidatedWith !== DARWINIAN_OPERATOR_CARD.minDrwnVersion) {
+      issues.push(`canonical Operator lastValidatedWith must be absent or ${DARWINIAN_OPERATOR_CARD.minDrwnVersion}`);
     }
   }
 
   if (existsSync(join(root, OPERATOR_ROOT))) {
     const integrity = manifestIntegrityDigest(await manifestWithOverrides(root, OPERATOR_ROOT, overrides));
-    if (integrity !== DARWINIAN_OPERATOR_PROFILE.integrity) {
-      issues.push("canonical Operator content integrity differs from the centralized profile contract");
+    if (integrity !== DARWINIAN_OPERATOR_CARD.contentIntegrity) {
+      issues.push("canonical Operator content integrity differs from the Operator Card contract");
     }
   } else {
     issues.push("canonical Operator Card source is missing");
