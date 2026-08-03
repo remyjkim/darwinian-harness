@@ -226,13 +226,17 @@ General commands:
 - `drwn use <rootNameOrRef>|--none [--no-write] [--dry-run]`
 - `drwn install [--frozen] [--no-write] [--json]`
 - `drwn install --frozen --org-worker-bundle <json> --worker-artifact-snapshot <json> --operation-id <id> [--dry-run] [--no-write] [--reconcile|--remove] [--json]`
+- `drwn projects list`
+- `drwn projects update --all [--fetch] [--dry-run] [--json]`
+- `drwn projects unregister <projectRoot> [--dry-run] [--json]`
+- `drwn projects prune [--dry-run] [--json]`
 
 Card commands:
 
 - `drwn card new <name> --scope @scope`
 - `drwn card new <name> --from-project [projectPath]`
 - `drwn card new <name> --from-defaults`
-- `drwn card publish <name>`
+- `drwn card publish <name> [--json] [--force-bump-mismatch]`
 - `drwn card catalog publish <cardRef> --catalog <scope|git-url|path> --mode <local|direct>`
 - `drwn card source list`
 - `drwn card source show <name>`
@@ -307,6 +311,19 @@ drwn card source set @your-handle/backend --description "Backend review harness"
 drwn card source doctor @your-handle/backend
 drwn card publish @your-handle/backend
 ```
+
+Publishing a new version of an existing card prints a **consent-impact report**
+showing which surfaces changed content between the previous and newly-published
+version. Pass `--json` for machine-readable output (`consentImpact` field):
+
+```bash
+drwn card publish @your-handle/backend --json
+```
+
+When hooks or instructions changed, consumers must re-trust. If the new version
+is still within a project's consented range, `drwn up` and `drwn update`
+auto-re-grant consent (updating the digest, preserving the range). Out-of-range
+changes fail loud with the exact `drwn card trust` command.
 
 Publish a card to a shared Git catalog after pushing the card repo:
 
@@ -719,7 +736,9 @@ are immutable; `current` is an atomic regular pointer. Referenced inventory
 cannot be removed with a force bypass. Removal and GC use tombstone recovery,
 and GC is a dry-run by default. Reference-sensitive writes follow
 `inventory -> machine -> project`; stale registered roots are repaired with
-`drwn projects unregister <root>`.
+`drwn projects unregister <root>` or removed in bulk with
+`drwn projects prune` (which removes entries whose `.agents/drwn/config.json`
+no longer exists).
 
 ## Extensions
 
