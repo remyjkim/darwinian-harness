@@ -6,6 +6,7 @@ import { doctorCardSource, type CardSourceDoctorReport } from "../../../core/car
 import { checkCardSourceUpstream } from "../../../core/card-source-sync";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 function renderSourceDoctorReport(report: CardSourceDoctorReport, upstreamWarnings: string[] = []) {
   const lines: string[] = [];
@@ -44,18 +45,19 @@ export class CardSourceDoctorCommand extends BaseCommand {
     ],
   });
 
-  name = Option.String({ required: false });
+  name = Option.String({ required: true });
 
   json = Option.Boolean("--json", false, {
     description: "Emit machine-readable JSON output.",
   });
 
   async execute() {
-    const report = await doctorCardSource(this.context.agentsDir, this.name);
+    const source = await resolveCommandCardSource(this.context, { input: this.name });
+    const report = await doctorCardSource(source.sourceDir);
     const upstreamWarnings: string[] = [];
     if (this.name) {
       try {
-        const upstream = await checkCardSourceUpstream(this.context.agentsDir, this.name);
+        const upstream = await checkCardSourceUpstream(this.context.agentsDir, source.sourceDir);
         for (const skill of upstream.stale) {
           upstreamWarnings.push(`upstream stale: skill ${skill} differs from upstream`);
         }

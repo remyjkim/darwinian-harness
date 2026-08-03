@@ -6,10 +6,14 @@ import { createInterface } from "node:readline/promises";
 import { captureProjectAsCard } from "../../core/card-capture";
 import { createCapabilityCardFromDefaults } from "../../core/card-from-defaults";
 import { isCardUnscopedName } from "../../core/card-manifest";
-import { createCardSource, readMachineConfig } from "../../core/card-store";
+import { createCardSource } from "../../core/card-store";
+import { normalizeCardName } from "../../core/card-store";
 import { probeAuthoringScope, resolveScopeForCardNew } from "../../core/authoring-scope";
 import { defaultProbeGh, defaultProbeGit } from "../../core/authoring-scope-probes";
 import { BaseCommand } from "../base";
+import { loadUserPreferences, mutateUserPreferences } from "../../core/user-preferences";
+import { expandHomePath } from "../../core/paths";
+import { join, resolve } from "node:path";
 
 export class CardNewCommand extends BaseCommand {
   static override paths = [["card", "new"]];
@@ -49,6 +53,8 @@ export class CardNewCommand extends BaseCommand {
     description: "Scope to apply to an unscoped card name (e.g., @your-handle). Auto-derived from gh / git config on first use.",
   });
 
+  into = Option.String("--into", { description: "Parent directory for the new Card source repository." });
+
   noGit = Option.Boolean("--no-git", false, {
     description: "Do not initialize a git repository in the new source directory.",
   });
@@ -62,13 +68,13 @@ export class CardNewCommand extends BaseCommand {
       this.context.stderr.write("Use either --from-project or --from-defaults, not both.\n");
       return 1;
     }
-    const machine = await readMachineConfig(this.context.agentsDir);
+    const preferences = await loadUserPreferences(this.context.agentsDir);
 
-    let scopeForCreate: string | undefined = this.scope ?? machine.policy.authoring?.scope;
+    let scopeForCreate: string | undefined = this.scope ?? preferences.defaultAuthorScope;
     if (isCardUnscopedName(this.name) && !scopeForCreate) {
       const resolved = await resolveScopeForCardNew({
         explicit: this.scope,
-        savedScope: machine.policy.authoring?.scope,
+        savedScope: preferences.defaultAuthorScope,
         isInteractive: process.stdin.isTTY === true && process.stdout.isTTY === true,
         probe: () => probeAuthoringScope({ runGh: defaultProbeGh, runGit: defaultProbeGit }),
         prompt: async (suggested) => {
@@ -92,6 +98,9 @@ export class CardNewCommand extends BaseCommand {
       }
       scopeForCreate = resolved.scope;
     }
+    const fullName = normalizeCardName(this.name, scopeForCreate);
+    const parentDir = resolve(this.context.cwd, expandHomePath(this.into ?? ".", this.context.homeDir));
+    const sourceDir = join(parentDir, fullName.split("/").at(-1)!);
 
     if (this.fromDefaults) {
       let captured;
@@ -101,6 +110,7 @@ export class CardNewCommand extends BaseCommand {
           repoRoot: this.context.repoRoot,
           homeDir: this.context.homeDir,
           name: this.name,
+          sourceDir,
           scope: scopeForCreate,
           noGit: this.noGit,
         });
@@ -124,6 +134,7 @@ export class CardNewCommand extends BaseCommand {
           homeDir: this.context.homeDir,
           projectPath: this.projectPath ?? this.context.cwd,
           name: this.name,
+          sourceDir,
           scope: scopeForCreate,
           noGit: this.noGit,
         });
@@ -143,7 +154,7 @@ export class CardNewCommand extends BaseCommand {
     let source;
     try {
       source = await createCardSource({
-        agentsDir: this.context.agentsDir,
+        sourceDir,
         name: this.name,
         scope: scopeForCreate,
         noGit: this.noGit,
@@ -151,6 +162,12 @@ export class CardNewCommand extends BaseCommand {
     } catch (error) {
       this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
       return 1;
+    }
+    if (scopeForCreate && preferences.defaultAuthorScope !== scopeForCreate) {
+      await mutateUserPreferences(this.context.agentsDir, (current) => ({
+        preferences: { ...current, defaultAuthorScope: scopeForCreate },
+        value: undefined,
+      }));
     }
     this.context.stdout.write(`Created card source ${source.name}: ${source.sourceDir}\n`);
     return 0;

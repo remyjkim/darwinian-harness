@@ -15,21 +15,23 @@ afterEach(async () => {
 async function scaffoldSourceFixture() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/example", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const catalog = join(fixture.root, "catalog");
+  expect((await runAgentsCli(["card", "new", "@me/example", "--into", join(catalog, "cards"), "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalog])], envFor(fixture))).exitCode).toBe(0);
   return fixture;
 }
 
-test("card source list supports json and text output", async () => {
+test("card source list is deprecated with catalog and explicit-path guidance", async () => {
   const fixture = await scaffoldSourceFixture();
 
   const json = await runAgentsCli(["card", "source", "list", "--json"], envFor(fixture));
   const text = await runAgentsCli(["card", "source", "list"], envFor(fixture));
 
-  expect(json.exitCode).toBe(0);
-  expect(JSON.parse(json.stdout).sources[0].name).toBe("@me/example");
-  expect(text.exitCode).toBe(0);
-  expect(text.stdout).toContain("@me/example");
-  expect(text.stdout).toContain("1.0.0");
+  expect(json.exitCode).toBe(1);
+  expect(JSON.parse(json.stdout)).toMatchObject({ deprecated: true });
+  expect(text.exitCode).toBe(1);
+  expect(text.stderr).toContain("deprecated");
+  expect(text.stderr).toContain("catalogCheckouts");
 });
 
 test("card source show supports json and text output", async () => {
@@ -62,7 +64,7 @@ test("card source doctor supports json and text output for a healthy source", as
 
 test("card source doctor exits zero and reports ok false for nonfatal source issues", async () => {
   const fixture = await scaffoldSourceFixture();
-  const sourceDir = join(fixture.agentsDir, "drwn", "sources", "@me", "example");
+  const sourceDir = join(fixture.root, "catalog", "cards", "example");
   const manifestPath = join(sourceDir, "card.json");
   const manifest = JSON.parse(await Bun.file(manifestPath).text());
   manifest.skills = { include: ["alpha"] };

@@ -236,10 +236,10 @@ function assertSafeHookName(name: string) {
   assertSafePathPart(name, "hook policy");
 }
 
-async function readSourceManifestForMutation(agentsDir: string, cardName: string) {
-  const state = await readCardSourceState(agentsDir, cardName);
+async function readSourceManifestForMutation(sourceDir: string) {
+  const state = await readCardSourceState(sourceDir);
   if (!state.manifest) {
-    throw new Error(`Card source manifest is invalid: ${cardName}`);
+    throw new Error(`Card source manifest is invalid: ${sourceDir}`);
   }
   return { state, manifest: state.manifest };
 }
@@ -645,8 +645,7 @@ function beliefTemplate(name: string) {
 }
 
 export async function addCardSourcePersona(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   entryName: string;
   visibility: string;
   dryRun?: boolean;
@@ -654,7 +653,7 @@ export async function addCardSourcePersona(options: {
   assertSafeMindContentName(options.entryName, "persona");
   assertMindContentVisibility(options.visibility);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "persona", options.entryName);
   const contentPath = join(destination, "PERSONA.md");
   const include = [...(manifest.persona?.include ?? [])];
@@ -681,19 +680,18 @@ export async function addCardSourcePersona(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, entry: options.entryName, section: "persona", dryRun, changes };
+  return { card: manifest.name, entry: options.entryName, section: "persona", dryRun, changes };
 }
 
 export async function removeCardSourcePersona(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   entryName: string;
   keepFiles?: boolean;
   dryRun?: boolean;
 }): Promise<CardSourceMindContentMutationResult> {
   assertSafeMindContentName(options.entryName, "persona");
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "persona", options.entryName);
   const include = manifest.persona?.include ?? [];
   if (!include.includes(options.entryName)) {
@@ -720,12 +718,11 @@ export async function removeCardSourcePersona(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, entry: options.entryName, section: "persona", dryRun, changes };
+  return { card: manifest.name, entry: options.entryName, section: "persona", dryRun, changes };
 }
 
 export async function addCardSourceBelief(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   entryName: string;
   visibility: string;
   dryRun?: boolean;
@@ -733,7 +730,7 @@ export async function addCardSourceBelief(options: {
   assertSafeMindContentName(options.entryName, "belief");
   assertMindContentVisibility(options.visibility);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "beliefs", options.entryName);
   const contentPath = join(destination, "BELIEF.md");
   const include = [...(manifest.beliefs?.include ?? [])];
@@ -760,19 +757,18 @@ export async function addCardSourceBelief(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, entry: options.entryName, section: "beliefs", dryRun, changes };
+  return { card: manifest.name, entry: options.entryName, section: "beliefs", dryRun, changes };
 }
 
 export async function removeCardSourceBelief(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   entryName: string;
   keepFiles?: boolean;
   dryRun?: boolean;
 }): Promise<CardSourceMindContentMutationResult> {
   assertSafeMindContentName(options.entryName, "belief");
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "beliefs", options.entryName);
   const include = manifest.beliefs?.include ?? [];
   if (!include.includes(options.entryName)) {
@@ -799,7 +795,7 @@ export async function removeCardSourceBelief(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, entry: options.entryName, section: "beliefs", dryRun, changes };
+  return { card: manifest.name, entry: options.entryName, section: "beliefs", dryRun, changes };
 }
 
 function hookPolicyTemplate(policyName: string) {
@@ -818,14 +814,13 @@ export default defineToolPolicy({
 }
 
 export async function addCardSourceHook(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   hookName: string;
   dryRun?: boolean;
 }): Promise<CardSourceHookMutationResult> {
   assertSafeHookName(options.hookName);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "hooks", options.hookName);
   const policyPath = join(destination, "policy.ts");
   const include = [...(manifest.hooks?.include ?? [])];
@@ -851,19 +846,18 @@ export async function addCardSourceHook(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, hook: options.hookName, dryRun, changes };
+  return { card: manifest.name, hook: options.hookName, dryRun, changes };
 }
 
 export async function removeCardSourceHook(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   hookName: string;
   keepFiles?: boolean;
   dryRun?: boolean;
 }): Promise<CardSourceHookMutationResult> {
   assertSafeHookName(options.hookName);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "hooks", options.hookName);
   const include = manifest.hooks?.include ?? [];
   if (!include.includes(options.hookName)) {
@@ -890,14 +884,14 @@ export async function removeCardSourceHook(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, hook: options.hookName, dryRun, changes };
+  return { card: manifest.name, hook: options.hookName, dryRun, changes };
 }
 
 export async function addCardSourceSkill(options: {
   agentsDir: string;
   repoRoot: string;
   homeDir: string;
-  cardName: string;
+  sourceDir: string;
   skillName: string;
   from?: string;
   replace?: boolean;
@@ -905,7 +899,7 @@ export async function addCardSourceSkill(options: {
 }): Promise<CardSourceSkillMutationResult> {
   assertSafeSkillName(options.skillName);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const source = await resolveSkillSource({
     repoRoot: options.repoRoot,
     agentsDir: options.agentsDir,
@@ -940,19 +934,18 @@ export async function addCardSourceSkill(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, skill: options.skillName, dryRun, changes };
+  return { card: manifest.name, skill: options.skillName, dryRun, changes };
 }
 
 export async function removeCardSourceSkill(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   skillName: string;
   keepFiles?: boolean;
   dryRun?: boolean;
 }): Promise<CardSourceSkillMutationResult> {
   assertSafeSkillName(options.skillName);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "skills", options.skillName);
   const include = manifest.skills?.include ?? [];
   if (!include.includes(options.skillName) && !existsSync(destination)) {
@@ -978,17 +971,16 @@ export async function removeCardSourceSkill(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, skill: options.skillName, dryRun, changes };
+  return { card: manifest.name, skill: options.skillName, dryRun, changes };
 }
 
 export async function patchCardSourceManifest(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   patch: CardSourceManifestPatch;
   dryRun?: boolean;
 }): Promise<CardSourceManifestSetResult> {
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const nextManifest: CardManifest = {
     ...manifest,
     ...(manifest.harness ? { harness: { ...manifest.harness } } : {}),
@@ -1071,20 +1063,19 @@ export async function patchCardSourceManifest(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, dryRun, changes };
+  return { card: manifest.name, dryRun, changes };
 }
 
 export async function composeCardSourceBlueprint(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   add?: string[];
   remove?: string[];
   dryRun?: boolean;
 }): Promise<CardSourceManifestSetResult> {
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   if (manifest.kind !== "blueprint") {
-    throw new Error(`${options.cardName} is not a blueprint; compose requires kind: "blueprint"`);
+    throw new Error(`${manifest.name} is not a blueprint; compose requires kind: "blueprint"`);
   }
   const next = [...(manifest.composedFrom ?? [])];
   const changes: CardSourceManifestChange[] = [];
@@ -1110,13 +1101,13 @@ export async function composeCardSourceBlueprint(options: {
     assertStoreWritable();
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
-  return { card: options.cardName, dryRun, changes };
+  return { card: manifest.name, dryRun, changes };
 }
 
 export async function addCardSourceMcp(options: {
   agentsDir: string;
   repoRoot: string;
-  cardName: string;
+  sourceDir: string;
   serverId: string;
   from?: string;
   replace?: boolean;
@@ -1124,7 +1115,7 @@ export async function addCardSourceMcp(options: {
 }): Promise<CardSourceMcpMutationResult> {
   assertSafeServerId(options.serverId);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const server = await resolveMcpDefinition({
     repoRoot: options.repoRoot,
     agentsDir: options.agentsDir,
@@ -1156,19 +1147,18 @@ export async function addCardSourceMcp(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, serverId: options.serverId, dryRun, changes };
+  return { card: manifest.name, serverId: options.serverId, dryRun, changes };
 }
 
 export async function removeCardSourceMcp(options: {
-  agentsDir: string;
-  cardName: string;
+  sourceDir: string;
   serverId: string;
   keepFiles?: boolean;
   dryRun?: boolean;
 }): Promise<CardSourceMcpMutationResult> {
   assertSafeServerId(options.serverId);
   const dryRun = options.dryRun === true;
-  const { state, manifest } = await readSourceManifestForMutation(options.agentsDir, options.cardName);
+  const { state, manifest } = await readSourceManifestForMutation(options.sourceDir);
   const destination = join(state.sourceDir, "mcp-servers", `${options.serverId}.json`);
   const servers = { ...(manifest.servers ?? {}) };
   const declared = servers[options.serverId] !== undefined;
@@ -1190,5 +1180,5 @@ export async function removeCardSourceMcp(options: {
     await writeCardSourceManifest(state.manifestPath, nextManifest);
   }
 
-  return { card: options.cardName, serverId: options.serverId, dryRun, changes };
+  return { card: manifest.name, serverId: options.serverId, dryRun, changes };
 }

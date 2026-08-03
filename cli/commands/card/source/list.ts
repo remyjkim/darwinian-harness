@@ -2,8 +2,7 @@
 // ABOUTME: Keeps source inventory distinct from published card versions.
 
 import { Option } from "clipanion";
-import { listCardSources } from "../../../core/card-source";
-import { renderJson, renderTable } from "../../../core/output";
+import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
 
 export class CardSourceListCommand extends BaseCommand {
@@ -28,17 +27,12 @@ export class CardSourceListCommand extends BaseCommand {
   });
 
   async execute() {
-    const sources = await listCardSources(this.context.agentsDir);
+    const message = "card source list is deprecated: editable sources are ordinary repositories; inspect configured catalogCheckouts or pass a source path to card source show/doctor.";
     if (this.json) {
-      this.context.stdout.write(renderJson({ sources }));
-      return 0;
+      this.context.stdout.write(renderJson({ deprecated: true, message }));
+      return 1;
     }
-    this.context.stdout.write(
-      renderTable(
-        ["name", "version", "status", "path"],
-        sources.map((source) => [source.name, source.version ?? "unknown", source.ok ? "ok" : "issues", source.path]),
-      ),
-    );
-    return 0;
+    this.context.stderr.write(`${message}\n`);
+    return 1;
   }
 }

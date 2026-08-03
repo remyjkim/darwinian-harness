@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { readCardSourceState } from "../../../core/card-source";
 import { renderJson, renderTable } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceShowCommand extends BaseCommand {
   static override paths = [["card", "source", "show"]];
@@ -30,7 +31,8 @@ export class CardSourceShowCommand extends BaseCommand {
   });
 
   async execute() {
-    const state = await readCardSourceState(this.context.agentsDir, this.name);
+    const source = await resolveCommandCardSource(this.context, { input: this.name });
+    const state = await readCardSourceState(source.sourceDir);
     if (this.json) {
       this.context.stdout.write(renderJson(state));
       return state.manifest ? 0 : 1;

@@ -5,6 +5,7 @@ import { Option } from "clipanion";
 import { syncCardSource } from "../../../core/card-source-sync";
 import { renderJson } from "../../../core/output";
 import { BaseCommand } from "../../base";
+import { resolveCommandCardSource } from "../source-input";
 
 export class CardSourceSyncCommand extends BaseCommand {
   static override paths = [["card", "source", "sync"]];
@@ -34,7 +35,8 @@ export class CardSourceSyncCommand extends BaseCommand {
   });
 
   async execute() {
-    const result = await syncCardSource(this.context.agentsDir, this.name, { check: this.check });
+    const source = await resolveCommandCardSource(this.context, { input: this.name });
+    const result = await syncCardSource(this.context.agentsDir, source.sourceDir, { check: this.check });
     this.context.stdout.write(this.json ? renderJson(result) : renderSyncResult(result));
     return 0;
   }

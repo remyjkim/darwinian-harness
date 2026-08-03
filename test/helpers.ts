@@ -195,9 +195,10 @@ export async function publishCardWithSkills(
     throw new Error(`Use a scoped card name in tests: ${options.name}`);
   }
   const [, scope, cardName] = match;
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", scope!, cardName!);
+  const sourceParent = join(fixture.root, "card-sources", scope!.slice(1));
+  const sourceRoot = join(sourceParent, cardName!);
   if (!existsSync(join(sourceRoot, "card.json"))) {
-    expect((await runAgentsCli(["card", "new", options.name, "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    expect((await runAgentsCli(["card", "new", options.name, "--into", sourceParent, "--no-git"], envFor(fixture))).exitCode).toBe(0);
   }
 
   const manifestPath = join(sourceRoot, "card.json");
@@ -215,7 +216,7 @@ export async function publishCardWithSkills(
     await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${skill}\ndescription: ${skill}\n---\n`);
   }
 
-  const published = await runAgentsCli(["card", "publish", options.name], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", options.name, "--from", sourceRoot], envFor(fixture));
   expect(published.exitCode).toBe(0);
   const { resolveCard } = await import("../cli/core/card-store");
   return (await resolveCard(fixture.agentsDir, `${scope}/${cardName}@${version}`)).dir;
@@ -224,12 +225,12 @@ export async function publishCardWithSkills(
 export async function publishExactOperatorProfile(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
 ) {
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@darwinian", "operator");
+  const sourceRoot = join(fixture.root, "card-sources", "darwinian", "operator");
   await mkdir(dirname(sourceRoot), { recursive: true });
   await cp(join(import.meta.dir, "..", "darwinian-worker-skills", "cards", "operator"), sourceRoot, {
     recursive: true,
   });
-  const published = await runAgentsCli(["card", "publish", DARWINIAN_OPERATOR_PROFILE.name], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", DARWINIAN_OPERATOR_PROFILE.name, "--from", sourceRoot], envFor(fixture));
   expect(published.exitCode).toBe(0);
   const { resolveCard } = await import("../cli/core/card-store");
   const resolved = await resolveCard(

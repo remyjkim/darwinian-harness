@@ -14,6 +14,7 @@ export async function createCapabilityCardFromDefaults(options: {
   repoRoot: string;
   homeDir: string;
   name: string;
+  sourceDir?: string;
   scope?: string;
   noGit?: boolean;
 }) {
@@ -28,6 +29,7 @@ export async function createCapabilityCardFromDefaults(options: {
     );
   }
   const source = await createCardSource({
+    sourceDir: options.sourceDir,
     agentsDir: options.agentsDir,
     name: options.name,
     scope: options.scope ?? machine.policy.authoring?.scope,

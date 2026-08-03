@@ -16,17 +16,23 @@ afterEach(async () => {
 async function scaffoldSourceFixture() {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["card", "new", "@me/example", "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  const catalog = join(fixture.root, "catalog");
+  expect((await runAgentsCli(["card", "new", "@me/example", "--into", join(catalog, "cards"), "--no-git"], envFor(fixture))).exitCode).toBe(0);
+  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalog])], envFor(fixture))).exitCode).toBe(0);
   return fixture;
 }
 
+function sourceDir(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
+  return join(fixture.root, "catalog", "cards", "example");
+}
+
 async function readManifest(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  return JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "sources", "@me", "example", "card.json"), "utf8"));
+  return JSON.parse(await readFile(join(sourceDir(fixture), "card.json"), "utf8"));
 }
 
 test("add-skill --dry-run --json reports copy and manifest changes without writing", async () => {
   const fixture = await scaffoldSourceFixture();
-  const dest = join(fixture.agentsDir, "drwn", "sources", "@me", "example", "skills", "alpha");
+  const dest = join(sourceDir(fixture), "skills", "alpha");
 
   const result = await runAgentsCli(["card", "source", "add-skill", "@me/example", "alpha", "--dry-run", "--json"], envFor(fixture));
 
@@ -40,7 +46,7 @@ test("add-skill --dry-run --json reports copy and manifest changes without writi
 
 test("add-skill copies a repo-native shared skill and appends skills.include", async () => {
   const fixture = await scaffoldSourceFixture();
-  const dest = join(fixture.agentsDir, "drwn", "sources", "@me", "example", "skills", "alpha");
+  const dest = join(sourceDir(fixture), "skills", "alpha");
 
   const result = await runAgentsCli(["card", "source", "add-skill", "@me/example", "alpha"], envFor(fixture));
 
@@ -56,7 +62,7 @@ test("add-skill --from accepts a direct SKILL.md path and copies the containing 
   await mkdir(source, { recursive: true });
   await writeFile(join(source, "SKILL.md"), "---\nname: copied-loose\ndescription: fixture\n---\n");
   await writeFile(join(source, "extra.txt"), "copied sibling\n");
-  const dest = join(fixture.agentsDir, "drwn", "sources", "@me", "example", "skills", "copied-loose");
+  const dest = join(sourceDir(fixture), "skills", "copied-loose");
 
   const result = await runAgentsCli(
     ["card", "source", "add-skill", "@me/example", "copied-loose", "--from", join(source, "SKILL.md"), "--json"],
@@ -73,7 +79,7 @@ test("add-skill --from accepts a direct SKILL.md path and copies the containing 
 
 test("add-skill fails on duplicate without --replace and --replace overwrites the bundled copy", async () => {
   const fixture = await scaffoldSourceFixture();
-  const destSkillMd = join(fixture.agentsDir, "drwn", "sources", "@me", "example", "skills", "alpha", "SKILL.md");
+  const destSkillMd = join(sourceDir(fixture), "skills", "alpha", "SKILL.md");
   expect((await runAgentsCli(["card", "source", "add-skill", "@me/example", "alpha"], envFor(fixture))).exitCode).toBe(0);
   await Bun.write(destSkillMd, "local edit\n");
 
@@ -90,7 +96,7 @@ test("add-skill fails on duplicate without --replace and --replace overwrites th
 test("remove-skill --dry-run --json reports removals without writing", async () => {
   const fixture = await scaffoldSourceFixture();
   expect((await runAgentsCli(["card", "source", "add-skill", "@me/example", "alpha"], envFor(fixture))).exitCode).toBe(0);
-  const dest = join(fixture.agentsDir, "drwn", "sources", "@me", "example", "skills", "alpha");
+  const dest = join(sourceDir(fixture), "skills", "alpha");
 
   const result = await runAgentsCli(["card", "source", "remove-skill", "@me/example", "alpha", "--dry-run", "--json"], envFor(fixture));
 
@@ -106,7 +112,7 @@ test("remove-skill deletes files and removes only the named manifest entry", asy
   const fixture = await scaffoldSourceFixture();
   expect((await runAgentsCli(["card", "source", "add-skill", "@me/example", "alpha"], envFor(fixture))).exitCode).toBe(0);
   expect((await runAgentsCli(["card", "source", "add-skill", "@me/example", "beta"], envFor(fixture))).exitCode).toBe(0);
-  const dest = join(fixture.agentsDir, "drwn", "sources", "@me", "example", "skills", "alpha");
+  const dest = join(sourceDir(fixture), "skills", "alpha");
 
   const result = await runAgentsCli(["card", "source", "remove-skill", "@me/example", "alpha"], envFor(fixture));
 
@@ -118,7 +124,7 @@ test("remove-skill deletes files and removes only the named manifest entry", asy
 test("remove-skill --keep-files removes only the manifest entry", async () => {
   const fixture = await scaffoldSourceFixture();
   expect((await runAgentsCli(["card", "source", "add-skill", "@me/example", "alpha"], envFor(fixture))).exitCode).toBe(0);
-  const dest = join(fixture.agentsDir, "drwn", "sources", "@me", "example", "skills", "alpha");
+  const dest = join(sourceDir(fixture), "skills", "alpha");
 
   const result = await runAgentsCli(["card", "source", "remove-skill", "@me/example", "alpha", "--keep-files"], envFor(fixture));
 

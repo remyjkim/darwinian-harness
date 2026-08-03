@@ -17,6 +17,7 @@ export interface CaptureProjectOptions {
   homeDir: string;
   projectPath: string;
   name: string;
+  sourceDir?: string;
   scope?: string;
   noGit?: boolean;
 }
@@ -54,6 +55,7 @@ export async function captureProjectAsCard(options: CaptureProjectOptions): Prom
   }
 
   const source = await createCardSource({
+    sourceDir: options.sourceDir,
     agentsDir: options.agentsDir,
     name: options.name,
     scope: options.scope,

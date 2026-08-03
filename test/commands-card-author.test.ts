@@ -14,16 +14,31 @@ afterEach(async () => {
   await cleanupTempRoots(tempRoots);
 });
 
-test("card new creates a source with card.json and persists scope", async () => {
+test("card new creates an ordinary source directory and persists scope as a user preference", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
 
   const result = await runAgentsCli(["card", "new", "backend", "--scope", "@me", "--no-git"], envFor(fixture));
 
   expect(result.exitCode).toBe(0);
-  expect(existsSync(join(fixture.agentsDir, "drwn", "sources", "@me", "backend", "card.json"))).toBe(true);
-  const machine = JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "machine.json"), "utf8"));
-  expect(machine.policy.authoring.scope).toBe("@me");
+  expect(existsSync(join(fixture.repoRoot, "backend", "card.json"))).toBe(true);
+  expect(existsSync(join(fixture.agentsDir, "drwn", "sources"))).toBe(false);
+  expect(existsSync(join(fixture.agentsDir, "drwn", "machine.json"))).toBe(false);
+  const preferences = JSON.parse(await readFile(join(fixture.agentsDir, "drwn", "config.json"), "utf8"));
+  expect(preferences.defaultAuthorScope).toBe("@me");
+});
+
+test("card new --into creates the manifest-named repository beneath the selected directory", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const collection = join(fixture.root, "darwinian-cards", "cards");
+
+  const result = await runAgentsCli(["card", "new", "@me/backend", "--into", collection, "--no-git"], envFor(fixture));
+
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(await readFile(join(collection, "backend", "card.json"), "utf8"))).toMatchObject({
+    name: "@me/backend",
+  });
 });
 
 test("card new fails for unscoped non-interactive names without authoring scope", async () => {
@@ -81,10 +96,11 @@ test("card publish rejects a positional name that disagrees with --from manifest
 test("card publish refuses to overwrite an existing version", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
+  const sourceRoot = join(fixture.repoRoot, "backend");
   expect((await runAgentsCli(["card", "new", "@me/backend", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  expect((await runAgentsCli(["card", "publish", "@me/backend"], envFor(fixture))).exitCode).toBe(0);
+  expect((await runAgentsCli(["card", "publish", "--from", sourceRoot], envFor(fixture))).exitCode).toBe(0);
 
-  const second = await runAgentsCli(["card", "publish", "@me/backend"], envFor(fixture));
+  const second = await runAgentsCli(["card", "publish", "--from", sourceRoot], envFor(fixture));
 
   expect(second.exitCode).not.toBe(0);
   expect(second.stderr).toContain("already exists");
@@ -93,13 +109,14 @@ test("card publish refuses to overwrite an existing version", async () => {
 test("card publish rejects package contract mismatch", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
+  const sourceRoot = join(fixture.repoRoot, "backend");
   expect((await runAgentsCli(["card", "new", "@me/backend", "--no-git"], envFor(fixture))).exitCode).toBe(0);
   await writeFile(
-    join(fixture.agentsDir, "drwn", "sources", "@me", "backend", "package.json"),
+    join(sourceRoot, "package.json"),
     JSON.stringify({ name: "@me/wrong", version: "1.0.0" }, null, 2),
   );
 
-  const result = await runAgentsCli(["card", "publish", "@me/backend"], envFor(fixture));
+  const result = await runAgentsCli(["card", "publish", "--from", sourceRoot], envFor(fixture));
 
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr).toContain("package.json.name");
@@ -109,12 +126,13 @@ test("card publish fails when skills.include references a missing source directo
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await runAgentsCli(["card", "new", "@me/backend", "--no-git"], envFor(fixture));
-  const manifestPath = join(fixture.agentsDir, "drwn", "sources", "@me", "backend", "card.json");
+  const sourceRoot = join(fixture.repoRoot, "backend");
+  const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.skills = { include: ["polish"] };
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-  const published = await runAgentsCli(["card", "publish", "@me/backend"], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", "--from", sourceRoot], envFor(fixture));
 
   expect(published.exitCode).not.toBe(0);
   expect(published.stderr).toContain("missing skill directory 'polish'");
@@ -124,7 +142,7 @@ test("card publish succeeds when every skills.include has a matching source dire
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await runAgentsCli(["card", "new", "@me/backend", "--no-git"], envFor(fixture));
-  const sourceRoot = join(fixture.agentsDir, "drwn", "sources", "@me", "backend");
+  const sourceRoot = join(fixture.repoRoot, "backend");
   const manifestPath = join(sourceRoot, "card.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.skills = { include: ["polish"] };
@@ -132,7 +150,7 @@ test("card publish succeeds when every skills.include has a matching source dire
   await mkdir(join(sourceRoot, "skills", "polish"), { recursive: true });
   await writeFile(join(sourceRoot, "skills", "polish", "SKILL.md"), "---\nname: polish\ndescription: polish\n---\n");
 
-  const published = await runAgentsCli(["card", "publish", "@me/backend"], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", "--from", sourceRoot], envFor(fixture));
 
   expect(published.exitCode).toBe(0);
 });
@@ -140,10 +158,11 @@ test("card publish succeeds when every skills.include has a matching source dire
 test("card publish succeeds after source add-skill prepares the bundled skill", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
+  const sourceRoot = join(fixture.repoRoot, "backend");
   expect((await runAgentsCli(["card", "new", "@me/backend", "--no-git"], envFor(fixture))).exitCode).toBe(0);
-  expect((await runAgentsCli(["card", "source", "add-skill", "@me/backend", "alpha"], envFor(fixture))).exitCode).toBe(0);
+  expect((await runAgentsCli(["card", "source", "add-skill", sourceRoot, "alpha"], envFor(fixture))).exitCode).toBe(0);
 
-  const published = await runAgentsCli(["card", "publish", "@me/backend"], envFor(fixture));
+  const published = await runAgentsCli(["card", "publish", "--from", sourceRoot], envFor(fixture));
 
   expect(published.exitCode).toBe(0);
 });
