@@ -1,6 +1,6 @@
 # Use drwn with OpenCode
 
-The `opencode` target projects the same declared harness that Claude Code and Codex receive into OpenCode's own surfaces. This page covers what a write produces, how the dedicated skills directory defeats OpenCode's cross-scope skill dedup, and the diagnostics that watch it.
+The `opencode` target projects the same declared harness that Claude Code and Codex receive into OpenCode's own surfaces. This page covers what a write produces, how the dedicated skills directory shifts OpenCode's cross-scope skill dedup toward the project, the residual dedup race that remains, and the diagnostics that watch it.
 
 ## What a Project Write Produces
 
@@ -28,9 +28,13 @@ A projected `opencode.json` looks like:
 
 ## Why a Dedicated Skills Directory
 
-OpenCode discovers skills from several sources at once — `~/.agents/skills/` (the drwn machine store), `~/.claude/skills/`, project `.claude/skills/`, and project `.opencode/skills/` — and dedupes same-named skills across them. On OpenCode 1.18.4 the machine-home copy wins that dedup, so a project's customized copy of a same-named skill silently loses: sessions read the machine bytes, not the project's.
+OpenCode discovers skills from several sources at once — `~/.agents/skills/` (the drwn machine store), `~/.claude/skills/`, project `.claude/skills/`, and project `.opencode/skills/` — and dedupes same-named skills across them. Without the declaration, the machine-home copy won that dedup on every observation made against OpenCode 1.18.4: a project's customized copy of a same-named skill silently lost, and sessions read the machine bytes.
 
-Declaring a **novel** directory via `skills.paths` is the lever that flips this: a configured path that is not already in OpenCode's built-in scan resolves ahead of the machine store. Re-declaring an already-scanned path (such as `.claude/skills`) changes nothing, which is why drwn projects a dedicated directory under its own project home instead of reusing an existing surface.
+Declaring a **novel** directory via `skills.paths` is the lever that shifts this. The effect is group-level, not path-level: with the declaration in place, OpenCode resolves one of the *project's* copies (the declared directory or another project surface such as `.claude/skills` — which carry identical composed bytes) in the large majority of resolutions. Re-declaring an already-scanned path (such as `.claude/skills`) changes nothing, which is why drwn projects a dedicated directory under its own project home instead of reusing an existing surface.
+
+### The residual dedup race
+
+OpenCode 1.18.4's source scan is nondeterministic. Measured over 90 probes against an identical drwn-written project, the machine-store copy still won 21 resolutions (per-run rates ranged 17–30%); the rate is condition-dependent and upstream-nondeterministic, so no fixed number can be claimed. The declaration moves the failure from *every* session to *intermittent* — a large reduction, **not** an elimination. If a customized skill occasionally behaves like the machine-store version in an OpenCode session, this race is the likely cause; the only full closure is removing the same-named machine-store copy itself.
 
 `.agents/drwn/opencode-skills/` is a projection of the same composed skill set written to `.claude/skills/` — one composer writes both in the same step. Do not edit it; edit the card source and rerun `drwn write`. The directory is gitignored by default alongside the other projection surfaces (see `committedSurfaces` for opting in to committed projections).
 
@@ -44,16 +48,16 @@ The `skills.paths` declaration carries skill-surface semantics inside the shared
 
 ## The `opencode.jsonc` Limitation
 
-drwn only manages `opencode.json`. When an `opencode.jsonc` file exists, the write skips the config entirely: MCP servers and the `skills.paths` declaration are withheld with a warning, while the skills directory is still projected. In that state the machine-store copy keeps winning skill dedup — migrate the config to `opencode.json` or declare `.agents/drwn/opencode-skills` in the `.jsonc` yourself.
+drwn only manages `opencode.json`. When an `opencode.jsonc` file exists, the write skips the config entirely: MCP servers and the `skills.paths` declaration are withheld with a warning, while the skills directory is still projected. In that state the machine-store copy keeps winning skill dedup — migrate the config to `opencode.json`, or declare `.agents/drwn/opencode-skills` in the `.jsonc` yourself. The shadowing diagnostic recognizes a manual declaration in `opencode.jsonc` (comments and trailing commas tolerated) and downgrades the warning accordingly.
 
 ## The Shadowing Diagnostic
 
 `drwn doctor` and `drwn status` report cross-scope skill shadowing per project. For each projected skill whose name also exists in `~/.agents/skills/` or `~/.claude/skills/`, project status carries an `OPENCODE_SKILL_SHADOWED` issue under `ambientCapabilities.opencodeSkillShadowing`:
 
-- **warning** — the managed `skills.paths` declaration is absent or drifted; OpenCode resolves the machine copy and project customization does not reach sessions. Run `drwn write`.
-- **advisory** — the declaration is present and current; the collision exists but the project's composed copy resolves first.
+- **warning** — the managed `skills.paths` declaration is absent or drifted; OpenCode resolves the machine copy and project customization does not reach sessions. Run `drwn write` (with `opencode.jsonc`, declare the directory manually).
+- **advisory** — the declaration is present and current: shadowing risk is reduced, not eliminated. The collision remains live and the [residual dedup race](#the-residual-dedup-race) can still intermittently resolve the machine copy; eliminating the same-named machine-store skill is the only full closure.
 
-Warnings never change doctor's exit code; only error-severity issues do.
+Only skills the opencode surface actually projects (shared and Claude-surface scopes) are inspected; codex-only skills cannot produce these issues. Warnings never change doctor's exit code; only error-severity issues do.
 
 ## Machine Scope
 
