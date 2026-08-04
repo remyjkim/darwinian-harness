@@ -5,7 +5,9 @@
 set -euo pipefail
 
 SOURCE_ROOT="${DRWN_ACCEPT_SOURCE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-BUN_BIN="${BUN_BIN:-$(command -v bun)}"
+if [[ -z "${BUN_BIN:-}" ]]; then
+  BUN_BIN="$(bunx bun@1.2.21 -e 'console.log(process.execPath)')"
+fi
 ACCEPT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/drwn-i177-package.XXXXXX")"
 ACCEPT_HOME="$ACCEPT_ROOT/home"
 ACCEPT_AGENTS="$ACCEPT_ROOT/agents"
