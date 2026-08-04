@@ -5,7 +5,7 @@
 
 > **For the implementation owner:** Execute this plan incrementally on `remy/I177-machine-scope-blueprint`. For every production behavior, demonstrate RED before GREEN, keep commits atomic, and record exact commands and results in the completion document.
 
-**Status**: Building; documentation, baseline, G1, and G2 gates complete (2026-08-03)
+**Status**: Completed and merged via PR #72 at `b4817b1`; see [`cl0177_completion_machine_scope_blueprint.md`](cl0177_completion_machine_scope_blueprint.md) for delivered-plan differences and final evidence.
 
 **Issue**: [I177] · **Owner/Reviewer**: Remy K (owner-as-reviewer per campaign decision D5)
 
@@ -545,7 +545,7 @@ bunx bun@1.2.21 run typecheck
 **Files**
 
 - Revisit every Task 0 document if implementation names or exact outputs changed.
-- Create: `.ai/tasks/cl0177_machine_scope_blueprint_completion.md`
+- Create: `.ai/tasks/cl0177_completion_machine_scope_blueprint.md`
 - Modify release notes/version metadata required by the release contract.
 - Modify the worker-skills Operator manifest/test to set
   `lastValidatedWith: "1.1.0"` only after its complete validation matrix passes.
@@ -622,4 +622,4 @@ git diff --check
 - [x] G1 passed and acknowledged.
 - [x] G2 passed and acknowledged.
 - [x] Tasks 2–8 executed through recorded RED-GREEN-REFACTOR slices.
-- [x] Task 9 local verification and completion evidence prepared; exact-head CI and G3 remain external PR/Issue Tracker gates.
+- [x] Task 9 completed; exact-head CI and G3 passed, PR #72 merged at `b4817b1`, and post-merge CLI CI passed.

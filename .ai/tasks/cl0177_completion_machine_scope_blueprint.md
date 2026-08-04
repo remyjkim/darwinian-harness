@@ -1,13 +1,15 @@
-# ABOUTME: Completion evidence for the I177 hard cut to machine-scope Worker Blueprint V2.
-# ABOUTME: Records immutable releases, isolated acceptance, verification totals, non-goals, and recovery guidance.
+# ABOUTME: Final coworker handoff for the completed I177 machine-scope Worker Blueprint V2 hard cut.
+# ABOUTME: Reconciles the approved plan with delivered behavior, immutable releases, verification, and recovery guidance.
 
 # [I177] Machine-Scope Worker Blueprint — Completion Evidence
 
-**Status**: Local completion evidence final; exact-head CI and G3 remain pending external gates and will be recorded in PR #72 and the Issue Tracker.
+**Status**: Merged and post-merge CLI CI green; production docs were deployed, but the legacy custom-domain smoke check failed and is corrected by the completion-doc follow-up.
 
 **Issue**: [I177] · **Owner/Reviewer**: Remy K (owner-as-reviewer per campaign decision D5)
 
 **Branch**: `remy/I177-machine-scope-blueprint` · **PR**: [#72](https://github.com/remyjkim/darwinian-worker/pull/72)
+
+**Reviewed head**: `6180e8df21eafd3e6f1b0464fe10434188b5068c` · **Merge commit**: `b4817b1d64c76c7f31b06b44a1390cc79f1ce49c`
 
 **CLI release line validated**: `1.1.0` · **Date**: 2026-08-03
 
@@ -31,6 +33,26 @@ The final recommended Blueprint is the independently published
 it and `workflow-skills`; silently choosing precedence would violate the
 Blueprint collision contract. Splitting that repository remains the already
 declared non-goal.
+
+## Approved plan versus delivered result
+
+The G2 plan remains the design and TDD history. These are the material ways the
+final implementation became stricter or more explicit during execution:
+
+| Plan boundary | Delivered result | Why it changed |
+|---|---|---|
+| Bootstrap `machine-defaults@1.0.0`, then select a release candidate | Published final `machine-defaults@2.0.0` with exactly Operator, workflow-skills, and knowledge-docs | Removing the incompatible fourth member is semver-major; `personal-harness` had 13 overlapping IDs and 12 byte-incompatible definitions |
+| Pin the recommended Blueprint root immutably | Pin root and every member by source tag, commit, tree, and Card integrity | Independent audit showed a root pin alone did not prove the complete recommended closure |
+| Preflight planned and retained machine paths | Preflight retained **and removed** owned paths; retain ownership when cleanup cannot complete | Prevents drifted stale capabilities from remaining active after their ownership record disappears |
+| Select installed or explicit root references | Bare names may select an installed root; any version/range/transport ref re-resolves and replaces an older same-name root | Avoids silently honoring stale installed bytes when the operator asked for an explicit ref |
+| Force handles content drift | Force also repairs a recorded managed file replaced by a directory or other non-file | Final review reproduced a raw `EISDIR`; `cf19e47` converts it to controlled drift before any read |
+| Disposable manual acceptance | Added a versioned Bash harness that packs `darwinian@1.1.0`, uses Bun `1.2.21`, resolves the exact remote closure, and proves 85 → 0 write idempotence plus clean diagnostics | Makes the release claim reproducible without relying on the developer's real HOME, Store, project, or Card collection |
+| Documentation reconciliation and Operator release after implementation | Documentation was patched before runtime work, then reconciled again; Operator `v2.0.2` and machine-defaults `v2.0.0` were tagged after their release-specific validation passed, and the final branch matrix was rerun after subsequent review fixes | Preserves the documentation-first gate while distinguishing release validation from later whole-branch verification |
+
+The core approved decisions did **not** change: strict V2 only, no migration or
+dual read, Blueprint-only machine roots, immutable runtime bytes, active-closure
+consent, project/machine isolation, and removal of direct machine capability
+activation commands.
 
 ## Delivered commits
 
@@ -59,9 +81,8 @@ reconciliation tail is:
 | `cf19e47` | Classify changed-type managed content as force-repairable drift |
 
 Earlier commits on the same branch contain the approved G1 architecture, G2
-plan, documentation-first patch, and recorded RED evidence. Git contains the
-complete local history; PR #72 becomes the canonical exact-head review and CI
-record after this head is pushed.
+plan, documentation-first patch, and recorded RED evidence. Git and merged PR
+#72 are the canonical implementation, review, and exact-head CI history.
 
 ## Immutable release evidence
 
@@ -122,7 +143,7 @@ git diff --check
 | Focused machine/Operator/release suites | 29 passed, 0 failed; 62 assertions across 3 files |
 | TypeScript typecheck | passed |
 | Release readiness (`QUALITY_GATE_TEST_MODE=1`) | all 15 checks passed |
-| Full Bash-driven Bun suite | 1,840 passed, 6 intentionally skipped, 0 failed; 9,205 assertions across 312 files in 457.57s |
+| Full Bash-driven Bun suite | 1,840 passed, 6 intentionally skipped, 0 failed; 9,205 assertions across 312 files in 474.48s at the exact final head |
 | Docusaurus production build | passed |
 | Astro check/build | passed with 0 diagnostics; duplicate-content-ID loader notices only |
 | Documentation readiness | 3 passed, 0 failed; 231 assertions |
@@ -139,10 +160,18 @@ this host-local path is explicitly non-durable and not required for G3. The
 versioned acceptance script and the commands/results above are the durable
 reproduction evidence.
 
-The final PR head must also pass all required GitHub checks before G3 is
-recorded or the branch is merged. PR #72 will be the canonical exact-head CI
-record after push; the issue page is the canonical G3 and Owner-acknowledgement
-record.
+PR #72 passed all eight exact-head checks before G3 and merge: CLI CI run
+`30872515127` plus docs preview run `30872515164`. The ordered Issue Tracker
+transactions record G3 Review, G3 Passed with Owner `Received`, and Owner
+acknowledgement into `In Review`. Post-merge CLI CI run `30873188326` passed on
+merge commit `b4817b1`.
+
+Production docs run `30873188311` built, link-checked, and deployed the same
+commit successfully to Cloudflare Pages, then failed only because its smoke
+test still named the nonexistent legacy host `docs.darwiniantools.com`. The
+deployed Pages URL and live `https://docs.darwinian.dev` returned byte-identical
+content. The completion-doc follow-up changes the workflow and public links to
+the live canonical domain and adds a regression assertion for that boundary.
 
 ## Contract-specific acceptance
 

@@ -3,7 +3,7 @@
 
 # [I176] Card Source Path Reform — Target Architecture (GATE 1)
 
-**Status**: Ratified for execution 2026-08-03 with the implementation clarifications below. Pre-launch; breaking change approved.
+**Status**: G1 approved and implemented; PR #71 merged at `1fc03e6` on 2026-08-03. Pre-launch breaking change complete.
 **Issue**: [I176] · **Owner**: Remy K · **Reviewer**: Minseung Lee · **Branch**: `remy/I176-card-source-path-reform`
 **Plan**: [`../tasks/cl0176_card_source_path_reform_task_plan.md`](../tasks/cl0176_card_source_path_reform_task_plan.md) (GATE 2)
 **Scope**: the drwn CLI's card-authoring/publish lifecycle (`cli/`).

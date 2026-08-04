@@ -3,7 +3,7 @@
 
 # [I177] Machine-Scope Worker Blueprint — Target Architecture (GATE 1)
 
-**Status**: G1 approved; implementation complete pending G3 (2026-08-03)
+**Status**: G1 approved and implemented; PR #72 merged at `b4817b1` on 2026-08-03.
 
 **Issue**: [I177] · **Owner/Reviewer**: Remy K (owner-as-reviewer per campaign decision D5) · **Branch**: `remy/I177-machine-scope-blueprint`
 
