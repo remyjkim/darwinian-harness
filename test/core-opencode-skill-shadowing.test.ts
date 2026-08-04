@@ -110,6 +110,35 @@ describe("opencode skill shadowing diagnostic", () => {
     }));
   });
 
+  test("a manual declaration in opencode.jsonc downgrades the warning to advisory", async () => {
+    const { fixture, projectRoot } = await shadowedProject();
+    await writeFile(
+      join(projectRoot, "opencode.jsonc"),
+      [
+        "{",
+        "  // user-managed config",
+        "  /* drwn cannot write this file */",
+        '  "skills": {',
+        '    "paths": [',
+        '      ".agents/drwn/opencode-skills", // drwn projected dir',
+        "    ],",
+        "  },",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    expect((await runAgentsCli(["write", "--json"], envFor(fixture), projectRoot)).exitCode).toBe(0);
+
+    const json = await runAgentsCli(["doctor", "--json"], envFor(fixture), projectRoot);
+    expect(json.exitCode, json.stderr).toBe(0);
+    const report = JSON.parse(json.stdout) as ShadowingReport;
+    expect(report.ambientCapabilities.opencodeSkillShadowing).toContainEqual(expect.objectContaining({
+      skill: "alpha",
+      severity: "advisory",
+      declared: true,
+    }));
+  });
+
   test("codex-only skills outside the opencode projection produce no issues", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);

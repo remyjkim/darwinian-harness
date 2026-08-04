@@ -197,17 +197,94 @@ export interface OpencodeSkillShadowingIssue {
   declared: boolean;
 }
 
-async function opencodeSkillsDirDeclared(projectRoot: string) {
-  const configPath = join(projectRoot, "opencode.json");
+// Rewrites JSONC to plain JSON — strips // and /* */ comments and trailing commas,
+// string-aware — so a user-declared entry in opencode.jsonc can be recognized.
+function jsoncToJson(text: string): string {
+  const skipComment = (position: number): number => {
+    if (text[position] === "/" && text[position + 1] === "/") {
+      let ahead = position;
+      while (ahead < text.length && text[ahead] !== "\n") ahead += 1;
+      return ahead;
+    }
+    if (text[position] === "/" && text[position + 1] === "*") {
+      let ahead = position + 2;
+      while (ahead < text.length && !(text[ahead] === "*" && text[ahead + 1] === "/")) ahead += 1;
+      return Math.min(ahead + 2, text.length);
+    }
+    return position;
+  };
+
+  let out = "";
+  let inString = false;
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index]!;
+    if (inString) {
+      out += char;
+      if (char === "\\" && index + 1 < text.length) {
+        out += text[index + 1];
+        index += 2;
+        continue;
+      }
+      if (char === '"') inString = false;
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      out += char;
+      index += 1;
+      continue;
+    }
+    const afterComment = skipComment(index);
+    if (afterComment !== index) {
+      index = afterComment;
+      continue;
+    }
+    if (char === ",") {
+      let ahead = index + 1;
+      while (ahead < text.length) {
+        if (/\s/.test(text[ahead]!)) {
+          ahead += 1;
+          continue;
+        }
+        const skipped = skipComment(ahead);
+        if (skipped !== ahead) {
+          ahead = skipped;
+          continue;
+        }
+        break;
+      }
+      if (text[ahead] === "}" || text[ahead] === "]") {
+        index += 1;
+        continue;
+      }
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
+async function configDeclaresOpencodeSkillsDir(configPath: string, toJson: (text: string) => string) {
   if (!existsSync(configPath)) return false;
   try {
-    const parsed = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    const parsed = JSON.parse(toJson(await readFile(configPath, "utf8"))) as Record<string, unknown>;
     if (!isObject(parsed.skills)) return false;
     const paths = parsed.skills.paths;
     return Array.isArray(paths) && paths.includes(OPENCODE_PROJECT_SKILLS_DIR);
   } catch {
     return false;
   }
+}
+
+// drwn writes the declaration into opencode.json; a jsonc config is user-maintained, so a
+// manually added entry there counts as declared too.
+async function opencodeSkillsDirDeclared(projectRoot: string) {
+  return (
+    (await configDeclaresOpencodeSkillsDir(join(projectRoot, "opencode.json"), (text) => text)) ||
+    (await configDeclaresOpencodeSkillsDir(join(projectRoot, "opencode.jsonc"), jsoncToJson))
+  );
 }
 
 // Reports project skills OpenCode would dedup against machine-home copies
