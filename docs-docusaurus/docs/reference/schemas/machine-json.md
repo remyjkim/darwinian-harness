@@ -10,6 +10,9 @@ Purpose: strict machine policy plus one selected, immutable Worker Blueprint
 closure. Machine intent is independent from project Worker declarations and
 from authoring preferences in `~/.agents/drwn/config.json`.
 
+This contract ships with drwn 1.1.0. Operator 2.0.2 requires drwn 1.1.0 or
+newer.
+
 ## Schema
 
 ```json

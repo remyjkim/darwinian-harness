@@ -30,7 +30,11 @@ export class CardTrustCommand extends BaseCommand {
       Consent is scoped to a semver range; instruction consent also pins the
       exact content digest.
     `,
-    examples: [["Trust card hooks", "drwn card trust @your-handle/backend --hooks"]],
+    examples: [
+      ["Trust project Card hooks", "drwn card trust @your-handle/backend --hooks"],
+      ["Trust machine Card hooks", "drwn card trust @your-handle/backend --hooks --scope machine"],
+      ["Trust machine Card instructions", "drwn card trust @your-handle/backend --instructions --scope machine"],
+    ],
   });
 
   spec = Option.String({ required: true });

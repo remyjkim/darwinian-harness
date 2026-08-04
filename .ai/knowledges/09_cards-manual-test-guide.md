@@ -26,7 +26,10 @@ DRWN_TEST_CARDS="$DRWN_TEST_SANDBOX/card-collection"
 mkdir -p "$DRWN_TEST_HOME" "$DRWN_TEST_AGENTS" "$DRWN_TEST_PROJECT" "$DRWN_TEST_CARDS"
 
 run_drwn() {
-  env HOME="$DRWN_TEST_HOME" AGENTS_DIR="$DRWN_TEST_AGENTS" drwn "$@"
+  (
+    cd "$DRWN_TEST_PROJECT"
+    env HOME="$DRWN_TEST_HOME" AGENTS_DIR="$DRWN_TEST_AGENTS" drwn "$@"
+  )
 }
 ```
 
@@ -34,6 +37,18 @@ Before continuing, print and inspect those five absolute paths. None may be the
 operator's real home, real `~/.agents`, live project, or live Card collection.
 Do not carry real tokens, OAuth state, MCP secrets, or tool config into the
 sandbox.
+
+To qualify the exact npm tarball through the same isolation boundary, run:
+
+```bash
+scripts/accept-machine-blueprint-package.sh
+```
+
+The script packs and installs the current CLI into a temporary prefix, creates
+an isolated Card collection, publishes a fixture Card and Blueprint, projects
+machine scope, proves the retired direct command is non-mutating, and verifies a
+separate project does not inherit machine intent. Set `DRWN_ACCEPT_KEEP=1` only
+when the resulting non-secret sandbox must be inspected after the run.
 
 ## 1. Strict V2 Initialization
 
@@ -59,24 +74,58 @@ Verify `$DRWN_TEST_AGENTS/drwn/machine.json` has:
 Policy may contain serialized defaults, but capability intent must be empty.
 There must be no profile, flat skills, flat MCP selection, or authoring policy.
 
-Repeat in a second fresh sandbox with guided init. Decline the recommended
-Blueprint and verify the same empty capabilities. In a third fresh sandbox,
-accept it and verify a canonical `activeWorker` plus an embedded validated lock
-whose root `requested` field is an immutable versioned ref.
+Repeat with distinct state roots, never by replacing the state under test:
+
+```bash
+DRWN_DECLINE_AGENTS="$DRWN_TEST_SANDBOX/decline-agents"
+DRWN_ACCEPT_AGENTS="$DRWN_TEST_SANDBOX/accept-agents"
+mkdir -p "$DRWN_DECLINE_AGENTS" "$DRWN_ACCEPT_AGENTS"
+(
+  cd "$DRWN_TEST_PROJECT"
+  env HOME="$DRWN_TEST_HOME" AGENTS_DIR="$DRWN_DECLINE_AGENTS" drwn init
+)
+(
+  cd "$DRWN_TEST_PROJECT"
+  env HOME="$DRWN_TEST_HOME" AGENTS_DIR="$DRWN_ACCEPT_AGENTS" drwn init
+)
+```
+
+Decline the recommended Blueprint in the first guided run and verify empty
+capabilities. Accept it in the second and verify a canonical `activeWorker`
+plus an embedded validated lock whose root `requested` field is an immutable
+versioned ref.
 
 ## 2. Hard-Cut Rejection
 
 In a separate disposable state root, place a V1 `machine.json` containing
-`profile`, `skills`, and `mcpServers`, then run:
+`profile`, `skills`, and `mcpServers`:
 
 ```bash
-run_drwn status --machine --json
-run_drwn init --non-interactive
-run_drwn write --root --dry-run
+DRWN_V1_TEST_AGENTS="$DRWN_TEST_SANDBOX/v1-agents"
+mkdir -p "$DRWN_V1_TEST_AGENTS/drwn"
+# Seed machine.json and an optional global-write-record.json only in this root.
+V1_MACHINE_BEFORE="$(shasum -a 256 "$DRWN_V1_TEST_AGENTS/drwn/machine.json")"
+V1_RECORD_BEFORE="$(shasum -a 256 "$DRWN_V1_TEST_AGENTS/drwn/global-write-record.json" 2>/dev/null || true)"
+
+run_v1_drwn() {
+  (
+    cd "$DRWN_TEST_PROJECT"
+    env HOME="$DRWN_TEST_HOME" AGENTS_DIR="$DRWN_V1_TEST_AGENTS" drwn "$@"
+  )
+}
+```
+
+Then run:
+
+```bash
+run_v1_drwn status --machine --json
+run_v1_drwn init --non-interactive
+run_v1_drwn write --root --dry-run
 ```
 
 Each command must fail with controlled-reset guidance. Verify the V1 file and
-any planted global write record remain byte-identical. There must be no
+any planted global write record remain byte-identical by comparing their
+post-run checksums with `V1_MACHINE_BEFORE` and `V1_RECORD_BEFORE`. There must be no
 migration, dual read, projected file, automatic deletion, or preference bridge.
 
 Repeat with a prototype/unknown shape and an unsupported embedded lock version.
@@ -130,7 +179,8 @@ Verify:
 - `workerLock.workerRoots[0].requested` retains the requested version;
 - lock Card order is machine-defaults, notion, fal;
 - effective capabilities come only from that closure;
-- no user-home target or generated Worker was written by `--no-write`.
+- no user-home target or generated Worker was written because `apply` projects
+  only when `--write` is supplied.
 
 ## 6. Alternative Roots And Singular Selection
 
@@ -160,7 +210,7 @@ set to `workerLock: null`. Reapply machine-defaults for later sections.
 ## 7. Consent
 
 Add one valid instruction resource and one harmless Claude hook declaration to
-the workflow fixture Card, republish a new exact version, and reapply its
+the Notion fixture Card, republish a new exact version, and reapply its
 Blueprint. Before trust:
 
 ```bash

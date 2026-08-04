@@ -66,7 +66,7 @@ them without activating them:
 ```bash
 drwn machine skill list
 drwn machine mcp list
-drwn machine inventory export --out ./inventory
+drwn machine inventory export --output ./inventory.json
 ```
 
 ## Project Write Records

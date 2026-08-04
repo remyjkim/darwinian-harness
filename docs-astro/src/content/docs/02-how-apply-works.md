@@ -58,27 +58,28 @@ Project-scope writes materialize into:
 <project>/.agents/drwn/write-record.json
 ```
 
-Machine-only defaults from `~/.agents/drwn/machine.json` do not apply inside a
-configured project. The project config, selected cards when present, and
-explicit project overlay are the project source of truth.
+Machine-only capabilities from `~/.agents/drwn/machine.json` do not apply inside
+a configured project. The project config, selected Worker closure, and explicit
+project overlay are the project source of truth.
 
 ## Cards And Lockfiles
 
-A project selects cards in:
+A project declares Worker roots and selects at most one root in:
 
 ```text
 <project>/.agents/drwn/config.json
 ```
 
-`drwn apply`, `drwn card add`, `drwn card pin`, and `drwn card update` resolve
-those refs into:
+`drwn add`, `drwn apply`, `drwn pin`, `drwn update`, and `drwn use` resolve
+root refs and selection into:
 
 ```text
 <project>/.agents/drwn/card.lock
 ```
 
-The lockfile records exact versions and integrity so repeated writes are
-deterministic.
+The lockfile records exact root/member versions, immutable integrity, and the
+selected Blueprint closure so repeated writes are deterministic. Plain member
+Cards never become independent active Workers.
 
 ## Write Records
 

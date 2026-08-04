@@ -85,6 +85,7 @@ describe("documentation readiness", () => {
       readFile(new URL("../docs-docusaurus/docs/reference/cli/write.md", import.meta.url), "utf8"),
     ]);
     const docsDocusaurus = docsDocusaurusFiles.join("\n");
+    const docsAstro = await readDocsTree("../docs-astro/src/content/docs");
     const repoOperatorDocs = quickref + "\n" + usageGuide;
 
     // Usage-pattern coverage: every operator-facing detail must appear in
@@ -144,8 +145,8 @@ describe("documentation readiness", () => {
     expect(quickref).toContain("Optional extensions");
     expect(quickref).toContain("How write works");
     expect(quickref).toContain("How export works");
-    expect(quickref).toContain("drwn machine skill disable");
-    expect(quickref).toContain("drwn machine mcp disable");
+    expect(quickref).toContain("drwn machine skill|mcp enable|disable");
+    expect(quickref).toContain("fail nonzero with");
     expect(quickref).toContain("drwn machine inventory gc");
     for (const command of ["inventory export", "inventory bundle", "inventory verify", "inventory sync"]) {
       expect(quickref).toContain(command);
@@ -197,9 +198,9 @@ describe("documentation readiness", () => {
     expect(bundleGuide).toContain("bundle.json");
     expect(bundleGuide).toContain("npm pack");
     expect(bundleGuide).toContain("available");
-    expect(bundleGuide).toContain("explicit selection");
+    expect(bundleGuide).toContain("selected Worker closure");
     expect(bundleGuide).toContain("~/.agents/drwn/skills");
-    expect(bundleGuide).toContain("~/.agents/drwn/machine.json");
+    expect(bundleGuide).toContain('"schema": "drwn.machine"');
     expect(brewGuide).toContain("drwn machine inventory gc --json");
     expect(brewGuide).toContain("drwn card list --json");
     expect(docsDocusaurus).toContain("Cards");
@@ -254,14 +255,17 @@ describe("documentation readiness", () => {
     const machineDocs = [readme, quickref, usageGuide, projectGuide, bundleGuide].join("\n");
     for (const token of [
       '"schema": "drwn.machine"',
-      '"schemaVersion": 1',
-      "Recommended Darwinian Operator",
-      "@darwinian/operator@1.0.2",
-      "drwn machine skill enable",
-      "drwn machine mcp enable",
+      '"schemaVersion": 2',
+      '"activeWorker"',
+      '"workerLock"',
+      "@curation-labs/machine-defaults",
+      "Operator 2.0.2",
+      "drwn apply --root",
+      "drwn use --root",
+      "--scope machine",
       "drwn machine skill references",
       "drwn machine mcp references",
-      "drwn write --scope machine",
+      "drwn write --root",
       "MACHINE_PROJECTION_CONFLICT",
       "operator-owned runtime state",
     ]) {
@@ -278,6 +282,14 @@ describe("documentation readiness", () => {
     ]) {
       expect(machineDocs).not.toMatch(stale);
       expect(docsDocusaurus).not.toMatch(stale);
+    }
+    for (const stale of [
+      /drwn card (?:add|apply|pin|remove|update|detach)/,
+      /"cards"\s*:/,
+      /built-in defaults \+ user library/,
+      /machine inventory export --out\b/,
+    ]) {
+      expect(docsAstro).not.toMatch(stale);
     }
   });
 
@@ -298,7 +310,8 @@ describe("documentation readiness", () => {
       "10_drwn-cli-architecture.md",
       "11_card-usage-guide.html",
     ].map((name) => readFile(new URL(`../.ai/knowledges/${name}`, import.meta.url), "utf8")))).join("\n");
-    const forwardDocs = [readme, install, quickref, workerHelp, knowledge, docusaurus].join("\n");
+    const astro = await readDocsTree("../docs-astro/src/content/docs");
+    const forwardDocs = [readme, install, quickref, workerHelp, knowledge, docusaurus, astro].join("\n");
 
     for (const schema of ["drwn.project-config", "drwn.project-lock", "drwn.project-local", "drwn.generated-worker"]) {
       expect(contract).toContain(schema);
@@ -315,8 +328,8 @@ describe("documentation readiness", () => {
     expect(contract).toContain("OAuth");
     expect(contract).toContain("No public command creates a whole-Store archive");
     expect(contract).toContain("Task 82");
-    expect(contract).toContain("@darwinian/operator@1.0.2");
-    expect(contract).toContain("Recommended Darwinian Operator");
+    expect(contract).toContain("Operator 2.0.2");
+    expect(contract).toContain("@curation-labs/machine-defaults");
     expect(reset).toContain("controlled prelaunch reset");
     expect(reset).toContain("no automated migration");
 

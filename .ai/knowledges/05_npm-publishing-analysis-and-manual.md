@@ -130,6 +130,7 @@ set +a
 ```bash
 TMP_NPMRC="$(mktemp)"
 chmod 600 "$TMP_NPMRC"
+trap 'rm -f "$TMP_NPMRC"' EXIT HUP INT TERM
 
 cat > "$TMP_NPMRC" <<EOF
 registry=https://registry.npmjs.org/
@@ -168,6 +169,8 @@ npm publish --access public --userconfig="$TMP_NPMRC"
 
 ```bash
 rm -f "$TMP_NPMRC"
+trap - EXIT HUP INT TERM
+unset NPM_ORG_TOKEN
 ```
 
 ## Safer Preflight Sequence
@@ -183,6 +186,7 @@ set +a
 
 TMP_NPMRC="$(mktemp)"
 chmod 600 "$TMP_NPMRC"
+trap 'rm -f "$TMP_NPMRC"' EXIT HUP INT TERM
 
 cat > "$TMP_NPMRC" <<EOF
 registry=https://registry.npmjs.org/
@@ -197,6 +201,8 @@ npm pack --dry-run --json
 npm publish --access public --userconfig="$TMP_NPMRC"
 
 rm -f "$TMP_NPMRC"
+trap - EXIT HUP INT TERM
+unset NPM_ORG_TOKEN
 ```
 
 ## When To Suspect Config Precedence Problems

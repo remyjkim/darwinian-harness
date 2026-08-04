@@ -17,16 +17,18 @@ import {
 export class ProjectApplyCommand extends BaseCommand {
   static override paths = [["apply"]];
   static override usage = BaseCommand.Usage({
-    category: "Project",
+    category: "General",
     description: "Replace project Worker roots, or machine Blueprint roots with --root.",
     details: `
       Resolves the complete replacement root graph before atomically committing
       config and lock. Multiple alternative roots require --active <root> or
-      --none; they never become an implicit active stack.
+      --none; they never become an implicit active stack. Mutation does not
+      project downstream files unless --write is supplied.
     `,
     examples: [
       ["Apply and select one root", "drwn apply @team/operator@^1.0.0"],
       ["Keep alternatives and select one", "drwn apply @team/a@1.0.0 @team/b@1.0.0 --active @team/a"],
+      ["Replace the machine Blueprint", "drwn apply --root @team/machine-defaults@1.0.0"],
     ],
   });
   specs = Option.Rest();

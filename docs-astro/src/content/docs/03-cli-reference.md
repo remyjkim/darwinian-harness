@@ -18,12 +18,23 @@ order: 3
 | `drwn write` | Write effective config to target tools |
 | `drwn write --force` | Overwrite drift in drwn-managed regions |
 
-## Card Commands
+## Worker Root Commands
 
 | Command | Description |
 |---------|-------------|
-| `drwn apply <refs...>` | Alias for `drwn card apply` |
-| `drwn update` | Alias for `drwn card update` |
+| `drwn add <ref>` | Add one alternative Worker root |
+| `drwn apply <refs...>` | Replace Worker roots and select one explicitly |
+| `drwn remove <name>` | Remove one installed Worker root |
+| `drwn pin <ref>` | Replace one root requirement with an exact ref |
+| `drwn update [name]` | Refresh one or all roots within configured ranges |
+| `drwn use <name-or-ref>` | Select an installed root or add and select a new one |
+| `drwn apply --root <blueprint-ref>` | Replace machine Blueprint roots |
+| `drwn use --root <name-or-ref>` | Select an installed machine Blueprint |
+
+## Card Lifecycle Commands
+
+| Command | Description |
+|---------|-------------|
 | `drwn card new <name> --into <collection>` | Create an independent editable Card source repository |
 | `drwn card new <name> --from-project [path]` | Capture a project's effective harness as a card source |
 | `drwn card publish <name>` | Publish a card source into the Git-backed local store |
@@ -31,12 +42,6 @@ order: 3
 | `drwn card list` | List published cards in the local store |
 | `drwn card diff <before> <after>` | Compare two published card versions |
 | `drwn card deprecate <ref>` | Mark a published version as deprecated |
-| `drwn card apply <refs...>` | Replace the current project's card set and write `card.lock` |
-| `drwn card add <ref>` | Add one card to the current project |
-| `drwn card pin <ref>` | Pin or replace one card ref |
-| `drwn card remove <name>` | Remove one card from the project |
-| `drwn card detach` | Remove all cards from the project |
-| `drwn card update` | Refresh `card.lock` from configured card refs |
 | `drwn card outdated` | Report cards with newer local versions available |
 | `drwn card status` | Show configured refs, lock entries, and outdated cards |
 | `drwn card validate <ref>` | Resolve and validate one card ref without mutating project config |
@@ -64,8 +69,6 @@ order: 3
 | `drwn machine skill install <packageSpec>` | Install a package-backed skill bundle |
 | `drwn machine mcp list` | List standalone MCP records |
 | `drwn machine mcp add <jsonFile> --as <serverId>` | Register a user MCP record |
-| `drwn apply --root <workerRef>` | Replace/select the machine Worker Blueprint |
-| `drwn use --root <nameOrRef>` | Switch the selected machine Worker |
 
 ## Extension Commands
 

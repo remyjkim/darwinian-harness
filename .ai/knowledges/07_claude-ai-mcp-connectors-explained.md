@@ -76,7 +76,9 @@ Done from claude.ai → Settings → Connectors → Disconnect. Removes the toke
 
 The Notion connector's OAuth flow opens a browser window. Whichever Notion account is **currently signed into that browser** becomes the bound account. This is true regardless of whether you initiate the flow from claude.ai's Settings page or from a local `claude mcp add` — Notion's OAuth server only knows which session cookie the browser sent.
 
-Practical consequence observed in this repo: when the Notion connector was first authorized, the active browser session was logged into a Notion account other than the one the user intended (`mslee@lucidate.news` instead of `remy@curationlabs.ai`). The connector ended up bound to the wrong identity. All subsequent reads and writes — including `notion-search` and `notion-create-pages` calls — used that account, which is why created pages landed in the wrong user's Private space.
+Practical consequence observed in this repo: the browser was signed into a
+different organization account than the intended account. Subsequent reads and
+writes used that identity and landed in the wrong private workspace.
 
 **Always verify identity immediately after authorizing a connector** by calling `notion-get-self` and inspecting the returned name/email. This is non-negotiable for any agent that will perform writes. The same pre-step also applies to switching connectors: log into the browser as the intended account *first*, *then* trigger the re-auth.
 

@@ -279,6 +279,8 @@ Worker, consented hooks, and consented instructions to user-home targets.
 This does not alter the project V1 contract. Project evaluation never inherits
 the machine Worker, and machine evaluation never reads the current project.
 V1/prototype machine state is rejected without migration.
+Machine V2 ships with drwn 1.1.0, and Operator 2.0.2 requires drwn 1.1.0 or
+newer. Operator remains a normal Card member of the machine-defaults closure.
 
 ## Machine State Safety
 

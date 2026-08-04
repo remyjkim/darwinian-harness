@@ -2,9 +2,9 @@
 sidebar_position: 5
 ---
 
-# Use Darwinian Minds Skills
+# Use Darwinian Worker Skills
 
-Darwinian Minds Skills is the workflow skill pack for operating `drwn` from
+Darwinian Worker Skills is the workflow skill pack for operating `drwn` from
 agent runtimes. Install it when you want agents to follow the same inspect,
 dry-run, approval, mutation, and verification sequence you would use manually.
 
@@ -38,8 +38,8 @@ Inside a project:
 
 ```bash
 drwn init --non-interactive
-drwn add skill inspect-harness --dry-run --json
-drwn add skill inspect-harness
+drwn add skill inspect-worker --dry-run --json
+drwn add skill inspect-worker
 drwn write --dry-run
 ```
 
@@ -49,7 +49,10 @@ Use `drwn write` only after the dry run shows the downstream changes you expect.
 
 Machine capabilities come from one immutable Blueprint closure. Select a
 Blueprint that includes the current `@darwinian/operator` Card; projects remain
-independent:
+independent.
+
+drwn 1.1.0 introduces the strict machine Worker V2 contract. Operator 2.0.2
+requires drwn 1.1.0 or newer.
 
 ```bash
 drwn apply --root <blueprint-ref-containing-operator>
@@ -60,12 +63,12 @@ drwn write --root
 Installing the npm bundle alone is inventory, not machine activation. The
 retired machine skill enable/disable commands fail with Blueprint guidance.
 
-## Use The Stable Card During Development
+## Use The Operator Card During Development
 
-The skills repo also ships a stable Mind Card source. From a checkout:
+The skills repo also ships the Operator Card source. From a checkout:
 
 ```bash
-drwn apply file:/path/to/darwinian-worker-skills/cards/harness-skills
+drwn apply file:/path/to/darwinian-worker-skills/cards/operator
 drwn write --dry-run
 ```
 

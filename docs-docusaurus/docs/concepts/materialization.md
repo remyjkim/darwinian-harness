@@ -77,7 +77,7 @@ Card-bundled skill content is authoritative inside the selected Worker closure. 
 `drwn write --dry-run` annotates each planned skill copy with the winning resolution layer. When another inventory source could have provided the same skill, the dry run records it as `also available:`:
 
 ```text
-skills/inspect-harness from card foo@1.0.0 (also available: user-default)
+skills/inspect-worker from card foo@1.0.0 (also available: installed inventory)
 ```
 
 If a Card's `skills.include` names content its immutable extraction cannot resolve, resolution returns `missing` with an actionable reason. drwn does not silently fall through to another source on a corrupt Card store.

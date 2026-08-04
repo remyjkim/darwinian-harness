@@ -65,6 +65,8 @@ drwn init --non-interactive
 
 Non-interactive and minimal setup initialize explicit empty machine intent.
 Guided setup offers the opt-out recommended machine-defaults Blueprint.
+drwn 1.1.0 introduces machine Worker V2; Operator 2.0.2 requires drwn 1.1.0
+or newer.
 
 ## Machine Capability Contract
 

@@ -88,7 +88,7 @@ author Cards -> compose one Blueprint -> add roots -> select one Worker -> write
 - A project may install multiple roots as alternatives.
 - `activeWorker` explicitly selects one root or is `null`.
 - `drwn write` projects the selected root closure and explicit project overlays.
-- Machine default selections are not inherited into project declarations.
+- The selected machine Worker is not inherited into project declarations.
 
 ## Initialize A Project
 

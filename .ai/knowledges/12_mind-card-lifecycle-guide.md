@@ -5,7 +5,7 @@
 
 **Status**: Active
 **Last Updated**: 2026-07-13
-**References**: [Analysis 117](../analyses/117_worker-mind-semantic-memory-target-architecture.md), [Task 84](../tasks/84_worker-mind-semantic-memory-implementation-plan.md), [mind-tools conventions](/Users/pureicis/dev/darwinian-cards/mind-tools/CONVENTIONS.md)
+**References**: [Analysis 117](../analyses/117_worker-mind-semantic-memory-target-architecture.md), [Task 84](../tasks/84_worker-mind-semantic-memory-implementation-plan.md), `<card-collection>/mind-tools/CONVENTIONS.md`
 
 ## Mental Model
 

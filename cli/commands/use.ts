@@ -21,11 +21,14 @@ export class UseCommand extends BaseCommand {
     description: "Select one project Worker, or one machine Blueprint with --root.",
     details: `
       Selects an installed Worker root by name, or installs a new root additively
-      from a ref. Project intent commits before downstream projection begins.
+      from a ref. Project or machine intent commits before downstream projection
+      begins. Use --no-write to commit selection without projection.
     `,
     examples: [
       ["Select or install a Worker", "drwn use @me/backend@^1.0.0"],
       ["Clear the active Worker", "drwn use --none"],
+      ["Select a machine Blueprint without projection", "drwn use --root @me/operator --no-write"],
+      ["Clear machine selection but retain roots", "drwn use --root --none --no-write"],
     ],
   });
 

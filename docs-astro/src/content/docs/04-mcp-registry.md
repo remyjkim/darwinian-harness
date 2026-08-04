@@ -31,8 +31,9 @@ drwn machine mcp add my-server.json --as my-server
 
 Machine MCP definitions come only from Cards in the active Worker Blueprint
 closure embedded in `~/.agents/drwn/machine.json` V2. Select a published
-Blueprint with `drwn apply --root <ref>` and project with `drwn write --root`.
-Standalone MCP records remain inactive inventory.
+Blueprint with `drwn apply --root <ref>`, then project machine scope with
+`drwn write --root`. Project scope uses `drwn write`. Standalone MCP records
+remain inactive inventory.
 
 Reusable MCP definitions use the current `~/.agents/drwn/mcp-servers/`
 directory.
