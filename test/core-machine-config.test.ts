@@ -164,6 +164,7 @@ describe("machine config V2", () => {
     const error = expectInvalid(v1);
     expect(error.message).toContain("schemaVersion");
     expect(error.hints?.join(" ")).toContain("Reset ~/.agents/drwn/machine.json");
+    expect(error.hints?.join(" ")).toContain("global-write-record.json");
     expect(error.hints?.join(" ")).toContain("drwn init");
   });
 

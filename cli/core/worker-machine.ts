@@ -184,25 +184,45 @@ export async function useMachineWorker(
       return { config: updated, value: mutationValue(agentsDir, updated, [], options.dryRun) };
     }
 
-    const requestedName = parseCardRef(ref).name;
+    const parsedRef = parseCardRef(ref);
+    const isBareName = parsedRef.origin === "store" &&
+      parsedRef.range === "*" &&
+      parsedRef.original === parsedRef.name;
+    let requestedName = parsedRef.name;
     const installed = current.roots.find((root) => cardNamesEqual(root.name, requestedName));
-    if (installed) {
+    if (installed && isBareName) {
       const updated: MachineConfig = {
         ...config,
         capabilities: { ...config.capabilities, activeWorker: installed.name },
       };
       return { config: updated, value: mutationValue(agentsDir, updated, [], options.dryRun) };
     }
-    if (current.cards.some((card) => cardNamesEqual(card.name, requestedName))) {
+    if (isBareName && current.cards.some((card) => cardNamesEqual(card.name, requestedName))) {
       throw new DrwnError(
         "WORKER_MEMBER_NOT_SELECTABLE",
         `${requestedName} is a Blueprint member, not an installed machine Worker root`,
       );
     }
 
+    if (!requestedName) {
+      const candidate = await resolveWorkerGraph(agentsDir, [ref], options);
+      assertBlueprintRoots(candidate);
+      requestedName = candidate.roots[0]?.name ?? "";
+      if (!requestedName) {
+        throw new DrwnError("WORKER_ROOT_NOT_RESOLVED", `Could not resolve machine Worker root ${ref}`);
+      }
+    }
+
+    const rootSpecs = current.roots.map((root) =>
+      cardNamesEqual(root.name, requestedName) ? ref : root.requested
+    );
+    if (!current.roots.some((root) => cardNamesEqual(root.name, requestedName))) {
+      rootSpecs.push(ref);
+    }
+
     const next = await resolveNextLock(
       agentsDir,
-      [...current.roots.map((root) => root.requested), ref],
+      rootSpecs,
       current,
       options,
     );

@@ -129,6 +129,24 @@ describe("machine Worker lock mutations", () => {
     expect(none.roots).toHaveLength(2);
   });
 
+  test("use resolves an explicit ref even when the same root name is already installed", async () => {
+    const fixture = await fixtureWithWorkers();
+    await applyMachineWorkerRoots(fixture.agentsDir, ["@me/one@1.0.0"], options(fixture));
+    const sourceDir = join(fixture.root, "card-catalog", "cards", "one");
+    const manifestPath = join(sourceDir, "card.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.version = "2.0.0";
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await publishSource(fixture, "worker", "@me/one", sourceDir);
+
+    const upgraded = await useMachineWorker(fixture.agentsDir, "@me/one@2.0.0", options(fixture));
+
+    expect(upgraded.activeWorker).toBe("@me/one");
+    expect(upgraded.roots).toHaveLength(1);
+    expect(upgraded.roots[0]?.requested).toBe("@me/one@2.0.0");
+    expect(upgraded.locked.find((card) => card.name === "@me/one")?.version).toBe("2.0.0");
+  });
+
   test("rejects a plain Card root without mutating prior intent", async () => {
     const fixture = await fixtureWithWorkers();
     await publishCardWithSkills(fixture, { name: "@me/plain", skills: [] });

@@ -80,7 +80,9 @@ function invalidMachineConfig(message: string, cause?: unknown): DrwnError {
   return new DrwnError(
     "MACHINE_CONFIG_INVALID",
     message,
-    ["Machine V1 and prototype formats are unsupported. Reset ~/.agents/drwn/machine.json and rerun drwn init."],
+    [
+      "Machine V1 and prototype formats are unsupported. Preserve any required non-secret audit copies. Reset ~/.agents/drwn/machine.json and ~/.agents/drwn/global-write-record.json, then rerun drwn init.",
+    ],
     cause,
   );
 }
