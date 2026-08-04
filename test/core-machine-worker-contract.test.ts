@@ -37,14 +37,23 @@ describe("recommended machine Worker contract", () => {
         {
           name: "@darwinian/operator",
           source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.2",
+          commit: "b62965fde417fa1715d98d5c10fd45012c6cc05b",
+          treeSha: "7340729d0e4de604e51d4f341b299fa4004788a2",
+          integrity: "sha256-51503533bd60943e5ba16873f129bd600f42c2553084e29d1770e43a7e858999",
         },
         {
           name: "@curation-labs/workflow-skills",
           source: "git+https://github.com/curation-labs/cl-workflow-card.git#v1.0.1",
+          commit: "794ba29aef03e66a1532f871d7a83263acf3df9c",
+          treeSha: "ce9f230f9222d44640b4123e200128ed6c210829",
+          integrity: "sha256-8f7b935e904cb91d82a5f4d3c2ed1b30f7d70444f5b76930118a5a3ae1fd92c2",
         },
         {
           name: "@remyjkim/knowledge-docs",
           source: "git+https://github.com/remyjkim/knowledge-docs-card.git#v1.0.0",
+          commit: "6f3a7cf96c1887d920c00aa61f997d8aa1b46cf0",
+          treeSha: "61315160ba47c1a5ebfdefc74a4cba267952476c",
+          integrity: "sha256-b4035ef528c60ca21ecdf43caf3b40c5abdbb1f7676495030529bc42d29646a0",
         },
       ],
     });
@@ -114,13 +123,13 @@ describe("recommended machine Worker contract", () => {
           name: member.name,
           requested: member.source,
           version: member.source.split("#v")[1]!,
-          integrity: `sha256-${"a".repeat(64)}`,
-          treeSha: "b".repeat(40),
+          integrity: member.integrity,
+          treeSha: member.treeSha,
           manifest: { name: member.name, version: member.source.split("#v")[1]! },
           git: {
             url: member.source.slice(4).split("#")[0]!,
             ref: member.source.split("#")[1]!,
-            commit: "c".repeat(40),
+            commit: member.commit,
           },
         })),
       ],
@@ -134,6 +143,18 @@ describe("recommended machine Worker contract", () => {
     expect(() => assertRecommendedMachineWorkerGraph({
       ...graph,
       cards: graph.cards.slice(0, -1),
+    })).toThrow();
+    for (const field of ["integrity", "treeSha"] as const) {
+      expect(() => assertRecommendedMachineWorkerGraph({
+        ...graph,
+        cards: graph.cards.map((card, index) =>
+          index === 1 ? { ...card, [field]: field === "integrity" ? `sha256-${"f".repeat(64)}` : "f".repeat(40) } : card),
+      })).toThrow();
+    }
+    expect(() => assertRecommendedMachineWorkerGraph({
+      ...graph,
+      cards: graph.cards.map((card, index) =>
+        index === 1 ? { ...card, git: { ...card.git!, commit: "f".repeat(40) } } : card),
     })).toThrow();
   });
 });
