@@ -17,6 +17,7 @@ import {
   mergeCursorConfigText,
   mergeOpencodeConfigText,
   ownedMcpServerNames,
+  removeOwnedClaudeHookFields,
   renderMcpServerForTarget,
   renderJsonMcpConfig,
 } from "./mcp";
@@ -55,6 +56,7 @@ import { DRWN_VERSION } from "./version";
 import { canonicalJsonHash } from "./managed-fields";
 import { DrwnError } from "./errors";
 import { retainUnselectedProjectionOwnership } from "./projection-ownership";
+import { resolveMachineProjectionPath } from "./projection-path";
 import type {
   CanonicalConfig,
   NormalizedSyncOptions,
@@ -179,7 +181,11 @@ function managedPathAbsolute(state: EffectiveState, entry: ManagedPath) {
   if (entry.path === ".codex/config.toml") return machineTargetConfigPath(state, "codex");
   if (entry.path === ".cursor/mcp.json") return machineTargetConfigPath(state, "cursor");
   if (entry.path === ".config/opencode/opencode.json") return machineTargetConfigPath(state, "opencode");
-  return managedPathToAbsolute(state.scopeRoot, entry.path);
+  return resolveMachineProjectionPath(
+    state.scopeRoot,
+    state.scopedOptions.agentsDir,
+    entry.path,
+  );
 }
 
 function inspectManagedFields(
@@ -365,12 +371,9 @@ export function cleanupRemovedManagedPaths(
         const stats = lstatSafe(absolutePath);
         if (!stats?.isFile()) throw new Error("managed config is not a file");
         const current = readFileSync(absolutePath, "utf8");
-        const next = mergeClaudeSettingsText(current, {}, {
-          hooks: {},
-          mcpServerOwnership: "none",
-        });
-        if (next.text !== current) {
-          writeManagedFile(absolutePath, next.text, dryRun, result);
+        const next = removeOwnedClaudeHookFields(current, entry.fields);
+        if (next !== current) {
+          writeManagedFile(absolutePath, next, dryRun, result);
         }
       } catch {
         result.warnings.push(`preserved user-owned path: ${absolutePath}`);

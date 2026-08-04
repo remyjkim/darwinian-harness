@@ -366,6 +366,53 @@ export function hashClaudeHookFields(
   );
 }
 
+export function removeOwnedClaudeHookFields(currentText: string, fields: string[]): string {
+  const parsed = JSON.parse(currentText) as Record<string, unknown>;
+  const meta = readDrwnMetaBlock(parsed);
+  if (!meta?.ownedHooks) return currentText;
+
+  const hooks = Object.fromEntries(
+    Object.entries(readClaudeHooks(parsed) ?? {}).map(([event, entries]) => [event, [...entries]]),
+  );
+  const owned: OwnedHookEntries = Object.fromEntries(
+    Object.entries(meta.ownedHooks).map(([event, entries]) => [event, { ...entries }]),
+  );
+  let changed = false;
+
+  for (const field of fields) {
+    const key = parseHookFieldKey(field);
+    if (!key) continue;
+    const recordedHash = owned[key.event]?.[key.id];
+    if (!recordedHash) continue;
+    const entries = hooks[key.event] ?? [];
+    const index = entries.findIndex((entry) => hookEntryIdentity(key.event, entry) === key.id);
+    if (index < 0 || hookEntryHash(entries[index]) !== recordedHash) {
+      throw new Error(`Drift detected in drwn-owned Claude hook entry: ${key.event}/${key.id}`);
+    }
+    entries.splice(index, 1);
+    delete owned[key.event]![key.id];
+    if (entries.length === 0) delete hooks[key.event];
+    if (Object.keys(owned[key.event]!).length === 0) delete owned[key.event];
+    changed = true;
+  }
+
+  if (!changed) return currentText;
+  if (Object.keys(hooks).length > 0) parsed.hooks = hooks;
+  else delete parsed.hooks;
+
+  const { ownedHooks: _previousOwnedHooks, ...retainedMeta } = meta;
+  if ((retainedMeta.managedKeys?.length ?? 0) > 0 || Object.keys(owned).length > 0) {
+    parsed._drwn = {
+      ...retainedMeta,
+      ...(Object.keys(owned).length > 0 ? { ownedHooks: owned } : {}),
+      lastWriteAt: new Date().toISOString(),
+    };
+  } else {
+    delete parsed._drwn;
+  }
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
 function mergeOwnedHooks(
   currentHooks: Record<string, ClaudeHookGroup[]> | undefined,
   recordedOwned: OwnedHookEntries,
