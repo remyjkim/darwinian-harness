@@ -104,7 +104,8 @@ Stated accurately, so it can be relied on:
    specs read from `~/.agents/drwn/extracted/*/mcp-servers/*.json` in
    `runtime/server.js:48-66`). The agent cannot call a tool that was never connected. This is
    a real allowlist, at server granularity rather than tool granularity.
-2. **Per-Mind secret scoping.** MCP tokens are decrypted per run and injected only into
+2. **Per-Worker secret scoping** (stored on `secrets.mind_id`, the deployed Worker's 1:1
+   control-plane identity). MCP tokens are decrypted per run and injected only into
    run-scoped process env (`engine/src/mind-restore.ts:32-45`, `engine/src/coordinator.ts:477`).
    A tool without credentials generally cannot do damage.
 3. **The container sandbox.** Whatever the Cloudflare container boundary enforces.

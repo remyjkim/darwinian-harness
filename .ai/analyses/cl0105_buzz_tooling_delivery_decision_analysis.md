@@ -131,7 +131,7 @@ so the container talks to the relay directly.
 
 **Against**
 - **Ships a Nostr private key to the cloud.** This is the decisive objection. It would live as
-  a per-Mind secret (`deploy-api/src/bgdb-binding.ts` shows the pattern) and be injected into
+  a per-Worker secret (`deploy-api/src/bgdb-binding.ts` shows the pattern) and be injected into
   run-scoped container env. That machinery exists and is reasonable for API tokens; a
   workspace signing identity is a different risk class, and compromise is impersonation rather
   than data access.
@@ -288,8 +288,10 @@ substantially relative to §3.
 The buildable form of B is smaller than §3's version:
 
 - `buzz` binary in the mind-runtime image (fact 5).
-- `BUZZ_RELAY_URL` / `BUZZ_PRIVATE_KEY` / `BUZZ_AUTH_TAG` as per-Mind `kind:"env"` secrets
-  (fact 4).
+- `BUZZ_RELAY_URL` / `BUZZ_PRIVATE_KEY` / `BUZZ_AUTH_TAG` as per-Worker `kind:"env"` secrets
+  (fact 4). Scope note: secrets attach to the deployed Worker's control-plane identity,
+  stored on `secrets.mind_id` — the deploy-api is the last mind-named layer of the staged
+  Mind→Worker rename, and worker↔mind is 1:1 (`deployed_workers.id = worker_${mindId}`).
 - A small Card-carried **stdio** MCP server inside the container exposing
   `buzz_messages_send` / `buzz_messages_thread` (thin exec wrappers over the CLI) — stdio
   in-container is exactly what the runtime already spawns at boot (`mcp-connect.js`), so no
@@ -305,7 +307,7 @@ lifecycle (fact 6).
 
 | Dimension | A — adapter delivers | B-lean — container publishes |
 | --- | --- | --- |
-| Key custody | Stays wherever buzz-acp runs — the operator's laptop, or Buzz's own Pod in the k8s backend | Second copy in a per-Mind secret: AES-GCM, run-scoped injection, redaction guard; same custody model Buzz's k8s backend ships (fact 1). Dedicated posting identity pending (§6.4) |
+| Key custody | Stays wherever buzz-acp runs — the operator's laptop, or Buzz's own Pod in the k8s backend | Second copy in a per-Worker secret: AES-GCM, run-scoped injection, redaction guard; same custody model Buzz's k8s backend ships (fact 1). Dedicated posting identity pending (§6.4) |
 | Delivery determinism | Structural — adapter always sends on turn completion | Model-dependent, narrowed by the 7.4 rider to "model fails twice in one turn" |
 | Channel routing | **Our deterministic code parses prose** — two shapes, unlabeled UUID (fact 7); misparse = loud failure but no delivery | **The model extracts from the same prose** — Buzz's intended contract; drift-tolerant; failure mode is a wrong UUID, which the relay rejects unless the key is a member there |
 | Multi-channel operation | Requires the prose parse per session — a config-fixed channel misroutes, since one agent serves many channels (`pool.rs:88-90`) | Native — routing is per-turn tool arguments |

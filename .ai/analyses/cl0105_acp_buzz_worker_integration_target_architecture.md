@@ -77,15 +77,20 @@ Newly established, and material:
 
 1. **No local execution.** The CLI has no model client, no MCP client, and no session
    store. `drwn worker chat` is a single HTTP POST (`cli/commands/worker/chat.ts:46`).
-2. **Worker and Mind are orthogonal** (v0.9.0 team update). A Worker is the selected
-   capability closure; a Mind is persona, beliefs, and BeginningDB memory. An ACP session
-   binds a Worker; the Mind is loaded server-side per container boot.
+2. **Worker and Mind are orthogonal** (Darwinian Workers v2 CLI contract, updated
+   2026-08-04 for `darwinian@1.1.0`). A Worker is the selected capability closure; a Mind is
+   persona, beliefs, and BeginningDB memory. An ACP session binds a Worker; the Mind is
+   loaded server-side per container boot. The Deploy API does not yet mirror this split: it
+   flattens each deploy into a 1:1 `minds` + `deployed_workers` pair, and its control plane
+   is the last mind-named layer of the staged Mind→Worker rename (`/api/minds/:slug/…`,
+   `secrets.mind_id`) — every `minds` route in §4 addresses the deployed Worker.
 3. **The permission seam does not exist server-side.** Tools execute inside a Cloudflare
    container the ACP client cannot reach. ACP `session/request_permission`, `fs/*`, and
    `terminal/*` have no counterpart. See §7 for what this costs.
 4. **Auth is user-scoped.** DAH device flow, bearer JWT, `sub` becomes run owner
    (`deploy-api/src/worker.ts:326-383`). There is no agent principal.
-5. **v0.9.0 was a hard cut.** New surface arrives as a V1 contract, not as an option bolted
+5. **v0.9.0 was a hard cut, and the V2 line (`1.1.0`, I175–I177) kept the clean-slate
+   policy.** New surface arrives as a V1 contract, not as an option bolted
    onto the four existing `TargetName` writers. ACP is a protocol, not a config format;
    it does not belong in `cli/core/targets.ts`.
 
@@ -219,7 +224,7 @@ fail-closed (`src/consent/gate.ts:19-23`), which is wrong for a headless chat ag
 
 **Resolved 2026-08-04 — Option B-lean with a delivery-verification rider** (Remy): the
 container publishes via the `buzz` CLI — binary in the mind-runtime image, `BUZZ_*`
-per-Mind env secrets, a Card-carried stdio MCP wrapper exposing the send tools — and the
+per-Worker env secrets, a Card-carried stdio MCP wrapper exposing the send tools — and the
 adapter observes send `tool.call`s on the stream, issuing one corrective continuation when
 a Buzz-bound turn settles without one. The evidence pass and full pricing live in
 [`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md)

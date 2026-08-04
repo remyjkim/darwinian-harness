@@ -39,8 +39,10 @@
   Buzz profile stays disabled until I106 lands, per the architecture's Phase-4 gate.
 - **Delivery: B-lean + rider (decided 2026-08-04, decision analysis §7.7).** The container
   publishes via the `buzz` CLI — binary in the mind-runtime image (darwinian-services PR),
-  `BUZZ_RELAY_URL`/`BUZZ_PRIVATE_KEY`/`BUZZ_AUTH_TAG` as per-Mind `kind:"env"` secrets
-  (existing PUT route), and a Card-carried stdio MCP wrapper exposing
+  `BUZZ_RELAY_URL`/`BUZZ_PRIVATE_KEY`/`BUZZ_AUTH_TAG` as per-Worker `kind:"env"` secrets
+  (existing `PUT /api/minds/:slug/secrets/:server` route — the deploy-api control plane
+  still speaks the pre-rename mind vocabulary; worker↔mind is 1:1), and a Card-carried
+  stdio MCP wrapper exposing
   `buzz_messages_send`/`buzz_messages_thread`. The adapter verifies delivery through
   stream-visible `tool.call` events and issues one corrective continuation via `/message`
   when a Buzz-bound turn settles without a send.
