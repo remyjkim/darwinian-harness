@@ -110,6 +110,27 @@ describe("opencode skill shadowing diagnostic", () => {
     }));
   });
 
+  test("codex-only skills outside the opencode projection produce no issues", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const codexOnlySkill = join(fixture.repoRoot, "skills", "codex-only", "gamma");
+    await mkdir(codexOnlySkill, { recursive: true });
+    await writeFile(join(codexOnlySkill, "SKILL.md"), "---\nname: gamma\ndescription: gamma\n---\n");
+    const machineCopy = join(fixture.agentsDir, "skills", "gamma");
+    await mkdir(machineCopy, { recursive: true });
+    await writeFile(join(machineCopy, "SKILL.md"), "---\nname: gamma\ndescription: gamma\n---\n");
+    await publishCardWithSkills(fixture, { name: "@me/skilled", skills: ["alpha"] });
+    const projectRoot = join(fixture.root, "project");
+    await installProjectWorkers(projectRoot, fixture.agentsDir, ["@me/skilled@1.0.0"], "@me/skilled", {
+      skills: { include: ["gamma"] },
+    });
+
+    const json = await runAgentsCli(["doctor", "--json"], envFor(fixture), projectRoot);
+    expect(json.exitCode, json.stderr).toBe(0);
+    const report = JSON.parse(json.stdout) as ShadowingReport;
+    expect(report.ambientCapabilities.opencodeSkillShadowing).toEqual([]);
+  });
+
   test("no machine collision produces no shadowing issues", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);

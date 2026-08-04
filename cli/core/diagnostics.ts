@@ -33,6 +33,7 @@ import { loadMcpLibrary } from "./mcp-library";
 import {
   buildSkillInventory,
   findStaleManagedEntries,
+  isOpencodeProjectedScope,
   listRepoSkills,
 } from "./skills";
 import { lstatSafe } from "./fs";
@@ -1148,6 +1149,37 @@ function inspectInstructionDelivery(
   };
 }
 
+// Restricts the shadowing inspector to the opencode-projected subset: only skills whose
+// resolved scope reaches the dedicated dir can be shadowed inside OpenCode sessions.
+async function opencodeProjectedSkillIds(
+  state: Pick<EffectiveState, "lockedCards" | "contentRootsByCard" | "machineCapabilities">,
+  options: { repoRoot: string; agentsDir: string },
+  skillIds: string[],
+) {
+  const machineSources = Object.fromEntries(
+    (state.machineCapabilities?.skills ?? []).map((skill) => [skill.id, skill]),
+  );
+  const projected: string[] = [];
+  for (const id of [...new Set(skillIds)]) {
+    const source = await resolveSkillSource(
+      id,
+      state.lockedCards,
+      options.repoRoot,
+      options.agentsDir,
+      state.contentRootsByCard,
+      machineSources,
+    );
+    if (source.layer === "missing") {
+      continue;
+    }
+    const scope = source.layer === "card" ? "shared" : source.scope;
+    if (isOpencodeProjectedScope(scope)) {
+      projected.push(id);
+    }
+  }
+  return projected;
+}
+
 export async function buildProjectStatusV1(options: {
   repoRoot: string;
   agentsDir: string;
@@ -1246,7 +1278,7 @@ export async function buildProjectStatusV1(options: {
         projectRoot,
         homeDir: options.homeDir,
         agentsDir: options.agentsDir,
-        projectedSkillIds: skillItems.map((entry) => entry.id),
+        projectedSkillIds: await opencodeProjectedSkillIds(state, options, skillItems.map((entry) => entry.id)),
       })
     : [];
   let projection: { current: boolean; issues: string[] };

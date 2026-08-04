@@ -18,6 +18,12 @@ import { listInstalledSkillBundles } from "./skill-packages";
 
 export type SkillScope = "shared" | "claude-only" | "codex-only" | "experimental";
 
+// OpenCode reads the same composed set as the Claude surface; scopes outside it are
+// never projected into the dedicated dir and cannot be shadowed there.
+export function isOpencodeProjectedScope(scope: SkillScope) {
+  return scope === "shared" || scope === "claude-only";
+}
+
 export interface RepoSkill {
   name: string;
   scope: SkillScope;
@@ -325,9 +331,8 @@ export async function syncSkills(
       }
     }
     if (opencodeSurfaceSelected) {
-      // OpenCode reads the same composed set as the Claude surface; the dedicated dir is
-      // a projection of it, never a second source of truth.
-      if (scope === "shared" || scope === "claude-only") {
+      // The dedicated dir is a projection of the composed set, never a second source of truth.
+      if (isOpencodeProjectedScope(scope)) {
         desiredOpencode.add(name);
         recordIntent(opencodeIntents, {
           linkPath: join(toolPaths.opencodeSkills, name),
