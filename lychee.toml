@@ -51,6 +51,7 @@ exclude = [
   # onBrokenLinks: 'throw' build-time check; lychee's job here is external
   # link rot, which is unaffected by excluding self-refs.
   '^https://docs\.darwiniantools\.com',
+  '^https://docs\.darwinian\.dev',
 ]
 
 # Skip mailto and tel links — not URLs in the normal sense.
