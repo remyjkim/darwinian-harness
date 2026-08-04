@@ -121,7 +121,7 @@ Sub-PR 1 is now **low-priority card housekeeping**, not the headline. Sub-PR 2 (
 **Exclusions pending owner endorsement (v4)** — these bound what "full integration" means for I153; each is a deliberate scope decision the G1 reviewer and owner should endorse explicitly rather than inherit:
 
 - **doc 126 Phase 2 (sub-worker surfaces: `.cursor/agents/`, `.opencode/agents/`, `.codex/agents/` TOML)** — not built for any target; gated on its own verify items (register V-A/V-B — the shared Notion register ([072226 Remy] Architect to drwn worker blueprint, §4 'Evidence-gated verify items', https://app.notion.com/p/curation-labs/072226-Remy-Architect-to-drwn-worker-blueprint-3a5f1fbef8c28003a9c4cf4bf28a0ad5)). Excluding it means I153 delivers *main-context* integration only. Endorsement pending.
-- **Agent-uptake LLM smoke** (does the AGENTS.md content actually shape behavior in cursor/opencode, beyond delivery?) — needs a non-`zai-coding-plan` provider; currently unowned. Excluding it means I153's acceptance bar is deterministic delivery + Q1–Q6 live ingestion, not behavioral uptake. Endorsement pending.
+- **Agent-uptake LLM smoke** (does the AGENTS.md content actually shape behavior in cursor/opencode, beyond delivery?) — needs a non-`zai-coding-plan` provider; currently unowned. Excluding it means I153's acceptance bar is deterministic delivery + Q1–Q9 live verification, not behavioral uptake. Endorsement pending.
 
 ## 8. References
 
@@ -139,7 +139,7 @@ hand-off are the only human-blocking items.
 | # | Step | Owner | Unblocks |
 |---|---|---|---|
 | 0a | Endorse/reject the §7 exclusions (sub-worker surfaces; agent-uptake smoke) | Issue owner | Final scope — G1 review cannot stall on "what does full integration mean" |
-| 0b | Credentials: `cursor-agent login` + Cloudflare gateway env | Issue owner | Sub-PR 3 execution (Q1–Q6) only |
+| 0b | Credentials: `cursor-agent login` + Cloudflare gateway env | Issue owner | Sub-PR 3 cursor probes (Q1–Q5) only — Q6–Q9 are credential-free |
 | 1 | D2c empirical check | drwn worker | **DONE 2026-08-04** — experiment 05 addendum: config `skills.paths` with a **novel** dir wins the dedup; re-declaring a built-in-scanned dir does not. Sub-PR 2's leading mechanism follows |
 | 2 | GATE 1 packaging: docs branch off `main`, docs PR, row → G1 ready | drwn worker | Everything downstream |
 | 3 | G1 review pass | Reviewer | Sub-PR G2 reviews |
