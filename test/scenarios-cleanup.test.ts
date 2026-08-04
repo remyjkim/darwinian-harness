@@ -3,7 +3,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, lstatSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { clearMachineBlueprint, cleanupTempRoots, installMachineBlueprint, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
@@ -38,7 +38,7 @@ test("replacing the machine Blueprint removes its previously materialized skill 
   expect(existsSync(linkPath)).toBe(false);
 });
 
-test("cleanup preserves user content that replaced a removed managed copy", async () => {
+test("cleanup fails closed when user content replaces a removed managed copy until force", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await installMachineBlueprint(fixture, { skills: ["alpha"] });
@@ -52,7 +52,14 @@ test("cleanup preserves user content that replaced a removed managed copy", asyn
 
   const result = await runAgentsCli(["write", "--skills-only", "--json"], envFor(fixture));
 
-  expect(result.exitCode).toBe(0);
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain("MACHINE_PROJECTION_CONFLICT");
   expect(existsSync(join(linkPath, "SKILL.md"))).toBe(true);
-  expect(JSON.parse(result.stdout).warnings.some((warning: string) => warning.includes("preserved user-owned path"))).toBe(true);
+  const recordPath = join(fixture.agentsDir, "drwn", "global-write-record.json");
+  const blockedRecord = JSON.parse(await readFile(recordPath, "utf8"));
+  expect(blockedRecord.managedPaths.some((entry: { path: string }) => entry.path === ".claude/skills/alpha")).toBe(true);
+
+  const forced = await runAgentsCli(["write", "--skills-only", "--force", "--json"], envFor(fixture));
+  expect(forced.exitCode, forced.stderr).toBe(0);
+  expect(existsSync(linkPath)).toBe(false);
 });
