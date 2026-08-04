@@ -204,6 +204,7 @@ export async function publishCardWithSkills(
     name: string;
     version?: string;
     skills: string[];
+    skillContent?: Record<string, string>;
     servers?: Record<string, unknown>;
     instructions?: { text: string };
     hooks?: string[];
@@ -241,7 +242,10 @@ export async function publishCardWithSkills(
   for (const skill of options.skills) {
     const skillDir = join(sourceRoot, "skills", skill);
     await mkdir(skillDir, { recursive: true });
-    await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${skill}\ndescription: ${skill}\n---\n`);
+    await writeFile(
+      join(skillDir, "SKILL.md"),
+      options.skillContent?.[skill] ?? `---\nname: ${skill}\ndescription: ${skill}\n---\n`,
+    );
   }
   for (const hook of options.hooks ?? []) {
     const hookDir = join(sourceRoot, "hooks", hook);
