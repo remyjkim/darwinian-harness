@@ -44,7 +44,10 @@ function wire(app: ReturnType<typeof buildAgent>) {
   async function sendRaw(text: string): Promise<void> {
     await writer.write(encoder.encode(text));
   }
-  return { connection, send, sendRaw, readFrame };
+  async function sendEof(): Promise<void> {
+    await writer.close();
+  }
+  return { connection, send, sendRaw, sendEof, readFrame };
 }
 
 describe("acp sdk spike: wire framing", () => {
@@ -89,6 +92,26 @@ describe("acp sdk spike: wire framing", () => {
     expect(parsed.id).toBe(8);
     expect(parsed.result.sessionId).toBe("sess_spike_1");
     connection.close();
+  });
+});
+
+describe("acp sdk spike: eof semantics", () => {
+  test("input EOF with batched pending requests drops the tail — clients must await responses", async () => {
+    // Locks a known SDK behavior: when the input stream closes, messages already buffered
+    // behind an in-flight request are not dispatched. Real ACP clients await each response
+    // before closing stdin, so this only constrains harnesses; if an SDK upgrade starts
+    // answering the tail, this test fails loudly and the constraint can be dropped.
+    const { send, sendEof, readFrame } = wire(buildAgent());
+    await send({ jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: 1, clientCapabilities: {} } });
+    await send({ jsonrpc: "2.0", id: 1, method: "session/new", params: { cwd: "/tmp", mcpServers: [] } });
+    await sendEof();
+    const first = JSON.parse(await readFrame());
+    expect(first.id).toBe(0);
+    const second = await Promise.race([
+      readFrame().then((frame) => `frame:${frame}`),
+      new Promise<string>((resolve) => setTimeout(() => resolve("silence"), 1000)),
+    ]);
+    expect(second).toBe("silence");
   });
 });
 
