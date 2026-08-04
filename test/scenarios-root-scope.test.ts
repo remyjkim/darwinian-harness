@@ -223,7 +223,7 @@ test("write --root removes the last drwn-owned MCP entry without touching hand-m
   expect(record.managedPaths.some((entry: any) => entry.path === ".claude.json")).toBe(false);
 });
 
-test("removing a capability preserves drifted prior-owned MCP entries for every target", async () => {
+test("removing a capability rejects drifted prior-owned MCP entries until force removes them", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await ensureContext7Default(fixture);
@@ -240,14 +240,24 @@ test("removing a capability preserves drifted prior-owned MCP entries for every 
 
   const result = await runWriteRoot(fixture);
 
-  expect(result.exitCode).toBe(0);
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain("MACHINE_PROJECTION_CONFLICT");
   expect((await readJson(fixture.claudeUserMcp)).mcpServers.context7.command).toBe("drifted-claude");
   expect(await readFile(fixture.codexConfig, "utf8")).toContain('command = "drifted-codex"');
   expect((await readJson(fixture.cursorConfig)).mcpServers.context7.command).toBe("drifted-cursor");
-  expect((JSON.parse(result.stdout).warnings as string[]).some((warning) => warning.includes("preserved user-owned path"))).toBe(true);
+  const blockedRecord = await readJson(join(fixture.agentsDir, "drwn", "global-write-record.json"));
+  expect(blockedRecord.managedPaths.filter((entry: any) => entry.surface === "mcp")).not.toHaveLength(0);
+
+  const forced = await runWriteRoot(fixture, ["--force"]);
+  expect(forced.exitCode, forced.stderr).toBe(0);
+  expect((await readJson(fixture.claudeUserMcp)).mcpServers.context7).toBeUndefined();
+  expect(await readFile(fixture.codexConfig, "utf8")).not.toContain("[mcp_servers.context7]");
+  expect((await readJson(fixture.cursorConfig)).mcpServers.context7).toBeUndefined();
+  const forcedRecord = await readJson(join(fixture.agentsDir, "drwn", "global-write-record.json"));
+  expect(forcedRecord.managedPaths.some((entry: any) => entry.surface === "mcp")).toBe(false);
 });
 
-test("removing a capability preserves a prior-owned MCP config whose path changed type", async () => {
+test("removing a capability rejects a prior-owned MCP config whose path changed type", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
   await ensureContext7Default(fixture);
@@ -259,10 +269,19 @@ test("removing a capability preserves a prior-owned MCP config whose path change
 
   const result = await runWriteRoot(fixture, ["--target=cursor"]);
 
-  expect(result.exitCode).toBe(0);
+  expect(result.exitCode).not.toBe(0);
+  expect(`${result.stdout}\n${result.stderr}`).toContain("MACHINE_PROJECTION_CONFLICT");
   expect((await lstat(fixture.cursorConfig)).isDirectory()).toBe(true);
   expect(await readFile(join(fixture.cursorConfig, "sentinel"), "utf8")).toBe("foreign\n");
-  expect((JSON.parse(result.stdout).warnings as string[]).some((warning) => warning.includes("preserved user-owned path"))).toBe(true);
+  const blockedRecord = await readJson(join(fixture.agentsDir, "drwn", "global-write-record.json"));
+  expect(blockedRecord.managedPaths.some((entry: any) => entry.path === ".cursor/mcp.json")).toBe(true);
+
+  const forced = await runWriteRoot(fixture, ["--target=cursor", "--force"]);
+  expect(forced.exitCode, forced.stderr).toBe(0);
+  expect((await lstat(fixture.cursorConfig)).isDirectory()).toBe(true);
+  expect(await readFile(join(fixture.cursorConfig, "sentinel"), "utf8")).toBe("foreign\n");
+  const forcedRecord = await readJson(join(fixture.agentsDir, "drwn", "global-write-record.json"));
+  expect(forcedRecord.managedPaths.some((entry: any) => entry.path === ".cursor/mcp.json")).toBe(true);
 });
 
 test("write --root with no active machine Worker leaves user-scope MCP files unchanged", async () => {

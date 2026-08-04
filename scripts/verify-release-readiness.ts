@@ -798,9 +798,13 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
     ['const foreignMcpTargets = ["claude", "codex", "cursor"] as const', "foreign ownership coverage is missing"],
     ["including dry-run and force", "dry-run/force ownership coverage is missing"],
     ["detects drift only for drwn-owned MCP server entries", "owned MCP drift coverage is missing"],
-    ["preserves drifted prior-owned MCP entries for every target", "drifted removal coverage is missing"],
+    ["rejects drifted prior-owned MCP entries until force removes them", "drifted MCP removal coverage is missing"],
   ] as const) {
     if (!ownershipTests.includes(token)) issues.push(label);
+  }
+  const machineBlueprintTests = source("test/e2e-machine-blueprint.test.ts");
+  if (!machineBlueprintTests.includes("rejects stale drift across generated, skill, hook, and instruction surfaces")) {
+    issues.push("cross-surface machine removal drift coverage is missing");
   }
   const skillOwnershipTests = source("test/commands-write-drift.test.ts");
   if (!skillOwnershipTests.includes('for (const variant of ["different", "identical"] as const)')) {

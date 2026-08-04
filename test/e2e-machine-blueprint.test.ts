@@ -3,7 +3,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { buildEffectiveState } from "../cli/core/effective-state";
@@ -270,4 +270,49 @@ test("machine write projects consented instructions and hooks with complete drif
     "claude",
     "composer.mjs",
   ))).toBe(false);
+});
+
+test("machine deactivation rejects stale drift across generated, skill, hook, and instruction surfaces", async () => {
+  const fixture = await setupConsentedSurfaceBlueprint();
+  const first = await runAgentsCli(["write", "--root", "--json"], envFor(fixture));
+  expect(first.exitCode, first.stderr).toBe(0);
+
+  const skillPath = join(fixture.homeDir, ".claude", "skills", "surface-skill", "SKILL.md");
+  const hookPath = join(fixture.agentsDir, "drwn", "generated", "hooks", "claude", "composer.mjs");
+  const instructionPath = join(fixture.homeDir, ".claude", "CLAUDE.md");
+  const workerPath = join(fixture.agentsDir, "drwn", "generated", "active-worker.json");
+  await chmod(skillPath, 0o644);
+  await writeFile(skillPath, `${await readFile(skillPath, "utf8")}\nuser drift\n`);
+  await writeFile(hookPath, `${await readFile(hookPath, "utf8")}\n// user drift\n`);
+  await writeFile(
+    instructionPath,
+    (await readFile(instructionPath, "utf8")).replace(
+      "Use machine-scoped operating guidance.",
+      "Tampered machine-scoped operating guidance.",
+    ),
+  );
+  await writeFile(workerPath, `${await readFile(workerPath, "utf8")}\n`);
+
+  const cleared = await runAgentsCli(
+    ["use", "--root", "--none", "--no-write"],
+    envFor(fixture),
+  );
+  expect(cleared.exitCode, cleared.stderr).toBe(0);
+  const recordPath = join(fixture.agentsDir, "drwn", "global-write-record.json");
+  const recordBefore = await readFile(recordPath, "utf8");
+
+  const blocked = await runAgentsCli(["write", "--root", "--json"], envFor(fixture));
+
+  expect(blocked.exitCode).not.toBe(0);
+  expect(`${blocked.stdout}\n${blocked.stderr}`).toContain("MACHINE_PROJECTION_CONFLICT");
+  expect(await readFile(recordPath, "utf8")).toBe(recordBefore);
+  for (const pathValue of [skillPath, hookPath, instructionPath, workerPath]) {
+    expect(existsSync(pathValue)).toBe(true);
+  }
+
+  const forced = await runAgentsCli(["write", "--root", "--force", "--json"], envFor(fixture));
+  expect(forced.exitCode, forced.stderr).toBe(0);
+  for (const pathValue of [skillPath, hookPath, instructionPath, workerPath]) {
+    expect(existsSync(pathValue)).toBe(false);
+  }
 });

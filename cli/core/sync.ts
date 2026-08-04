@@ -85,6 +85,29 @@ function uniqueManagedPaths(paths: ManagedPath[]) {
   return [...map.values()].sort((a, b) => a.path.localeCompare(b.path));
 }
 
+function mergePreservedProjectionOwnership(desired: ManagedPath[], preserved: ManagedPath[]) {
+  const merged = new Map(desired.map((entry) => [entry.path, entry]));
+  for (const entry of preserved) {
+    const current = merged.get(entry.path);
+    if (
+      current?.kind === "managed-fields" &&
+      entry.kind === "managed-fields" &&
+      current.surface === entry.surface &&
+      current.target === entry.target
+    ) {
+      const fields = [...new Set([...current.fields, ...entry.fields])];
+      merged.set(entry.path, {
+        ...current,
+        fields,
+        fieldHashes: { ...current.fieldHashes, ...entry.fieldHashes },
+      });
+      continue;
+    }
+    if (!current) merged.set(entry.path, entry);
+  }
+  return uniqueManagedPaths([...merged.values()]);
+}
+
 function managedPathToAbsolute(scopeRoot: string, pathValue: string) {
   return join(scopeRoot, pathValue);
 }
@@ -271,7 +294,7 @@ export function collectMachineProjectionConflicts(
 ): MachineProjectionConflict[] {
   if (state.scopedOptions.writeScope !== "machine") return [];
   const desired = planMachineManagedPaths(state);
-  const { toAdd, toVerify } = diffWriteRecord(previousRecord, desired);
+  const { toAdd, toRemove, toVerify } = diffWriteRecord(previousRecord, desired);
   const conflicts: MachineProjectionConflict[] = [];
 
   for (const entry of toAdd) {
@@ -303,7 +326,7 @@ export function collectMachineProjectionConflicts(
     }
   }
 
-  for (const entry of toVerify) {
+  for (const entry of [...toVerify, ...toRemove]) {
     const absolutePath = managedPathAbsolute(state, entry);
     if (entry.kind === "managed-fields") {
       const current = inspectManagedFields(absolutePath, entry);
@@ -357,7 +380,9 @@ export function cleanupRemovedManagedPaths(
   dryRun: boolean,
   result: SyncResult,
   resolveAbsolute?: (entry: ManagedPath) => string,
+  force = false,
 ) {
+  const preserved: ManagedPath[] = [];
   for (const entry of previous) {
     const absolutePath = resolveAbsolute?.(entry) ?? managedPathToAbsolute(scopeRoot, entry.path);
     if (!existsSync(absolutePath) && lstatSafe(absolutePath) === null) {
@@ -377,12 +402,13 @@ export function cleanupRemovedManagedPaths(
         }
       } catch {
         result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+        preserved.push(entry);
       }
       continue;
     }
     if (entry.kind === "managed-content") {
       const stats = lstatSafe(absolutePath);
-      if (stats?.isFile() && hashManagedContent(readFileSync(absolutePath)) === entry.contentHash) {
+      if (force || (stats?.isFile() && hashManagedContent(readFileSync(absolutePath)) === entry.contentHash)) {
         result.changes.push(`remove ${absolutePath}`);
         if (!dryRun) {
           rmSync(absolutePath, { recursive: true, force: true });
@@ -390,11 +416,12 @@ export function cleanupRemovedManagedPaths(
         continue;
       }
       result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+      preserved.push(entry);
       continue;
     }
     if (entry.kind === "managed-directory") {
       const stats = lstatSafe(absolutePath);
-      if (stats?.isDirectory() && hashManagedDirectory(absolutePath) === entry.contentHash) {
+      if (force || (stats?.isDirectory() && hashManagedDirectory(absolutePath) === entry.contentHash)) {
         result.changes.push(`remove ${absolutePath}`);
         if (!dryRun) {
           rmSync(absolutePath, { recursive: true, force: true });
@@ -402,6 +429,7 @@ export function cleanupRemovedManagedPaths(
         continue;
       }
       result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+      preserved.push(entry);
       continue;
     }
     if (entry.kind === "managed-fields" && hasClaudePerServerHashes(entry)) {
@@ -412,6 +440,7 @@ export function cleanupRemovedManagedPaths(
         parsed = JSON.parse(readFileSync(absolutePath, "utf8")) as Record<string, unknown>;
       } catch {
         result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+        preserved.push(entry);
         continue;
       }
       const serversKey = entry.path.endsWith("opencode.json") ? "mcp" : "mcpServers";
@@ -422,22 +451,27 @@ export function cleanupRemovedManagedPaths(
           : {}
       ) as Record<string, unknown>;
       let changed = false;
-      let drifted = false;
+      const preservedFields: string[] = [];
       for (const name of ownedMcpServerNames(entry.fieldHashes)) {
         const currentValue = mcpServers[name];
         if (currentValue === undefined) {
           continue;
         }
         const priorHash = entry.fieldHashes[`${CLAUDE_MCP_SERVER_HASH_PREFIX}${name}`];
-        if (priorHash && canonicalJsonHash(currentValue) === priorHash) {
+        if (force || (priorHash && canonicalJsonHash(currentValue) === priorHash)) {
           delete mcpServers[name];
           changed = true;
         } else {
-          drifted = true;
+          preservedFields.push(`${CLAUDE_MCP_SERVER_HASH_PREFIX}${name}`);
         }
       }
-      if (drifted) {
+      if (preservedFields.length > 0) {
         result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+        preserved.push({
+          ...entry,
+          fields: preservedFields,
+          fieldHashes: Object.fromEntries(preservedFields.map((field) => [field, entry.fieldHashes[field]!])),
+        });
       }
       if (changed) {
         parsed[serversKey] = mcpServers;
@@ -449,14 +483,20 @@ export function cleanupRemovedManagedPaths(
       const stats = lstatSafe(absolutePath);
       if (!stats?.isFile()) {
         result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+        preserved.push(entry);
         continue;
       }
       const current = readFileSync(absolutePath, "utf8");
       const currentHashes = hashCodexManagedServers(current, entry.fields);
-      const removable = entry.fields.filter((name) => currentHashes[name] === entry.fieldHashes[name]);
-      const drifted = entry.fields.filter((name) => currentHashes[name] !== "absent" && currentHashes[name] !== entry.fieldHashes[name]);
+      const removable = entry.fields.filter((name) => force || currentHashes[name] === entry.fieldHashes[name]);
+      const drifted = entry.fields.filter((name) => !force && currentHashes[name] !== "absent" && currentHashes[name] !== entry.fieldHashes[name]);
       if (drifted.length > 0) {
         result.warnings.push(`preserved user-owned path: ${absolutePath} (${drifted.join(", ")})`);
+        preserved.push({
+          ...entry,
+          fields: drifted,
+          fieldHashes: Object.fromEntries(drifted.map((field) => [field, entry.fieldHashes[field]!])),
+        });
       }
       if (removable.length > 0) {
         const next = mergeCodexTomlText(current, {}, removable);
@@ -469,8 +509,9 @@ export function cleanupRemovedManagedPaths(
       const expectedTarget = entry.kind === "symlink" ? entry.linkTarget : entry.generatedPath;
       const linkTarget = stats?.isSymbolicLink() ? readlinkSync(absolutePath) : null;
       if (
-        stats?.isSymbolicLink() &&
+        force || (stats?.isSymbolicLink() &&
         (realpathSafe(absolutePath) === realpathSafe(expectedTarget) || linkTarget === expectedTarget)
+        )
       ) {
         result.changes.push(`remove ${absolutePath}`);
         if (!dryRun) {
@@ -480,7 +521,9 @@ export function cleanupRemovedManagedPaths(
       }
     }
     result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+    preserved.push(entry);
   }
+  return preserved;
 }
 
 export function verifyManagedPaths(
@@ -859,14 +902,15 @@ export async function syncRepository(options: SyncOptions = {}): Promise<SyncRes
     },
   );
   const { toRemove } = diffWriteRecord(previousRecord, desiredManagedPaths);
-  cleanupRemovedManagedPaths(
+  const preservedRemovedPaths = cleanupRemovedManagedPaths(
     state.scopeRoot,
     toRemove,
     state.normalized.dryRun,
     result,
     state.scopedOptions.writeScope === "machine" ? (entry) => managedPathAbsolute(state, entry) : undefined,
+    state.normalized.force,
   );
-  result.managedPaths = desiredManagedPaths;
+  result.managedPaths = mergePreservedProjectionOwnership(desiredManagedPaths, preservedRemovedPaths);
   if (!state.normalized.dryRun) {
     saveWriteRecord(state.recordPath, {
       schema: "drwn.write-record",
@@ -874,7 +918,7 @@ export async function syncRepository(options: SyncOptions = {}): Promise<SyncRes
       scope: writeScope,
       lastWriteAt: new Date().toISOString(),
       lastWriteHarnessVersion: DRWN_VERSION,
-      managedPaths: desiredManagedPaths,
+      managedPaths: result.managedPaths,
     });
   }
 
