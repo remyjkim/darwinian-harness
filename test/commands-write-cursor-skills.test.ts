@@ -143,6 +143,42 @@ describe("opencode skill surface", () => {
     expect(existsSync(join(userDir, "SKILL.md"))).toBe(true);
   });
 
+  test("projection cleanup removes the managed skills.paths entry preserving user paths", async () => {
+    const { fixture, projectRoot } = await skillProject();
+    expect((await runAgentsCli(["write", "--json"], envFor(fixture), projectRoot)).exitCode).toBe(0);
+
+    const opencodePath = join(projectRoot, "opencode.json");
+    const userEdited = JSON.parse(await readFile(opencodePath, "utf8"));
+    userEdited.skills.paths.unshift("my-own-skills");
+    await writeFile(opencodePath, `${JSON.stringify(userEdited, null, 2)}\n`);
+
+    const configPath = join(projectRoot, ".agents", "drwn", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    config.skills = { exclude: ["alpha"] };
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+
+    const result = await runAgentsCli(["write", "--json"], envFor(fixture), projectRoot);
+    expect(result.exitCode, result.stderr).toBe(0);
+    const parsed = JSON.parse(await readFile(opencodePath, "utf8"));
+    expect(parsed.skills.paths).toEqual(["my-own-skills"]);
+    const record = JSON.parse(
+      await readFile(join(projectRoot, ".agents", "drwn", "write-record.json"), "utf8"),
+    ) as { managedPaths: Array<{ path: string; fields?: string[] }> };
+    expect(record.managedPaths.find((entry) => entry.path === "opencode.json")?.fields ?? []).not.toContain("skillsPaths");
+  });
+
+  test("opencode.jsonc skips the declaration while the dir is still projected", async () => {
+    const { fixture, projectRoot } = await skillProject();
+    await writeFile(join(projectRoot, "opencode.jsonc"), "{\n  // user config\n}\n");
+
+    const result = await runAgentsCli(["write", "--json"], envFor(fixture), projectRoot);
+    expect(result.exitCode).toBe(0);
+    expect(existsSync(join(projectRoot, ".agents", "drwn", "opencode-skills", "alpha", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(projectRoot, "opencode.json"))).toBe(false);
+    const output = JSON.parse(result.stdout) as { warnings: string[] };
+    expect(output.warnings.join("\n")).toContain("Skipping opencode skills.paths declaration");
+  });
+
   test("machine-scope writes do not project the dedicated dir", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
