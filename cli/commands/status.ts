@@ -197,7 +197,7 @@ export class StatusCommand extends BaseCommand {
         const shadowing = projectStatus.ambientCapabilities.opencodeSkillShadowing;
         if (shadowing.length > 0) {
           const undeclared = shadowing.filter((issue) => !issue.declared).length;
-          output += `  OpenCode skill shadowing: ${shadowing.length} collision(s)${undeclared > 0 ? ` (${undeclared} undeclared; run drwn write)` : " (declaration current)"}\n`;
+          output += `  OpenCode skill shadowing: ${shadowing.length} collision(s)${undeclared > 0 ? ` (${undeclared} undeclared; run drwn write)` : " (declaration current; residual dedup race)"}\n`;
         }
       }
       if (state.ambientCollisions.length > 0) {

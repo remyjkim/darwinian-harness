@@ -290,7 +290,9 @@ async function opencodeSkillsDirDeclared(projectRoot: string) {
 // Reports project skills OpenCode would dedup against machine-home copies
 // (~/.agents/skills/, ~/.claude/skills/). Warning when the managed skills.paths
 // declaration is absent — the machine copy wins and project customization is lost;
-// advisory when the declaration is present, since the dedicated dir then resolves first.
+// advisory when the declaration is present: the dedup then favors the project's composed
+// copies as a group, but OpenCode's racy source scan can still intermittently resolve the
+// machine copy, so the collision stays visible instead of being reported as resolved.
 export async function inspectOpencodeSkillShadowing(options: {
   projectRoot: string;
   homeDir: string;

@@ -91,8 +91,8 @@ export class DoctorCommand extends BaseCommand {
       output += "\nOpenCode skill shadowing:\n";
       for (const issue of shadowing) {
         const remediation = issue.declared
-          ? "managed skills.paths declaration current"
-          : "skills.paths declaration missing; run drwn write";
+          ? "declaration current; shadowing reduced, not eliminated — OpenCode dedup races, see the OpenCode guide"
+          : "skills.paths declaration missing; run drwn write (with opencode.jsonc, declare the dir manually)";
         output += `  - ${issue.code} (${issue.severity}): ${issue.skill} collides with ${issue.machinePaths.join(", ")} (${remediation})\n`;
       }
     }
