@@ -350,7 +350,8 @@ export function collectMachineProjectionConflicts(
       continue;
     }
     if (entry.kind === "managed-content") {
-      if (!existsSync(absolutePath) || hashManagedContent(readFileSync(absolutePath)) !== entry.contentHash) {
+      const stats = lstatSafe(absolutePath);
+      if (!stats?.isFile() || hashManagedContent(readFileSync(absolutePath)) !== entry.contentHash) {
         conflicts.push({ kind: "drift", path: absolutePath, message: `recorded machine projection drift at ${absolutePath}` });
       }
     }

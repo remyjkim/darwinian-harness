@@ -3,7 +3,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { buildEffectiveState } from "../cli/core/effective-state";
@@ -315,4 +315,35 @@ test("machine deactivation rejects stale drift across generated, skill, hook, an
   for (const pathValue of [skillPath, hookPath, instructionPath, workerPath]) {
     expect(existsSync(pathValue)).toBe(false);
   }
+});
+
+test("machine deactivation treats a managed file replaced by a directory as force-repairable drift", async () => {
+  const fixture = await setupConsentedSurfaceBlueprint();
+  const first = await runAgentsCli(["write", "--root", "--json"], envFor(fixture));
+  expect(first.exitCode, first.stderr).toBe(0);
+
+  const workerPath = join(fixture.agentsDir, "drwn", "generated", "active-worker.json");
+  await rm(workerPath);
+  await mkdir(workerPath);
+  await writeFile(join(workerPath, "foreign.txt"), "user replacement\n");
+
+  const cleared = await runAgentsCli(
+    ["use", "--root", "--none", "--no-write"],
+    envFor(fixture),
+  );
+  expect(cleared.exitCode, cleared.stderr).toBe(0);
+  const recordPath = join(fixture.agentsDir, "drwn", "global-write-record.json");
+  const recordBefore = await readFile(recordPath, "utf8");
+
+  const blocked = await runAgentsCli(["write", "--root", "--json"], envFor(fixture));
+
+  expect(blocked.exitCode).not.toBe(0);
+  expect(`${blocked.stdout}\n${blocked.stderr}`).toContain("MACHINE_PROJECTION_CONFLICT");
+  expect(await readFile(recordPath, "utf8")).toBe(recordBefore);
+  expect(existsSync(workerPath)).toBe(true);
+
+  const forced = await runAgentsCli(["write", "--root", "--force", "--json"], envFor(fixture));
+  expect(forced.exitCode, forced.stderr).toBe(0);
+  expect(existsSync(workerPath)).toBe(false);
+  expect(await readFile(recordPath, "utf8")).not.toContain("active-worker.json");
 });
