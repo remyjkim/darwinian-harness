@@ -4,6 +4,7 @@
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { classifyAmbientMcpCollision } from "./ambient-policy";
 import { hasExplicitMcpDefaults } from "./defaults";
+import { OPENCODE_PROJECT_SKILLS_DIR } from "./paths";
 import {
   buildDrwnMetaBlock,
   canonicalJsonHash,
@@ -682,6 +683,30 @@ export function mergeOpencodeConfigText(
   }
   parsed.mcp = currentServers;
   return { text: `${JSON.stringify(parsed, null, 2)}\n`, fieldHashes };
+}
+
+// Dedicated write-record field key for the managed skills.paths declaration inside the
+// opencode.json managed-fields entry, kept distinct from the per-server mcp field hashes.
+export const OPENCODE_SKILLS_PATHS_FIELD = "skillsPaths";
+
+// Declares the drwn-projected OpenCode skills dir in opencode.json `skills.paths` so the
+// configured novel path wins OpenCode's cross-scope skill dedup. User-authored paths are
+// preserved: the managed entry is appended only when missing, keeping the merge idempotent.
+export function mergeOpencodeSkillsPathsText(currentText: string): MergeClaudeSettingsResult {
+  const parsed = JSON.parse(currentText) as Record<string, unknown>;
+  const skills = (
+    parsed.skills && typeof parsed.skills === "object" && !Array.isArray(parsed.skills) ? parsed.skills : {}
+  ) as Record<string, unknown>;
+  const paths = Array.isArray(skills.paths) ? [...(skills.paths as unknown[])] : [];
+  if (!paths.includes(OPENCODE_PROJECT_SKILLS_DIR)) {
+    paths.push(OPENCODE_PROJECT_SKILLS_DIR);
+  }
+  skills.paths = paths;
+  parsed.skills = skills;
+  return {
+    text: `${JSON.stringify(parsed, null, 2)}\n`,
+    fieldHashes: { [OPENCODE_SKILLS_PATHS_FIELD]: canonicalJsonHash(OPENCODE_PROJECT_SKILLS_DIR) },
+  };
 }
 
 // Strips only the [mcp_servers.<name>] tables (and their subtables) for the given server

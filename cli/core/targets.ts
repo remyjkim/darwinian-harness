@@ -6,7 +6,7 @@ import type { CanonicalConfig, TargetName } from "./types";
 
 export type Surface = "claude-code" | "cowork" | "codex" | "cursor" | "opencode";
 export type McpFormat = "json-merge" | "toml-merge" | "json-standalone";
-export type SkillSurfaceDir = "claude" | "codex";
+export type SkillSurfaceDir = "claude" | "codex" | "opencode";
 
 export interface TargetDescriptor {
   name: TargetName;
@@ -48,7 +48,7 @@ export const DESCRIPTORS: Record<TargetName, TargetDescriptor> = {
     surfaces: ["opencode"],
     mcpFormat: "json-merge",
     hookRuntime: "opencode",
-    skillSurfaces: [],
+    skillSurfaces: ["opencode"],
   },
 };
 

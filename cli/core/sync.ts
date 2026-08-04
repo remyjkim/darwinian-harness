@@ -80,6 +80,22 @@ async function readTextIfExists(pathValue: string, fallback: string) {
 function uniqueManagedPaths(paths: ManagedPath[]) {
   const map = new Map<string, ManagedPath>();
   for (const path of paths) {
+    const current = map.get(path.path);
+    if (
+      current?.kind === "managed-fields" &&
+      path.kind === "managed-fields" &&
+      current.surface === path.surface &&
+      current.target === path.target
+    ) {
+      // One file can carry fields from separate sync steps (opencode.json holds both the
+      // mcp servers and the skills.paths declaration); union them under the shared entry.
+      map.set(path.path, {
+        ...current,
+        fields: [...new Set([...current.fields, ...path.fields])],
+        fieldHashes: { ...current.fieldHashes, ...path.fieldHashes },
+      });
+      continue;
+    }
     map.set(path.path, path);
   }
   return [...map.values()].sort((a, b) => a.path.localeCompare(b.path));

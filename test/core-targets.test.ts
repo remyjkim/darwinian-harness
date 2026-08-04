@@ -46,7 +46,7 @@ describe("target descriptors", () => {
     expect(opencode.surfaces).toEqual(["opencode"]);
     expect(opencode.mcpFormat).toBe("json-merge");
     expect(opencode.hookRuntime).toBe("opencode");
-    expect(opencode.skillSurfaces).toEqual([]);
+    expect(opencode.skillSurfaces).toEqual(["opencode"]);
   });
 
   test("should recognize valid target names and reject others", () => {

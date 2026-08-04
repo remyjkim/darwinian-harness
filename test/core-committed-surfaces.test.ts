@@ -35,6 +35,15 @@ test("committedSurfaces omits projection surfaces from drwn gitignore block", as
   expect(entries).not.toContain(".claude/skills/");
   expect(entries).not.toContain(".cursor/");
   expect(entries).not.toContain(".mcp.json");
+  expect(entries).not.toContain(".agents/drwn/opencode-skills/");
+});
+
+test("default gitignore block covers the opencode projected skills dir", async () => {
+  const root = await createTempRoot("committed-surfaces-opencode-");
+  tempRoots.push(root);
+  await writeSupportedProjectConfig(root);
+  const entries = await buildDesiredGitignoreEntries(root);
+  expect(entries).toContain(".agents/drwn/opencode-skills/");
 });
 
 test("ensureGitignoreEntries rewrites drwn block when committedSurfaces toggles", async () => {

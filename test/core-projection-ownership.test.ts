@@ -51,4 +51,69 @@ describe("retainUnselectedProjectionOwnership", () => {
     expect(retainUnselectedProjectionOwnership(prior, [desired], { target: "claude" })
       .filter((item) => item.path === desired.path)).toHaveLength(1);
   });
+
+  test("splits the shared opencode.json entry by field ownership on partial writes", () => {
+    const hash = `sha256-${"c".repeat(64)}`;
+    const shared: ManagedPath = {
+      path: "opencode.json",
+      kind: "managed-fields",
+      surface: "mcp",
+      target: "opencode",
+      fields: ["mcpServer:context7", "skillsPaths"],
+      fieldHashes: { "mcpServer:context7": hash, skillsPaths: hash },
+    };
+
+    const skillsOnly = retainUnselectedProjectionOwnership([shared], [], { skillsOnly: true });
+    expect(skillsOnly).toEqual([{
+      path: "opencode.json",
+      kind: "managed-fields",
+      surface: "mcp",
+      target: "opencode",
+      fields: ["mcpServer:context7"],
+      fieldHashes: { "mcpServer:context7": hash },
+    }]);
+
+    const mcpOnly = retainUnselectedProjectionOwnership([shared], [], { mcpOnly: true });
+    expect(mcpOnly).toEqual([{
+      path: "opencode.json",
+      kind: "managed-fields",
+      surface: "mcp",
+      target: "opencode",
+      fields: ["skillsPaths"],
+      fieldHashes: { skillsPaths: hash },
+    }]);
+
+    expect(retainUnselectedProjectionOwnership([shared], [], { target: "claude" })).toEqual([shared]);
+    expect(retainUnselectedProjectionOwnership([shared], [], {})).toEqual([]);
+  });
+
+  test("merges retained fields into a desired entry for the same path", () => {
+    const hash = `sha256-${"d".repeat(64)}`;
+    const previous: ManagedPath = {
+      path: "opencode.json",
+      kind: "managed-fields",
+      surface: "mcp",
+      target: "opencode",
+      fields: ["mcpServer:context7", "skillsPaths"],
+      fieldHashes: { "mcpServer:context7": hash, skillsPaths: hash },
+    };
+    const desired: ManagedPath = {
+      path: "opencode.json",
+      kind: "managed-fields",
+      surface: "mcp",
+      target: "opencode",
+      fields: ["skillsPaths"],
+      fieldHashes: { skillsPaths: `sha256-${"e".repeat(64)}` },
+    };
+
+    const merged = retainUnselectedProjectionOwnership([previous], [desired], { skillsOnly: true });
+    expect(merged).toEqual([{
+      path: "opencode.json",
+      kind: "managed-fields",
+      surface: "mcp",
+      target: "opencode",
+      fields: ["mcpServer:context7", "skillsPaths"],
+      fieldHashes: { "mcpServer:context7": hash, skillsPaths: `sha256-${"e".repeat(64)}` },
+    }]);
+  });
 });

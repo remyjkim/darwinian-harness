@@ -86,7 +86,7 @@ const managedPathSchema = z.discriminatedUnion("kind", [
     : entry.surface === "mcp"
       ? entry.target === "claude" || entry.target === "codex" || entry.target === "cursor" || entry.target === "opencode"
       : entry.surface === "skill"
-        ? entry.target === "claude" || entry.target === "codex"
+        ? entry.target === "claude" || entry.target === "codex" || entry.target === "opencode"
         : entry.target === "claude" || entry.target === "codex" || entry.target === "cursor" || entry.target === "opencode" || entry.target === "mastra";
   if (!valid) {
     context.addIssue({ code: "custom", message: `invalid ${entry.surface} target ownership` });
@@ -301,7 +301,7 @@ export function diffWriteRecord(previous: WriteRecord | null, desired: ManagedPa
   return { toRemove, toAdd, toVerify };
 }
 
-function managedFieldsSubset(
+export function managedFieldsSubset(
   entry: Extract<ManagedPath, { kind: "managed-fields" }>,
   fields: string[],
 ): Extract<ManagedPath, { kind: "managed-fields" }> {

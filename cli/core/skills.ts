@@ -2,13 +2,15 @@
 // ABOUTME: Keeps explicit selections separate from ambient legacy skill directories.
 
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { CardLockEntry } from "./card-lock";
 import { resolveSkillSource } from "./card-skill-resolver";
-import { resolveSkillScopeDirs, resolveToolPaths } from "./paths";
+import { OPENCODE_PROJECT_SKILLS_DIR, resolveSkillScopeDirs, resolveToolPaths } from "./paths";
 import { lstatSafe } from "./fs";
+import { writeManagedFile } from "./managed-file";
 import { materializeDir } from "./materialize";
+import { mergeOpencodeSkillsPathsText } from "./mcp";
 import { ALL_TARGET_NAMES, DESCRIPTORS, descriptorsFor, type SkillSurfaceDir } from "./targets";
 import type { CanonicalConfig, NormalizedSyncOptions, SyncResult, TargetName } from "./types";
 import { ownManagedPath, type ManagedPath, type ProjectionTarget } from "./write-record";
@@ -48,7 +50,7 @@ interface MaterializeIntent {
   targetPath: string;
   relPath: string;
   layerLabel: string;
-  target: Extract<ProjectionTarget, "claude" | "codex">;
+  target: Extract<ProjectionTarget, "claude" | "codex" | "opencode">;
   alsoAvailable?: string[];
 }
 
@@ -282,8 +284,13 @@ export async function syncSkills(
 
   const desiredClaude = new Set<string>();
   const desiredCodex = new Set<string>();
+  const desiredOpencode = new Set<string>();
   const claudeIntents = new Map<string, MaterializeIntent>();
   const codexIntents = new Map<string, MaterializeIntent>();
+  const opencodeIntents = new Map<string, MaterializeIntent>();
+  // The dedicated OpenCode dir is a project-scope projection only; machine writes keep
+  // the I177 machine surface set unchanged.
+  const opencodeSurfaceSelected = selectedSurfaces.has("opencode") && options.writeScope !== "machine";
 
   for (const { name, source } of resolvedIncludes) {
     const targetPath = source.path;
@@ -317,9 +324,23 @@ export async function syncSkills(
         });
       }
     }
+    if (opencodeSurfaceSelected) {
+      // OpenCode reads the same composed set as the Claude surface; the dedicated dir is
+      // a projection of it, never a second source of truth.
+      if (scope === "shared" || scope === "claude-only") {
+        desiredOpencode.add(name);
+        recordIntent(opencodeIntents, {
+          linkPath: join(toolPaths.opencodeSkills, name),
+          targetPath,
+          relPath: `${OPENCODE_PROJECT_SKILLS_DIR}/${name}`,
+          layerLabel,
+          target: "opencode",
+        });
+      }
+    }
   }
 
-  for (const intent of [...claudeIntents.values(), ...codexIntents.values()]) {
+  for (const intent of [...claudeIntents.values(), ...codexIntents.values(), ...opencodeIntents.values()]) {
     const labelSuffix = intent.alsoAvailable && intent.alsoAvailable.length > 0
       ? ` ← ${intent.layerLabel} (also available: ${intent.alsoAvailable.join(", ")})`
       : ` ← ${intent.layerLabel}`;
@@ -332,14 +353,41 @@ export async function syncSkills(
     managedPaths.push(ownManagedPath(record, { surface: "skill", target: intent.target }));
   }
 
+  if (opencodeSurfaceSelected && desiredOpencode.size > 0) {
+    const configPath = toolPaths.opencodeConfig;
+    const jsoncSibling = configPath.replace(/opencode\.json$/, "opencode.jsonc");
+    if (existsSync(jsoncSibling)) {
+      result.warnings.push(
+        `Skipping opencode skills.paths declaration: ${jsoncSibling} exists and drwn only manages opencode.json. Declare ${OPENCODE_PROJECT_SKILLS_DIR} manually or migrate the config.`,
+      );
+    } else {
+      const current = existsSync(configPath)
+        ? await readFile(configPath, "utf8")
+        : `{\n  "$schema": "https://opencode.ai/config.json"\n}\n`;
+      const merged = mergeOpencodeSkillsPathsText(current);
+      writeManagedFile(configPath, merged.text, options.dryRun, result);
+      managedPaths.push({
+        path: "opencode.json",
+        kind: "managed-fields",
+        surface: "mcp",
+        target: "opencode",
+        fields: Object.keys(merged.fieldHashes),
+        fieldHashes: merged.fieldHashes,
+      });
+    }
+  }
+
   const staleClaude = selectedSurfaces.has("claude")
     ? await findStaleManagedEntries(toolPaths.claudeSkills, desiredClaude)
     : [];
   const staleCodex = selectedSurfaces.has("codex")
     ? await findStaleManagedEntries(toolPaths.codexSkills, desiredCodex)
     : [];
+  const staleOpencode = opencodeSurfaceSelected
+    ? await findStaleManagedEntries(toolPaths.opencodeSkills, desiredOpencode)
+    : [];
 
-  for (const pathValue of [...staleClaude, ...staleCodex]) {
+  for (const pathValue of [...staleClaude, ...staleCodex, ...staleOpencode]) {
     result.warnings.push(`stale skill: ${pathValue}`);
   }
 
