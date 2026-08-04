@@ -114,8 +114,8 @@ export async function verifyOperatorContract(
     if (manifest.harness?.minVersion !== DARWINIAN_OPERATOR_CARD.minDrwnVersion) {
       issues.push(`canonical Operator harness floor must be ${DARWINIAN_OPERATOR_CARD.minDrwnVersion}`);
     }
-    if (manifest.lastValidatedWith !== undefined && manifest.lastValidatedWith !== DARWINIAN_OPERATOR_CARD.minDrwnVersion) {
-      issues.push(`canonical Operator lastValidatedWith must be absent or ${DARWINIAN_OPERATOR_CARD.minDrwnVersion}`);
+    if (manifest.lastValidatedWith !== DARWINIAN_OPERATOR_CARD.minDrwnVersion) {
+      issues.push(`canonical Operator lastValidatedWith must be ${DARWINIAN_OPERATOR_CARD.minDrwnVersion}`);
     }
   }
 

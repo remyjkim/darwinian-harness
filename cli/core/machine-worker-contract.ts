@@ -11,17 +11,17 @@ import { resolveMachineWorkersRegistryPath } from "./paths";
 export const RECOMMENDED_MACHINE_WORKER = {
   id: "machine-defaults",
   displayName: "Recommended Machine Defaults",
-  source: "git+https://github.com/curation-labs/machine-defaults.git#v1.0.0",
+  source: "git+https://github.com/curation-labs/machine-defaults.git#v2.0.0",
   name: "@curation-labs/machine-defaults",
-  version: "1.0.0",
+  version: "2.0.0",
   minDrwnVersion: "1.1.0",
-  commit: "43b264499c9d9ec568b87d0230a7a7a6791f5966",
-  treeSha: "4a66b442e8b32561513adfc3c7413b758b156ff5",
-  integrity: "sha256-f5052855aff4d75579c88600cd0c319fd0c46d48d847f961ed8357f64bad7e50",
+  commit: "df811c79b8a576e708833ed0f62d34548e522bb0",
+  treeSha: "0351baee669aca1ecfd74a630895a5389598937e",
+  integrity: "sha256-6e1db61b9a3005ec4c49fdb17573ee9750f1bc8a1db42cd5606aa33ab49085ac",
   members: [
     {
       name: "@darwinian/operator",
-      source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1",
+      source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.2",
     },
     {
       name: "@curation-labs/workflow-skills",
@@ -30,10 +30,6 @@ export const RECOMMENDED_MACHINE_WORKER = {
     {
       name: "@remyjkim/knowledge-docs",
       source: "git+https://github.com/remyjkim/knowledge-docs-card.git#v1.0.0",
-    },
-    {
-      name: "@remyjkim/personal-harness",
-      source: "git+https://github.com/remyjkim/personal-harness-card.git#v0.1.0",
     },
   ],
 } as const;
@@ -145,7 +141,8 @@ export function assertRecommendedMachineWorkerGraph(graph: {
     rootCard.git?.ref !== `v${descriptor.version}` ||
     rootCard.manifest.kind !== "blueprint" ||
     !isDeepStrictEqual(rootCard.manifest.composedFrom, descriptor.members.map((member) => member.source)) ||
-    rootCard.manifest.harness?.minVersion !== descriptor.minDrwnVersion
+    rootCard.manifest.harness?.minVersion !== descriptor.minDrwnVersion ||
+    rootCard.manifest.lastValidatedWith !== descriptor.minDrwnVersion
   ) {
     invalid("Recommended machine Worker root coordinates or manifest changed");
   }

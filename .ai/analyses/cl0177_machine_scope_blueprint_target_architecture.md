@@ -135,7 +135,16 @@ The recommended source is a real standalone Card repository under the Card colle
 
 It is authored with the existing Worker commands, published as an immutable Git release, and consumed through an explicit immutable ref. It is not a directory inside the drwn Store and not a mutable catalog checkout at runtime.
 
-Initial composition is verified against real released refs before publication and is expected to include the current Operator, workflow-skills, knowledge-docs, and personal-harness Cards. If any intended member lacks a valid immutable release, publication stops rather than substituting ambient bytes.
+Initial composition is verified through real projection against released refs
+before publication. The G3 release contains the current Operator,
+workflow-skills, and knowledge-docs Cards. The released personal-harness
+`v0.1.0` is intentionally excluded: it repeats 13 workflow IDs, 12 with bytes
+incompatible with workflow-skills `v1.0.1`, so the combined closure fails with
+`WORKER_CAPABILITY_CONFLICT` before projection. It also repeats two
+knowledge-doc IDs with identical bytes. Resolving that overlap requires the
+separate personal-harness split already listed as a non-goal; I177 does not
+invent precedence, weaken compatibility checks, rewrite that Card, or
+substitute ambient bytes.
 
 Task 2 may publish a bootstrap `machine-defaults` `v1.0.0` using the current
 already-released member refs so the resolver and descriptor can be built without

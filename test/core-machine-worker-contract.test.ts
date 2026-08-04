@@ -30,13 +30,13 @@ describe("recommended machine Worker contract", () => {
       id: "machine-defaults",
       displayName: "Recommended Machine Defaults",
       name: "@curation-labs/machine-defaults",
-      version: "1.0.0",
-      source: "git+https://github.com/curation-labs/machine-defaults.git#v1.0.0",
+      version: "2.0.0",
+      source: "git+https://github.com/curation-labs/machine-defaults.git#v2.0.0",
       minDrwnVersion: "1.1.0",
       members: [
         {
           name: "@darwinian/operator",
-          source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.1",
+          source: "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.2",
         },
         {
           name: "@curation-labs/workflow-skills",
@@ -45,10 +45,6 @@ describe("recommended machine Worker contract", () => {
         {
           name: "@remyjkim/knowledge-docs",
           source: "git+https://github.com/remyjkim/knowledge-docs-card.git#v1.0.0",
-        },
-        {
-          name: "@remyjkim/personal-harness",
-          source: "git+https://github.com/remyjkim/personal-harness-card.git#v0.1.0",
         },
       ],
     });
@@ -76,7 +72,7 @@ describe("recommended machine Worker contract", () => {
         workers: [{
           ...RECOMMENDED_MACHINE_WORKER,
           members: RECOMMENDED_MACHINE_WORKER.members.map((member, index) =>
-            index === 0 ? { ...member, source: member.source.replace("#v2.0.1", "#main") } : member),
+            index === 0 ? { ...member, source: member.source.replace("#v2.0.2", "#main") } : member),
         }],
       },
     ]) {
@@ -106,10 +102,11 @@ describe("recommended machine Worker contract", () => {
             kind: "blueprint" as const,
             composedFrom: descriptor.members.map((member) => member.source),
             harness: { minVersion: descriptor.minDrwnVersion },
+            lastValidatedWith: descriptor.minDrwnVersion,
           },
           git: {
             url: "https://github.com/curation-labs/machine-defaults.git",
-            ref: "v1.0.0",
+            ref: "v2.0.0",
             commit: descriptor.commit,
           },
         },

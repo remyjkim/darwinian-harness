@@ -78,6 +78,7 @@ describe("Operator release contract", () => {
   test.each([
     ["version", (manifest: Record<string, any>) => { manifest.version = "2.0.1"; }],
     ["harness floor", (manifest: Record<string, any>) => { manifest.harness.minVersion = "1.0.0"; }],
+    ["validation claim", (manifest: Record<string, any>) => { delete manifest.lastValidatedWith; }],
     ["skill list", (manifest: Record<string, any>) => { manifest.skills.include = ["author-card"]; }],
     ["MCP list", (manifest: Record<string, any>) => { manifest.servers = { notion: { transport: "http", url: "https://example.test" } }; }],
   ] as const)("rejects Operator Card %s mismatch", async (_label, mutate) => {

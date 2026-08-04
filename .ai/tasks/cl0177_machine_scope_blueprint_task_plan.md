@@ -561,9 +561,12 @@ bunx bun@1.2.21 run typecheck
    against `drwn` `1.1.0`; then create and push the immutable Operator tag, pin
    that accepted submodule commit/integrity in the parent. Publish a new
    immutable `machine-defaults` release whose composition names Operator
-   `2.0.2`, move `registry/machine-workers.json` from the bootstrap to that
-   release, and rerun release readiness from committed state. G3 must reject a
-   descriptor that still names bootstrap `v1.0.0`.
+   `2.0.2`, workflow-skills, and knowledge-docs; omit personal-harness `v0.1.0`
+   because isolated projection proves 12 incompatible duplicate workflow skill
+   IDs, whose cleanup remains the separate personal-harness split non-goal.
+   Move `registry/machine-workers.json` from the bootstrap to that release and
+   rerun release readiness from committed state. G3 must reject a descriptor
+   that still names bootstrap `v1.0.0` or the incompatible four-member closure.
 7. Push the tested parent commit and require all CI jobs to pass.
 8. Request G3 review with a PR body containing `Testing & CI evidence`.
 9. Write the completion document with commits, test totals, manual artifacts, remaining non-goals, and rollback/reset guidance.
@@ -617,5 +620,5 @@ git diff --check
 - [x] Fresh pinned I177 baseline recorded.
 - [x] G1 passed and acknowledged.
 - [x] G2 passed and acknowledged.
-- [ ] Tasks 2–8 executed through recorded RED-GREEN-REFACTOR slices.
+- [x] Tasks 2–8 executed through recorded RED-GREEN-REFACTOR slices.
 - [ ] Task 9 final verification, G3, and completion evidence finished.
