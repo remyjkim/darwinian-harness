@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://docs.darwiniantools.com',
+  url: 'https://docs.darwinian.dev',
   baseUrl: '/',
   organizationName: 'remyjkim',
   projectName: 'darwinian-minds',

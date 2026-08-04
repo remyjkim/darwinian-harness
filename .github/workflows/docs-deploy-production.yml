@@ -22,7 +22,7 @@ permissions:
 env:
   BUN_VERSION: '1.2.21'
   CF_PAGES_PROJECT: darwiniantools-docs
-  PROD_URL: https://docs.darwiniantools.com
+  PROD_URL: https://docs.darwinian.dev
 
 jobs:
   deploy_production:

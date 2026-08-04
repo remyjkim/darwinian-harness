@@ -1,6 +1,6 @@
 # Docs CI/CD
 
-GitHub Actions pipeline that validates, deploys, and cleans up the docusaurus site (`docs-docusaurus/`) against the Cloudflare Pages project `darwiniantools-docs` at `docs.darwiniantools.com`.
+GitHub Actions pipeline that validates, deploys, and cleans up the docusaurus site (`docs-docusaurus/`) against the Cloudflare Pages project `darwiniantools-docs` at `docs.darwinian.dev`.
 
 Pattern adapted from [analysis 39 — Cloudflare GitHub CI/CD manual](../../.ai/analyses/39_cloudflare-github-cicd-manual.md) (in the sibling `darwinian-harness-services` repo), simplified for a static docs site: no Worker, no Vite-with-API-URL injection, no Playwright E2E, no separate staging tier, no production approval gate.
 
@@ -11,7 +11,7 @@ Three workflows under `.github/workflows/`:
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `docs-pr-preview.yml` | PR to `main` touching docs paths, fork PRs validate-only | validate (typecheck, docs-readiness tests, docusaurus build, lychee link check) → deploy preview to Pages branch `pr-<N>` → smoke test → PR comment with preview URL |
-| `docs-deploy-production.yml` | push to `main` touching docs paths, or `workflow_dispatch` | same validate → deploy to Pages production branch `main` → smoke test both `docs.darwiniantools.com` and the per-deployment URL → step summary |
+| `docs-deploy-production.yml` | push to `main` touching docs paths, or `workflow_dispatch` | same validate → deploy to Pages production branch `main` → smoke test both `docs.darwinian.dev` and the per-deployment URL → step summary |
 | `docs-pr-cleanup.yml` | PR closed (touching docs paths) | list Pages deployments for the PR alias (non-destructive starter per mentor §13) |
 
 All three skip work for fork PRs (`github.event.pull_request.head.repo.full_name == github.repository`) per mentor §16: Cloudflare tokens are repo secrets and must not be exposed to untrusted forks.
@@ -130,7 +130,7 @@ Or re-run the previous successful `docs-deploy-production` workflow run from the
 
 ## Operational notes
 
-- The submodule (`darwinian-worker-skills/`) is **not** fetched in CI (`submodules: false` in every workflow). The docs site is self-contained; pulling the submodule would add clone time for no build benefit.
+- The validation checkouts in CLI CI, docs preview, docs production, and release fetch `darwinian-worker-skills/` with `submodules: true`, because readiness tests validate the pinned bundle. Deploy/cleanup jobs that consume an already-built artifact use `submodules: false`.
 - Bun version is pinned in workflow `env.BUN_VERSION` for reproducibility. Bump in lockstep with local toolchain.
 - Cloudflare Pages project name is centralized in workflow `env.CF_PAGES_PROJECT = darwiniantools-docs`. Single-source for the project identifier.
 
@@ -146,8 +146,8 @@ PR comment shows the preview URL and the branch alias URL.
 Smoke test on the preview URL returns 200.
 Fork PRs run validate but do not deploy.
 Pushing to main runs docs-deploy-production.yml.
-Production deploy publishes to docs.darwiniantools.com.
-Smoke test on docs.darwiniantools.com returns 200.
+Production deploy publishes to docs.darwinian.dev.
+Smoke test on docs.darwinian.dev returns 200.
 PR cleanup workflow lists Pages deployments for the PR alias on PR close.
 CLOUDFLARE_API_TOKEN_NONPROD is unavailable to docs-deploy-production.yml.
 CLOUDFLARE_API_TOKEN is unavailable to docs-pr-preview.yml and docs-pr-cleanup.yml.

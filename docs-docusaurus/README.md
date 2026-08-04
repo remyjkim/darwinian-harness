@@ -1,6 +1,6 @@
 # darwinian-minds docs
 
-Docusaurus 3 site for [darwinian-minds](https://github.com/remyjkim/darwinian-worker). Published at https://darwiniantools.com.
+Docusaurus 3 site for [darwinian-minds](https://github.com/remyjkim/darwinian-worker). Published at https://docs.darwinian.dev.
 
 ## Local development
 
@@ -26,7 +26,7 @@ Outputs to `./build`. Strict link checking is enabled; the build fails on broken
 bun run deploy:pages
 ```
 
-Deploys `./build` to the Cloudflare Pages project `darwiniantools-docs`. The custom domain `darwiniantools.com` is configured in the Cloudflare dashboard.
+Deploys `./build` to the Cloudflare Pages project `darwiniantools-docs`. The custom domain `docs.darwinian.dev` is configured in the Cloudflare dashboard.
 
 ## TODO
 

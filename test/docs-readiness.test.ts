@@ -14,6 +14,25 @@ async function readDocsTree(relativeRoot: string) {
 }
 
 describe("documentation readiness", () => {
+  test("production deployment and public links use the live canonical docs domain", async () => {
+    const documents = await Promise.all([
+      readFile(new URL("../.github/workflows/docs-deploy-production.yml", import.meta.url), "utf8"),
+      readFile(new URL("../README.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/README.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docusaurus.config.ts", import.meta.url), "utf8"),
+      readFile(new URL("../docs/cli-quickref.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs/maintainers/docs-cicd.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-astro/DEPRECATED.md", import.meta.url), "utf8"),
+      readFile(new URL("../lychee.toml", import.meta.url), "utf8"),
+    ]);
+
+    for (const document of documents) {
+      expect(document).toContain("docs.darwinian.dev");
+      expect(document).not.toContain("darwiniantools.com");
+    }
+    expect(documents[0]).toContain("PROD_URL: https://docs.darwinian.dev");
+  });
+
   test("active non-Docusaurus Mind docs publish the semantic Worker-bound contract", async () => {
     const docs = (await Promise.all([
       readFile(new URL("../.ai/knowledges/12_mind-card-lifecycle-guide.md", import.meta.url), "utf8"),
