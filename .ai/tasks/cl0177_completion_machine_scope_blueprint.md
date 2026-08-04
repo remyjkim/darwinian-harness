@@ -3,13 +3,19 @@
 
 # [I177] Machine-Scope Worker Blueprint — Completion Evidence
 
-**Status**: Merged and post-merge CLI CI green; production docs were deployed, but the legacy custom-domain smoke check failed and is corrected by the completion-doc follow-up.
+**Status**: Complete. Implementation, completion handoffs, post-merge CLI CI,
+and the corrected production-docs deployment are all merged and green.
 
 **Issue**: [I177] · **Owner/Reviewer**: Remy K (owner-as-reviewer per campaign decision D5)
 
 **Branch**: `remy/I177-machine-scope-blueprint` · **PR**: [#72](https://github.com/remyjkim/darwinian-worker/pull/72)
 
 **Reviewed head**: `6180e8df21eafd3e6f1b0464fe10434188b5068c` · **Merge commit**: `b4817b1d64c76c7f31b06b44a1390cc79f1ce49c`
+
+**Completion follow-up**: [PR #75](https://github.com/remyjkim/darwinian-worker/pull/75)
+· **Merge commit**: `1b9a53f8f0f72fd859b83ba847c5f161e027c6d6`
+· **Post-merge CLI**: [run 30875268803](https://github.com/remyjkim/darwinian-worker/actions/runs/30875268803)
+· **Production docs**: [run 30875268802](https://github.com/remyjkim/darwinian-worker/actions/runs/30875268802)
 
 **CLI release line validated**: `1.1.0` · **Date**: 2026-08-03
 
@@ -166,12 +172,16 @@ transactions record G3 Review, G3 Passed with Owner `Received`, and Owner
 acknowledgement into `In Review`. Post-merge CLI CI run `30873188326` passed on
 merge commit `b4817b1`.
 
-Production docs run `30873188311` built, link-checked, and deployed the same
-commit successfully to Cloudflare Pages, then failed only because its smoke
-test still named the nonexistent legacy host `docs.darwiniantools.com`. The
-deployed Pages URL and live `https://docs.darwinian.dev` returned byte-identical
-content. The completion-doc follow-up changes the workflow and public links to
-the live canonical domain and adds a regression assertion for that boundary.
+Production docs run `30873188311` built, link-checked, and deployed the I177
+merge successfully to Cloudflare Pages, then failed only because its smoke test
+still named the nonexistent legacy host `docs.darwiniantools.com`. Follow-up PR
+#75 changed the workflow and active public links to the live canonical domain
+and added a regression assertion for that boundary. On follow-up merge
+`1b9a53f`, CLI run `30875268803` passed all six jobs and production-docs run
+`30875268802` passed readiness, build, link check, deployment, and both smoke
+targets. `https://docs.darwinian.dev` and deployment
+`https://058b3613.darwiniantools-docs.pages.dev` were independently byte-checked
+at SHA-256 `ff5a359536726cebddb64702eafae92a889297ec8d975b2fa8a7d74724ad18a8`.
 
 ## Contract-specific acceptance
 

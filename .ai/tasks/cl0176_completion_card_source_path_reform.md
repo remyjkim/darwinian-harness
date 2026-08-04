@@ -14,6 +14,10 @@ replaced the machine-profile release surface.
 **Post-merge CI**: [run 30848589215](https://github.com/remyjkim/darwinian-worker/actions/runs/30848589215)
 · **Completed**: 2026-08-03
 
+**Completion handoff publication**: [PR #75](https://github.com/remyjkim/darwinian-worker/pull/75)
+merged at `1b9a53f8f0f72fd859b83ba847c5f161e027c6d6`; its post-merge
+CLI and production-docs runs both passed.
+
 ## Outcome
 
 I176 removed runtime dependence on `~/.agents/drwn/sources/`. Editable Card and

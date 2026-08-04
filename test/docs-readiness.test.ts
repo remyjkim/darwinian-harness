@@ -31,6 +31,15 @@ describe("documentation readiness", () => {
       expect(handoff).toContain("Post-merge");
       expect(handoff.toLowerCase()).toContain("rollback");
     }
+    expect(i176).toContain("1b9a53f8f0f72fd859b83ba847c5f161e027c6d6");
+    for (const finalEvidence of [
+      "1b9a53f8f0f72fd859b83ba847c5f161e027c6d6",
+      "30875268803",
+      "30875268802",
+      "ff5a359536726cebddb64702eafae92a889297ec8d975b2fa8a7d74724ad18a8",
+    ]) {
+      expect(i177).toContain(finalEvidence);
+    }
   });
 
   test("production deployment and public links use the live canonical docs domain", async () => {
