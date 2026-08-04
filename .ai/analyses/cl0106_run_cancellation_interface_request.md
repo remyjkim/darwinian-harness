@@ -33,18 +33,23 @@ cancel/abort/stop/terminate returns nothing in source. The only matches are
 `/api/desktop/stop` inside `.wrangler/dry-*/worker.js` build artifacts — a bundled third-party
 dependency, not a route in this codebase.
 
+Re-swept 2026-08-04 against `main` @ `ec7f9ff2`, including api-entry and coordination: still
+zero matches, and no cancellation work has landed since. The only post-cutoff commit matching
+"interrupt" (`8767a6c1`) is I50 invocation-dispatch reconciliation, unrelated to run
+cancellation. This request is greenfield.
+
 The Coordinator DO's public surface is `coordinate`, `continueCoordinate`, `getRunStatus`,
 `getTranscript`, `streamSince`, `getRunWorkflow`. There is no cancel method to expose.
 
 ### 2.2 Closing the stream does not stop the run
 
-`req.signal` is threaded into the SSE bridge at `workers/engine/src/worker.ts:303`:
+`req.signal` is threaded into the SSE bridge at `workers/engine/src/worker.ts:305`:
 
 ```ts
 { since, signal: req.signal },
 ```
 
-That aborts the *bridge loop* that polls the DO seq log. The Workflow activation that drives
+That aborts the *bridge loop* that polls the DO seq log (`stream-hub/src/sse.ts:51-54`). The Workflow activation that drives
 the run is independent of any HTTP connection — which is the correct design for a durable
 run, and exactly why a separate cancel channel is needed.
 
@@ -58,7 +63,7 @@ orchestrator step-failure paths. Nothing reachable over HTTP triggers them.
 ### 2.4 Runs are long-lived and interactive by construction
 
 A run is a durable conversation, not a single completion. `continueCoordinate`
-(`coordination/src/coordinator-do.ts:1687-1728`) keeps a run alive across turns:
+(`coordination/src/coordinator-do.ts:1687-1729`) keeps a run alive across turns:
 
 ```ts
 } else if (run.status === "yielded" || run.status === "running") {
@@ -87,7 +92,7 @@ not exceptionally.
 
 **Nobody is watching.** A Buzz agent answers mentions unattended. An orphaned run has no
 human to notice it, and the operator is billed under their own DAH identity — there is no
-agent principal (`deploy-api/src/worker.ts:261-272`). Orphaned runs accumulate silently
+agent principal (`deploy-api/src/worker.ts:326-383`). Orphaned runs accumulate silently
 against a real person's account.
 
 ## 4. Proposed Contract
@@ -152,11 +157,11 @@ blocks Phase 1-3.
 
 **Raw event stream over SSE.** The public SSE route emits cumulative `thread.snapshot` frames
 that drop tool `args`/`result` and flatten `reasoning.delta` to a boolean
-(`deploy-contracts.ts:299-304`, `chat-projector.ts:161-177`). ACP needs incremental chunks
+(`deploy-contracts.ts:299-304`, `chat-projector.ts:139-179`). ACP needs incremental chunks
 with tool inputs and thought text. The adapter will poll
-`GET /api/minds/:slug/chat/:runId/stream-poll` (`chat-proxy.ts:287`) for raw `StreamEntry`
+`GET /api/minds/:slug/chat/:runId/stream-poll` (`chat-proxy.ts:411`) for raw `StreamEntry`
 instead. Exposing the existing internal `/coordinate-stream/sse`
-(`engine/src/worker.ts:280-313`) unprojected would remove the polling cost — exposure work,
+(`engine/src/worker.ts:287-314`) unprojected would remove the polling cost — exposure work,
 not new plumbing.
 
 **General tool policy.** See

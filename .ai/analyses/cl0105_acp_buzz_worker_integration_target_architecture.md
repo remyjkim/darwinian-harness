@@ -38,7 +38,9 @@ one `StreamEvent` vocabulary onto one protocol. Nothing here is architecturally 
 
 The two source guides (`128_acp_guide.md`, `128_2_buzz_acp_integration_guide.md`, committed
 beside this document) carry unresolvable citation tokens and a June 2026 cutoff. Their load-bearing
-claims were re-verified against primary sources on 2026-07-24. Three were wrong.
+claims were re-verified against primary sources on 2026-07-24. Three were wrong. Server-side
+claims were re-verified again on 2026-08-04 against `darwinian-services` `main` @ `ec7f9ff2`:
+every behavior held; line anchors stale since the I50 chat-proxy rewrite are corrected inline.
 
 | Guide claim | Verified state |
 | --- | --- |
@@ -78,7 +80,7 @@ Newly established, and material:
    container the ACP client cannot reach. ACP `session/request_permission`, `fs/*`, and
    `terminal/*` have no counterpart. See §7 for what this costs.
 4. **Auth is user-scoped.** DAH device flow, bearer JWT, `sub` becomes run owner
-   (`deploy-api/src/worker.ts:261-272`). There is no agent principal.
+   (`deploy-api/src/worker.ts:326-383`). There is no agent principal.
 5. **v0.9.0 was a hard cut.** New surface arrives as a V1 contract, not as an option bolted
    onto the four existing `TargetName` writers. ACP is a protocol, not a config format;
    it does not belong in `cli/core/targets.ts`.
@@ -91,12 +93,12 @@ with an append-only event log addressed by a monotonic cursor.
 | ACP | Deploy API | Notes |
 | --- | --- | --- |
 | `session/new` | *(deferred)* | Allocate local state only. No `runId` exists until a prompt arrives, because the start call requires a `message`. |
-| first `session/prompt` | `POST /api/minds/:slug/chat` → `{runId}` | `chat-proxy.ts:216`; response is `ChatStartResSchema` (`deploy-contracts.ts:216-218`). |
-| later `session/prompt` | `POST /api/chat/:runId/message` | `chat-proxy.ts:357`. |
+| first `session/prompt` | `POST /api/minds/:slug/chat` → `{runId}` | `chat-proxy.ts:353`, via the I50 invocation service — duplicate starts dedupe to the same `{runId}` or `409 invocation_pending`; response is `ChatStartResSchema` (`deploy-contracts.ts:216-218`). |
+| later `session/prompt` | `POST /api/chat/:runId/message` | `chat-proxy.ts:481`. |
 | `sessionId` | `runId` | Stable across turns, survives reload. |
-| `session/load` | `GET /api/chat/:runId/snapshot` | `chat-proxy.ts:321`. Enables `loadSession: true`. |
+| `session/load` | `GET /api/chat/:runId/snapshot` | `chat-proxy.ts:445`. Roles, text, and tool chips only — no `args`/`result`/reasoning, but enough for `loadSession: true`. |
 | `session/update` | `GET /api/chat/:runId/stream-poll?since=` | Raw `StreamEntry` with real deltas. See §5. |
-| `stopReason: end_turn` | run status `yielded` | Not `done`. `done`/`failed` are terminal and cannot be continued (`coordinator-do.ts:1687-1728`). |
+| `stopReason: end_turn` | run status `yielded` | Not `done`. `done`/`failed` are terminal and cannot be continued (`coordinator-do.ts:1687-1729`). |
 | `stopReason: cancelled` | — | **No server support.** §6.1. |
 
 The event vocabulary maps almost one-to-one
@@ -121,16 +123,22 @@ is a thin mapping at the edge."*
 The obvious choice — SSE at `/api/minds/:slug/chat/:runId/stream` — is wrong for ACP.
 
 Its frames are **cumulative snapshots**, not deltas: every `thread.snapshot` re-projects the
-entire item list from `since=0` (`chat-projector.ts:143-176`). The projector also drops
+entire item list from `since=0` (`chat-projector.ts:139-179`). The projector also drops
 tool `args` and `result` (`deploy-contracts.ts:299-304`) and flattens `reasoning.delta` to a
-boolean `thinking` flag (`chat-projector.ts:161-162`). ACP needs incremental chunks, tool
+boolean `thinking` flag (`chat-projector.ts:163-167`). ACP needs incremental chunks, tool
 inputs, and thought text — all three are destroyed by the projection.
 
-`GET /api/minds/:slug/chat/:runId/stream-poll?since=` (`chat-proxy.ts:287`) returns
+`GET /api/minds/:slug/chat/:runId/stream-poll?since=` (`chat-proxy.ts:411`) returns
 unprojected `StreamEntry` including `args` (`deploy-contracts.ts:146-162`, `.passthrough()`).
 Start there. §6.2 proposes a raw SSE route to remove the polling cost later; the engine
-already has `/coordinate-stream/sse` internally (`engine/src/worker.ts:280-313`), so this is
+already has `/coordinate-stream/sse` internally (`engine/src/worker.ts:287-314`), so this is
 exposure work, not new plumbing.
+
+Do not confuse `stream-poll` with the CLI's existing `GET /api/chat/:runId/poll`
+(`cli/core/worker-run.ts:69-79`, behind `drwn worker chat`). That route returns the
+turn-level transcript (`TranscriptEventSchema`, `deploy-contracts.ts:245-265`) — thought and
+output text only, with no tool `args`/`result` and no `reasoning.delta`. Its auth, cursor,
+and status helpers are reusable; its payload is not sufficient for ACP.
 
 ## 6. Server Changes Required In `darwinian-services`
 
@@ -344,6 +352,33 @@ because the runtime is remote.
 - **End-to-end**: real relay, real `buzz-acp`, real deployed Worker. Per the repo's testing
   rules this uses real APIs and skips on absent credentials rather than mocking.
 
+### 11.1 Test intent by acceptance criterion (GATE 1)
+
+| Acceptance criterion (I105 row) | Evidence that proves it |
+| --- | --- |
+| Zed launches `drwn acp` and completes a multi-turn session that survives an adapter restart | Lifecycle suite: the in-process command harness (`Cli.run` + `CaptureStream` + `globalThis.fetch` stub, pattern at `test/commands-worker-chat.test.ts:49-102`) drives `initialize → session/new → session/prompt ×2`, then tears the command down and re-enters via `session/load` with the same `runId`, asserting context survives. |
+| A Buzz mention produces a streamed answer from the deployed Worker in the correct channel | Credential-gated E2E (`test/e2e-acp-buzz.test.ts`, `skipIf` pattern per `test/e2e-mind-journey.test.ts:13-14`): real relay, real `buzz-acp`, real deployed Worker; asserts the reply lands in the configured channel. Never mocked. |
+| A permanent Buzz-profile compatibility suite passes against a fake client reproducing Buzz's real handshake | `test/core-acp-buzz-profile.test.ts`: fake Buzz client replaying the recorded handshake — `protocolVersion: 2`, goose `_meta`, no `fs`/`terminal` capability, auto-`allow_once`, `session/cancel`. Permanent suite because this interface is ahead of stable ACP. |
+| Buzz integration does not ship before [I106] lands | Phase gate plus a skipped suite: Phase 4's cancellation tests exist from day one but `skipIf` until `POST /api/chat/:runId/cancel` is live; the Buzz profile stays disabled until that suite runs unskipped. |
+
+### 11.2 Layer ownership and definition of green
+
+- **Protocol bytes** (`test/core-acp-connection.test.ts`): NDJSON framing, one object per
+  line, numeric and string ids, `-32601` for unknown methods, unknown `_meta` tolerated. A
+  stdout-purity guard asserts no non-frame bytes ever reach stdout — nothing else enforces
+  the CLI's currently-clean stdout, so this test is the enforcement.
+- **Projection** (`test/core-acp-project-events.test.ts`): table-driven `StreamEntry` →
+  `session/update` over every `stream-events.ts` variant plus out-of-order `seq`, gaps, and
+  unknown event types.
+- **Command layer** (`test/commands-acp-serve.test.ts`): in-process harness with per-fixture
+  `AGENTS_DIR` via `envFor` (`test/helpers.ts:174-180`) so no test touches machine state;
+  subprocess runs via `runAgentsCli` with piped stdin for true stdio framing cases.
+- **E2E** (`test/e2e-acp-*.test.ts`): real APIs, credential-gated skips, zero mocks, per the
+  repo's testing rules.
+
+Green means: `bun run typecheck` 0 errors; `bun run test` 0 fail with skips at or below the
+baseline the task plan's Phase 0 records; Buzz-profile suite green; stdout-purity guard green.
+
 ## 12. Risks And Open Questions
 
 1. **Cancellation is a hard dependency on another repo.** §6.1 is not optional and not
@@ -358,6 +393,9 @@ because the runtime is remote.
    negotiation plus a flag, per upstream guidance.
 5. **Snapshot-vs-delta divergence.** If the projector gains fidelity later, the adapter
    should migrate to it rather than maintain a parallel raw path.
-6. **`drwn worker chat` is currently broken against the modern stack** — it POSTs
-   `/api/minds/:slug/chat` and prints the body, which is `{runId}`, not a reply
-   (`cli/commands/worker/chat.ts:46`). Unrelated to this work; flagged for separate repair.
+6. **`drwn worker chat` polls the transcript route, not the stream.** Since I65/I100 the
+   command waits for the reply via `GET /api/chat/:runId/poll` (`cli/core/worker-run.ts:69-79`).
+   Its auth, cursor, and status helpers are the adapter's reuse surface (§9), but its endpoint
+   is the lossy transcript projection, not the raw stream (§5), and its fixed 1.5s cadence
+   and three-failure give-up are tuned for a one-shot chat — neither transfers to a
+   long-lived session unchanged.

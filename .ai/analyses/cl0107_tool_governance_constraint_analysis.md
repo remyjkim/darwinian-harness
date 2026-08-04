@@ -8,6 +8,7 @@
 **Status:** correction plus interface request. Amends
 [`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md) §7.
 **Severity:** correctness of a security claim, not an outage.
+**Re-verified:** 2026-08-04 against `darwinian-services` `main` @ `ec7f9ff2`; behaviors hold, line anchors refreshed.
 
 ## 1. Summary
 
@@ -68,15 +69,14 @@ remote execution, which is the architecture chosen in `129`.
 `toolPolicy` looks like the answer. It is accepted on the chat start body and reaches the run:
 
 ```text
-engine/src/worker.ts:373   readChatStart() → { …, toolPolicy }
-engine/src/worker.ts:431   buildChatInput(deployment, toolPolicy ?? undefined)
-engine/src/chat-input.ts:71  runtimeConfig.routineToolPolicy = …
-engine/src/coordinator.ts:430  readRoutineToolPolicy(runtimeConfig)
-engine/src/coordinator.ts:455  → serialized into run config
-engine/src/coordinator.ts:467  → pipedreamEnv(…, routineToolPolicy?.pipedream, …)
+engine/src/worker.ts:188-191      readChatStart() → { …, toolPolicy } → buildChatInput(…)
+engine/src/chat-input.ts:71       runtimeConfig.routineToolPolicy = …
+engine/src/coordinator.ts:64-90   readRoutineToolPolicy(runtimeConfig)
+engine/src/coordinator.ts:473     → serialized carried into the runtime config
+engine/src/coordinator.ts:480-486 → pipedreamEnv(…, routineToolPolicy?.pipedream, …)
 ```
 
-But `readRoutineToolPolicy` (`coordinator.ts:63-89`) recognizes exactly one schema:
+But `readRoutineToolPolicy` (`coordinator.ts:64-90`) recognizes exactly one schema:
 
 ```ts
 if (policy.version !== 1 || !Array.isArray(policy.allowedApps) ||
@@ -85,7 +85,7 @@ if (policy.version !== 1 || !Array.isArray(policy.allowedApps) ||
 ```
 
 Anything that does not match falls through to `{ serialized: … }` — recorded in run config,
-never enforced. And the one recognized shape is consumed at a single site, `:467`, feeding
+never enforced. And the one recognized shape is consumed at a single site, `:480-486`, feeding
 Pipedream app/account routing. It is a Pipedream credential-scoping mechanism that happens to
 be named generically.
 
@@ -102,10 +102,10 @@ Stated accurately, so it can be relied on:
 1. **The Card's MCP server set.** The container connects the Card's own MCP servers at boot
    and wraps each discovered tool for the model (`images/mind-runtime/runtime/mcp-connect.js`;
    specs read from `~/.agents/drwn/extracted/*/mcp-servers/*.json` in
-   `runtime/server.js:48-62`). The agent cannot call a tool that was never connected. This is
+   `runtime/server.js:48-66`). The agent cannot call a tool that was never connected. This is
    a real allowlist, at server granularity rather than tool granularity.
 2. **Per-Mind secret scoping.** MCP tokens are decrypted per run and injected only into
-   run-scoped process env (`engine/src/mind-restore.ts:32-41`, `engine/src/coordinator.ts:459`).
+   run-scoped process env (`engine/src/mind-restore.ts:32-45`, `engine/src/coordinator.ts:477`).
    A tool without credentials generally cannot do damage.
 3. **The container sandbox.** Whatever the Cloudflare container boundary enforces.
 4. **Pipedream routing**, where `toolPolicy` genuinely applies.
