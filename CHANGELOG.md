@@ -5,6 +5,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Project writes with the `opencode` target project the composed skill set
+  into a dedicated `.agents/drwn/opencode-skills/` directory and declare it
+  project-relative in the managed `opencode.json` `skills.paths` entry, so
+  the project's customized skills win OpenCode's cross-scope skill dedup over
+  same-named machine-store copies. `--skills-only` maintains the directory and
+  declaration; `--mcp-only` leaves them untouched. When `opencode.jsonc`
+  exists the declaration is withheld with a warning.
+- `drwn doctor` and `drwn status` report `OPENCODE_SKILL_SHADOWED` when a
+  projected skill name also exists in `~/.agents/skills/` or
+  `~/.claude/skills/` — warning severity while the managed `skills.paths`
+  declaration is absent, advisory once it is current. Doctor exit codes are
+  unchanged.
+
 ## [0.10.1] - 2026-07-29
 
 ### Fixed
