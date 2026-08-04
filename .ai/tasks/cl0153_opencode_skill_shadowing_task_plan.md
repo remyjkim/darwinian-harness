@@ -20,8 +20,8 @@ OpenCode 1.18.4 resolves same-named skills to drwn's **machine-store** copies (`
 
 1. **D2a is dead**: a project `.opencode/skills/` writer cannot fix this — built-in-scanned project paths lose the dedup (probe B; re-confirmed post-I177).
 2. **Config wins, but only for novel paths**: `opencode.json` `skills.paths` (official schema key, fetched 2026-08-04) makes a **novel** directory the resolved winner (probe C: sentinel won); re-declaring an already-built-in-scanned dir like `.claude/skills` changes nothing (probe D).
-3. **drwn already owns managed `opencode.json` merging** — the MCP `mcp`-key merge (`cli/core/mcp.ts:528` region) is the pattern to extend; `test/core-opencode-merge.test.ts` is the existing suite.
-4. **Machine scope is I177 Blueprint V2**: the shadowing source (`~/.agents/skills/`) is closure-derived with `drwn machine skill enable|disable`. This plan does NOT change machine projection (I177's contract is fresh); it makes the project side win deterministically instead.
+3. **drwn already owns managed `opencode.json` merging** — the opencode merge `mergeOpencodeConfigText` (`cli/core/mcp.ts:637`) is the pattern to extend; `test/core-opencode-merge.test.ts` is the existing suite.
+4. **Machine scope is I177 Blueprint V2**: the shadowing source (`~/.agents/skills/`) is closure-derived; the legacy per-skill `drwn machine skill enable|disable` commands are retired always-throw stubs (`cli/commands/machine/skill.ts:413-440`, cl0177 §3) — per-skill machine toggling is not a lever. This plan does NOT change machine projection (I177's contract is fresh); it makes the project side win deterministically instead.
 5. **No drwn surface detects cross-scope shadowing today** (grep-verified over `cli/core/diagnostics.ts`, `cli/core/ambient-capabilities.ts`) — the fix ships with its regression detector.
 
 ## Design

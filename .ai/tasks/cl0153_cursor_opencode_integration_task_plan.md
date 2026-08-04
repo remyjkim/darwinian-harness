@@ -1,5 +1,5 @@
 # ABOUTME: G2 task plan for I153 sub-PR 1 — unify delivery of the v0.4 workflow contract across all four harnesses by making the card's instructions surface (→ AGENTS.md) the primary channel, and reconciling the org-conventions hook to its correct role as optional compaction-survival reinforcement.
-# ABOUTME: This is the first of three sub-PRs under the I153 umbrella G1 (cl0153_cursor_opencode_integration_target_architecture.md). Sibling sub-PRs: #2 (OpenCode machine-default skill shadowing, Gap 1) and #3 (live qualification Q1–Q6, Gap 2) draft after G1 pass.
+# ABOUTME: This is the first of three sub-PRs under the I153 umbrella G1 v4 (cl0153_cursor_opencode_integration_target_architecture.md). Sibling sub-PRs: #2 (OpenCode machine-default skill shadowing, Gap 1) and #3 (live qualification Q1–Q9, Gap 2).
 
 # I153 · Sub-PR 1 — Unify v0.4 contract delivery: instructions as primary, hook as reinforcement · G2 Plan
 
@@ -71,7 +71,7 @@ This is the one genuine fork in I153, and it should be made explicitly (not left
 
 **Option R (remove the hook):** delete `org-conventions` entirely; rely on AGENTS.md for all four runtimes. Rationale: simpler card, single channel, no drift risk, no harness-protocol complexity. Cost: loses compaction-survival for claude/codex (mitigated if those harnesses preserve AGENTS.md reliably, which is increasingly true).
 
-**Decision: Option K is the default per the G1 v3 (2026-08-01)** — the G1 classifies the hook reconciliation as housekeeping, not a design fork, so there is no blocking sign-off gate. The compaction-survival benefit is real for claude/codex (the runtimes that drive most CL work) and the cost (keep one policy file, derive its string from the canonical source) is low. Record the choice in the PR description for visibility; Option R remains available if K's cost surprises during execution. The plan below is written for **Option K**; the Option-R delta is noted inline.
+**Decision: Option K is the default per the G1 (v3 decision, carried in v4)** — the G1 classifies the hook reconciliation as housekeeping, not a design fork, so there is no blocking sign-off gate. The compaction-survival benefit is real for claude/codex (the runtimes that drive most CL work) and the cost (keep one policy file, derive its string from the canonical source) is low. Record the choice in the PR description for visibility; Option R remains available if K's cost surprises during execution. The plan below is written for **Option K**; the Option-R delta is noted inline.
 
 ## How we fix it
 
@@ -97,7 +97,7 @@ The only CLI-repo work is **documentation + tests**:
 
 ### Fix 4 — card version bump + tests (card repo)
 
-- Bump `card.json` `1.1.0` → `1.2.0`.
+- Bump `card.json` to the next free version (the in-flight 1.2.0 must be reconciled first — see the reality-check note).
 - Update/add tests:
   - `test/functional/hook-execution.test.mjs` — the existing cursor/opencode tests assert "doesn't deny / empty output." Keep them (the hook still runs clean for claude/codex under Option K). **Remove or reword any test claiming the hook *delivers* context to cursor/opencode** (it never did; experiment 04 proved this).
   - Add an **AGENTS.md content assertion** (LLM-free): after `installCard` (which already runs `trust --instructions` + `write`), the fixture project's `AGENTS.md` contains `clNNNN`, `Owner Status`, `G1 → G2 → G3`. This is the new headline test proving unified delivery.
@@ -121,13 +121,13 @@ The only CLI-repo work is **documentation + tests**:
 ### Phase 0 — Prereqs + issue identity (read-only)
 - [x] Notion issue row exists (I153, ID read); artifacts carry `cl0153_` — done 2026-07-31.
 - [ ] Baseline: `cd ~/dev/darwinian-cards/cards/workflow-skills && npm test` (expect 96/96) and `cd ~/dev/darwinian-minds && bun test` — capture green counts.
-- [ ] **Confirm Option K stands** (the G1 v3 default — no sign-off gate; note it in the PR, switch to R only if K's cost surprises).
+- [ ] **Confirm Option K stands** (the G1 default — no sign-off gate; note it in the PR, switch to R only if K's cost surprises).
 
 ### Phase 1 — Canonicalize + reconcile the card (Option K path)
 - [ ] Review `instructions.md` vs `hooks/org-conventions/policy.ts` contract blocks; confirm instructions.md is complete/correct.
 - [ ] Rewrite the hook's `additionalContext` to a short pointer (per Fix 2), eliminating the duplicate contract.
 - [ ] Rewrite the hook header comment to reflect the new layering.
-- [ ] Bump `card.json` → `1.2.0`.
+- [ ] Bump `card.json` to the next free version (post-reconciliation; reality-check note).
 - [ ] **Acceptance:** one canonical contract source (instructions.md); hook no longer carries a duplicate; header accurate.
 
 ### Phase 2 — Tests (TDD)
@@ -176,7 +176,7 @@ cd <project> && grep -c "clNNNN\|Owner Status\|G1 → G2 → G3" AGENTS.md
 - **Branch** off `main`, named per the issue: `<author>/<NNN>-unify-v04-contract-delivery`.
 - **Primarily a card-repo PR** (`darwinian-cards/cards/workflow-skills`); the CLI-repo change is docs-only (analysis 122) and can be a separate small PR or folded in. Card PR is the load-bearing one.
 - **Commit style:** conventional-with-issue per repo convention (e.g. `refactor(card): make instructions.md the canonical v0.4 contract source (I153)`).
-- **PR description** includes Testing & CI evidence (GATE 3) and records the **Option-K default (G1 v3)** with R as the noted alternative.
+- **PR description** includes Testing & CI evidence (GATE 3) and records the **Option-K default (G1)** with R as the noted alternative.
 
 ## Risks
 
@@ -198,6 +198,6 @@ cd <project> && grep -c "clNNNN\|Owner Status\|G1 → G2 → G3" AGENTS.md
 
 - **Read experiment 04 + this §"Why v2" first** — they explain why the obvious "patch the hook" approach was wrong. Do not fall back to the v1 post-tool patch.
 - **This is mostly a card-repo change, not a CLI change.** The CLI's projection machinery already does the right thing; I153 is about the card's surface structure and documentation.
-- **Option K is the G1 v3 default** — no sign-off gate; record it in the PR and implement Fix 2. R is a strict subset (delete the hook, skip Fix 2) if K's cost surprises.
+- **Option K is the G1 default (v3, carried in v4)** — no sign-off gate; record it in the PR and implement Fix 2. R is a strict subset (delete the hook, skip Fix 2) if K's cost surprises.
 - **AGENTS.md already works** — don't re-test the projection mechanism from scratch; the LLM-free content assertion is sufficient proof of delivery.
 - **Issue identity is mandatory** (v0.4 contract): create the Notion row, read the ID, rename before PR.
