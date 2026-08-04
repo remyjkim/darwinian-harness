@@ -229,12 +229,13 @@ filing separately; it is not a blocker.
    assume Buzz is fixed and design around it?
 3. Should the adapter support any Buzz action beyond replying in v1? If yes, A's split-agency
    objection grows and the balance shifts toward B.
-4. **Partially answered.** No scoped credential exists or is planned — "the keypair IS the
-   identity — no tokens, no other auth" (`buzz-cli/src/lib.rs:1936-1942`). The remaining
-   open form: does a *second keypair*, minted purely as a posting identity and added to the
-   target channel, satisfy relay-side membership requirements? Verification pending; if yes,
-   B's blast radius shrinks to that identity's channel memberships, rotatable independently
-   of the agent.
+4. **Answered 2026-08-04.** No scoped credential exists — "the keypair IS the identity"
+   (`buzz-cli/src/lib.rs:1936-1942`) — but a second standalone posting keypair is fully
+   supported relay-side: open channels need only a valid NIP-42 signature + `#h` tag on a
+   default relay; private channels need one persistent `add-member` grant from any existing
+   member. Full trace:
+   [`cl0105_posting_identity_relay_membership_analysis`](./cl0105_posting_identity_relay_membership_analysis.md).
+   See §7.6 for the trade-off this creates.
 
 ## 7. Deep Comparison A vs B (2026-08-04 evidence pass)
 
@@ -334,12 +335,23 @@ surface is capped at whatever the adapter reimplements. B-lean inverts this: rou
 agency are native and the machinery already exists end to end, at the price of a second key
 copy in the cloud and a delivery step that is model-initiated (rider-mitigated).
 
-### 7.6 Open evidence item
+### 7.6 Key custody under B-lean: two supported profiles
 
-Whether a dedicated posting identity (second keypair) satisfies relay-side membership
-requirements (§6.4). It does not gate the decision — B-lean is viable with the agent's own
-nsec, the custody Buzz's k8s backend already practices — but a yes would shrink B's blast
-radius materially and should be folded into the deployment guide either way.
+Closed 2026-08-04
+([`cl0105_posting_identity_relay_membership_analysis`](./cl0105_posting_identity_relay_membership_analysis.md)).
+A dedicated posting keypair works relay-side, so the deployment guide offers two profiles:
+
+- **Same-key (default):** the container's secret is the agent's own nsec. No attribution
+  split — mentions, reactions, presence, and replies are all one member. Custody cost is the
+  full workspace identity in cloud secrets, exactly what Buzz's k8s backend already ships.
+- **Split-key (hardened):** the container holds a dedicated posting keypair — a distinct
+  channel member with its own kind:0 profile, one persistent `add-member` grant for private
+  channels, rotatable without touching the agent. Cost is a *visible attribution split*:
+  buzz-acp signs presence/reactions/metrics under the agent key, so users mention one member
+  and a different member answers. Structurally sound; a UX choice operators must make
+  knowingly.
+
+Neither profile gates the decision; both are documented in Phase 5's secrets runbook.
 
 ### 7.7 Refined recommendation
 

@@ -212,8 +212,11 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   `images/mind-runtime/Dockerfile.cloud` (darwinian-services PR), the buzz-tools Card MCP
   wrapper (stdio exec of the CLI, idempotency key `runId + turn index`), and a secrets
   runbook for `PUT /api/minds/:slug/secrets/:server` with `kind:"env"`.
-- `com.block.buzz` `_meta` proposal drafted upstream; the dedicated posting identity folds
-  into the deployment guide when its relay-side verification lands (non-gating).
+- `com.block.buzz` `_meta` proposal drafted upstream. The secrets runbook documents both
+  key-custody profiles (decision analysis §7.6): same-key default (no attribution split,
+  Buzz's own k8s custody model) and split-key hardened (dedicated rotatable posting
+  identity; one `add-member` grant for private channels + a kind:0 profile; visible
+  attribution split stated plainly).
 - Increment 8–9, `e2e-acp-buzz`. Exit: architecture acceptance criterion 1 — a Buzz mention
   produces the Worker's streamed answer in the right channel.
 
