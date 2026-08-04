@@ -4,9 +4,11 @@
 # Card Tool Governance Has No Enforcement Path In Deployed Workers
 
 **Audience:** both `drwn` CLI and `darwinian-services`.
+**Issue:** **[I107]** (`[I107, DS+DW] Card tool governance is declared but never enforced in the deployed runtime`, CL Issue Tracker v0.4).
 **Status:** correction plus interface request. Amends
-[`129`](./129_feature_acp_buzz_worker_integration_target_architecture.md) §7.
+[`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md) §7.
 **Severity:** correctness of a security claim, not an outage.
+**Re-verified:** 2026-08-04 against `darwinian-services` `main` @ `ec7f9ff2`; behaviors hold, line anchors refreshed.
 
 ## 1. Summary
 
@@ -52,7 +54,7 @@ runtime seam at all.
 
 **This is wrong for the remote-fronting architecture**, for a reason that has nothing to do
 with the elegance of the mapping: the tools are not on the same machine as the policy engine.
-An ACP client can only answer a permission request that an ACP *agent* raises. In `129` the
+An ACP client can only answer a permission request that an ACP *agent* raises. In `cl0105` the
 agent is a thin local adapter; the actual tool execution happens server-side, inside a
 container, driven by a Coordinator DO. Nothing in that path calls back out over ACP, and
 building such a callback would mean routing every remote tool invocation through a local
@@ -60,22 +62,21 @@ stdio process — unacceptable for latency, and it would make the run's liveness
 laptop staying awake.
 
 The mapping remains valid for a *locally executed* agent. It does not survive the move to
-remote execution, which is the architecture chosen in `129`.
+remote execution, which is the architecture chosen in `cl0105`.
 
 ## 3. Why The Declarative Fallback Also Fails Today
 
 `toolPolicy` looks like the answer. It is accepted on the chat start body and reaches the run:
 
 ```text
-engine/src/worker.ts:373   readChatStart() → { …, toolPolicy }
-engine/src/worker.ts:431   buildChatInput(deployment, toolPolicy ?? undefined)
-engine/src/chat-input.ts:71  runtimeConfig.routineToolPolicy = …
-engine/src/coordinator.ts:430  readRoutineToolPolicy(runtimeConfig)
-engine/src/coordinator.ts:455  → serialized into run config
-engine/src/coordinator.ts:467  → pipedreamEnv(…, routineToolPolicy?.pipedream, …)
+engine/src/worker.ts:188-191      readChatStart() → { …, toolPolicy } → buildChatInput(…)
+engine/src/chat-input.ts:71       runtimeConfig.routineToolPolicy = …
+engine/src/coordinator.ts:64-90   readRoutineToolPolicy(runtimeConfig)
+engine/src/coordinator.ts:473     → serialized carried into the runtime config
+engine/src/coordinator.ts:480-486 → pipedreamEnv(…, routineToolPolicy?.pipedream, …)
 ```
 
-But `readRoutineToolPolicy` (`coordinator.ts:63-89`) recognizes exactly one schema:
+But `readRoutineToolPolicy` (`coordinator.ts:64-90`) recognizes exactly one schema:
 
 ```ts
 if (policy.version !== 1 || !Array.isArray(policy.allowedApps) ||
@@ -84,7 +85,7 @@ if (policy.version !== 1 || !Array.isArray(policy.allowedApps) ||
 ```
 
 Anything that does not match falls through to `{ serialized: … }` — recorded in run config,
-never enforced. And the one recognized shape is consumed at a single site, `:467`, feeding
+never enforced. And the one recognized shape is consumed at a single site, `:480-486`, feeding
 Pipedream app/account routing. It is a Pipedream credential-scoping mechanism that happens to
 be named generically.
 
@@ -101,10 +102,11 @@ Stated accurately, so it can be relied on:
 1. **The Card's MCP server set.** The container connects the Card's own MCP servers at boot
    and wraps each discovered tool for the model (`images/mind-runtime/runtime/mcp-connect.js`;
    specs read from `~/.agents/drwn/extracted/*/mcp-servers/*.json` in
-   `runtime/server.js:48-62`). The agent cannot call a tool that was never connected. This is
+   `runtime/server.js:48-66`). The agent cannot call a tool that was never connected. This is
    a real allowlist, at server granularity rather than tool granularity.
-2. **Per-Mind secret scoping.** MCP tokens are decrypted per run and injected only into
-   run-scoped process env (`engine/src/mind-restore.ts:32-41`, `engine/src/coordinator.ts:459`).
+2. **Per-Worker secret scoping** (stored on `secrets.mind_id`, the deployed Worker's 1:1
+   control-plane identity). MCP tokens are decrypted per run and injected only into
+   run-scoped process env (`engine/src/mind-restore.ts:32-45`, `engine/src/coordinator.ts:477`).
    A tool without credentials generally cannot do damage.
 3. **The container sandbox.** Whatever the Cloudflare container boundary enforces.
 4. **Pipedream routing**, where `toolPolicy` genuinely applies.
@@ -169,7 +171,7 @@ and the governance claim becomes true. Until then it should not be made.
 
 ## 7. Sequencing Note
 
-This does not block the ACP adapter. `129` Phases 1-3 ship without it; the adapter simply
+This does not block the ACP adapter. `cl0105` Phases 1-3 ship without it; the adapter simply
 makes no governance claim. It should land before any marketing or documentation describes
 Darwinian Workers as policy-governed in deployment, and before public marketplace invocation
 (`deploy-api/src/public-chat.ts`) is promoted, since that path runs someone else's Card

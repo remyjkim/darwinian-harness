@@ -4,7 +4,8 @@
 # Run Cancellation: Interface Request To `darwinian-services`
 
 **Audience:** `darwinian-services` (studio-deployment), with context for `drwn` CLI.
-**Status:** blocking dependency for [`129`](./129_feature_acp_buzz_worker_integration_target_architecture.md).
+**Issue:** **[I106]** (`[I106, DS] HTTP-reachable cancellation for in-flight runs`, CL Issue Tracker v0.4). Raised by **[I105]**.
+**Status:** blocking dependency for [`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md).
 **Ask:** one new public endpoint plus an abort path into the container.
 
 ## 1. Summary
@@ -13,9 +14,10 @@ There is no way for an API caller to stop an in-flight run. Closing the SSE conn
 the *bridge*; the run continues executing in the Cloudflare Workflow until it finishes on its
 own. This is invisible to the caller, and it costs money.
 
-This blocks the ACP adapter described in `129`, because the Agent Client Protocol requires
+This blocks the ACP adapter described in `cl0105`, because the Agent Client Protocol requires
 cancellation to be honored, and because Buzz — the first target client — sends cancellation
-on both idle and hard turn timeouts. Without a server-side cancel, the adapter has only two
+on its idle timeout and kills the agent process outright at its hard turn cap. In both cases
+the server-side run keeps executing. Without a server-side cancel, the adapter has only two
 options, and both are unacceptable:
 
 1. Resolve the prompt as `cancelled` while the run keeps burning tokens. The protocol says
@@ -32,18 +34,23 @@ cancel/abort/stop/terminate returns nothing in source. The only matches are
 `/api/desktop/stop` inside `.wrangler/dry-*/worker.js` build artifacts — a bundled third-party
 dependency, not a route in this codebase.
 
+Re-swept 2026-08-04 against `main` @ `ec7f9ff2`, including api-entry and coordination: still
+zero matches, and no cancellation work has landed since. The only post-cutoff commit matching
+"interrupt" (`8767a6c1`) is I50 invocation-dispatch reconciliation, unrelated to run
+cancellation. This request is greenfield.
+
 The Coordinator DO's public surface is `coordinate`, `continueCoordinate`, `getRunStatus`,
 `getTranscript`, `streamSince`, `getRunWorkflow`. There is no cancel method to expose.
 
 ### 2.2 Closing the stream does not stop the run
 
-`req.signal` is threaded into the SSE bridge at `workers/engine/src/worker.ts:303`:
+`req.signal` is threaded into the SSE bridge at `workers/engine/src/worker.ts:305`:
 
 ```ts
 { since, signal: req.signal },
 ```
 
-That aborts the *bridge loop* that polls the DO seq log. The Workflow activation that drives
+That aborts the *bridge loop* that polls the DO seq log (`stream-hub/src/sse.ts:51-54`). The Workflow activation that drives
 the run is independent of any HTTP connection — which is the correct design for a durable
 run, and exactly why a separate cancel channel is needed.
 
@@ -57,7 +64,7 @@ orchestrator step-failure paths. Nothing reachable over HTTP triggers them.
 ### 2.4 Runs are long-lived and interactive by construction
 
 A run is a durable conversation, not a single completion. `continueCoordinate`
-(`coordination/src/coordinator-do.ts:1687-1728`) keeps a run alive across turns:
+(`coordination/src/coordinator-do.ts:1687-1729`) keeps a run alive across turns:
 
 ```ts
 } else if (run.status === "yielded" || run.status === "running") {
@@ -80,13 +87,15 @@ notification, and the in-flight `session/prompt` MUST then resolve with
 `stopReason: "cancelled"`. An agent that ignores it is non-conforming, and clients will
 report it as a hang.
 
-**The client is a machine on a timer, not a human.** Buzz enforces both an idle timeout and a
-hard maximum turn duration, and cancels on either. In a busy channel this fires routinely,
-not exceptionally.
+**The client is a machine on a timer, not a human.** Buzz's idle timeout (default 900 s)
+sends `session/cancel` and waits for `stopReason: "cancelled"`; its hard 7200 s cap goes
+further and kills the subprocess with no cancel at all (`pool.rs:2182-2184`, `:2263-2288`,
+verified @ `0afeac8a7`). In a busy channel the idle cancel fires routinely, not
+exceptionally — and neither path stops the server-side run.
 
 **Nobody is watching.** A Buzz agent answers mentions unattended. An orphaned run has no
 human to notice it, and the operator is billed under their own DAH identity — there is no
-agent principal (`deploy-api/src/worker.ts:261-272`). Orphaned runs accumulate silently
+agent principal (`deploy-api/src/worker.ts:326-383`). Orphaned runs accumulate silently
 against a real person's account.
 
 ## 4. Proposed Contract
@@ -141,25 +150,25 @@ but not yet stopped, rather than reporting `cancelled`.
 | Buzz idle timeout | clean stop | orphaned run per timeout |
 | Conformance | conforming | non-conforming |
 
-Until this lands, `129` sequences Buzz integration behind it (Phase 4). The ACP adapter can be
+Until this lands, `cl0105` sequences Buzz integration behind it (Phase 4). The ACP adapter can be
 built and demoed against editors without cancellation, but it should not be pointed at Buzz.
 
 ## 6. Related, Not Blocking
 
-Two adjacent requests from `129`, filed here so the surface is reviewed together. Neither
+Two adjacent requests from `cl0105`, filed here so the surface is reviewed together. Neither
 blocks Phase 1-3.
 
 **Raw event stream over SSE.** The public SSE route emits cumulative `thread.snapshot` frames
 that drop tool `args`/`result` and flatten `reasoning.delta` to a boolean
-(`deploy-contracts.ts:299-304`, `chat-projector.ts:161-177`). ACP needs incremental chunks
+(`deploy-contracts.ts:299-304`, `chat-projector.ts:139-179`). ACP needs incremental chunks
 with tool inputs and thought text. The adapter will poll
-`GET /api/minds/:slug/chat/:runId/stream-poll` (`chat-proxy.ts:287`) for raw `StreamEntry`
+`GET /api/minds/:slug/chat/:runId/stream-poll` (`chat-proxy.ts:411`) for raw `StreamEntry`
 instead. Exposing the existing internal `/coordinate-stream/sse`
-(`engine/src/worker.ts:280-313`) unprojected would remove the polling cost — exposure work,
+(`engine/src/worker.ts:287-314`) unprojected would remove the polling cost — exposure work,
 not new plumbing.
 
 **General tool policy.** See
-[`131`](./131_feature_acp_tool_governance_constraint_analysis.md).
+[`cl0107`](./cl0107_tool_governance_constraint_analysis.md) — filed as **[I107]**.
 
 ## 7. Open Questions For Services
 

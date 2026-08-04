@@ -1,3 +1,13 @@
+# ABOUTME: External research survey of the agent-protocol landscape (ACP, A2A, MCP, AG-UI, ANP), June 2026 cutoff.
+# ABOUTME: Reference only — the correction table in cl0105_acp_buzz_worker_integration_target_architecture.md §2 takes precedence on every ACP claim.
+
+> **Reference material — not verified doctrine.** This survey came from an external research
+> pass with a June 2026 cutoff and unresolvable citation tokens (`citeturn…`). Three of its
+> load-bearing ACP claims were re-verified wrong on 2026-07-24 — the required-agent-method
+> list, Buzz v1 compatibility, and the SDK package — and are corrected in
+> [`cl0105_acp_buzz_worker_integration_target_architecture.md`](./cl0105_acp_buzz_worker_integration_target_architecture.md) §2,
+> which wins wherever the two disagree.
+
 # Agent Interoperability Protocols
 
 ## Executive summary
