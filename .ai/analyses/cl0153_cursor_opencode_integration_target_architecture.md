@@ -3,7 +3,7 @@
 
 # I153 — drwn support for Cursor & OpenCode · Target Architecture (G1)
 
-**Status**: Draft for G1 review — v3, 2026-08-01. v2 rewrote the doc after discovering doc 126 already approved+shipped the instructions/AGENTS.md architecture; v3 folds in the evidence pass: drwn-lab experiment 05 **falsified Gap 1's D2a premise** (project `.opencode/skills/` does not win dedup on OpenCode 1.18.4 — D2b promoted), corrected the consent-activation statement to the amended contract (no first-party auto-grant, 072326), reconciled the sub-PR 1 status with the G2 v3, and recorded the latent Cursor post-tool context channel.
+**Status**: Draft for G1 review — v4, 2026-08-04. v2 rewrote the doc after discovering doc 126 already approved+shipped the instructions/AGENTS.md architecture; v3 folded in the evidence pass (experiment 05 falsified Gap 1's D2a premise — D2b promoted; consent statement corrected to the amended contract; sub-PR 1 status reconciled; latent Cursor post-tool channel recorded). **v4** is the full-integration audit after the I175/I176/I177 stack landed: Gap 1's D2b is **redesigned against the I177 machine-scope Worker Blueprint V2** (the pre-I177 "machine-config fix" framing is dead; the experiment-05 re-run of 2026-08-04 confirms the shadowing survives I177) with a doctor shadowing diagnostic added to acceptance; Gap 2 is **widened into a consolidated live-qualification checklist** (AGENTS.md ingestion + non-double-read, skill load, MCP V-C, hook-fire V-F) so one credentialed session clears the verify debt; §7 now separates hard out-of-scope from **exclusions pending owner endorsement** (sub-worker surfaces, agent-uptake smoke); sub-PR 1's rollout phase is superseded by the I175 `drwn up` auto-regrant flow (G2 updated).
 **Issue**: [I153](https://app.notion.com/p/curation-labs/I153-drwn-support-for-cursor-opencode-3aef1fbef8c28017b1dee2019cfc63f6) (ID 153, read from Notion)
 **Repo**: darwinian-minds (the `drwn` CLI) + darwinian-cards/cards/workflow-skills (the proof card)
 **Builds on**: [doc 126](./126_feature_canonical_instructions_architecture_proposal.html) (approved 22 Jul 2026), [doc 125](./125_feature_canonical_instructions_projection_decision_analysis.md), [doc 122](./122_feature_opencode_target_support_target_architecture.md), PR #54
@@ -50,18 +50,31 @@ duplicate=/dev/<project>/.claude/skills/writing-plans/SKILL.md  ← DROPPED (CL-
 **D2a is falsified, D2b promoted** (drwn-lab experiment 05, LLM-free `opencode debug skill` probes with sentinel-tagged copies on the installed 1.18.4):
 
 - **D2a — project-scoped opencode skill surface** (`.opencode/skills/<name>/` writer, premised on doc 121 listing that path first in precedence): **does not fix the bug.** With a sentinel-tagged copy in project `.opencode/skills/`, the resolved winner is still `~/.agents/skills/` — the project sentinel is absent from the final skill set. The doc-121 precedence claim does not hold in practice on 1.18.4.
-- **D2b — resolve the machine-default duplicate-source problem** (remove/relocate/customize-aware the uncustomized home copies; analysis 03): **the primary direction.** The fix belongs in drwn's machine-default materialization hygiene, not in a new project writer.
-- **D2c (new, untested):** drwn already manages the project `opencode.json` (MCP merging) — if OpenCode offers a config-level skill-path precedence override, a managed entry could complement D2b. Whether such config exists is an open question for the sub-PR 2 G2.
+- **D2b — resolve the machine-default duplicate-source problem**: **the primary direction — redesigned 2026-08-04 against the I177 machine-scope Worker Blueprint V2** (cl0177 architecture + completion docs). The v3 framing ("remove/relocate the uncustomized home copies; a machine-config fix") described the pre-I177 world and is dead: `~/.agents/skills/` is now a **closure-derived projection with Card provenance**, per-skill `drwn machine skill enable|disable` commands exist, and the machine closure itself includes workflow-skills — so the shadowing is drwn's machine Worker and drwn's project Worker projecting overlapping closures. The experiment-05 **re-run of 2026-08-04 confirms the shadowing survives I177 unchanged** (winner still `~/.agents/skills/`; both project sentinels absent). The redesigned D2b design space, for the sub-PR 2 G2 to pick from: (i) closure-aware machine projection that yields to a project-scope duplicate of the same Card lineage; (ii) `drwn machine skill disable` for project-duplicated names, manual or automated; (iii) scope-aware dedup guidance to OpenCode itself. Whatever is chosen must also cover `~/.claude/skills/` (experiment 05 shows it participates in the dedup) — both machine-side surfaces, not just `~/.agents/skills/`.
+- **D2c (untested):** drwn already manages the project `opencode.json` (MCP merging) — if OpenCode offers a config-level skill-path precedence override, a managed entry could complement D2b. Whether such config exists is an open question for the sub-PR 2 G2.
 
-The sub-PR 2 G2 designs D2b (with D2c as a possible complement) and re-verifies with the experiment-05 probes, which are cheap and deterministic.
+**Acceptance additions (v4):** a **doctor/ambient shadowing diagnostic** — today no drwn surface detects cross-scope same-name skill shadowing (verified by grep over `diagnostics.ts`/`ambient-capabilities.ts`), so even a perfect fix has zero regression detection; sub-PR 2 ships the check alongside the fix. Re-verification uses the experiment-05 probes, which are cheap, LLM-free, and deterministic.
 
-### Gap 2 — Cursor skill-load is unverified  ← verification gap (not code)
+### Gap 2 — Live qualification debt (cursor primarily; one opencode item)  ← verification gap (not code)
 
-Doc 126's table marks Cursor as "native + `.claude/skills` compat" for Layer 3, but this has never been runtime-verified. drwn projects skills to `.claude/skills/` + `.codex/skills/` (cursor's `skillSurfaces: ["claude","codex"]`), which doc 120 §3.1 says Cursor discovers — plausible, unproven. **No CLI change can substitute for a live Cursor session.** Precision on the verification vehicle: `cursor-agent` exists locally (2026.07.09) with a headless `--print` mode; it is blocked on **operator login**, not on GUI-only tooling. Target state: a documented manual smoke — via a logged-in `cursor-agent` session if it can exercise skills, else the GUI — in a fixture project (confirm the card's 13 skills appear, plus any project-closure extras; confirm one is invocable), recorded as the Cursor acceptance step with `cursor-agent login` named as the operator prerequisite.
+**Widened in v4** from "Cursor skill-load" to the full credentialed verify debt, so a single operator-credentialed session clears everything at once instead of one item per ask. Shipped-but-never-live-observed, consolidated:
+
+| # | Check | Origin | Harness |
+|---|---|---|---|
+| Q1 | Root `AGENTS.md` ingestion — the projected block's Instruction-ID is reported in-session | cl0024 architecture §8 / V-probe set (opencode+claude+codex passed 2026-07-23; cursor never run) | cursor |
+| Q2 | Non-double-read — `.claude/CLAUDE.md` is NOT loaded alongside root `AGENTS.md` (distinct sentinels) | cl0024 V1 | cursor |
+| Q3 | Skill load — the card's 13 skills (plus project-closure extras) appear and one is invocable | doc 120 §3.1, doc 126 Layer 3 table | cursor |
+| Q4 | MCP config accepted — the drwn-written server entry (incl. the `"type"` field) is tolerated; same-ID project/user semantics observed | register V-C (dw-122 V1/V2) | cursor |
+| Q5 | Hook enforcement fires live — a deny/rewrite policy actually gates a tool call in-session (experiment 04 exercised the composer with mock payloads only) | register V-F | cursor |
+| Q6 | Hook enforcement fires live in OpenCode (block/rewrite via the plugin) | register V-F | opencode |
+
+**Operator prerequisites:** `cursor-agent login` (Q1–Q5; headless `--print` mode exists — 2026.07.09 binary — GUI is the fallback if skills aren't probeable headlessly) and the Cloudflare gateway env for the hook-fire checks where session-signal delivery is involved (Q5/Q6, per register V-F). Target state: the checks scripted/documented as sub-PR 3, executed once credentials are available, results recorded in drwn-lab as the acceptance evidence.
 
 ### Gap 3 — Hook-context delivery to cursor/opencode  ← NOT a gap (closed by doc 126)
 
 The experiment-04 "FAIL" for hook `additionalContext` reaching cursor/opencode is **already resolved by decision**, not by code: doc 126 Layer 1 (AGENTS.md) is the primary channel; the hook is deliberately demoted to a claude/codex complement (doc 125 §A3). **No I153 work here** — the earlier sub-PR 1 ("unify v0.4 contract delivery") is **moot**: the v0.4 contract already reaches all four runtimes via AGENTS.md. The only residual hook-related work is *optional*: keep `org-conventions` as a compaction-survival reinforcement for claude/codex (card-repo housekeeping; Option K is the default — see §5).
+
+This closure covers hook *context* only. Hook **enforcement** (deny/rewrite) is shipped for both harnesses but has never fired in a live session — that verification is deliberately NOT closed here; it lives in Gap 2's qualification checklist (Q5/Q6), so Gap 3's "closed by decision" cannot be misread as "hooks fully verified."
 
 One latent capability worth recording so it isn't rediscovered the hard way: **Cursor has a complete but deliberately dormant post-tool context path** in the shipped CLI. drwn's cursor `hooks.json` registers `postToolUse` (`cli/core/hook-generator/sync-hooks.ts:121-122`), and the encoder emits `additional_context` at post-tool (`cli/core/hook-generator/encode-decision.ts:166-168`); the path is dead only because the generated composer discards post-tool decisions (`bundle-composer.ts`, the `afterToolCall` branch). If cursor-specific compaction-survival reinforcement is ever wanted, that is the contained one-line-plus-tests extension — with the caveats that post-tool timing is wrong for gating and that live Cursor uptake of `additional_context` is unverified (login-gated). Not I153 scope; YAGNI applies.
 
@@ -71,17 +84,17 @@ I153 adds nothing new architecturally — it **completes doc 126** by closing th
 
 | Gap | Target state | New concept? |
 |---|---|---|
-| Gap 1 (OpenCode skills) | D2b: machine-defaults fix (D2a falsified by experiment 05; D2c config-precedence lever to be checked in the G2) | No — machine-default hygiene per drwn-lab analysis 03 |
-| Gap 2 (Cursor verify) | Documented manual smoke; CI covers T4/T5 projection | No |
-| Gap 3 (hook context) | None — closed by doc 126 Layer 1 decision | — |
+| Gap 1 (OpenCode skills) | D2b redesigned against I177 Blueprint-V2 machine scope (closure-aware yield / machine skill disable / scope-aware dedup; covers both `~/.agents/skills/` and `~/.claude/skills/`) + a doctor shadowing diagnostic; D2c config-precedence lever checked in the G2 | No — closure/provenance machinery is I177's; the diagnostic follows doc 126's advisory pattern |
+| Gap 2 (live qualification Q1–Q6) | Scripted checklist executed in one credentialed session; results recorded in drwn-lab | No |
+| Gap 3 (hook context) | None — closed by doc 126 Layer 1 decision (enforcement live-fire tracked as Gap 2 Q5/Q6) | — |
 
 ## 5. Implementation split (revised sub-PRs)
 
 | Sub-PR | Gap | Scope | Primary repo | Status |
 |---|---|---|---|---|
 | **1 — Card housekeeping (was "unified delivery")** | Gap 3 residual | Reconcile the `org-conventions` hook with doc 126's demotion: make `instructions.md` the canonical contract source; shorten/dedupe the hook's `additionalContext` (it's now a claude/codex compaction reinforcement, not the primary). Card v1.2.0. | card | G2 v3 exists (2026-07-31), positioned under this G1. **Option K (keep the hook, reconciled) is the default per this G1** — housekeeping, not a design fork; the G2's Option-K/R sign-off gate is dissolved (R stays available if K's cost surprises). |
-| **2 — OpenCode machine-default skill shadowing** | Gap 1 | Implement D2b (machine-defaults fix; analysis 03), evaluating D2c (managed `opencode.json` precedence entry) as a complement. D2a is off the table (experiment 05). | machine-config (+ possibly CLI `opencode.json` writer) | G2 to draft |
-| **3 — Cursor smoke docs** | Gap 2 | Document + execute the manual verification | docs | G2 to draft |
+| **2 — OpenCode machine-default skill shadowing** | Gap 1 | Implement the redesigned D2b against the I177 Blueprint-V2 machine scope (closure-aware yield / `machine skill disable` / scope-aware dedup; both home surfaces), ship the doctor shadowing diagnostic, evaluate D2c as a complement. D2a is off the table (experiment 05; re-confirmed post-I177 2026-08-04). | CLI (machine projection + diagnostics; possibly `opencode.json` writer) | G2 to draft |
+| **3 — Live qualification (Q1–Q6)** | Gap 2 | Script + document the six checks; execute in one credentialed session (`cursor-agent login`, CF gateway env); record evidence in drwn-lab | docs + probe scripts | G2 to draft; execution operator-gated |
 
 Sub-PR 1 is now **low-priority card housekeeping**, not the headline. Sub-PR 2 (the real OpenCode bug) is the substantive work. Sub-PR 3 is documentation.
 
@@ -89,16 +102,23 @@ Sub-PR 1 is now **low-priority card housekeeping**, not the headline. Sub-PR 2 (
 
 - [ ] **G1 passed**: this architecture reviewed (note: much of the design is doc 126's, already approved — G1 review is largely scope confirmation).
 - [ ] **Sub-PR 2 merged**: OpenCode loads the *project's customized* skills, not uncustomized home copies (experiment 04 T7a → green, re-verified with the experiment-05 sentinel probes).
-- [ ] **Sub-PR 3 done**: Cursor manual smoke documented + executed (experiment 04 T6 cursor → green or honestly documented as GUI-dependent).
-- [ ] **Sub-PR 1 (optional) merged**: `org-conventions` hook reconciled with its demoted role; card v1.2.0.
+- [ ] **Sub-PR 2 also ships the shadowing diagnostic**: doctor/ambient reports cross-scope same-name skill shadowing, so the fix has regression detection.
+- [ ] **Sub-PR 3 done**: the Q1–Q6 live-qualification checklist documented, executed in a credentialed session, evidence recorded in drwn-lab (or any blocked item honestly recorded as operator-gated with its named prerequisite).
+- [ ] **Sub-PR 1 (optional) merged**: `org-conventions` hook reconciled with its demoted role; card bumped to the next free version (1.2.0 is already taken by the in-flight I176-era bump — reconcile with that uncommitted state first; see the G2's reality-check note).
+- [ ] **Owner endorsement recorded** for the §7 exclusions (sub-worker surfaces; agent-uptake smoke) — deliberate scope, not inherited default.
 - [ ] drwn-lab card annotation updated: cursor/opencode show the doc-126 Layer-1 reality (AGENTS.md ✅; hook is secondary).
 
-## 7. Out of scope
+## 7. Out of scope and exclusions
+
+**Hard out of scope (settled elsewhere):**
 
 - **Re-deciding the instructions architecture** — doc 126 is approved; I153 builds on it.
-- **doc 126 Phase 2 (sub-worker instructions)** — separate, gated on its own verify items.
-- **OpenCode agent-uptake LLM smoke** — needs a non-`zai-coding-plan` provider; follow-on.
-- **Machine-default skill dedup broadly** — D2b touches opencode; a comprehensive fix is a separate machine-defaults issue.
+- **Machine-default skill dedup beyond OpenCode's shadowing** — sub-PR 2 fixes the OpenCode-facing collision under the I177 machine model; a comprehensive cross-harness machine-defaults policy, if ever needed, is a separate issue.
+
+**Exclusions pending owner endorsement (v4)** — these bound what "full integration" means for I153; each is a deliberate scope decision the G1 reviewer and owner should endorse explicitly rather than inherit:
+
+- **doc 126 Phase 2 (sub-worker surfaces: `.cursor/agents/`, `.opencode/agents/`, `.codex/agents/` TOML)** — not built for any target; gated on its own verify items (register V-A/V-B). Excluding it means I153 delivers *main-context* integration only. Endorsement pending.
+- **Agent-uptake LLM smoke** (does the AGENTS.md content actually shape behavior in cursor/opencode, beyond delivery?) — needs a non-`zai-coding-plan` provider; currently unowned. Excluding it means I153's acceptance bar is deterministic delivery + Q1–Q6 live ingestion, not behavioral uptake. Endorsement pending.
 
 ## 8. References
 
@@ -106,3 +126,27 @@ Sub-PR 1 is now **low-priority card housekeeping**, not the headline. Sub-PR 2 (
 - The projection code (shipped): `cli/core/sync-project-instructions.ts`, `cli/core/sync-instructions.ts`
 - drwn-lab evidence: experiments [05](file:///Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/experiments/05-opencode-skill-precedence/NOTES.md) (D2a falsified; dedup winner = `~/.agents/skills/`; LLM-free reproduction), [04](file:///Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/experiments/04-cursor-opencode-harness-verification/NOTES.md) (the gaps), [03](file:///Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/experiments/03-ai-narratives-worker-adoption/NOTES.md) (AGENTS.md already working), analysis [03](file:///Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/.ai/analyses/03_machine_default_customization_strategy.md) (the skill-shadowing root cause)
 - Harness docs: [120](./120_cursor-configuration-guide.md), [121](./121_opencode-configuration-guide.md); target design [122](./122_feature_opencode_target_support_target_architecture.md)
+- The landed stack this v4 re-audits against: I175 (consent auto-regrant on `drwn up`/`update` — PR #69), I176 (canonical Card repositories — PR #71, [`cl0176 completion`](../tasks/cl0176_completion_card_source_path_reform.md)), I177 (machine-scope Worker Blueprint V2 — PRs #72/#75/#76, [`cl0177 architecture`](./cl0177_machine_scope_blueprint_target_architecture.md), [`cl0177 completion`](../tasks/cl0177_completion_machine_scope_blueprint.md)); upstream merges [PR #59](https://github.com/remyjkim/darwinian-worker/pull/59) (I24) and [PR #60](https://github.com/remyjkim/darwinian-worker/pull/60) (I104), both 2026-08-03
+
+## 9. Execution sequence to completion (v4, 2026-08-04)
+
+Ordered by dependency; owner-tagged. The two decision points and one credential
+hand-off are the only human-blocking items.
+
+| # | Step | Owner | Unblocks |
+|---|---|---|---|
+| 0a | Endorse/reject the §7 exclusions (sub-worker surfaces; agent-uptake smoke) | Issue owner | Final scope — G1 review cannot stall on "what does full integration mean" |
+| 0b | Credentials: `cursor-agent login` + Cloudflare gateway env | Issue owner | Sub-PR 3 execution (Q1–Q6) only |
+| 1 | D2c empirical check | drwn worker | **DONE 2026-08-04** — experiment 05 addendum: config `skills.paths` with a **novel** dir wins the dedup; re-declaring a built-in-scanned dir does not. Sub-PR 2's leading mechanism follows |
+| 2 | GATE 1 packaging: docs branch off `main`, docs PR, row → G1 ready | drwn worker | Everything downstream |
+| 3 | G1 review pass | Reviewer | Sub-PR G2 reviews |
+| 4 | Card-repo reconciliation: commit the in-flight 1.2.0 + version-pin test; publish-from-committed only | Card owner (parallel) | Sub-PR 1's publish step |
+| 5 | Sub-PR 2 G2 review (`cl0153_opencode_skill_shadowing_task_plan.md`) | Reviewer | The substantive fix |
+| 6 | Sub-PR 2 execution: dedicated projected dir + managed `opencode.json` `skills.paths` entry + doctor shadowing diagnostic; acceptance = experiment-05 probes flip green | drwn worker | OpenCode skills actually correct |
+| 7 | Sub-PR 3 G2 + probe scripts (`cl0153_live_qualification_task_plan.md`) — parallel with 5–6 | drwn worker | The credentialed session becomes execute-and-record |
+| 8 | The one credentialed session: run Q1–Q6, record in drwn-lab | drwn worker + owner credentials | Cursor moves from expected to verified |
+| 9 | Sub-PR 1 (optional, last): hook reconciliation, AGENTS.md assertion test, next-free-version publish, `drwn up` rollout | drwn worker | Drift-prone duplicate contract copy closed |
+| 10 | Close-out: §6 done-criteria walk, drwn-lab card annotation, register mirror, row → Merged → knowledge capture | drwn worker | Issue complete |
+
+Completion = §6 checklist fully satisfied. Steps 5–7 may interleave; step 8 can
+jump the queue if credentials arrive early (Q1–Q5 do not depend on step 6).
