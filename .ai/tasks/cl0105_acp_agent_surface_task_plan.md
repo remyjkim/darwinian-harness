@@ -214,6 +214,11 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   `images/mind-runtime/Dockerfile.cloud` (darwinian-services PR), the buzz-tools Card MCP
   wrapper (stdio exec of the CLI, idempotency key `runId + turn index`), and a secrets
   runbook for `PUT /api/minds/:slug/secrets/:server` with `kind:"env"`.
+- New command `drwn worker secret set <slug> <name>` (`--kind env|mcp`) against
+  `PUT /api/minds/:slug/secrets/:server`: the deploy payload carries `kind:"mcp"` secrets
+  only and no CLI surface exists for the PUT route today, so the Buzz secrets runbook has
+  no supported client without it. Small command, `worker-http` reuse, RED→GREEN like the
+  rest.
 - `com.block.buzz` `_meta` proposal drafted upstream. The secrets runbook documents both
   key-custody profiles (decision analysis §7.6): same-key default (no attribution split,
   Buzz's own k8s custody model) and split-key hardened (dedicated rotatable posting
