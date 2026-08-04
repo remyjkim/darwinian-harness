@@ -16,11 +16,17 @@
   Buzz's system prompt from message prose into a `session/new` field we have no server-side
   seam to honor anyway (chat start accepts only `message`). `negotiateProtocolVersion`
   stays a single function so this can flip later without a compatibility layer.
-- **SDK: `@agentclientprotocol/sdk` pinned exact at `1.3.0`.** Zero runtime deps, functional
-  `agent({name}) → handlers → connect(stream)` API; NDJSON stdio rides the
-  `./experimental/node` adapter. Because that export is experimental, Phase 0 includes a
-  spike test that locks its behavior; the fallback if it proves unstable is a hand-rolled
-  NDJSON JSON-RPC loop (the required surface is 4 methods + 2 notifications — small).
+- **SDK: `@agentclientprotocol/sdk` pinned exact at `1.3.0`.** Zero runtime deps; fluent
+  `agent().onRequest(…).onNotification(…).connect(stream)` API. Spike verdict (Phase 0,
+  `test/core-acp-sdk-spike.test.ts`, permanent): NDJSON framing is the **stable**
+  `ndJsonStream(output, input)` export — no experimental dependency at all
+  (`./experimental/node` turned out to be HTTP/WS *server* helpers, irrelevant here);
+  unknown methods are answered `-32601` automatically (the Buzz hang-prevention
+  requirement); malformed lines are silently skipped with the connection surviving, and the
+  SDK's parse logging goes to `console.warn`/`console.error` — stderr, so stdout purity
+  holds; the in-process `client() ↔ agent()` connection is the harness for the fake-Buzz
+  compatibility suite, driven via generic `ctx.request(method, params)`. The hand-rolled
+  framing fallback is retired — not needed.
 - **Lives in the main CLI**, not a sibling package like `drwn-command-bridge`: the adapter's
   substance is Deploy API plumbing (`worker-http`, `worker-run`, mind bindings) that already
   lives in `cli/core/`. A sibling package would have to import or duplicate it.
@@ -174,12 +180,15 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
 
 ## Execution phases
 
-### Phase 0 — Baseline and SDK spike
-- Record typecheck/test baseline on the issue branch (submodule-initialized worktree).
-- Add `@agentclientprotocol/sdk@1.3.0` (exact). Spike test: `agent()` + `connect` over an
-  in-process stream pair via `./experimental/node`; assert handshake bytes. If the adapter
-  cannot round-trip cleanly, decide hand-rolled framing **now** and record the decision here.
-- Exit: baseline numbers written into this plan; spike test green.
+### Phase 0 — Baseline and SDK spike ✅ complete 2026-08-04
+- Baseline recorded (branch `remy/I105-acp-adapter`, submodule-initialized worktree, Bun
+  1.2.21, SDK installed, spike suite included): typecheck 0 errors; **1846 pass / 6 skip /
+  0 fail**, 9,248 assertions across 313 files in 525.59 s.
+- `@agentclientprotocol/sdk@1.3.0` added exact. Spike suite green — four wire tests locking
+  the behaviors in §Decisions (stable `ndJsonStream`, version-1 answer to a Buzz-shaped
+  version-2 initialize, automatic `-32601`, malformed-line survival) plus the in-process
+  `client()` handshake. Framing fallback retired.
+- Exit met.
 
 ### Phase 1 — Handshake (architecture Phase 1)
 - `cli/commands/acp/{acp,serve}.ts`, `cli/core/acp/connection.ts`; register in `cli/index.ts`
