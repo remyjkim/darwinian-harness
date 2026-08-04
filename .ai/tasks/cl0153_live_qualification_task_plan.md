@@ -5,7 +5,7 @@
 
 **Status**: Planning (GATE 2 artifact for sub-PR 3) — v1, 2026-08-04
 **Issue**: [I153](https://app.notion.com/p/curation-labs/I153-drwn-support-for-cursor-opencode-3aef1fbef8c28017b1dee2019cfc63f6)
-**Repo**: darwinian-minds (probe scripts + docs); evidence lands in drwn-lab
+**Repo**: the branch `<author>/153-live-qualification` lives in **darwinian-minds** and carries the docs deltas (docs 120/122 verified-state updates, any pinned fixtures); the probe scripts and NOTES live in **drwn-lab** `experiments/06-live-qualification/` (not a git repo — no PR there) (R3-F12)
 **Branch**: `<author>/153-live-qualification`, off `main`
 **G1**: [`../analyses/cl0153_cursor_opencode_integration_target_architecture.md`](../analyses/cl0153_cursor_opencode_integration_target_architecture.md) §3 Gap 2 (v4.1) — the Q1–Q9 table is the contract
 **Operator prerequisites**: `cursor-agent login` (Q1–Q5) · Cloudflare gateway env (Q5/Q6 hook-fire where session-signal delivery is involved). **Q6–Q9 need no operator credentials** — executable immediately with the local opencode install
@@ -27,7 +27,7 @@ Every check is **shipped-but-never-live-observed** behavior. The scripts make ea
 | Q5 | Cursor hook enforcement fires live | Fixture hooks.json from a deny policy on a marker command; attempt the command in-session | PASS iff the call is denied with the policy reason (register V-F cursor half) |
 | Q6 | OpenCode hook enforcement fires live | Same deny-policy fixture, `opencode run` attempting the marker command | PASS iff blocked via the plugin (`tool.execute.before` throw) (register V-F opencode half) |
 | Q7 | OpenCode MCP same-ID project-wins | Fixture with the drwn-managed project server + a same-ID user-scope entry; `opencode mcp list` + start | PASS iff the project entry wins wholesale (doc 88 V2 opencode half) |
-| Q8 | `opencode.json` vs `.jsonc` precedence | Fixture with both files, distinct sentinels | PASS iff the documented precedence holds (doc 88 V5) |
+| Q8 | `opencode.json` vs `.jsonc` precedence | Fixture with both files, distinct sentinels | PASS iff a **deterministic winner is observed and recorded** — no precedence is documented anywhere (doc 88 V5 is the open question); the recorded answer becomes the documentation (R3-F13) |
 | Q9 | Real-install MCP smoke | `drwn write` in fixture; `opencode mcp list`; server starts | PASS iff the managed server is listed and starts (doc 88 release smoke) |
 
 ## Tasks

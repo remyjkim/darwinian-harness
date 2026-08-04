@@ -20,7 +20,7 @@
 **Issue**: [I153](https://app.notion.com/p/curation-labs/I153-drwn-support-for-cursor-opencode-3aef1fbef8c28017b1dee2019cfc63f6) (ID 153, read from Notion)
 **Repo**: primarily `darwinian-cards/cards/workflow-skills` (the card); minor doc/test work in `darwinian-minds` (the CLI)
 **Branch base**: off `main` (see §Workflow)
-**G1 architecture**: [`../analyses/cl0153_cursor_opencode_integration_target_architecture.md`](../analyses/cl0153_cursor_opencode_integration_target_architecture.md) (this sub-PR is the §3 Gap 3 residual — card housekeeping under the G1 v3)
+**G1 architecture**: [`../analyses/cl0153_cursor_opencode_integration_target_architecture.md`](../analyses/cl0153_cursor_opencode_integration_target_architecture.md) (this sub-PR is the §3 Gap 3 residual — card housekeeping under the G1 v4.1)
 **References**:
 - The card under change: `/Users/pureicis/dev/darwinian-cards/cards/workflow-skills/` (`card.json`, `instructions.md`, `hooks/org-conventions/policy.ts`)
 - drwn-lab evidence: [`…/drwn-lab/experiments/04-cursor-opencode-harness-verification/NOTES.md`](file:///Users/pureicis/dev/ai-narratives/ai-tool-building/drwn-lab/experiments/04-cursor-opencode-harness-verification/NOTES.md) (the hook-inertness finding that motivated this sub-PR — the G1 v3/v4 Gap 3 origin)
@@ -33,7 +33,7 @@
 
 ## Scope of this sub-PR (within the I153 umbrella)
 
-This sub-PR is the **Gap 3 residual** in the G1 v3 numbering: card housekeeping that reconciles the `org-conventions` hook with doc 126's demotion of the hook channel. The v0.4 contract **already reaches all four runtimes via AGENTS.md** (doc 126 Layer 1, live) — this sub-PR documents and tests that as the primary channel and removes the drifted duplicate contract copy; it does not fix a delivery failure. It does **not** touch Gap 1 (OpenCode machine-default skill shadowing — sub-PR 2, D2b per experiment 05) or Gap 2 (Cursor skill-load verification — sub-PR 3). See the G1 §5 for the full split.
+This sub-PR is the **Gap 3 residual** in the G1 v4.1 numbering: card housekeeping that reconciles the `org-conventions` hook with doc 126's demotion of the hook channel. The v0.4 contract **already reaches all four runtimes via AGENTS.md** (doc 126 Layer 1, live) — this sub-PR documents and tests that as the primary channel and removes the drifted duplicate contract copy; it does not fix a delivery failure. It does **not** touch Gap 1 (OpenCode machine-default skill shadowing — sub-PR 2, decided mechanism D2c per experiment 05) or Gap 2 (live qualification Q1–Q9 — sub-PR 3). See the G1 §5 for the full split.
 
 **The design rationale (why instructions/AGENTS.md, not hook hacks or session-start)** is in the G1 architecture §2 (what doc 126 settled) and §3 Gap 3 — read those before executing. The short version: the v0.4 contract is project-wide session-scoped static convention text (the same kind of content as persona/beliefs); drwn already delivers such content via the instructions surface to all four runtimes; the card already carries the contract in `instructions.md`; the hook was a redundant second channel that only worked for claude/codex. Making instructions the primary channel unifies delivery with correct timing and zero new CLI concepts. Post-tool hooks (rejected) and session-start hooks (rejected) are both inferior — see G1.
 
@@ -110,8 +110,8 @@ The only CLI-repo work is **documentation + tests**:
   `drwn card publish --from .` to publish the **next free version** — 1.2.0 is
   already taken by the in-flight uncommitted bump (see the reality-check note);
   reconcile that state first, then publish from committed bytes only.
-- The blueprint `@curation-labs/ai-narratives-worker` member ref is `^1.0.0`, which covers 1.2.0 — **no blueprint republish needed**. In each project, run `drwn update --dry-run`, then `drwn update --write`; for an all-Card refresh use `drwn up --dry-run`, then `drwn up` instead.
-- Verify AGENTS.md still carries the v0.4 block and the lock records 1.2.0. Do not add a second `drwn write` after `update --write` or `up`; those commands already materialize.
+- The blueprint `@curation-labs/ai-narratives-worker` member ref is `^1.0.0`, which covers the next free version — **no blueprint republish needed**. In each project, run `drwn update --dry-run`, then `drwn update --write`; for an all-Card refresh use `drwn up --dry-run`, then `drwn up` instead.
+- Verify AGENTS.md still carries the v0.4 block and the lock records the next free version (post-reconciliation — R3-F09). Do not add a second `drwn write` after `update --write` or `up`; those commands already materialize.
 - I175 automatically refreshes an existing instructions consent when the new version remains inside its consented range. Run `drwn card trust @curation-labs/workflow-skills --instructions` only when consent is missing or the new version is outside that range.
 
 ---
@@ -120,7 +120,7 @@ The only CLI-repo work is **documentation + tests**:
 
 ### Phase 0 — Prereqs + issue identity (read-only)
 - [x] Notion issue row exists (I153, ID read); artifacts carry `cl0153_` — done 2026-07-31.
-- [ ] Baseline: `cd ~/dev/darwinian-cards/cards/workflow-skills && npm test` (expect 96/96) and `cd ~/dev/darwinian-minds && bun test` — capture green counts.
+- [ ] Baseline: `cd ~/dev/darwinian-cards/cards/workflow-skills && npm test` — expect 96/96 **after** the §9 step-4 reconciliation lands; before it, the known red is the version-pin test (95/96, asserts 1.1.0 vs the in-flight 1.2.0 — R3-F11). Plus `cd ~/dev/darwinian-minds && bun test` — capture counts.
 - [ ] **Confirm Option K stands** (the G1 default — no sign-off gate; note it in the PR, switch to R only if K's cost surprises).
 
 ### Phase 1 — Canonicalize + reconcile the card (Option K path)
