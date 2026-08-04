@@ -4,7 +4,7 @@
 import { existsSync, readlinkSync, rmSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expandHomePath, resolveToolPaths } from "./paths";
+import { expandHomePath, OPENCODE_PROJECT_SKILLS_DIR, resolveToolPaths } from "./paths";
 import {
   CLAUDE_HOOK_FIELD_PREFIX,
   CLAUDE_MCP_SERVER_HASH_PREFIX,
@@ -16,6 +16,7 @@ import {
   mergeCodexTomlText,
   mergeCursorConfigText,
   mergeOpencodeConfigText,
+  OPENCODE_SKILLS_PATHS_FIELD,
   ownedMcpServerNames,
   removeOwnedClaudeHookFields,
   renderMcpServerForTarget,
@@ -46,6 +47,7 @@ import {
   hashManagedContent,
   hashManagedDirectory,
   loadWriteRecord,
+  managedFieldsSubset,
   saveWriteRecord,
   type ManagedPath,
 } from "./write-record";
@@ -80,6 +82,22 @@ async function readTextIfExists(pathValue: string, fallback: string) {
 function uniqueManagedPaths(paths: ManagedPath[]) {
   const map = new Map<string, ManagedPath>();
   for (const path of paths) {
+    const current = map.get(path.path);
+    if (
+      current?.kind === "managed-fields" &&
+      path.kind === "managed-fields" &&
+      current.surface === path.surface &&
+      current.target === path.target
+    ) {
+      // One file can carry fields from separate sync steps (opencode.json holds both the
+      // mcp servers and the skills.paths declaration); union them under the shared entry.
+      map.set(path.path, {
+        ...current,
+        fields: [...new Set([...current.fields, ...path.fields])],
+        fieldHashes: { ...current.fieldHashes, ...path.fieldHashes },
+      });
+      continue;
+    }
     map.set(path.path, path);
   }
   return [...map.values()].sort((a, b) => a.path.localeCompare(b.path));
@@ -384,13 +402,57 @@ export function cleanupRemovedManagedPaths(
   force = false,
 ) {
   const preserved: ManagedPath[] = [];
-  for (const entry of previous) {
+  for (let entry of previous) {
     const absolutePath = resolveAbsolute?.(entry) ?? managedPathToAbsolute(scopeRoot, entry.path);
     if (!existsSync(absolutePath) && lstatSafe(absolutePath) === null) {
       continue;
     }
     if (entry.surface === "instructions") {
       continue;
+    }
+    if (
+      entry.kind === "managed-fields" &&
+      entry.path.endsWith("opencode.json") &&
+      entry.fields.includes(OPENCODE_SKILLS_PATHS_FIELD)
+    ) {
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        const stats = lstatSafe(absolutePath);
+        if (!stats?.isFile()) throw new Error("managed config is not a file");
+        parsed = JSON.parse(readFileSync(absolutePath, "utf8")) as Record<string, unknown>;
+      } catch {
+        parsed = null;
+      }
+      if (!parsed) {
+        result.warnings.push(`preserved user-owned path: ${absolutePath}`);
+        preserved.push(managedFieldsSubset(entry, [OPENCODE_SKILLS_PATHS_FIELD]));
+      } else {
+        const skills = (
+          parsed.skills && typeof parsed.skills === "object" && !Array.isArray(parsed.skills)
+            ? parsed.skills
+            : {}
+        ) as Record<string, unknown>;
+        const paths = Array.isArray(skills.paths) ? (skills.paths as unknown[]) : [];
+        const nextPaths = paths.filter((pathValue) => pathValue !== OPENCODE_PROJECT_SKILLS_DIR);
+        if (nextPaths.length !== paths.length) {
+          if (nextPaths.length > 0) {
+            skills.paths = nextPaths;
+          } else {
+            delete skills.paths;
+          }
+          if (Object.keys(skills).length > 0) {
+            parsed.skills = skills;
+          } else {
+            delete parsed.skills;
+          }
+          writeManagedFile(absolutePath, `${JSON.stringify(parsed, null, 2)}\n`, dryRun, result);
+        }
+      }
+      const remainingFields = entry.fields.filter((field) => field !== OPENCODE_SKILLS_PATHS_FIELD);
+      if (remainingFields.length === 0) {
+        continue;
+      }
+      entry = managedFieldsSubset(entry, remainingFields);
     }
     if (entry.surface === "hook" && entry.kind === "managed-fields") {
       try {

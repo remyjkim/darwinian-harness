@@ -61,6 +61,7 @@ const sidebars: SidebarsConfig = {
         'guides/authoring-mind-cards',
         'guides/authoring-hook-policies',
         'guides/managing-minds',
+        'guides/using-opencode',
       ],
     },
     {

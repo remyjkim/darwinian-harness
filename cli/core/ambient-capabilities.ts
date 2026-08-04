@@ -3,9 +3,10 @@
 
 import { existsSync, realpathSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { AmbientMcpDefinition, AmbientDefinitionSource } from "./ambient-policy";
-import { expandHomePath, resolveToolPaths } from "./paths";
+import { expandHomePath, OPENCODE_PROJECT_SKILLS_DIR, resolveToolPaths } from "./paths";
 import type { CanonicalConfig, TargetName } from "./types";
 
 export interface AmbientCapabilityObservation {
@@ -186,4 +187,146 @@ export async function inspectAmbientCapabilities(options: {
   return observations.sort((left, right) =>
     left.target.localeCompare(right.target) || left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id)
   );
+}
+
+export interface OpencodeSkillShadowingIssue {
+  code: "OPENCODE_SKILL_SHADOWED";
+  severity: "warning" | "advisory";
+  skill: string;
+  machinePaths: string[];
+  declared: boolean;
+}
+
+// Rewrites JSONC to plain JSON — strips // and /* */ comments and trailing commas,
+// string-aware — so a user-declared entry in opencode.jsonc can be recognized.
+function jsoncToJson(text: string): string {
+  const skipComment = (position: number): number => {
+    if (text[position] === "/" && text[position + 1] === "/") {
+      let ahead = position;
+      while (ahead < text.length && text[ahead] !== "\n") ahead += 1;
+      return ahead;
+    }
+    if (text[position] === "/" && text[position + 1] === "*") {
+      let ahead = position + 2;
+      while (ahead < text.length && !(text[ahead] === "*" && text[ahead + 1] === "/")) ahead += 1;
+      return Math.min(ahead + 2, text.length);
+    }
+    return position;
+  };
+
+  let out = "";
+  let inString = false;
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index]!;
+    if (inString) {
+      out += char;
+      if (char === "\\" && index + 1 < text.length) {
+        out += text[index + 1];
+        index += 2;
+        continue;
+      }
+      if (char === '"') inString = false;
+      index += 1;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      out += char;
+      index += 1;
+      continue;
+    }
+    const afterComment = skipComment(index);
+    if (afterComment !== index) {
+      index = afterComment;
+      continue;
+    }
+    if (char === ",") {
+      let ahead = index + 1;
+      while (ahead < text.length) {
+        if (/\s/.test(text[ahead]!)) {
+          ahead += 1;
+          continue;
+        }
+        const skipped = skipComment(ahead);
+        if (skipped !== ahead) {
+          ahead = skipped;
+          continue;
+        }
+        break;
+      }
+      if (text[ahead] === "}" || text[ahead] === "]") {
+        index += 1;
+        continue;
+      }
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
+async function configDeclaresOpencodeSkillsDir(configPath: string, toJson: (text: string) => string) {
+  if (!existsSync(configPath)) return false;
+  try {
+    const parsed = JSON.parse(toJson(await readFile(configPath, "utf8"))) as Record<string, unknown>;
+    if (!isObject(parsed.skills)) return false;
+    const paths = parsed.skills.paths;
+    return Array.isArray(paths) && paths.includes(OPENCODE_PROJECT_SKILLS_DIR);
+  } catch {
+    return false;
+  }
+}
+
+// drwn writes the declaration into opencode.json; a jsonc config is user-maintained, so a
+// manually added entry there counts as declared too.
+async function opencodeSkillsDirDeclared(projectRoot: string) {
+  return (
+    (await configDeclaresOpencodeSkillsDir(join(projectRoot, "opencode.json"), (text) => text)) ||
+    (await configDeclaresOpencodeSkillsDir(join(projectRoot, "opencode.jsonc"), jsoncToJson))
+  );
+}
+
+// Reports project skills OpenCode would dedup against machine-home copies
+// (~/.agents/skills/, ~/.claude/skills/). Warning when the managed skills.paths
+// declaration is absent — the machine copy wins and project customization is lost;
+// advisory when the declaration is present: the dedup then favors the project's composed
+// copies as a group, but OpenCode's racy source scan can still intermittently resolve the
+// machine copy, so the collision stays visible instead of being reported as resolved.
+export async function inspectOpencodeSkillShadowing(options: {
+  projectRoot: string;
+  homeDir: string;
+  agentsDir: string;
+  projectedSkillIds: Iterable<string>;
+}): Promise<OpencodeSkillShadowingIssue[]> {
+  const projected = [...new Set(options.projectedSkillIds)].sort();
+  if (projected.length === 0) return [];
+
+  const machineDirs = [
+    join(options.agentsDir, "skills"),
+    join(options.homeDir, ".claude", "skills"),
+  ];
+  const machineSkills = new Map<string, string[]>();
+  for (const dir of machineDirs) {
+    for (const id of await readSkillIds(dir)) {
+      const prior = machineSkills.get(id) ?? [];
+      prior.push(join(dir, id));
+      machineSkills.set(id, prior);
+    }
+  }
+
+  const declared = await opencodeSkillsDirDeclared(options.projectRoot);
+  const issues: OpencodeSkillShadowingIssue[] = [];
+  for (const skill of projected) {
+    const machinePaths = machineSkills.get(skill);
+    if (!machinePaths) continue;
+    issues.push({
+      code: "OPENCODE_SKILL_SHADOWED",
+      severity: declared ? "advisory" : "warning",
+      skill,
+      machinePaths,
+      declared,
+    });
+  }
+  return issues;
 }

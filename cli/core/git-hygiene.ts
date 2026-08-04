@@ -21,6 +21,7 @@ const ALWAYS_IGNORED_ENTRIES = [
 const PROJECTION_SURFACE_ENTRIES = [
   ".claude/skills/",
   ".codex/skills/",
+  ".agents/drwn/opencode-skills/",
   ".cursor/",
   ".mcp.json",
   ".cursor/mcp.json",

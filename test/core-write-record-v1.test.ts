@@ -124,6 +124,18 @@ describe("drwn.write-record V1", () => {
     }
   });
 
+  test("accepts opencode skill ownership", async () => {
+    const root = await createTempRoot("write-record-v1-");
+    tempRoots.push(root);
+    const recordPath = join(root, "write-record.json");
+    const base = validRecord().managedPaths[0]!;
+    await writeFile(
+      recordPath,
+      `${JSON.stringify({ ...validRecord(), managedPaths: [{ ...base, surface: "skill", target: "opencode" }] })}\n`,
+    );
+    expect(loadWriteRecord(recordPath, "project")?.managedPaths[0]).toMatchObject({ surface: "skill", target: "opencode" });
+  });
+
   test("accepts cursor hook ownership", async () => {
     const root = await createTempRoot("write-record-v1-");
     tempRoots.push(root);

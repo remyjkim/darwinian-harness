@@ -60,6 +60,26 @@ Do not repair ownership drift by deleting user content. Inspect the marked
 region and write record first; `--force` can replace only a recorded owned
 block.
 
+### OpenCode skill shadowing
+
+Project status adds `ambientCapabilities.opencodeSkillShadowing`. For each
+opencode-projected skill (shared and Claude-surface scopes) whose name also
+exists in the machine-home stores (`~/.agents/skills/`, `~/.claude/skills/`),
+doctor emits an `OPENCODE_SKILL_SHADOWED` issue: **warning** severity while
+the managed `opencode.json` `skills.paths` declaration is absent or drifted
+(OpenCode resolves the machine copy, so project customization does not reach
+sessions), **advisory** once the declaration is present and current — the
+dedup then favors the project's composed copies, but OpenCode's racy source
+scan can still intermittently resolve the machine copy, so the advisory means
+reduced risk, not resolved. A manual declaration in a user-maintained
+`opencode.jsonc` is recognized too. Warnings do not change doctor's exit code.
+
+Improve the odds by running `drwn write` (or `drwn write --skills-only`),
+which projects `.agents/drwn/opencode-skills/` and declares it in
+`opencode.json`; removing the same-named machine-store skill is the only full
+closure. See [Use drwn with OpenCode](../guides/using-opencode) for the
+mechanism and the residual-race measurements.
+
 ### Organization Worker materialization
 
 Project status adds `orgWorkerMaterialization` alongside instruction delivery.

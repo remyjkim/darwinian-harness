@@ -2,7 +2,13 @@
 // ABOUTME: opencode.json is a user-owned file; drwn owns only its mcp servers.
 
 import { describe, expect, test } from "bun:test";
-import { mergeOpencodeConfigText, mcpServerHashKey } from "../cli/core/mcp";
+import {
+  mergeOpencodeConfigText,
+  mergeOpencodeSkillsPathsText,
+  mcpServerHashKey,
+  OPENCODE_SKILLS_PATHS_FIELD,
+} from "../cli/core/mcp";
+import { OPENCODE_PROJECT_SKILLS_DIR } from "../cli/core/paths";
 import { canonicalJsonHash } from "../cli/core/managed-fields";
 import type { RegistryServer } from "../cli/core/types";
 
@@ -75,5 +81,45 @@ describe("mergeOpencodeConfigText", () => {
     const { text, fieldHashes } = mergeOpencodeConfigText("{}", servers());
     const parsed = JSON.parse(text);
     expect(fieldHashes[mcpServerHashKey("context7")]).toBe(canonicalJsonHash(parsed.mcp.context7));
+  });
+});
+
+describe("mergeOpencodeSkillsPathsText", () => {
+  test("appends the dedicated dir to skills.paths preserving user keys and paths", () => {
+    const input = JSON.stringify({
+      $schema: "https://opencode.ai/config.json",
+      plugin: ["opencode-wakatime"],
+      skills: { paths: ["my-own-skills"], urls: ["https://example.com/skill.md"] },
+    });
+    const { text, fieldHashes } = mergeOpencodeSkillsPathsText(input);
+    const parsed = JSON.parse(text);
+    expect(parsed.$schema).toBe("https://opencode.ai/config.json");
+    expect(parsed.plugin).toEqual(["opencode-wakatime"]);
+    expect(parsed.skills.urls).toEqual(["https://example.com/skill.md"]);
+    expect(parsed.skills.paths).toEqual(["my-own-skills", OPENCODE_PROJECT_SKILLS_DIR]);
+    expect(fieldHashes).toEqual({
+      [OPENCODE_SKILLS_PATHS_FIELD]: canonicalJsonHash(OPENCODE_PROJECT_SKILLS_DIR),
+    });
+  });
+
+  test("creates skills.paths when absent", () => {
+    const { text } = mergeOpencodeSkillsPathsText("{}");
+    expect(JSON.parse(text).skills.paths).toEqual([OPENCODE_PROJECT_SKILLS_DIR]);
+  });
+
+  test("is byte-idempotent", () => {
+    const once = mergeOpencodeSkillsPathsText(JSON.stringify({ skills: { paths: ["mine"] } }));
+    const twice = mergeOpencodeSkillsPathsText(once.text);
+    expect(twice.text).toBe(once.text);
+    expect(twice.fieldHashes).toEqual(once.fieldHashes);
+  });
+
+  test("composes with the mcp merge without disturbing either key", () => {
+    const merged = mergeOpencodeConfigText(userConfigText(), servers());
+    const declared = mergeOpencodeSkillsPathsText(merged.text);
+    const parsed = JSON.parse(declared.text);
+    expect(parsed.mcp.context7).toMatchObject({ type: "local", enabled: true });
+    expect(parsed.mcp["user-own"]).toEqual({ type: "local", command: ["my-tool"] });
+    expect(parsed.skills.paths).toEqual([OPENCODE_PROJECT_SKILLS_DIR]);
   });
 });

@@ -82,6 +82,11 @@ export function expandHomePath(pathValue: string, homeDir: string) {
   return pathValue;
 }
 
+// Dedicated OpenCode-visible skills projection dir, declared project-relative in
+// opencode.json skills.paths. Must stay outside OpenCode's built-in scan paths so the
+// configured entry wins cross-scope skill dedup.
+export const OPENCODE_PROJECT_SKILLS_DIR = ".agents/drwn/opencode-skills";
+
 export function resolveToolPaths(scope: string | ToolScope) {
   const root = typeof scope === "string"
     ? scope
@@ -92,6 +97,7 @@ export function resolveToolPaths(scope: string | ToolScope) {
     claudeSkills: join(root, ".claude", "skills"),
     claudeMcp: join(root, ".mcp.json"),
     codexSkills: join(root, ".codex", "skills"),
+    opencodeSkills: join(root, OPENCODE_PROJECT_SKILLS_DIR),
     claudeSettings: join(root, ".claude", "settings.json"),
     codexConfig: join(root, ".codex", "config.toml"),
     cursorMcp: join(root, ".cursor", "mcp.json"),
