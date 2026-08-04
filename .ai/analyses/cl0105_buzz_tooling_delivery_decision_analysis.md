@@ -4,8 +4,9 @@
 # Buzz Tooling And Delivery: Architectural Decision
 
 **Audience:** `drwn` CLI primarily; `darwinian-services` for option B.
+**Issue:** part of **[I105]** (`[I105, DW] ACP agent surface for deployed Darwinian Workers`).
 **Status:** open decision. Blocks Phase 5 of
-[`129`](./129_feature_acp_buzz_worker_integration_target_architecture.md).
+[`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md).
 **Decision owner:** Remy.
 
 ## 1. The Conflict

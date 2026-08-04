@@ -1,3 +1,15 @@
+# ABOUTME: External integration guide for building a Buzz-compatible ACP adapter, written for a locally-executed agent runtime.
+# ABOUTME: Reference only — the adopted architecture fronts a deployed Worker; cl0105_acp_buzz_worker_integration_target_architecture.md governs what transfers.
+
+> **Reference material — partially superseded.** The adopted architecture
+> ([`cl0105_acp_buzz_worker_integration_target_architecture.md`](./cl0105_acp_buzz_worker_integration_target_architecture.md))
+> fronts a *deployed* Worker, so this guide's local-runtime assumptions (§4.4 runtime bridge,
+> §4.5 local MCP broker as the agent's whole tool path) do not transfer wholesale. Its §2.1
+> claim that a strictly conforming ACP-v1 agent "will not plug into current Buzz without
+> modification" was verified wrong — Buzz branches on the version the *agent answers*
+> (cl0105 §2). The testing strategy (§10), reliability guidance (§9), and the `_meta` profile
+> proposal (§7) remain adopted.
+
 # Recommended approach
 
 Build the adapter as a **standalone ACP agent process** that Buzz launches and controls over stdin/stdout.

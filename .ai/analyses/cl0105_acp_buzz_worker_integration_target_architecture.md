@@ -3,7 +3,7 @@
 
 # ACP And Buzz Integration For Darwinian Workers
 
-Status: proposal. Supersedes nothing. Depends on `darwinian-services` for three server changes named in §6.
+Status: proposal — GATE 1 artifact for **[I105]** (`[I105, DW] ACP agent surface for deployed Darwinian Workers`, CL Issue Tracker v0.4). Supersedes nothing. Depends on `darwinian-services` for three server changes named in §6; the blocking one is tracked as **[I106]**, the governance constraint as **[I107]**.
 
 ## 1. Decision
 
@@ -36,8 +36,8 @@ one `StreamEvent` vocabulary onto one protocol. Nothing here is architecturally 
 
 ## 2. What Was Verified
 
-The two source guides (`128_acp_guide.md`, `128_2_buzz_acp_integration_guide.md`, currently
-in `stash@{0}`) carry unresolvable citation tokens and a June 2026 cutoff. Their load-bearing
+The two source guides (`128_acp_guide.md`, `128_2_buzz_acp_integration_guide.md`, committed
+beside this document) carry unresolvable citation tokens and a June 2026 cutoff. Their load-bearing
 claims were re-verified against primary sources on 2026-07-24. Three were wrong.
 
 | Guide claim | Verified state |
@@ -149,7 +149,7 @@ tokens — or hang. Both are unacceptable. **Required: `POST /api/chat/:runId/ca
 threading an abort into the container.
 
 Full gap analysis and proposed contract:
-[`130`](./130_feature_acp_run_cancellation_interface_request.md).
+[`cl0106`](./cl0106_run_cancellation_interface_request.md) — filed as **[I106]**.
 
 ### 6.2 Raw event stream over SSE — strongly desired
 
@@ -166,7 +166,7 @@ into `runtimeConfig` and never enforced (`coordinator.ts:63-89`, consumed only a
 
 Required for governance parity: generalize the contract to an allow/deny surface the runtime
 honors for all tools, not only Pipedream routing. Detail in
-[`131`](./131_feature_acp_tool_governance_constraint_analysis.md).
+[`cl0107`](./cl0107_tool_governance_constraint_analysis.md) — filed as **[I107]**.
 
 ## 7. What The Governance Story Actually Is
 
@@ -203,7 +203,7 @@ fail-closed (`src/consent/gate.ts:19-23`), which is wrong for a headless chat ag
 
 This is the one genuine architectural conflict, and it needs a call before implementation.
 Full evaluation:
-[`132`](./132_feature_acp_buzz_tooling_delivery_decision_analysis.md).
+[`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md).
 
 Buzz's model assumes the agent is a **local** process: it injects tools via
 `BUZZ_ACP_MCP_COMMAND` as local stdio MCP servers, with `BUZZ_RELAY_URL`, `BUZZ_PRIVATE_KEY`,

@@ -4,8 +4,9 @@
 # Card Tool Governance Has No Enforcement Path In Deployed Workers
 
 **Audience:** both `drwn` CLI and `darwinian-services`.
+**Issue:** **[I107]** (`[I107, DS+DW] Card tool governance is declared but never enforced in the deployed runtime`, CL Issue Tracker v0.4).
 **Status:** correction plus interface request. Amends
-[`129`](./129_feature_acp_buzz_worker_integration_target_architecture.md) §7.
+[`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md) §7.
 **Severity:** correctness of a security claim, not an outage.
 
 ## 1. Summary

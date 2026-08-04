@@ -4,7 +4,8 @@
 # Run Cancellation: Interface Request To `darwinian-services`
 
 **Audience:** `darwinian-services` (studio-deployment), with context for `drwn` CLI.
-**Status:** blocking dependency for [`129`](./129_feature_acp_buzz_worker_integration_target_architecture.md).
+**Issue:** **[I106]** (`[I106, DS] HTTP-reachable cancellation for in-flight runs`, CL Issue Tracker v0.4). Raised by **[I105]**.
+**Status:** blocking dependency for [`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md).
 **Ask:** one new public endpoint plus an abort path into the container.
 
 ## 1. Summary
@@ -159,7 +160,7 @@ instead. Exposing the existing internal `/coordinate-stream/sse`
 not new plumbing.
 
 **General tool policy.** See
-[`131`](./131_feature_acp_tool_governance_constraint_analysis.md).
+[`cl0107`](./cl0107_tool_governance_constraint_analysis.md) — filed as **[I107]**.
 
 ## 7. Open Questions For Services
 
