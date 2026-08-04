@@ -86,6 +86,16 @@ export class DoctorCommand extends BaseCommand {
         output += `  - ${issue.code} (${issue.severity})\n`;
       }
     }
+    const shadowing = projectStatus?.ambientCapabilities.opencodeSkillShadowing ?? [];
+    if (shadowing.length > 0) {
+      output += "\nOpenCode skill shadowing:\n";
+      for (const issue of shadowing) {
+        const remediation = issue.declared
+          ? "managed skills.paths declaration current"
+          : "skills.paths declaration missing; run drwn write";
+        output += `  - ${issue.code} (${issue.severity}): ${issue.skill} collides with ${issue.machinePaths.join(", ")} (${remediation})\n`;
+      }
+    }
     this.context.stdout.write(output);
     return unhealthy ? 1 : 0;
   }

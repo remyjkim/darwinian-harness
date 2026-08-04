@@ -194,6 +194,11 @@ export class StatusCommand extends BaseCommand {
       if (projectStatus) {
         output += `  Instruction delivery: ${projectStatus.instructionDelivery.state} (Claude adapter: ${projectStatus.instructionDelivery.adapter})\n`;
         output += `  Worker materialization: ${projectStatus.orgWorkerMaterialization?.state ?? "absent"}\n`;
+        const shadowing = projectStatus.ambientCapabilities.opencodeSkillShadowing;
+        if (shadowing.length > 0) {
+          const undeclared = shadowing.filter((issue) => !issue.declared).length;
+          output += `  OpenCode skill shadowing: ${shadowing.length} collision(s)${undeclared > 0 ? ` (${undeclared} undeclared; run drwn write)` : " (declaration current)"}\n`;
+        }
       }
       if (state.ambientCollisions.length > 0) {
         output += "\nAmbient MCP collisions:\n";

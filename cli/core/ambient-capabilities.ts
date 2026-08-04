@@ -3,9 +3,10 @@
 
 import { existsSync, realpathSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import type { AmbientMcpDefinition, AmbientDefinitionSource } from "./ambient-policy";
-import { expandHomePath, resolveToolPaths } from "./paths";
+import { expandHomePath, OPENCODE_PROJECT_SKILLS_DIR, resolveToolPaths } from "./paths";
 import type { CanonicalConfig, TargetName } from "./types";
 
 export interface AmbientCapabilityObservation {
@@ -186,4 +187,67 @@ export async function inspectAmbientCapabilities(options: {
   return observations.sort((left, right) =>
     left.target.localeCompare(right.target) || left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id)
   );
+}
+
+export interface OpencodeSkillShadowingIssue {
+  code: "OPENCODE_SKILL_SHADOWED";
+  severity: "warning" | "advisory";
+  skill: string;
+  machinePaths: string[];
+  declared: boolean;
+}
+
+async function opencodeSkillsDirDeclared(projectRoot: string) {
+  const configPath = join(projectRoot, "opencode.json");
+  if (!existsSync(configPath)) return false;
+  try {
+    const parsed = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    if (!isObject(parsed.skills)) return false;
+    const paths = parsed.skills.paths;
+    return Array.isArray(paths) && paths.includes(OPENCODE_PROJECT_SKILLS_DIR);
+  } catch {
+    return false;
+  }
+}
+
+// Reports project skills OpenCode would dedup against machine-home copies
+// (~/.agents/skills/, ~/.claude/skills/). Warning when the managed skills.paths
+// declaration is absent — the machine copy wins and project customization is lost;
+// advisory when the declaration is present, since the dedicated dir then resolves first.
+export async function inspectOpencodeSkillShadowing(options: {
+  projectRoot: string;
+  homeDir: string;
+  agentsDir: string;
+  projectedSkillIds: Iterable<string>;
+}): Promise<OpencodeSkillShadowingIssue[]> {
+  const projected = [...new Set(options.projectedSkillIds)].sort();
+  if (projected.length === 0) return [];
+
+  const machineDirs = [
+    join(options.agentsDir, "skills"),
+    join(options.homeDir, ".claude", "skills"),
+  ];
+  const machineSkills = new Map<string, string[]>();
+  for (const dir of machineDirs) {
+    for (const id of await readSkillIds(dir)) {
+      const prior = machineSkills.get(id) ?? [];
+      prior.push(join(dir, id));
+      machineSkills.set(id, prior);
+    }
+  }
+
+  const declared = await opencodeSkillsDirDeclared(options.projectRoot);
+  const issues: OpencodeSkillShadowingIssue[] = [];
+  for (const skill of projected) {
+    const machinePaths = machineSkills.get(skill);
+    if (!machinePaths) continue;
+    issues.push({
+      code: "OPENCODE_SKILL_SHADOWED",
+      severity: declared ? "advisory" : "warning",
+      skill,
+      machinePaths,
+      declared,
+    });
+  }
+  return issues;
 }

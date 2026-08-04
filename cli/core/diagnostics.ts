@@ -9,7 +9,11 @@ import { evaluateVersionFloor, loadCardLock, type CardLockEntry, type VersionFlo
 import type { AmbientCollision } from "./ambient-policy";
 import { resolveSkillSource } from "./card-skill-resolver";
 import { buildEffectiveState, selectedAmbientCollisions, type EffectiveState } from "./effective-state";
-import { inspectAmbientCapabilities } from "./ambient-capabilities";
+import {
+  inspectAmbientCapabilities,
+  inspectOpencodeSkillShadowing,
+  type OpencodeSkillShadowingIssue,
+} from "./ambient-capabilities";
 import { loadConfig } from "./config";
 import { canonicalJsonHash } from "./managed-fields";
 import {
@@ -204,6 +208,7 @@ export interface ProjectStatusV1 {
   ambientCapabilities: {
     observations: Awaited<ReturnType<typeof inspectAmbientCapabilities>>;
     collisions: AmbientCollision[];
+    opencodeSkillShadowing: OpencodeSkillShadowingIssue[];
     enforcement: "target-native";
   };
   projection: { current: boolean; issues: string[] };
@@ -1236,6 +1241,14 @@ export async function buildProjectStatusV1(options: {
     declaredSkillIds: skillItems.map((entry) => entry.id),
     declaredMcpIds: mcpItems.map((entry) => entry.id),
   });
+  const opencodeSkillShadowing = state.effectiveConfig.targets.opencode?.enabled
+    ? await inspectOpencodeSkillShadowing({
+        projectRoot,
+        homeDir: options.homeDir,
+        agentsDir: options.agentsDir,
+        projectedSkillIds: skillItems.map((entry) => entry.id),
+      })
+    : [];
   let projection: { current: boolean; issues: string[] };
   try {
     projection = await planRepositoryProjection({
@@ -1289,6 +1302,7 @@ export async function buildProjectStatusV1(options: {
     ambientCapabilities: {
       observations: ambient,
       collisions: state.ambientCollisions,
+      opencodeSkillShadowing,
       enforcement: "target-native",
     },
     projection: { current: projection.current, issues: projection.issues },
