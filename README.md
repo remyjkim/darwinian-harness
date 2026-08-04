@@ -147,9 +147,9 @@ sessions.
 
 ## Documentation
 
-- **Public docs:** [docs.darwiniantools.com](https://docs.darwiniantools.com) — concepts, getting-started paths, guides, troubleshooting, CLI reference. Source in [`docs-docusaurus/`](./docs-docusaurus).
-- **Disciplines that shape the design:** [`concepts/disciplines`](https://docs.darwiniantools.com/concepts/disciplines)
-- **Safety model:** [`concepts/safety-model`](https://docs.darwiniantools.com/concepts/safety-model)
+- **Public docs:** [docs.darwinian.dev](https://docs.darwinian.dev) — concepts, getting-started paths, guides, troubleshooting, CLI reference. Source in [`docs-docusaurus/`](./docs-docusaurus).
+- **Disciplines that shape the design:** [`concepts/disciplines`](https://docs.darwinian.dev/concepts/disciplines)
+- **Safety model:** [`concepts/safety-model`](https://docs.darwinian.dev/concepts/safety-model)
 - **CLI quick reference:** [`docs/cli-quickref.md`](./docs/cli-quickref.md)
 - **Project Worker V1 contract:** [`docs/contracts/project-worker-v1.md`](./docs/contracts/project-worker-v1.md)
 - **Prelaunch project reset:** [`docs/prelaunch-project-reset.md`](./docs/prelaunch-project-reset.md)

@@ -1,6 +1,6 @@
 # drwn CLI Quick Reference
 
-A consolidated single-file reference for the `drwn` CLI. Pairs with the [public docs site](https://darwiniantools.com) and the [as-built architecture reference](../.ai/knowledges/10_drwn-cli-architecture.md).
+A consolidated single-file reference for the `drwn` CLI. Pairs with the [public docs site](https://docs.darwinian.dev) and the [as-built architecture reference](../.ai/knowledges/10_drwn-cli-architecture.md).
 
 For project framing and install, see the [root README](../README.md).
 

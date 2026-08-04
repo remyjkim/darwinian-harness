@@ -13,7 +13,7 @@
 
 ---
 
-**Status:** Approved for execution 2026-08-03 after readiness amendments.
+**Status:** Completed and merged via PR #71 at `1fc03e6`; see [`cl0176_completion_card_source_path_reform.md`](cl0176_completion_card_source_path_reform.md) for delivered-plan differences and final evidence.
 **Issue:** I176 · **Owner:** Remy K · **Reviewer:** Minseung Lee
 **Branch:** `remy/I176-card-source-path-reform`
 **Architecture:** `../analyses/cl0176_card_source_path_reform_target_architecture.md`

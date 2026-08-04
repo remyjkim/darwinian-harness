@@ -14,6 +14,44 @@ async function readDocsTree(relativeRoot: string) {
 }
 
 describe("documentation readiness", () => {
+  test("I176 and I177 completion handoffs reconcile the approved plans with delivered state", async () => {
+    const [i176, i177] = await Promise.all([
+      readFile(new URL("../.ai/tasks/cl0176_completion_card_source_path_reform.md", import.meta.url), "utf8"),
+      readFile(new URL("../.ai/tasks/cl0177_completion_machine_scope_blueprint.md", import.meta.url), "utf8"),
+    ]);
+    const handoffs: Array<[string, string, string]> = [
+      [i176, "[I176]", "1fc03e6910a8e2a391a9dd4d53a2ec9513d27c1d"],
+      [i177, "[I177]", "b4817b1d64c76c7f31b06b44a1390cc79f1ce49c"],
+    ];
+
+    for (const [handoff, issue, merge] of handoffs) {
+      expect(handoff).toContain(issue);
+      expect(handoff).toContain("Approved plan versus delivered result");
+      expect(handoff).toContain(merge);
+      expect(handoff).toContain("Post-merge");
+      expect(handoff.toLowerCase()).toContain("rollback");
+    }
+  });
+
+  test("production deployment and public links use the live canonical docs domain", async () => {
+    const documents = await Promise.all([
+      readFile(new URL("../.github/workflows/docs-deploy-production.yml", import.meta.url), "utf8"),
+      readFile(new URL("../README.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/README.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docusaurus.config.ts", import.meta.url), "utf8"),
+      readFile(new URL("../docs/cli-quickref.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs/maintainers/docs-cicd.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-astro/DEPRECATED.md", import.meta.url), "utf8"),
+      readFile(new URL("../lychee.toml", import.meta.url), "utf8"),
+    ]);
+
+    for (const document of documents) {
+      expect(document).toContain("docs.darwinian.dev");
+      expect(document).not.toContain("darwiniantools.com");
+    }
+    expect(documents[0]).toContain("PROD_URL: https://docs.darwinian.dev");
+  });
+
   test("active non-Docusaurus Mind docs publish the semantic Worker-bound contract", async () => {
     const docs = (await Promise.all([
       readFile(new URL("../.ai/knowledges/12_mind-card-lifecycle-guide.md", import.meta.url), "utf8"),

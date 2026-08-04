@@ -22,7 +22,7 @@ accept = [
 
 # Skip checking these domains in CI to avoid false positives.
 # Anything that bot-challenges, requires login, or is intentionally
-# external-and-flaky goes here. Internal links and docs.darwiniantools.com
+# external-and-flaky goes here. Internal links and docs.darwinian.dev
 # stay checked.
 exclude = [
   # Localhost / development URLs
