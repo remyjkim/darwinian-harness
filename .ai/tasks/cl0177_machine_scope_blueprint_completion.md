@@ -3,7 +3,7 @@
 
 # [I177] Machine-Scope Worker Blueprint — Completion Evidence
 
-**Status**: Local completion evidence final; exact-head CI and G3 are recorded canonically in PR #72 and the Issue Tracker.
+**Status**: Local completion evidence final; exact-head CI and G3 remain pending external gates and will be recorded in PR #72 and the Issue Tracker.
 
 **Issue**: [I177] · **Owner/Reviewer**: Remy K (owner-as-reviewer per campaign decision D5)
 
@@ -56,10 +56,12 @@ reconciliation tail is:
 | `0d51c1c` | Re-resolve explicit machine Worker refs and complete reset guidance |
 | `fff2a39` | Reconcile the stale cleanup regression expectation |
 | `cabd269` | Pin the packaged acceptance runner to Bun 1.2.21 |
+| `cf19e47` | Classify changed-type managed content as force-repairable drift |
 
 Earlier commits on the same branch contain the approved G1 architecture, G2
-plan, documentation-first patch, and recorded RED evidence. Git and PR #72 are
-the canonical complete history.
+plan, documentation-first patch, and recorded RED evidence. Git contains the
+complete local history; PR #72 becomes the canonical exact-head review and CI
+record after this head is pushed.
 
 ## Immutable release evidence
 
@@ -120,7 +122,7 @@ git diff --check
 | Focused machine/Operator/release suites | 29 passed, 0 failed; 62 assertions across 3 files |
 | TypeScript typecheck | passed |
 | Release readiness (`QUALITY_GATE_TEST_MODE=1`) | all 15 checks passed |
-| Full Bash-driven Bun suite | 1,839 passed, 6 intentionally skipped, 0 failed; 9,190 assertions across 312 files in 439.39s |
+| Full Bash-driven Bun suite | 1,840 passed, 6 intentionally skipped, 0 failed; 9,205 assertions across 312 files in 457.57s |
 | Docusaurus production build | passed |
 | Astro check/build | passed with 0 diagnostics; duplicate-content-ID loader notices only |
 | Documentation readiness | 3 passed, 0 failed; 231 assertions |
@@ -130,16 +132,17 @@ git diff --check
 | Packed `darwinian@1.1.0` acceptance | exact remote `machine-defaults#v2.0.0` applied; first write 85; second write 0; all doctor issue counts 0 |
 
 The exact-tag acceptance tarball SHA-256 was
-`246ea422bb121761f2d79c6438aa3230fa0e36fc89410f1152115d1a86622f23`.
+`97faa66d7792bd747b5ec1e6775485bf73589a7b48ad7fdbf0d86fe4ed4549ca`.
 Its temporary diagnostic sandbox was
-`/var/folders/3n/d0fmlfyn56x36j439r_fb3gm0000gn/T/drwn-i177-package.fiHZBR`;
+`/var/folders/3n/d0fmlfyn56x36j439r_fb3gm0000gn/T/drwn-i177-package.5nQqeX`;
 this host-local path is explicitly non-durable and not required for G3. The
 versioned acceptance script and the commands/results above are the durable
 reproduction evidence.
 
 The final PR head must also pass all required GitHub checks before G3 is
-recorded or the branch is merged. PR #72 is the canonical exact-head CI record;
-the issue page is the canonical G3 and Owner-acknowledgement record.
+recorded or the branch is merged. PR #72 will be the canonical exact-head CI
+record after push; the issue page is the canonical G3 and Owner-acknowledgement
+record.
 
 ## Contract-specific acceptance
 
