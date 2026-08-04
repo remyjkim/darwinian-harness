@@ -10,6 +10,8 @@ import { assertValidCardManifest } from "../cli/core/card-manifest";
 import { sanitizeMcpServerSecrets } from "../cli/core/mcp-secret-policy";
 import {
   cleanupTempRoots,
+  createFixtureRegistry,
+  installMachineBlueprint,
   installProjectWorkers,
   publishCardWithSkills,
   runAgentsCli,
@@ -79,6 +81,12 @@ test("captureProjectAsCard snapshots only the selected closure and explicit over
       },
     },
   });
+  await installMachineBlueprint(fixture, {
+    rootName: "@me/machine-only-worker",
+    memberName: "@me/machine-only-capabilities",
+    skills: ["alpha"],
+    servers: { context7: createFixtureRegistry().servers.context7 },
+  });
   const projectDir = join(fixture.root, "project");
   await installProjectWorkers(
     projectDir,
@@ -101,10 +109,6 @@ test("captureProjectAsCard snapshots only the selected closure and explicit over
       targets: { cursor: { enabled: false } },
     },
   );
-  const machinePath = join(fixture.agentsDir, "drwn", "machine.json");
-  const machine = JSON.parse(await readFile(machinePath, "utf8"));
-  machine.capabilities = { profile: null, skills: ["alpha"], mcpServers: ["context7"] };
-  await writeFile(machinePath, `${JSON.stringify(machine, null, 2)}\n`);
   await writeFile(fixture.codexConfig, '[mcp_servers.ambient]\ncommand = "ambient"\n');
   const generatedSecret = "generated-secret-value";
   await mkdir(join(projectDir, ".agents", "drwn", "generated"), { recursive: true });

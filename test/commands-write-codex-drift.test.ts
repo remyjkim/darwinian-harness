@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { clearMachineBlueprint, cleanupTempRoots, createFixtureRegistry, envFor, installMachineBlueprint, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -70,10 +70,10 @@ test("write --root removes a Codex MCP entry when the default is removed and lea
     'personality = "pragmatic"\n\n[mcp_servers.user_made]\ncommand = "echo"\n',
   );
 
-  // Register context7 as a machine default and materialize at user scope.
-  expect(
-    (await runAgentsCli(["machine", "mcp", "enable", "context7", "--json"], envFor(fixture))).exitCode,
-  ).toBe(0);
+  // Select context7 through a complete machine Blueprint and materialize at user scope.
+  await installMachineBlueprint(fixture, {
+    servers: { context7: createFixtureRegistry().servers.context7 },
+  });
   expect(
     (await runAgentsCli(["write", "--root", "--mcp-only", "--json"], envFor(fixture))).exitCode,
   ).toBe(0);
@@ -83,10 +83,8 @@ test("write --root removes a Codex MCP entry when the default is removed and lea
   expect(seeded).toContain("[mcp_servers.context7]");
   expect(seeded).toContain("[mcp_servers.user_made]");
 
-  // Remove the default and re-run --root.
-  expect(
-    (await runAgentsCli(["machine", "mcp", "disable", "context7", "--json"], envFor(fixture))).exitCode,
-  ).toBe(0);
+  // Clear the Blueprint selection and re-run --root.
+  await clearMachineBlueprint(fixture);
   expect(
     (await runAgentsCli(["write", "--root", "--mcp-only", "--json"], envFor(fixture))).exitCode,
   ).toBe(0);

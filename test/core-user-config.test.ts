@@ -53,7 +53,6 @@ describe("machine runtime config", () => {
           analyzer: { apiUrl: "https://machine.test" },
           trustedSources: { strict: true },
         },
-        capabilities: { profile: null, skills: ["alpha"], mcpServers: ["notion"] },
       }, null, 2)}\n`,
     );
 

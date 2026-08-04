@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, runAgentsCli, runSyncWrapper, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createFixtureRegistry, installMachineBlueprint, publishMachineBlueprint, runAgentsCli, runSyncWrapper, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -63,7 +63,7 @@ async function addParallelSkills(repoRoot: string) {
 }
 
 describe("user journeys", () => {
-  test("first-time user can inspect, select, and write a skill downstream", async () => {
+  test("first-time user can inspect, select a machine Blueprint, and write its skill downstream", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     const env = {
@@ -79,7 +79,8 @@ describe("user journeys", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("alpha");
 
-    result = await runAgentsCli(["machine", "skill", "enable", "alpha"], env);
+    const workerRef = await publishMachineBlueprint(fixture, { skills: ["alpha"] });
+    result = await runAgentsCli(["apply", "--root", workerRef], env);
     expect(result.exitCode).toBe(0);
 
     result = await runAgentsCli(["write", "--skills-only"], env);
@@ -95,7 +96,7 @@ describe("user journeys", () => {
       AGENTS_DIR: fixture.agentsDir,
     };
 
-    expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], env)).exitCode).toBe(0);
+    await installMachineBlueprint(fixture, { skills: ["alpha"] });
 
     const legacy = await runSyncWrapper(["--dry-run"], env);
     const modern = await runAgentsCli(["write", "--dry-run"], env);
@@ -115,10 +116,20 @@ describe("user journeys", () => {
       AGENTS_DIR: fixture.agentsDir,
     };
 
-    await runAgentsCli(["machine", "skill", "enable", "alpha"], env);
-    await runAgentsCli(["machine", "mcp", "enable", "context7"], env);
+    const fullRef = await publishMachineBlueprint(fixture, {
+      rootName: "@me/full-worker",
+      memberName: "@me/full-capabilities",
+      skills: ["alpha"],
+      servers: { context7: createFixtureRegistry().servers.context7 },
+    });
+    const mcpOnlyRef = await publishMachineBlueprint(fixture, {
+      rootName: "@me/mcp-worker",
+      memberName: "@me/mcp-capabilities",
+      servers: { context7: createFixtureRegistry().servers.context7 },
+    });
+    expect((await runAgentsCli(["apply", "--root", fullRef], env)).exitCode).toBe(0);
     await runAgentsCli(["write"], env);
-    await runAgentsCli(["machine", "skill", "disable", "alpha"], env);
+    expect((await runAgentsCli(["apply", "--root", mcpOnlyRef], env)).exitCode).toBe(0);
     const claudeMcp = JSON.parse(await readFile(fixture.claudeUserMcp, "utf8"));
     claudeMcp.mcpServers.context7.command = "node";
     await writeFile(
@@ -241,7 +252,7 @@ describe("user journeys", () => {
     expect(doctorResult.stdout).toContain("deleted-skill");
   });
 
-  test("package-backed bundle user can add, inspect, select, and write a skill downstream", async () => {
+  test("package-backed bundle remains inventory until a Blueprint owns activation", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     const { bundleRoot } = await createBundleFixture(fixture.root);
@@ -259,10 +270,13 @@ describe("user journeys", () => {
     expect(result.stdout).toContain("hello-skill");
 
     result = await runAgentsCli(["machine", "skill", "enable", "hello-skill"], env);
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("Direct machine skill activation was removed");
+    expect(`${result.stdout}\n${result.stderr}`).toContain("drwn apply --root");
 
     result = await runAgentsCli(["write", "--skills-only"], env);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("hello-skill");
+    expect(result.stdout).not.toContain("hello-skill");
+    expect(existsSync(join(fixture.homeDir, ".claude", "skills", "hello-skill"))).toBe(false);
   });
 });

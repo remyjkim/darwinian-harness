@@ -2,9 +2,8 @@
 // ABOUTME: Exercises syncRepository usage patterns that must remain stable during refactoring.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, readFile, rm, writeFile, mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { readFile, rm } from "node:fs/promises";
+import { createFixtureRegistry, installMachineBlueprint, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -16,67 +15,13 @@ afterEach(async () => {
   );
 });
 
-async function createTempRoot() {
-  const root = await mkdtemp(join(tmpdir(), "agents-compat-"));
-  tempRoots.push(root);
-  return root;
-}
-
 async function scaffoldFixture() {
-  const root = await createTempRoot();
-  const homeDir = join(root, "home");
-  const repoRoot = join(root, "repo");
-  const claudeSettings = join(homeDir, ".claude", "settings.json");
-  const codexConfig = join(homeDir, ".codex", "config.toml");
-  const cursorConfig = join(homeDir, ".cursor", "mcp.json");
-
-  await mkdir(join(repoRoot, "registry"), { recursive: true });
-  await mkdir(join(repoRoot, "skills", "shared"), { recursive: true });
-  await mkdir(dirname(claudeSettings), { recursive: true });
-  await mkdir(dirname(codexConfig), { recursive: true });
-  await mkdir(dirname(cursorConfig), { recursive: true });
-  await mkdir(join(homeDir, ".agents", "skills"), { recursive: true });
-
-  const registry = {
-    version: 1,
-    servers: {
-      context7: {
-        description: "Docs",
-        transport: "stdio",
-        command: "npx",
-        args: ["-y", "@upstash/context7-mcp"],
-        optional: false,
-      },
-    },
-  };
-  const config = {
-    version: 1,
-    targets: {
-      claude: { enabled: true, configPath: claudeSettings, format: "json-merge", mcpKey: "mcpServers" },
-      codex: { enabled: true, configPath: codexConfig, format: "toml-merge", mcpKey: "mcp_servers" },
-      cursor: { enabled: true, configPath: cursorConfig, format: "json-standalone", mcpKey: "mcpServers" },
-    },
-    optional: {},
-    parallel: { cli: { enabled: true }, mcp: { enabled: false } },
-  };
-
-  await writeFile(join(repoRoot, "registry", "mcp-servers.json"), JSON.stringify(registry, null, 2));
-  await writeFile(join(repoRoot, "registry", "config.json"), JSON.stringify(config, null, 2));
-  await mkdir(join(homeDir, ".agents", "drwn"), { recursive: true });
-  await writeFile(
-    join(homeDir, ".agents", "drwn", "machine.json"),
-    `${JSON.stringify({
-      schema: "drwn.machine",
-      schemaVersion: 1,
-      policy: {},
-      capabilities: { profile: null, skills: [], mcpServers: ["context7"] },
-    }, null, 2)}\n`,
-  );
-  await writeFile(claudeSettings, JSON.stringify({ model: "sonnet" }, null, 2));
-  await writeFile(codexConfig, 'personality = "pragmatic"\n');
-  await writeFile(cursorConfig, JSON.stringify({ mcpServers: {} }, null, 2));
-
-  return { homeDir, repoRoot, claudeSettings };
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  await installMachineBlueprint(fixture, {
+    servers: { context7: createFixtureRegistry().servers.context7 },
+  });
+  return fixture;
 }
 
 describe("sync-mcp.ts compatibility", () => {

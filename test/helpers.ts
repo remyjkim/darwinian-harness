@@ -310,6 +310,13 @@ export async function installMachineBlueprint(
   return applyMachineWorkerRoots(fixture.agentsDir, [ref]);
 }
 
+export async function clearMachineBlueprint(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+) {
+  const { applyMachineWorkerRoots } = await import("../cli/core/worker-machine");
+  return applyMachineWorkerRoots(fixture.agentsDir, []);
+}
+
 export async function createInstalledSkillBundle(
   agentsDir: string,
   options?: {

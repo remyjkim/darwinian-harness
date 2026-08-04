@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { access, lstat, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { clearMachineBlueprint, cleanupTempRoots, installMachineBlueprint, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -34,10 +34,10 @@ describe("machine skill selection", () => {
     expect((await lstat(join(fixture.agentsDir, "skills", "alpha"))).isDirectory()).toBe(true);
   });
 
-  test("write projects only explicitly selected machine skills", async () => {
+  test("write projects only skills from the active machine Blueprint closure", async () => {
     const fixture = await scaffoldCliFixture({ curatedSkillNames: ["beta"] });
     tempRoots.push(fixture.root);
-    expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture))).exitCode).toBe(0);
+    await installMachineBlueprint(fixture, { skills: ["alpha"] });
 
     const result = await runAgentsCli(["write", "--scope", "machine", "--skills-only"], envFor(fixture));
 
@@ -46,12 +46,12 @@ describe("machine skill selection", () => {
     await expect(access(join(fixture.homeDir, ".claude", "skills", "beta"))).rejects.toThrow();
   });
 
-  test("removing an explicit skill removes only prior drwn-owned projection", async () => {
+  test("clearing the machine Blueprint removes only prior drwn-owned projection", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture));
+    await installMachineBlueprint(fixture, { skills: ["alpha"] });
     await runAgentsCli(["write", "--scope", "machine", "--skills-only"], envFor(fixture));
-    await runAgentsCli(["machine", "skill", "disable", "alpha"], envFor(fixture));
+    await clearMachineBlueprint(fixture);
 
     const result = await runAgentsCli(["write", "--scope", "machine", "--skills-only"], envFor(fixture));
 
