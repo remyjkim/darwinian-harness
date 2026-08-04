@@ -180,10 +180,13 @@ public route over the existing internal `/coordinate-stream/sse`.
 ### 6.3 A general declarative tool policy — desired
 
 `POST /api/minds/:slug/chat` accepts `toolPolicy` and threads it into the run
-(`engine/src/worker.ts:373,431` → `chat-input.ts:71` → `coordinator.ts:430,455`), but it is
-**not a general tool allowlist**. Only the Pipedream shape
-`{version:1, allowedApps[], policyHash, routes[]}` is recognized; anything else is serialized
-into `runtimeConfig` and never enforced (`coordinator.ts:63-89`, consumed only at `:467`).
+(`engine/src/worker.ts:188-191` → `chat-input.ts:71` → `coordinator.ts:64-90`), but it is
+**not a general tool allowlist**. The routine shape
+`{version:1, allowedApps[], policyHash, routes[]}` gates at MCP-*server* granularity and
+Pipedream routing; any other shape reaches the container as `ROUTINE_TOOL_POLICY` and
+**fails closed** — all card servers suppressed, chat 409 (`routine-tool-policy.js`,
+corrected 2026-08-04 by the DS review of the remediation handoff). Interactive runs carry
+no policy at all, and no shape gates individual tool names.
 
 Required for governance parity: generalize the contract to an allow/deny surface the runtime
 honors for all tools, not only Pipedream routing. Detail in
@@ -202,10 +205,10 @@ Tools run inside a Cloudflare container. The ACP client cannot serve, gate, or a
 every remote tool call back through a local stdio process — a latency and availability
 disaster.
 
-Nor is there a declarative substitute today. `toolPolicy` looks like one but enforces only
-Pipedream routing (§6.3). Projecting Card `tools.allow`/`deny` into it now would produce a
-control that appears configured and does nothing — worse than no control, because it would
-be reported as governance in status output.
+Nor is there a declarative substitute today for interactive runs. `toolPolicy` enforces
+only for routines, at server granularity (§6.3). Projecting Card `tools.allow`/`deny` into
+it now would trip the container's fail-closed `invalid` mode and 409 the run — loud rather
+than silent, but equally unusable as a governance path until §6.3's generalization lands.
 
 The honest position: **Card tool governance has no enforcement path in the deployed runtime
 today.** The only real boundary is the set of MCP servers the Card ships, since the container
