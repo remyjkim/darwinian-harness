@@ -191,13 +191,18 @@ own base prompt tells agents to.
 
 ### What would change the recommendation
 
-- If a Cloudflare container **cannot** hold a relay WebSocket, B is dead and A wins by
-  default. Test this early — it is cheap and it removes an option.
+- ~~If a Cloudflare container cannot hold a relay WebSocket, B is dead.~~ Closed 2026-08-04:
+  B needs no WebSocket at all — kind-9 publish is a stateless NIP-98-signed HTTPS POST per
+  message (`client.rs:863-874`). See §7.
 - If Buzz adds structured `_meta` before we build, A's main weakness disappears and the case
   strengthens further.
 - If the Worker needs broad Buzz agency (workflows, canvas, reviews) rather than replying, B
   becomes materially more attractive and the key-custody problem must be solved directly —
   most plausibly with a scoped, rotatable per-agent Buzz credential rather than the raw nsec.
+
+**This section records the pre-evidence recommendation. The 2026-08-04 evidence pass in §7
+reprices both options; §7.7 carries the refined recommendation. The decision remains open
+and is Remy's.**
 
 ## 5. Cross-Cutting Note: Identity
 
@@ -215,11 +220,139 @@ filing separately; it is not a blocker.
 
 ## 6. Open Questions
 
-1. Can a Cloudflare container maintain an outbound WebSocket to a Nostr relay for a full run?
-   (Decides whether B is viable at all.)
+1. ~~Can a Cloudflare container maintain an outbound WebSocket to a Nostr relay?~~ **Closed
+   2026-08-04: B needs no WebSocket.** Kind-9 publish is a stateless NIP-98-signed HTTPS
+   POST per message (`client.rs:863-874`); outbound HTTPS from the container is supported
+   and exercised (`engine/wrangler.jsonc:36-38`, `mcp-connect.js:26-33`).
 2. Is there appetite to propose the `_meta` profile upstream to `block/buzz`, or should we
    assume Buzz is fixed and design around it?
 3. Should the adapter support any Buzz action beyond replying in v1? If yes, A's split-agency
    objection grows and the balance shifts toward B.
-4. Does a scoped, rotatable Buzz credential exist or could one be introduced? That is the
-   single change that would make B safe.
+4. **Partially answered.** No scoped credential exists or is planned — "the keypair IS the
+   identity — no tokens, no other auth" (`buzz-cli/src/lib.rs:1936-1942`). The remaining
+   open form: does a *second keypair*, minted purely as a posting identity and added to the
+   target channel, satisfy relay-side membership requirements? Verification pending; if yes,
+   B's blast radius shrinks to that identity's channel memberships, rotatable independently
+   of the agent.
+
+## 7. Deep Comparison A vs B (2026-08-04 evidence pass)
+
+Requested by Remy before deciding. Every fact below was verified in source that day —
+`block/buzz` @ `0afeac8a7`, `darwinian-services` @ `ec7f9ff2` — and reprices both options
+substantially relative to §3.
+
+### 7.1 What the evidence pass established
+
+1. **Buzz already runs agents server-side holding their nsec.** In the k8s backend, buzz-acp
+   and the ACP agent run as PID 1 in a per-agent Pod, with `BUZZ_PRIVATE_KEY` injected from
+   an immutable k8s Secret (`buzz-backend-kubernetes/src/env.rs:229`, `pod.rs:114-120`).
+   Desktop is documented as "one launcher among many" (`docs/remote-agents.md:31-36`); a
+   process exporting the three env vars is a conforming launcher. Key-in-the-cloud is a
+   custody model Buzz itself ships today, not a novel risk we would be introducing.
+2. **`buzz messages send` is stateless and env-only.** With only `BUZZ_RELAY_URL` +
+   `BUZZ_PRIVATE_KEY` (+ optional `BUZZ_AUTH_TAG`) and the binary on PATH, a kind-9 message
+   is one NIP-98-signed HTTPS POST (`client.rs:863-874`). No config file, keyring, daemon,
+   login, or persistent connection (`lib.rs:1936-1942`, `client.rs:521-559`).
+3. **No network-reachable Buzz MCP exists or is coming.** `buzz-dev-mcp` binds stdio only
+   (`buzz-dev-mcp/src/lib.rs:183`); buzz-agent advertises `mcpCapabilities {http:false,
+   sse:false}` (`buzz-agent/src/lib.rs:307`); no URL field exists in any server spec. §3's
+   Option B as originally written ("network-reachable Buzz MCP server") is not buildable
+   against upstream — but it is also unnecessary (see 7.2).
+4. **The Deploy API is B-ready today.** `PUT /api/minds/:slug/secrets/:server` with
+   `kind:"env"` accepts arbitrary named secrets — `BUZZ_PRIVATE_KEY` passes validation by
+   design (`secret-crypto/src/secret.ts:35-65`) — AES-GCM encrypted, decrypted per run into
+   run-scoped container env (`mcp-tokens/src/index.ts:36-37`, `mind-restore.ts:32-45`),
+   with a `redactSecrets` guard scrubbing values from agent-visible output (`secret.ts:88`).
+   Zero server changes.
+5. **The image change is two lines.** `images/mind-runtime/Dockerfile.cloud` already
+   COPY+chmods runtime files and installs a pinned npm CLI; adding a musl-static `buzz`
+   binary mirrors the existing pattern. First native binary in the image, but the mechanism
+   is established.
+6. **The container is a fresh sandbox per turn.** Every coordination unit acquires a fresh
+   sandbox that idles out on a short `sleepAfter` (`engine/wrangler.jsonc:31`). An
+   in-container publish must complete within one turn's activation — which send-on-answer
+   does — and nothing may depend on a connection surviving across turns.
+7. **The `[Context]` prose is stable but structurally fragile.** Zero format changes in the
+   last month; unchanged since 2026-06-10 (`queue.rs:1238-1319`). But the channel UUID is
+   unlabeled and has two shapes — `Channel: {name} (#{uuid})` normally, a bare `{uuid}` when
+   channel-metadata resolution fails (`queue.rs:1248`) — and the reply target is a hex id
+   inside an English sentence.
+8. **The adapter can observe delivery.** `tool.call` events surface in `stream-poll` with
+   `toolName` and `args`, so the adapter can verify a send tool was actually invoked during
+   the turn — the hook for the rider in 7.4.
+
+### 7.2 The lean Option B ("B-lean")
+
+The buildable form of B is smaller than §3's version:
+
+- `buzz` binary in the mind-runtime image (fact 5).
+- `BUZZ_RELAY_URL` / `BUZZ_PRIVATE_KEY` / `BUZZ_AUTH_TAG` as per-Mind `kind:"env"` secrets
+  (fact 4).
+- A small Card-carried **stdio** MCP server inside the container exposing
+  `buzz_messages_send` / `buzz_messages_thread` (thin exec wrappers over the CLI) — stdio
+  in-container is exactly what the runtime already spawns at boot (`mcp-connect.js`), so no
+  network MCP is needed (fact 3).
+- The Worker reads the channel UUID and reply target from the `[Context]` prose it already
+  receives and passes them as tool arguments — the extraction Buzz's own base prompt
+  instructs every agent to do, proven daily by goose.
+
+No WebSocket, no harness in the cloud, no server changes, publish-per-turn fits the sandbox
+lifecycle (fact 6).
+
+### 7.3 Dimensions
+
+| Dimension | A — adapter delivers | B-lean — container publishes |
+| --- | --- | --- |
+| Key custody | Stays wherever buzz-acp runs — the operator's laptop, or Buzz's own Pod in the k8s backend | Second copy in a per-Mind secret: AES-GCM, run-scoped injection, redaction guard; same custody model Buzz's k8s backend ships (fact 1). Dedicated posting identity pending (§6.4) |
+| Delivery determinism | Structural — adapter always sends on turn completion | Model-dependent, narrowed by the 7.4 rider to "model fails twice in one turn" |
+| Channel routing | **Our deterministic code parses prose** — two shapes, unlabeled UUID (fact 7); misparse = loud failure but no delivery | **The model extracts from the same prose** — Buzz's intended contract; drift-tolerant; failure mode is a wrong UUID, which the relay rejects unless the key is a member there |
+| Multi-channel operation | Requires the prose parse per session — a config-fixed channel misroutes, since one agent serves many channels (`pool.rs:88-90`) | Native — routing is per-turn tool arguments |
+| Threading / replies | Adapter must also parse `Thread root:` and the reply-instruction sentence | Model passes `--reply-to` naturally |
+| Agency beyond replying | None without bespoke adapter features | Full `buzz` CLI surface, including future commands, for free |
+| Cross-repo cost | None — drwn CLI only | Dockerfile +2 lines (services PR), small card MCP wrapper, secret provisioning docs |
+| Network / runtime fit | n/a | Stateless HTTPS POST within the turn's activation (facts 2, 6) |
+| Auditability | Adapter-side logs only | Sends are `tool.call`s in the run transcript, server-side |
+| Works with Buzz as shipped | Yes | Yes — the relay does not care which process signed the POST |
+
+### 7.4 The delivery-verification rider (recommended under either option)
+
+The adapter watches the event stream for a send-tool `tool.call` during each Buzz-bound
+turn. If the run settles without one, it issues a single corrective continuation via
+`POST /api/chat/:runId/message` ("the answer was not delivered; use the messaging tool
+now"), then — still nothing — logs the undelivered text to stderr and errors the turn
+rather than silently succeeding. Under B-lean this converts the source guide's §4.6 hope
+into an observable contract; under A it is unnecessary (the adapter is the sender) but the
+observation half still makes a useful send-audit.
+
+### 7.5 What remains genuinely different
+
+A's surviving advantage is exactly one property: delivery is deterministic code. Its price
+is that channel and thread routing become deterministic-code problems too — parsing an
+unlabeled two-shape prose field that Buzz never promised anyone — and that the Buzz feature
+surface is capped at whatever the adapter reimplements. B-lean inverts this: routing and
+agency are native and the machinery already exists end to end, at the price of a second key
+copy in the cloud and a delivery step that is model-initiated (rider-mitigated).
+
+### 7.6 Open evidence item
+
+Whether a dedicated posting identity (second keypair) satisfies relay-side membership
+requirements (§6.4). It does not gate the decision — B-lean is viable with the agent's own
+nsec, the custody Buzz's k8s backend already practices — but a yes would shrink B's blast
+radius materially and should be folded into the deployment guide either way.
+
+### 7.7 Refined recommendation
+
+**B-lean, with the 7.4 rider, plus the upstream `com.block.buzz` `_meta` proposal** (which
+helps every ACP agent regardless of our choice). The 2026-08-04 evidence removed B's three
+original objections — no WebSocket uncertainty (closed), no network MCP server to build
+(unneeded), no server changes for secrets (ready) — while A's main weakness hardened: its
+single-channel v1 scope is now known to be wrong for Buzz's one-agent-many-channels pool
+model, leaving prose parsing in deterministic code as A's only routing path. Key custody is
+the one real cost B retains, and it matches the custody model Buzz itself ships for remote
+agents, with a rotatable posting identity as the likely hardening (§7.6).
+
+What would flip this back to A: an operator policy that forbids any cloud custody of a Buzz
+signing key, or relay-side enforcement that makes a container-held identity unusable.
+
+The decision owner remains Remy; §4's original recommendation (A) is preserved above as the
+pre-evidence record.
