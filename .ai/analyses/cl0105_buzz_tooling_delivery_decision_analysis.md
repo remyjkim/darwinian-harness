@@ -1,12 +1,13 @@
 # ABOUTME: Decision analysis for how a remotely-executed Darwinian Worker obtains Buzz tools and delivers replies.
-# ABOUTME: States the local-versus-remote conflict, evaluates three resolutions, and recommends one.
+# ABOUTME: States the local-versus-remote conflict, evaluates the resolutions, and records the decided one.
 
 # Buzz Tooling And Delivery: Architectural Decision
 
 **Audience:** `drwn` CLI primarily; `darwinian-services` for option B.
 **Issue:** part of **[I105]** (`[I105, DW] ACP agent surface for deployed Darwinian Workers`).
-**Status:** open decision. Blocks Phase 5 of
-[`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md).
+**Status:** **decided 2026-08-04 — Option B-lean with the §7.4 delivery-verification rider**
+(Remy, after the §7 evidence pass). Phase 5 of
+[`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md) is unblocked.
 **Decision owner:** Remy.
 **Re-verified:** 2026-08-04 against `block/buzz` `main` @ `0afeac8a7`; anchors and the `buzz-dev-mcp` tool inventory reflect that HEAD.
 
@@ -356,3 +357,7 @@ signing key, or relay-side enforcement that makes a container-held identity unus
 
 The decision owner remains Remy; §4's original recommendation (A) is preserved above as the
 pre-evidence record.
+
+**Decision (Remy, 2026-08-04): B-lean with the rider, as recommended here.** Folded into the
+task plan's Phase 5. The dedicated-posting-identity verification (§7.6) continues as
+deployment-guide hardening, non-gating.

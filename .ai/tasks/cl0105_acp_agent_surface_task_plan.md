@@ -6,7 +6,7 @@
 **Issue:** [I105] `[I105, DW] ACP agent surface for deployed Darwinian Workers`.
 **Architecture:** [`analyses/cl0105_acp_buzz_worker_integration_target_architecture.md`](../analyses/cl0105_acp_buzz_worker_integration_target_architecture.md) — verified against `darwinian-services` @ `ec7f9ff2` and `block/buzz` @ `0afeac8a7` on 2026-08-04.
 **Owner:** Remy K · **Reviewer:** Minseung Lee.
-**Gates in force:** Phase 4 requires [I106] (`POST /api/chat/:runId/cancel`) live. Phase 5 requires the delivery decision in [`analyses/cl0105_buzz_tooling_delivery_decision_analysis.md`](../analyses/cl0105_buzz_tooling_delivery_decision_analysis.md) (open; deep A-vs-B comparison in progress). Phases 0–3 have no external gate.
+**Gates in force:** Phase 4 requires [I106] (`POST /api/chat/:runId/cancel`) live. Phase 5 consumes the delivery decision in [`analyses/cl0105_buzz_tooling_delivery_decision_analysis.md`](../analyses/cl0105_buzz_tooling_delivery_decision_analysis.md) — **decided 2026-08-04: B-lean with the delivery-verification rider** (§7.7). Phases 0–3 have no external gate.
 
 ## Decisions and supersessions
 
@@ -37,6 +37,13 @@
   resolve the in-flight prompt `cancelled`) with a loud stderr warning that the server-side
   run continues. That is acceptable for an editor at a keyboard and documented as such; the
   Buzz profile stays disabled until I106 lands, per the architecture's Phase-4 gate.
+- **Delivery: B-lean + rider (decided 2026-08-04, decision analysis §7.7).** The container
+  publishes via the `buzz` CLI — binary in the mind-runtime image (darwinian-services PR),
+  `BUZZ_RELAY_URL`/`BUZZ_PRIVATE_KEY`/`BUZZ_AUTH_TAG` as per-Mind `kind:"env"` secrets
+  (existing PUT route), and a Card-carried stdio MCP wrapper exposing
+  `buzz_messages_send`/`buzz_messages_thread`. The adapter verifies delivery through
+  stream-visible `tool.call` events and issues one corrective continuation via `/message`
+  when a Buzz-bound turn settles without a send.
 
 ## Target contracts
 
@@ -194,12 +201,19 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   `already_terminal`, and unskips the cancellation e2e.
 - Exit: cancel stops the run server-side (verified by run status) and the Buzz gate lifts.
 
-### Phase 5 — Buzz profile and delivery ⛔ gated on the delivery decision
+### Phase 5 — Buzz profile and delivery (B-lean + rider)
 - `buzz-profile.ts`: Buzz detection (clientInfo), `[Base]` handling, idle-clock awareness
   (any frame resets Buzz's 900 s idle timer; the 7200 s hard cap never resets — publish
-  early, never hold answers to end-of-run), delivery per the decided option, idempotency key
-  `runId + turn index`, single-channel v1 scope, `com.block.buzz` `_meta` proposal drafted
-  upstream.
+  early, never hold answers to end-of-run), and the delivery-verification rider: watch
+  `stream-poll` for a send-tool `tool.call`; if the turn settles without one, issue one
+  corrective continuation via `/message`; if still none, log the undelivered text to stderr
+  and error the turn rather than silently succeeding.
+- Cross-repo deliverables, sequenced before the e2e: `buzz` binary in
+  `images/mind-runtime/Dockerfile.cloud` (darwinian-services PR), the buzz-tools Card MCP
+  wrapper (stdio exec of the CLI, idempotency key `runId + turn index`), and a secrets
+  runbook for `PUT /api/minds/:slug/secrets/:server` with `kind:"env"`.
+- `com.block.buzz` `_meta` proposal drafted upstream; the dedicated posting identity folds
+  into the deployment guide when its relay-side verification lands (non-gating).
 - Increment 8–9, `e2e-acp-buzz`. Exit: architecture acceptance criterion 1 — a Buzz mention
   produces the Worker's streamed answer in the right channel.
 
@@ -223,7 +237,7 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
 | I106 stalls in darwinian-services | M | Phases 0–3 ship editor value without it; Buzz stays gated |
 | Buzz interface drifts (pre-stable) | M | permanent fake-client suite pinned to `0afeac8a7`; re-record on upstream bumps |
 | stream-poll payload changes under I50 follow-ups | L | projection tolerates unknown types; `v` gate honored |
-| Prose `[Context]` template changes (Phase 5, option A path) | M | single-channel v1 avoids prose parsing; `_meta` proposal upstream |
+| Model misroutes a send (wrong channel UUID from prose) | L | relay rejects non-member channels; the rider observes every send; `_meta` proposal upstream removes the prose dependency |
 
 ## Out of scope
 

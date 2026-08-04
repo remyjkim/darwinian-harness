@@ -215,11 +215,15 @@ Consequence for Buzz: Buzz auto-approves permissions and we cannot compensate fr
 side. `drwn-command-bridge` is **not** on this path; its consent gate is interactive and
 fail-closed (`src/consent/gate.ts:19-23`), which is wrong for a headless chat agent anyway.
 
-## 8. Open Decision: Buzz Tooling And Delivery
+## 8. Buzz Tooling And Delivery (decided)
 
-This is the one genuine architectural conflict, and it needs a call before implementation.
-Full evaluation:
-[`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md).
+**Resolved 2026-08-04 — Option B-lean with a delivery-verification rider** (Remy): the
+container publishes via the `buzz` CLI — binary in the mind-runtime image, `BUZZ_*`
+per-Mind env secrets, a Card-carried stdio MCP wrapper exposing the send tools — and the
+adapter observes send `tool.call`s on the stream, issuing one corrective continuation when
+a Buzz-bound turn settles without one. The evidence pass and full pricing live in
+[`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md)
+§7, which governs; the summary below is the original framing, kept as the record.
 
 Buzz's model assumes the agent is a **local** process: it declares a local stdio MCP server
 named by `BUZZ_ACP_MCP_COMMAND` in `session/new.mcpServers`, with `BUZZ_RELAY_URL`,
@@ -255,9 +259,11 @@ requires verifying the relay is reachable from a Cloudflare container over WebSo
 agent locally with Worker config injected, for Buzz only. Cost: two runtime models to
 maintain, and it abandons the deployed Worker for the Buzz case.
 
-Recommendation: **A**, on the grounds that it keeps the private key local and makes delivery
-deterministic rather than model-dependent. It should be paired with proposing an upstream
-Buzz `_meta` profile (guide §7) so channel routing stops depending on prose.
+Pre-evidence recommendation was **A**, on the grounds that it keeps the private key local
+and makes delivery deterministic rather than model-dependent — superseded by the decision
+above once the 2026-08-04 evidence pass repriced B (decision analysis §7). The upstream
+Buzz `_meta` profile proposal (guide §7) proceeds regardless, so channel routing stops
+depending on prose for every ACP agent.
 
 Note that C has a cheap consolation prize regardless of the choice:
 `@agentclientprotocol/claude-agent-acp` reads `<cwd>/.claude/settings.json` and takes
@@ -347,7 +353,7 @@ conversation retains context across mentions and survives an adapter restart.
 server-side and resolves the prompt `cancelled`. **Do not ship Buzz integration before this
 lands** — without it, Buzz's idle timeout silently orphans paid runs.
 
-**Phase 5 — delivery.** Whichever of §8 is chosen, plus tool policy projection.
+**Phase 5 — delivery.** Consumes the §8 decision (B-lean + rider), plus tool policy projection.
 
 ## 11. Testing
 
