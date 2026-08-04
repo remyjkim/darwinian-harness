@@ -3,9 +3,9 @@
 
 # [I177] Machine-Scope Worker Blueprint — Target Architecture (GATE 1)
 
-**Status**: Revised hard-cut design; ready for G1 review (2026-08-03)
+**Status**: G1 approved; implementation complete pending G3 (2026-08-03)
 
-**Issue**: [I177] · **Owner**: Remy K · **Reviewer**: Minseung Lee · **Branch**: `remy/I177-machine-scope-blueprint`
+**Issue**: [I177] · **Owner/Reviewer**: Remy K (owner-as-reviewer per campaign decision D5) · **Branch**: `remy/I177-machine-scope-blueprint`
 
 **Plan**: [`../tasks/cl0177_machine_scope_blueprint_task_plan.md`](../tasks/cl0177_machine_scope_blueprint_task_plan.md) (GATE 2)
 
@@ -153,7 +153,7 @@ a circular dependency. That bootstrap is not the G3 release candidate. After
 `machine-defaults` version containing that Operator release and move the shipped
 descriptor to it. G3 cannot pass while the descriptor still names the bootstrap.
 
-Guided `drwn init` discovers the recommended ref from a versioned descriptor such as `registry/machine-workers.json`. The descriptor pins the complete source ref; a contract module validates that descriptor. Non-interactive and declined setup remain empty.
+Guided `drwn init` discovers the recommended ref from a versioned descriptor such as `registry/machine-workers.json`. The descriptor pins the root and every closure member by source ref, commit, tree SHA, and content integrity; a contract module rejects any resolved byte substitution, including a moved release tag. Non-interactive and declined setup remain empty.
 
 The Operator remains a normal Card member. The changed workflow payload is
 versioned independently as Operator `2.0.2` with `harness.minVersion: "1.1.0"`.

@@ -7,7 +7,7 @@
 
 **Status**: Building; documentation, baseline, G1, and G2 gates complete (2026-08-03)
 
-**Issue**: [I177] · **Owner**: Remy K · **Reviewer**: Minseung Lee
+**Issue**: [I177] · **Owner/Reviewer**: Remy K (owner-as-reviewer per campaign decision D5)
 
 **Architecture**: [`../analyses/cl0177_machine_scope_blueprint_target_architecture.md`](../analyses/cl0177_machine_scope_blueprint_target_architecture.md)
 
@@ -567,10 +567,11 @@ bunx bun@1.2.21 run typecheck
    Move `registry/machine-workers.json` from the bootstrap to that release and
    rerun release readiness from committed state. G3 must reject a descriptor
    that still names bootstrap `v1.0.0` or the incompatible four-member closure.
-7. Push the tested parent commit and require all CI jobs to pass.
-8. Request G3 review with a PR body containing `Testing & CI evidence`.
-9. Write the completion document with commits, test totals, manual artifacts, remaining non-goals, and rollback/reset guidance.
-10. Record the atomic G3 Issue Tracker transaction and Owner acknowledgement only after review evidence exists.
+7. Write and commit the completion document with commits, exact commands and test totals, manual artifacts, remaining non-goals, and rollback/reset guidance.
+8. Push the tested parent commit, update the PR body with `Testing & CI evidence`, and require all CI jobs to pass at that exact head.
+9. Request G3 and atomically set `Reviewer Status = G3 Review`, refresh the Issue Status table, and add the newest-first review-request thread entry.
+10. Record the reviewer pass as its own atomic transaction: set `Reviewer Status = G3 Passed` and `Owner Status = Received`, refresh the table, and add the newest-first pass entry.
+11. Record the Owner acknowledgement as a second atomic transaction: set `Owner Status = In Review`, refresh the table, and add the newest-first acknowledgement entry.
 
 **Final commands**
 
@@ -621,4 +622,4 @@ git diff --check
 - [x] G1 passed and acknowledged.
 - [x] G2 passed and acknowledged.
 - [x] Tasks 2–8 executed through recorded RED-GREEN-REFACTOR slices.
-- [ ] Task 9 final verification, G3, and completion evidence finished.
+- [x] Task 9 local verification and completion evidence prepared; exact-head CI and G3 remain external PR/Issue Tracker gates.
