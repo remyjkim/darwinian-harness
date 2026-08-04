@@ -14,9 +14,10 @@ There is no way for an API caller to stop an in-flight run. Closing the SSE conn
 the *bridge*; the run continues executing in the Cloudflare Workflow until it finishes on its
 own. This is invisible to the caller, and it costs money.
 
-This blocks the ACP adapter described in `129`, because the Agent Client Protocol requires
+This blocks the ACP adapter described in `cl0105`, because the Agent Client Protocol requires
 cancellation to be honored, and because Buzz — the first target client — sends cancellation
-on both idle and hard turn timeouts. Without a server-side cancel, the adapter has only two
+on its idle timeout and kills the agent process outright at its hard turn cap. In both cases
+the server-side run keeps executing. Without a server-side cancel, the adapter has only two
 options, and both are unacceptable:
 
 1. Resolve the prompt as `cancelled` while the run keeps burning tokens. The protocol says
@@ -86,9 +87,11 @@ notification, and the in-flight `session/prompt` MUST then resolve with
 `stopReason: "cancelled"`. An agent that ignores it is non-conforming, and clients will
 report it as a hang.
 
-**The client is a machine on a timer, not a human.** Buzz enforces both an idle timeout and a
-hard maximum turn duration, and cancels on either. In a busy channel this fires routinely,
-not exceptionally.
+**The client is a machine on a timer, not a human.** Buzz's idle timeout (default 900 s)
+sends `session/cancel` and waits for `stopReason: "cancelled"`; its hard 7200 s cap goes
+further and kills the subprocess with no cancel at all (`pool.rs:2182-2184`, `:2263-2288`,
+verified @ `0afeac8a7`). In a busy channel the idle cancel fires routinely, not
+exceptionally — and neither path stops the server-side run.
 
 **Nobody is watching.** A Buzz agent answers mentions unattended. An orphaned run has no
 human to notice it, and the operator is billed under their own DAH identity — there is no
@@ -147,12 +150,12 @@ but not yet stopped, rather than reporting `cancelled`.
 | Buzz idle timeout | clean stop | orphaned run per timeout |
 | Conformance | conforming | non-conforming |
 
-Until this lands, `129` sequences Buzz integration behind it (Phase 4). The ACP adapter can be
+Until this lands, `cl0105` sequences Buzz integration behind it (Phase 4). The ACP adapter can be
 built and demoed against editors without cancellation, but it should not be pointed at Buzz.
 
 ## 6. Related, Not Blocking
 
-Two adjacent requests from `129`, filed here so the surface is reviewed together. Neither
+Two adjacent requests from `cl0105`, filed here so the surface is reviewed together. Neither
 blocks Phase 1-3.
 
 **Raw event stream over SSE.** The public SSE route emits cumulative `thread.snapshot` frames

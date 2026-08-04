@@ -41,28 +41,32 @@ beside this document) carry unresolvable citation tokens and a June 2026 cutoff.
 claims were re-verified against primary sources on 2026-07-24. Three were wrong. Server-side
 claims were re-verified again on 2026-08-04 against `darwinian-services` `main` @ `ec7f9ff2`:
 every behavior held; line anchors stale since the I50 chat-proxy rewrite are corrected inline.
+Buzz-side claims were re-verified the same day against `block/buzz` `main` @ `0afeac8a7`; two
+refinements surfaced — the system-prompt branch is now three-way by agent identity, and only
+the idle timeout cancels (§6.1) — with anchors corrected inline.
 
 | Guide claim | Verified state |
 | --- | --- |
 | Required agent methods are `initialize`, `session/new`, `session/prompt`, `session/cancel`, `session/update` | Agent baseline is `initialize`, **`authenticate`**, `session/new`, `session/prompt`. `session/update` and `session/request_permission` are **client** methods the agent calls. `session/cancel` is a client→agent notification. |
-| A strict v1 agent "will not plug into current Buzz without modification" | False. Buzz reads back the version we answer (`lib.rs` L3864, `unwrap_or(1)`) and branches: answer `2` and it sends `systemPrompt` in `session/new`; answer `1` and it prepends a `[Base]` section to the first user message (`pool.rs` L1090-1104). Both work. |
+| A strict v1 agent "will not plug into current Buzz without modification" | False. Buzz reads back the version the agent answers (`lib.rs:3914`, `unwrap_or(1)`) and routes system-prompt delivery by agent identity plus version (`pool.rs:182-209`, upstream #4395): goose gets a private extension method, `claude-agent-acp` always gets `_meta.systemPrompt`, and every other agent — including `drwn acp` — gets a bare `systemPrompt` field at version ≥ 2 or a `[Base]` prefix on the first user message below it (`pool.rs:1179-1190`). Both answers work. |
 | Build against the ACP TypeScript SDK | The package the guide implies, `@zed-industries/agent-client-protocol`, is deprecated at 0.4.5. Current is **`@agentclientprotocol/sdk@1.3.0`**. |
 
 Confirmed as stated: ACP stable is v1 (v2 went to Draft 2026-07-20 with upstream saying
 "don't ship it by default in production"); stdio NDJSON is the only stable transport;
-Buzz pins `protocolVersion: 2` deliberately (`acp.rs` L126, comment at L540-541);
-Buzz auto-selects `allow_once` by `kind` with no policy gate (`acp.rs` L1671-1731).
+Buzz pins `protocolVersion: 2` deliberately (`acp.rs:126`, comment at `acp.rs:599-600`);
+Buzz auto-selects `allow_once` by `kind` with no policy gate (`acp.rs:1882-1937`).
 
 Newly established, and material:
 
-- **Buzz advertises no `fs` and no `terminal` client capability** (`acp.rs` L347-368). The
+- **Buzz advertises no `fs` and no `terminal` client capability** (`acp.rs:390-411`). The
   `auth.terminal: true` a grep would surface is a login capability — a false positive.
   An agent under Buzz cannot read files or run commands through ACP at all.
 - **Buzz's `protocolVersion: 2` is not ACP v2.** `systemPrompt` on `session/new` appears in
   no ACP schema, v1 or v2. Buzz uses the integer as a private feature flag. Claiming v2
   semantics because `2` appeared on the wire would be wrong.
-- **Buzz registers agents by env var only** — `BUZZ_ACP_AGENT_COMMAND` + `BUZZ_ACP_AGENT_ARGS`.
-  No manifest, no registry. Unrecognized binaries pass args verbatim (`config.rs` L617-623).
+- **Buzz registers agents by flag or env var** — `--agent-command`/`BUZZ_ACP_AGENT_COMMAND` +
+  `--agent-args`/`BUZZ_ACP_AGENT_ARGS` (`config.rs:191-201`). No manifest, no registry.
+  Unrecognized binaries pass args verbatim (`config.rs:700-707`, `:788-790`).
 - **ACP now has an official agent registry** — 38 agents with exact launch distributions at
   `cdn.agentclientprotocol.com/registry/v1/latest/registry.json`.
 - **An official proxy pattern exists** (proxy-chains RFD, status implemented;
@@ -151,10 +155,14 @@ Closing the SSE connection stops the bridge; **the run keeps executing in the Wo
 Only an `AbortSignal` inside the container base can stop a turn, and nothing HTTP-reachable
 triggers it.
 
-This blocks Buzz, which sends `session/cancel` on idle and hard turn timeouts. Without it
-the adapter must either lie — resolve the prompt `cancelled` while the run continues to burn
-tokens — or hang. Both are unacceptable. **Required: `POST /api/chat/:runId/cancel`**,
-threading an abort into the container.
+This blocks Buzz. Its idle timeout (default 900 s, `BUZZ_ACP_IDLE_TIMEOUT`) sends
+`session/cancel` and drains until the prompt resolves `cancelled`; its hard turn cap
+(default 7200 s) does not cancel at all — it declares the subprocess unrecoverable and
+respawns it (`pool.rs:2182-2184`, `:2263-2288`). Either way the server-side run keeps
+executing. Without a server cancel the adapter must either lie — resolve the prompt
+`cancelled` while the run continues to burn tokens — or hang until Buzz kills it. Both are
+unacceptable. **Required: `POST /api/chat/:runId/cancel`**, threading an abort into the
+container.
 
 Full gap analysis and proposed contract:
 [`cl0106`](./cl0106_run_cancellation_interface_request.md) — filed as **[I106]**.
@@ -213,23 +221,30 @@ This is the one genuine architectural conflict, and it needs a call before imple
 Full evaluation:
 [`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md).
 
-Buzz's model assumes the agent is a **local** process: it injects tools via
-`BUZZ_ACP_MCP_COMMAND` as local stdio MCP servers, with `BUZZ_RELAY_URL`, `BUZZ_PRIVATE_KEY`,
-and `BUZZ_AUTH_TAG` placed in their `env` (`lib.rs` L4145-4183). It also expects the agent to
-publish its answer by *calling a Buzz tool*, not by streaming ACP text
-(`buzz-cli`: "JSON in, JSON out").
+Buzz's model assumes the agent is a **local** process: it declares a local stdio MCP server
+named by `BUZZ_ACP_MCP_COMMAND` in `session/new.mcpServers`, with `BUZZ_RELAY_URL`,
+`BUZZ_PRIVATE_KEY`, `BUZZ_AUTH_TAG`, and `BUZZ_ACP_DISPLAY_NAME` placed in its `env`
+(`lib.rs:4280-4330`) — the *agent* is expected to spawn it. Every deployment sets that
+command to `buzz-dev-mcp`, which exposes seven generic dev tools (`shell`, `read_file`,
+`view_image`, `str_replace`, `todo`, `_Stop`, `_PostCompact`) and **no messaging tool**.
+Publishing happens by the agent running `buzz messages send --channel <UUID> --content …`
+through the `shell` tool (`base_prompt.md:73`); the channel UUID is a mandatory per-send flag
+with no env or context default (`buzz-cli/src/lib.rs:351-378`), available only from the
+prompt's `[Context]` prose.
 
 A remotely-executed agent cannot use any of that. The container cannot spawn a binary that
 lives on the operator's laptop.
 
 Three resolutions, with the trade-off that decides them:
 
-**A. Adapter as delivery controller.** The adapter consumes Buzz's `mcpServers` locally,
-lets the remote agent produce answer text, and deterministically posts it to the channel.
-Keeps the Nostr key on the operator's machine. Also removes the guide's §4.6 failure mode
-where the model forgets to call the send tool. Cost: the adapter becomes a small MCP client,
-contradicting §1's "no MCP client," and the channel id must come from somewhere — Buzz does
-not send structured `_meta` today, and parsing it from prose is brittle.
+**A. Adapter as delivery controller.** The adapter reads the Buzz credential env from the
+`mcpServers` declaration in `session/new`, lets the remote agent produce answer text, and
+deterministically publishes it by exec'ing `buzz messages send` with that env — no MCP
+client needed, since `buzz-dev-mcp` has no messaging tool to call and the `buzz` binary
+ships on the same machine. Keeps the Nostr key on the operator's machine and removes the
+guide's §4.6 failure mode where the model forgets to call the send tool. Cost: the channel
+id must come from somewhere — Buzz sends no structured `_meta` (re-verified @ `0afeac8a7`),
+and parsing it from prose is brittle.
 
 **B. Card-carried network Buzz tools.** Give the Mind Buzz credentials as deployment secrets
 and a network-reachable Buzz MCP server, so the container talks to the relay directly.

@@ -54,7 +54,7 @@ runtime seam at all.
 
 **This is wrong for the remote-fronting architecture**, for a reason that has nothing to do
 with the elegance of the mapping: the tools are not on the same machine as the policy engine.
-An ACP client can only answer a permission request that an ACP *agent* raises. In `129` the
+An ACP client can only answer a permission request that an ACP *agent* raises. In `cl0105` the
 agent is a thin local adapter; the actual tool execution happens server-side, inside a
 container, driven by a Coordinator DO. Nothing in that path calls back out over ACP, and
 building such a callback would mean routing every remote tool invocation through a local
@@ -62,7 +62,7 @@ stdio process — unacceptable for latency, and it would make the run's liveness
 laptop staying awake.
 
 The mapping remains valid for a *locally executed* agent. It does not survive the move to
-remote execution, which is the architecture chosen in `129`.
+remote execution, which is the architecture chosen in `cl0105`.
 
 ## 3. Why The Declarative Fallback Also Fails Today
 
@@ -170,7 +170,7 @@ and the governance claim becomes true. Until then it should not be made.
 
 ## 7. Sequencing Note
 
-This does not block the ACP adapter. `129` Phases 1-3 ship without it; the adapter simply
+This does not block the ACP adapter. `cl0105` Phases 1-3 ship without it; the adapter simply
 makes no governance claim. It should land before any marketing or documentation describes
 Darwinian Workers as policy-governed in deployment, and before public marketplace invocation
 (`deploy-api/src/public-chat.ts`) is promoted, since that path runs someone else's Card

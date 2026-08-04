@@ -8,35 +8,41 @@
 **Status:** open decision. Blocks Phase 5 of
 [`cl0105`](./cl0105_acp_buzz_worker_integration_target_architecture.md).
 **Decision owner:** Remy.
+**Re-verified:** 2026-08-04 against `block/buzz` `main` @ `0afeac8a7`; anchors and the `buzz-dev-mcp` tool inventory reflect that HEAD.
 
 ## 1. The Conflict
 
 Buzz assumes the ACP agent is a **local process on the operator's machine**. The chosen
-architecture in `129` puts execution **in a Cloudflare container**. Two of Buzz's core
+architecture in `cl0105` puts execution **in a Cloudflare container**. Two of Buzz's core
 mechanisms do not survive that move.
 
-**Tool injection is local-process-scoped.** Buzz passes tools by spawning a local stdio MCP
-binary named by `BUZZ_ACP_MCP_COMMAND` and listing it in `session/new.mcpServers`. It derives
-the server name from the file stem and injects credentials directly into that server's `env`
-(`crates/buzz-acp/src/lib.rs` L4145-4183):
+**Tool injection is local-process-scoped.** Buzz declares a local stdio MCP binary named by
+`BUZZ_ACP_MCP_COMMAND` in `session/new.mcpServers` — the agent is expected to spawn it. It
+derives the server name from the file stem and injects credentials directly into that
+server's `env` (`crates/buzz-acp/src/lib.rs:4280-4330`):
 
 ```text
-BUZZ_RELAY_URL, BUZZ_PRIVATE_KEY (bech32 nsec), optionally BUZZ_AUTH_TAG
+BUZZ_RELAY_URL, BUZZ_PRIVATE_KEY (bech32 nsec), optionally BUZZ_AUTH_TAG, BUZZ_ACP_DISPLAY_NAME
 ```
 
 A Cloudflare container cannot spawn a binary that lives on a laptop. Forwarding the
 `mcpServers` list to the deployed runtime verbatim would name a command that does not exist
 there.
 
-**Delivery is tool-mediated, not stream-mediated.** ACP message chunks are harness
-communication; they do not post to a channel. Buzz's model is that the agent calls a Buzz
-tool — `buzz-cli` is explicitly "agent-first … JSON in, JSON out". So the answer reaching the
-channel depends on the agent invoking a tool it can only reach locally.
+**Delivery is CLI-mediated, not stream-mediated.** ACP message chunks are harness
+communication; buzz-acp only logs them and never posts them to a channel (`acp.rs:1732-1736`).
+The deployed MCP server — `buzz-dev-mcp` in every k8s deployment
+(`buzz-backend-kubernetes/src/env.rs:267`) — exposes seven generic dev tools (`shell`,
+`read_file`, `view_image`, `str_replace`, `todo`, `_Stop`, `_PostCompact`) and **no messaging
+tool**. The base prompt instructs the agent to publish by running
+`buzz messages send --channel <UUID> --content …` through `shell` (`base_prompt.md:73`).
+`--channel` is a mandatory per-send UUID with no env or context default
+(`buzz-cli/src/lib.rs:351-378`), available only from the prompt's `[Context]` prose.
 
 Compounding both: **Buzz advertises no `fs` and no `terminal` client capability**
-(`crates/buzz-acp/src/acp.rs` L347-368). The `auth.terminal: true` a grep surfaces is a login
+(`crates/buzz-acp/src/acp.rs:390-411`). The `auth.terminal: true` a grep surfaces is a login
 capability — a false positive. So an agent under Buzz has *no* capabilities beyond what
-`BUZZ_ACP_MCP_COMMAND` injects. The injected MCP server is not a convenience; it is the
+`BUZZ_ACP_MCP_COMMAND` supplies. The declared MCP server is not a convenience; it is the
 agent's entire ability to act.
 
 ## 2. Constraints Any Resolution Must Respect
@@ -50,21 +56,28 @@ agent's entire ability to act.
    and forgets to call the send tool is a silent failure — the user sees nothing.
 4. **Idempotency.** Buzz retries after network, process, and timeout failures. A send whose
    acknowledgement is lost must not produce a duplicate channel message.
-5. **`129` §1 says the adapter hosts no MCP client.** Option A revisits this deliberately.
+5. **`cl0105` §1 says the adapter hosts no MCP client.** With `buzz-dev-mcp` exposing no
+   messaging tool, delivery goes through the `buzz` CLI, so no option needs an MCP client
+   any more — this constraint now holds under every resolution.
+6. **Delivery must not wait for end-of-run.** Buzz's idle timeout (900 s default) cancels
+   cleanly, but its hard 7200 s cap kills the subprocess with no `session/cancel`
+   (`pool.rs:2263-2288`). Publishing must happen as soon as the answer exists.
 
 ## 3. Options
 
 ### Option A — Adapter as delivery controller (recommended)
 
-The adapter consumes Buzz's `session/new.mcpServers` **locally**. The remote Worker produces
-answer text; the adapter posts it to the channel by calling the local Buzz MCP tool.
+The adapter reads the Buzz credential env (`BUZZ_RELAY_URL`, `BUZZ_PRIVATE_KEY`,
+`BUZZ_AUTH_TAG`) from the `session/new.mcpServers` declaration. The remote Worker produces
+answer text; the adapter publishes it by executing `buzz messages send --channel … --content …`
+with that env — the `buzz` multicall binary ships with the Buzz install on the same machine.
 
 ```text
 Buzz ──session/new(mcpServers)──▶ drwn acp ──HTTPS──▶ deployed Worker
                                      │                      │
                                      │◀── text.delta ───────┘
                                      │
-                                     └── buzz tool call ──▶ Buzz relay
+                                     └── exec `buzz messages send` ──▶ Buzz relay
                                          (nsec never leaves the machine)
 ```
 
@@ -78,13 +91,14 @@ Buzz ──session/new(mcpServers)──▶ drwn acp ──HTTPS──▶ deploy
 - Works with Buzz exactly as it ships. No upstream change required.
 
 **Against**
-- The adapter becomes a small MCP client, contradicting `129` §1. Concretely: `@modelcontextprotocol/sdk`
-  as a CLI dependency, stdio client transport, tool discovery, lifecycle. The repo has MCP
-  client experience but only in tests (`drwn-command-bridge/test/`, `scripts/native-macos-smoke.ts`);
-  there is no production MCP client today.
+- The adapter gains a subprocess dependency: the `buzz` CLI must be present on PATH and its
+  flag surface (`messages send --channel --content --reply-to`) must stay stable. No MCP
+  client is needed after all — `buzz-dev-mcp` has no messaging tool to call — so `cl0105`
+  §1's "no MCP client" survives intact, at the cost of coupling to a CLI contract instead.
 - **Channel routing is unsolved.** The adapter must know which channel to post to. Buzz sends
-  no structured context. Either we parse prose (brittle, constraint 2) or we propose an
-  upstream `_meta` profile.
+  no structured context (re-verified @ `0afeac8a7`: `session/prompt` params are only
+  `{sessionId, prompt}`, `acp.rs:1970-1979`). Either we parse prose (brittle, constraint 2)
+  or we propose an upstream `_meta` profile.
 - Splits agency: the remote Worker "decides" the answer, the local adapter performs the
   action. Anything the Worker wants to do in Buzz beyond replying — reactions, canvas,
   threads — either goes unused or needs explicit adapter support.
@@ -108,7 +122,7 @@ Give the Mind Buzz credentials as deployment secrets and a network-reachable Buz
 so the container talks to the relay directly.
 
 **For**
-- Clean separation: the adapter stays a pure protocol projector, `129` §1 holds.
+- Clean separation: the adapter stays a pure protocol projector, `cl0105` §1 holds.
 - Full agency — the Worker can use the whole Buzz surface (messages, reactions, canvas,
   threads), not just replies.
 - Channel routing is the Worker's problem, solved with the same context any tool-using agent
@@ -160,14 +174,15 @@ Second, delivery reliability. A converts "hope the model calls the send tool" in
 deterministic adapter action. That eliminates a whole class of silent failure that B and C
 both retain and can only mitigate with prompt engineering.
 
-The cost — an MCP client in the adapter — is real but bounded. It is one stdio client, and it
-consumes servers that Buzz has already configured and launched. It does not require the
-adapter to resolve, install, or manage MCP servers, which is what `129` §1 was written to
-avoid.
+The cost — a subprocess exec of the `buzz` CLI with credentials lifted from the
+`session/new` declaration — is smaller than the MCP client this analysis originally priced
+in. No new dependency, no client lifecycle; the adapter shells out exactly the way Buzz's
+own base prompt tells agents to.
 
 ### Recommended scope for a first release
 
-1. Consume `session/new.mcpServers` locally; connect only servers Buzz supplied.
+1. Read credentials from `session/new.mcpServers`; deliver via `buzz messages send` exec.
+   Never spawn the declared MCP server — nothing in it is needed for delivery.
 2. Single-channel operation, channel configured on the adapter. No prose parsing.
 3. Deterministic send on successful turn completion, keyed for idempotency on
    `runId` + turn index.
