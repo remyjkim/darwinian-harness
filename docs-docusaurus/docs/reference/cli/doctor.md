@@ -32,7 +32,7 @@ drwn doctor --json
 | Project config — invalid Worker root | A configured root cannot be parsed or matched against `card.lock` |
 | Project config — unresolved Card refs | A locked Card cannot be materialized from its immutable extraction |
 | Card manifest — unavailable skill | A consumed card's manifest references a skill name that does not resolve under the effective state |
-| Machine capability issues | Invalid explicit IDs or missing/changed pinned profile bytes |
+| Machine Worker issues | Invalid V2 root/lock relationships, missing or changed locked Card bytes, or consent gaps |
 | Machine projection conflicts | Foreign destinations or drift in prior-owned state; report-only |
 | Store + write-record status | Store schema version, card count, and last-write record presence/corruption |
 

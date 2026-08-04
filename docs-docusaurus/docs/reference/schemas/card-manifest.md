@@ -4,7 +4,9 @@ sidebar_position: 3
 
 # Card Manifest
 
-On disk: `card.json` at the root of a card source tree (`~/.agents/drwn/sources/<scope>/<name>/card.json`) or a published/consumed card tree.
+On disk: `card.json` at the root of an explicit user-owned Card source
+repository (for example `<card-collection>/<name>/card.json`) or a
+published/consumed Card tree. Editable sources do not live in the machine Store.
 
 Purpose: the manifest a card carries. Declares the card's identity, versioned skill and MCP contributions, target defaults, extension intent, and authoring-quality metadata.
 

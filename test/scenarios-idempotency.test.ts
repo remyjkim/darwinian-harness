@@ -4,7 +4,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, installMachineBlueprint, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -23,7 +23,7 @@ function envFor(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
 test("write twice in machine scope produces zero changes on second write", async () => {
   const fixture = await scaffoldCliFixture();
   tempRoots.push(fixture.root);
-  expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture))).exitCode).toBe(0);
+  await installMachineBlueprint(fixture, { skills: ["alpha"] });
 
   const first = await runAgentsCli(["write", "--json"], envFor(fixture));
   expect(first.exitCode).toBe(0);

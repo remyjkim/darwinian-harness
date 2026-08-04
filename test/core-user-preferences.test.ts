@@ -1,12 +1,11 @@
-// ABOUTME: Verifies strict machine-local authoring preferences and lossless legacy scope migration.
-// ABOUTME: Proves preference persistence succeeds before the compatibility field is removed.
+// ABOUTME: Verifies strict machine-local authoring preferences independent of machine intent.
+// ABOUTME: Proves old machine authoring state is neither read, accepted, migrated, nor mutated.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DrwnError } from "../cli/core/errors";
-import { createEmptyMachineConfig, readMachineConfigFile, writeMachineConfigFile } from "../cli/core/machine-config";
 import { resolveMachineConfigPath } from "../cli/core/store-paths";
 import {
   createEmptyUserPreferences,
@@ -90,74 +89,60 @@ describe("user preferences V1", () => {
     expect((await readUserPreferencesFile(path))?.defaultAuthorScope).toBe("@me");
   });
 
-  test("reads legacy scope without mutation and migrates it inside the next preference transaction", async () => {
-    const root = await createTempRoot("preferences-migrate-");
+  test("loads defaultAuthorScope only from config.json and ignores old machine authoring bytes", async () => {
+    const root = await createTempRoot("preferences-independent-read-");
     tempRoots.push(root);
     const agentsDir = join(root, ".agents");
     const machinePath = resolveMachineConfigPath(agentsDir);
-    const machine = createEmptyMachineConfig();
-    machine.policy.authoring = { scope: "@legacy" };
-    await writeMachineConfigFile(machinePath, machine);
+    const preferencesPath = resolveUserConfigPath(agentsDir);
+    const oldMachine = `${JSON.stringify({
+      schema: "drwn.machine",
+      schemaVersion: 1,
+      policy: { authoring: { scope: "@legacy" } },
+      capabilities: { profile: null, skills: [], mcpServers: [] },
+    }, null, 2)}\n`;
+    await mkdir(join(agentsDir, "drwn"), { recursive: true });
+    await writeFile(machinePath, oldMachine);
+    await writeUserPreferencesFile(preferencesPath, {
+      ...createEmptyUserPreferences(),
+      defaultAuthorScope: "@explicit",
+    });
 
     expect(await loadUserPreferences(agentsDir)).toEqual({
       ...createEmptyUserPreferences(),
-      defaultAuthorScope: "@legacy",
+      defaultAuthorScope: "@explicit",
     });
-    expect((await readMachineConfigFile(machinePath))?.policy.authoring?.scope).toBe("@legacy");
-    expect(await readUserPreferencesFile(resolveUserConfigPath(agentsDir))).toBeNull();
-
-    await mutateUserPreferences(agentsDir, (current) => ({ preferences: current, value: undefined }));
-
-    expect((await readMachineConfigFile(machinePath))?.policy.authoring).toBeUndefined();
-    expect((await readUserPreferencesFile(resolveUserConfigPath(agentsDir)))?.defaultAuthorScope).toBe("@legacy");
+    expect(await readFile(machinePath, "utf8")).toBe(oldMachine);
   });
 
-  test("a failed preference write leaves the legacy machine scope intact", async () => {
-    const root = await createTempRoot("preferences-order-");
+  test("persists preference mutations without reading or rewriting old machine authoring bytes", async () => {
+    const root = await createTempRoot("preferences-independent-write-");
     tempRoots.push(root);
     const agentsDir = join(root, ".agents");
     const machinePath = resolveMachineConfigPath(agentsDir);
-    const machine = createEmptyMachineConfig();
-    machine.policy.authoring = { scope: "@legacy" };
-    await writeMachineConfigFile(machinePath, machine);
-    await chmod(join(agentsDir, "drwn"), 0o555);
+    const oldMachine = `${JSON.stringify({
+      schema: "drwn.machine",
+      schemaVersion: 1,
+      policy: { authoring: { scope: "@legacy" } },
+      capabilities: { profile: null, skills: [], mcpServers: [] },
+    }, null, 2)}\n`;
+    await mkdir(join(agentsDir, "drwn"), { recursive: true });
+    await writeFile(machinePath, oldMachine);
 
-    try {
-      await expect(mutateUserPreferences(agentsDir, (current) => ({
-        preferences: current,
-        value: undefined,
-      }))).rejects.toBeTruthy();
-    } finally {
-      await chmod(join(agentsDir, "drwn"), 0o755);
-    }
-    expect((await readMachineConfigFile(machinePath))?.policy.authoring?.scope).toBe("@legacy");
-  });
-
-  test("concurrent migration and preference mutations preserve both updates", async () => {
-    const root = await createTempRoot("preferences-concurrent-");
-    tempRoots.push(root);
-    const agentsDir = join(root, ".agents");
-    const machine = createEmptyMachineConfig();
-    machine.policy.authoring = { scope: "@legacy" };
-    await writeMachineConfigFile(resolveMachineConfigPath(agentsDir), machine);
-
-    const setCatalog = () => mutateUserPreferences(agentsDir, (current) => ({
-        preferences: { ...current, catalogCheckouts: ["~/catalog"] },
-        value: undefined,
-      }));
-    const setScope = () => mutateUserPreferences(agentsDir, (current) => ({
-        preferences: { ...current, defaultAuthorScope: "@explicit" },
-        value: undefined,
-      }));
-    const concurrent = await Promise.allSettled([setCatalog(), setScope()]);
-    if (concurrent[0].status === "rejected") await setCatalog();
-    if (concurrent[1].status === "rejected") await setScope();
+    await mutateUserPreferences(agentsDir, (current) => ({
+      preferences: {
+        ...current,
+        catalogCheckouts: ["~/catalog"],
+        defaultAuthorScope: "@explicit",
+      },
+      value: undefined,
+    }));
 
     expect(await readUserPreferencesFile(resolveUserConfigPath(agentsDir))).toEqual({
       ...createEmptyUserPreferences(),
       catalogCheckouts: ["~/catalog"],
       defaultAuthorScope: "@explicit",
     });
-    expect((await readMachineConfigFile(resolveMachineConfigPath(agentsDir)))?.policy.authoring).toBeUndefined();
+    expect(await readFile(machinePath, "utf8")).toBe(oldMachine);
   });
 });

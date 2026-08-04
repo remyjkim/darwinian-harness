@@ -2,7 +2,7 @@
 // ABOUTME: Writes workers.json plus per-worker skills, hooks, and MCP indexes.
 
 import { existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import type { CardLockEntry, WorkerRootLockEntry } from "../card-lock";
 import { isRegistryServerDefinition } from "../card-mcp";
 import type { EffectiveState } from "../effective-state";
@@ -22,31 +22,104 @@ import type { RegistryServer, SyncResult } from "../types";
 import { hashManagedContent, hashManagedDirectory, ownManagedPath, type ManagedPath } from "../write-record";
 import { assertWorkerCapabilityCompatibility } from "../card-skill-resolver";
 import { composeConsentedInstructions } from "../sync-instructions";
+import { recordProjectionPath } from "../projection-path";
 
-function managedPath(scopeRoot: string, absolutePath: string) {
-  return relative(scopeRoot, absolutePath).replace(/\\/g, "/");
+function managedPath(state: EffectiveState, absolutePath: string) {
+  return recordProjectionPath(
+    state.scopeRoot,
+    absolutePath,
+    state.scopedOptions.writeScope === "machine" ? state.scopedOptions.agentsDir : undefined,
+  );
 }
 
-function recordManagedContent(scopeRoot: string, pathValue: string, content: string): ManagedPath {
+function recordManagedContent(state: EffectiveState, pathValue: string, content: string): ManagedPath {
   return ownManagedPath(
-    { path: managedPath(scopeRoot, pathValue), kind: "managed-content", contentHash: hashManagedContent(content) },
+    { path: managedPath(state, pathValue), kind: "managed-content", contentHash: hashManagedContent(content) },
     { surface: "worker" },
   );
 }
 
-function recordManagedDirectory(scopeRoot: string, pathValue: string, dryRun: boolean): ManagedPath {
+function recordManagedDirectory(state: EffectiveState, pathValue: string, dryRun: boolean): ManagedPath {
   return ownManagedPath({
-    path: managedPath(scopeRoot, pathValue),
+    path: managedPath(state, pathValue),
     kind: "managed-directory",
     contentHash: dryRun ? "sha256-dry-run" : hashManagedDirectory(pathValue),
   }, { surface: "worker" });
 }
 
-function recordGeneratedSymlink(scopeRoot: string, linkPath: string, targetPath: string): ManagedPath {
+function recordGeneratedSymlink(state: EffectiveState, linkPath: string, targetPath: string): ManagedPath {
   return ownManagedPath(
-    { path: managedPath(scopeRoot, linkPath), kind: "generated-symlink", generatedPath: targetPath },
+    { path: managedPath(state, linkPath), kind: "generated-symlink", generatedPath: targetPath },
     { surface: "worker" },
   );
+}
+
+function plannedHash(label: string) {
+  return hashManagedContent(`planned:${label}`);
+}
+
+function selectedRootsForProjection(state: EffectiveState) {
+  const selection = state.workerSelection;
+  if (!selection) return [];
+  if (state.scopedOptions.writeScope !== "machine") {
+    return selection.installedRoots;
+  }
+  return selection.selectedRoot ? [selection.selectedRoot] : [];
+}
+
+export function planMachineWorkerManagedPaths(state: EffectiveState): ManagedPath[] {
+  if (state.scopedOptions.writeScope !== "machine") return [];
+  const roots = selectedRootsForProjection(state);
+  if (roots.length === 0) return [];
+  const generatedDir =
+    state.scopedOptions.generatedDir ??
+    resolveStoreGeneratedDir(state.scopedOptions.agentsDir);
+  const paths: ManagedPath[] = roots.map((root) =>
+    ownManagedPath(
+      {
+        path: managedPath(
+          state,
+          resolveGeneratedWorkerDir(generatedDir, root.name),
+        ),
+        kind: "managed-directory" as const,
+        contentHash: plannedHash(`worker:${root.name}`),
+      },
+      { surface: "worker" },
+    ),
+  );
+  for (const name of ["workers.json", "active-worker.json"] as const) {
+    paths.push(
+      ownManagedPath(
+        {
+          path: managedPath(state, join(generatedDir, name)),
+          kind: "managed-content",
+          contentHash: plannedHash(name),
+        },
+        { surface: "worker" },
+      ),
+    );
+  }
+  const composition = composeConsentedInstructions({
+    cards: state.activeCards,
+    contentRootsByCard: state.contentRootsByCard,
+    organizationConsent: state.organizationInstructionConsent,
+  });
+  if (composition.bytes) {
+    paths.push(
+      ownManagedPath(
+        {
+          path: managedPath(
+            state,
+            join(generatedDir, "instructions.md"),
+          ),
+          kind: "managed-content",
+          contentHash: plannedHash("instructions.md"),
+        },
+        { surface: "worker" },
+      ),
+    );
+  }
+  return paths;
 }
 
 function ensureDirSymlink(linkPath: string, targetPath: string, dryRun: boolean, result: SyncResult) {
@@ -71,7 +144,7 @@ function ensureDirSymlink(linkPath: string, targetPath: string, dryRun: boolean,
 function writeJson(pathValue: string, value: unknown, state: EffectiveState, result: SyncResult) {
   const content = `${JSON.stringify(value, null, 2)}\n`;
   writeManagedFile(pathValue, content, state.scopedOptions.dryRun, result);
-  result.managedPaths?.push(recordManagedContent(state.scopeRoot, pathValue, content));
+  result.managedPaths?.push(recordManagedContent(state, pathValue, content));
 }
 
 function writeInstructionsArtifact(pathValue: string, state: EffectiveState, cards: CardLockEntry[], result: SyncResult) {
@@ -94,7 +167,7 @@ function writeInstructionsArtifact(pathValue: string, state: EffectiveState, car
   }
   const content = new TextDecoder().decode(composition.bytes);
   writeManagedFile(pathValue, content, state.scopedOptions.dryRun, result);
-  result.managedPaths?.push(recordManagedContent(state.scopeRoot, pathValue, content));
+  result.managedPaths?.push(recordManagedContent(state, pathValue, content));
 }
 
 function cardServers(card: CardLockEntry): Record<string, RegistryServer> {
@@ -146,7 +219,7 @@ async function materializeWorkerHooks(
     } else {
       result.changes.push(`write ${composerPath}`);
       result.managedPaths?.push(ownManagedPath(
-        { path: managedPath(state.scopeRoot, composerPath), kind: "managed-content", contentHash: "sha256-dry-run" },
+        { path: managedPath(state, composerPath), kind: "managed-content", contentHash: "sha256-dry-run" },
         { surface: "worker" },
       ));
     }
@@ -184,7 +257,7 @@ async function materializeWorker(
         ownManagedPath(materializeDir(target, link, {
           dryRun: state.scopedOptions.dryRun,
           result,
-          relPath: managedPath(state.scopeRoot, link),
+          relPath: managedPath(state, link),
           labelSuffix: ` ← ${card.name} skill ${skill}`,
         }), { surface: "worker" }),
       );
@@ -196,7 +269,7 @@ async function materializeWorker(
     const serversPath = join(workerDir, "mcp", "servers.json");
     const content = renderJsonMcpConfig(servers);
     writeManagedFile(serversPath, content, state.scopedOptions.dryRun, result);
-    result.managedPaths?.push(recordManagedContent(state.scopeRoot, serversPath, content));
+    result.managedPaths?.push(recordManagedContent(state, serversPath, content));
   }
 
   await materializeWorkerHooks(state, cards, workerDir, result);
@@ -222,9 +295,9 @@ async function materializeWorker(
   writeJson(join(workerDir, "worker.json"), index, state, result);
 
   if (!state.scopedOptions.dryRun && existsSync(workerDir) && lstatSync(workerDir).isDirectory()) {
-    result.managedPaths?.push(recordManagedDirectory(state.scopeRoot, workerDir, false));
+    result.managedPaths?.push(recordManagedDirectory(state, workerDir, false));
   } else {
-    result.managedPaths?.push(recordManagedDirectory(state.scopeRoot, workerDir, true));
+    result.managedPaths?.push(recordManagedDirectory(state, workerDir, true));
   }
 
   return {
@@ -241,16 +314,20 @@ export async function syncWorkers(state: EffectiveState): Promise<SyncResult> {
   const result: SyncResult = { changes: [], warnings: [], managedPaths: [] };
   const generatedDir = state.scopedOptions.generatedDir ?? resolveStoreGeneratedDir(state.scopedOptions.agentsDir);
   const workersRoot = resolveGeneratedWorkersDir(generatedDir);
-  if (!state.scopedOptions.dryRun) {
-    mkdirSync(workersRoot, { recursive: true });
-  }
   const selection = state.workerSelection;
   if (!selection) {
     return result;
   }
+  const roots = selectedRootsForProjection(state);
+  if (state.scopedOptions.writeScope === "machine" && roots.length === 0) {
+    return result;
+  }
+  if (!state.scopedOptions.dryRun) {
+    mkdirSync(workersRoot, { recursive: true });
+  }
   const workers = [];
   const byName = new Map(selection.installedCards.map((card) => [card.name, card]));
-  for (const root of selection.installedRoots) {
+  for (const root of roots) {
     const closure = [root.name, ...root.members].map((name) => {
       const card = byName.get(name);
       if (!card) throw new Error(`Worker root ${root.name} references missing Card ${name}`);

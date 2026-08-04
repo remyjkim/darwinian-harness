@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { cleanupTempRoots, envFor, installProjectWorkers, publishCardWithSkills, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createFixtureRegistry, envFor, installMachineBlueprint, installProjectWorkers, publishCardWithSkills, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -23,7 +23,7 @@ describe("drwn write", () => {
       AGENTS_DIR: fixture.agentsDir,
     };
 
-    expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], env)).exitCode).toBe(0);
+    await installMachineBlueprint(fixture, { skills: ["alpha"] });
 
     const write = await runAgentsCli(["write", "--dry-run"], env);
 
@@ -39,7 +39,9 @@ describe("drwn write", () => {
       AGENTS_HOME_DIR: fixture.homeDir,
       AGENTS_DIR: fixture.agentsDir,
     };
-    expect((await runAgentsCli(["machine", "mcp", "enable", "context7"], env)).exitCode).toBe(0);
+    await installMachineBlueprint(fixture, {
+      servers: { context7: createFixtureRegistry().servers.context7 },
+    });
 
     const json = await runAgentsCli(["write", "--dry-run", "--json"], env);
     expect(json.exitCode).toBe(0);
@@ -78,11 +80,13 @@ describe("drwn write", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain("Use either --mcp-only or --skills-only");
   });
 
-  test("global default skills write without curated symlinks", async () => {
+  test("machine Worker skills write without curated symlinks", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    expect((await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture))).exitCode).toBe(0);
-    expect((await runAgentsCli(["machine", "mcp", "enable", "context7"], envFor(fixture))).exitCode).toBe(0);
+    await installMachineBlueprint(fixture, {
+      skills: ["alpha"],
+      servers: { context7: createFixtureRegistry().servers.context7 },
+    });
 
     const result = await runAgentsCli(["write", "--dry-run"], {
       AGENTS_REPO_ROOT: fixture.repoRoot,
@@ -137,7 +141,7 @@ describe("drwn write", () => {
     expect(result.stdout).not.toContain("@upstash/context7-mcp");
   });
 
-  test("global default user library MCP servers render during write", async () => {
+  test("machine Worker MCP definitions render without ambient inventory authority", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     const { ensureStoreInitialized } = await import("../cli/core/card-store");
@@ -149,22 +153,31 @@ describe("drwn write", () => {
         github: {
           description: "GitHub",
           transport: "stdio",
-          command: "npx",
-          args: ["-y", "@modelcontextprotocol/server-github"],
+          command: "ambient-github",
           optional: true,
         },
       },
     });
-    expect((await runAgentsCli(["machine", "mcp", "enable", "github"], envFor(fixture))).exitCode).toBe(0);
+    await installMachineBlueprint(fixture, {
+      servers: {
+        github: {
+          description: "GitHub from Card",
+          transport: "stdio",
+          command: "card-github",
+          optional: false,
+        },
+      },
+    });
 
-    const result = await runAgentsCli(["write", "--dry-run"], {
+    const result = await runAgentsCli(["write", "--target=claude"], {
       AGENTS_REPO_ROOT: fixture.repoRoot,
       AGENTS_HOME_DIR: fixture.homeDir,
       AGENTS_DIR: fixture.agentsDir,
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(".claude.json");
+    expect(JSON.parse(await readFile(fixture.claudeUserMcp, "utf8"))
+      .mcpServers.github.command).toBe("card-github");
   });
 
   test("project-enabled user library MCP servers render during write", async () => {

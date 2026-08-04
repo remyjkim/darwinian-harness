@@ -39,6 +39,16 @@ export function collectCardServerDefinitions(lockedCards: CardLockEntry[]): Card
   );
 }
 
+export function collectEffectiveCardServerDefinitions(
+  lockedCards: CardLockEntry[],
+): CardServerDefinition[] {
+  const byServerName = new Map<string, CardServerDefinition>();
+  for (const definition of collectCardServerDefinitions(lockedCards)) {
+    byServerName.set(definition.serverName, definition);
+  }
+  return [...byServerName.values()];
+}
+
 export function mergeCardServerDefinitionsIntoRegistry(
   registry: CanonicalRegistry,
   definitions: CardServerDefinition[],

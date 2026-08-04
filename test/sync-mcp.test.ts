@@ -13,8 +13,7 @@ import { parse as parseToml } from "smol-toml";
 import { cp, lstat, mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { writeMachineConfig } from "../cli/core/card-store";
-import { createEmptyMachineConfig } from "../cli/core/machine-config";
+import { applyMachineWorkerRoots } from "../cli/core/worker-machine";
 
 const tempRoots: string[] = [];
 
@@ -30,6 +29,41 @@ async function createTempRoot() {
   const root = await mkdtemp(join(tmpdir(), "darwinian-"));
   tempRoots.push(root);
   return root;
+}
+
+async function selectFileMachineBlueprint(options: {
+  root: string;
+  repoRoot: string;
+  agentsDir: string;
+  skills?: string[];
+  servers?: Record<string, unknown>;
+}) {
+  const memberDir = join(options.root, "machine-capabilities");
+  const workerDir = join(options.root, "machine-worker");
+  await mkdir(memberDir, { recursive: true });
+  await mkdir(workerDir, { recursive: true });
+  await writeFile(join(memberDir, "card.json"), `${JSON.stringify({
+    name: "@test/machine-capabilities",
+    version: "1.0.0",
+    ...(options.skills?.length ? { skills: { include: options.skills } } : {}),
+    ...(options.servers ? { servers: options.servers } : {}),
+  }, null, 2)}\n`);
+  for (const skill of options.skills ?? []) {
+    const skillDir = join(memberDir, "skills", skill);
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${skill}\ndescription: worker source\n---\n`);
+  }
+  await writeFile(join(workerDir, "card.json"), `${JSON.stringify({
+    name: "@test/machine-worker",
+    version: "1.0.0",
+    kind: "blueprint",
+    composedFrom: [`file:${memberDir}`],
+  }, null, 2)}\n`);
+  await applyMachineWorkerRoots(options.agentsDir, [`file:${workerDir}`], {
+    repoRoot: options.repoRoot,
+    allowUntrustedSource: true,
+  });
+  return memberDir;
 }
 
 function getServer(registry: CanonicalRegistry, name: string) {
@@ -651,9 +685,11 @@ describe("syncRepository", () => {
     const beforeClaude = await readFile(claudeSettingsPath, "utf8");
     const beforeCodex = await readFile(codexConfigPath, "utf8");
     const beforeCursor = await readFile(cursorConfigPath, "utf8");
-    await writeMachineConfig(agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: null, skills: [], mcpServers: ["context7"] },
+    await selectFileMachineBlueprint({
+      root,
+      repoRoot,
+      agentsDir,
+      servers: { context7: createRegistry().servers.context7 },
     });
 
     const result = await syncRepository({
@@ -670,7 +706,7 @@ describe("syncRepository", () => {
     expect(await readFile(cursorConfigPath, "utf8")).toBe(beforeCursor);
   });
 
-  test("skills sync ignores ambient copies and uses the explicitly selected Library source", async () => {
+  test("skills sync ignores ambient copies and uses the active Worker Card source", async () => {
     const root = await createTempRoot();
     const homeDir = join(root, "home");
     const repoRoot = join(root, "repo");
@@ -720,9 +756,11 @@ describe("syncRepository", () => {
         2,
       ),
     );
-    await writeMachineConfig(agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: null, skills: ["alpha"], mcpServers: [] },
+    const memberDir = await selectFileMachineBlueprint({
+      root,
+      repoRoot,
+      agentsDir,
+      skills: ["alpha"],
     });
 
     await syncRepository({
@@ -735,7 +773,7 @@ describe("syncRepository", () => {
 
     expect((await lstat(claudeSkillPath)).isDirectory()).toBe(true);
     expect((await lstat(claudeSkillPath)).isSymbolicLink()).toBe(false);
-    expect(await readFile(join(claudeSkillPath, "SKILL.md"), "utf8")).toBe(await readFile(join(sharedSkillPath, "SKILL.md"), "utf8"));
-    expect(await readFile(join(codexSkillPath, "SKILL.md"), "utf8")).toBe(await readFile(join(sharedSkillPath, "SKILL.md"), "utf8"));
+    expect(await readFile(join(claudeSkillPath, "SKILL.md"), "utf8")).toBe(await readFile(join(memberDir, "skills", "alpha", "SKILL.md"), "utf8"));
+    expect(await readFile(join(codexSkillPath, "SKILL.md"), "utf8")).toBe(await readFile(join(memberDir, "skills", "alpha", "SKILL.md"), "utf8"));
   });
 });

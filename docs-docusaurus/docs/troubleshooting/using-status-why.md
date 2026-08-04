@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Using `status --why`
 
-`drwn status --why <query>` answers a provenance question: which Card, project overlay, machine profile/explicit selection, inventory source, or registry entry explains the item.
+`drwn status --why <query>` answers a provenance question: which selected Card closure, project overlay, inventory source, or registry entry explains the item.
 
 The query is either `kind:name` (typed) or a bare `name` (untyped, ambiguous-resolution allowed).
 
@@ -31,12 +31,14 @@ Possible answers:
 
 - `skill:reviewer is active or available from card @your-handle/backend@0.2.0.`
 - `skill:reviewer is active or available from project config.`
-- `skill:reviewer is active from machine profile.`
-- `skill:reviewer is active from explicit machine selection.`
+- `skill:reviewer is active from machine card @curation-labs/workflow-skills@1.2.0.`
 - `skill:reviewer is active or available from repo or installed skill inventory.`
 - `not found: skill:reviewer`
 
-For project writes, Card-bundled skills in the selected Worker closure win over project-safe inventory sources. For machine writes, profile attribution wins over an overlapping explicit selection.
+For project writes, Card-bundled skills in the selected Worker closure win over
+project-safe inventory sources. For machine writes, only the selected,
+integrity-verified Card closure activates skills; standalone inventory is merely
+available.
 
 ### `--why server:<name>`
 

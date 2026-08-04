@@ -18,9 +18,9 @@ async function writeStrictMachinePolicy(fixture: Awaited<ReturnType<typeof scaff
     join(fixture.agentsDir, "drwn", "machine.json"),
     `${JSON.stringify({
       schema: "drwn.machine",
-      schemaVersion: 1,
+      schemaVersion: 2,
       policy: { trustedSources: { strict: true, gitOwners: ["curation-labs"] } },
-      capabilities: { profile: null, skills: [], mcpServers: [] },
+      capabilities: { activeWorker: null, workerLock: null },
     }, null, 2)}\n`,
   );
 }

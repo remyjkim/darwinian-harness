@@ -21,7 +21,7 @@ That one decision controls both the effective state and the write destination.
 Outside a configured project, effective state is:
 
 ```text
-packaged policy + Library inventory + strict drwn.machine V1 intent
+packaged policy + one selected, verified Worker closure in strict drwn.machine V2
 ```
 
 Machine-scope writes materialize into:
@@ -35,8 +35,8 @@ Machine-scope writes materialize into:
 ~/.agents/drwn/global-write-record.json
 ```
 
-Use explicit machine selections for user-home sessions. Projects never inherit
-them as declarations, though downstream tools may expose user-home state
+Use the selected machine Worker for user-home sessions. Projects never inherit
+it as a declaration, though downstream tools may expose user-home state
 ambiently.
 
 ## Project-Scope Writes
@@ -58,27 +58,28 @@ Project-scope writes materialize into:
 <project>/.agents/drwn/write-record.json
 ```
 
-Machine-only defaults from `~/.agents/drwn/machine.json` do not apply inside a
-configured project. The project config, selected cards when present, and
-explicit project overlay are the project source of truth.
+Machine-only capabilities from `~/.agents/drwn/machine.json` do not apply inside
+a configured project. The project config, selected Worker closure, and explicit
+project overlay are the project source of truth.
 
 ## Cards And Lockfiles
 
-A project selects cards in:
+A project declares Worker roots and selects at most one root in:
 
 ```text
 <project>/.agents/drwn/config.json
 ```
 
-`drwn apply`, `drwn card add`, `drwn card pin`, and `drwn card update` resolve
-those refs into:
+`drwn add`, `drwn apply`, `drwn pin`, `drwn update`, and `drwn use` resolve
+root refs and selection into:
 
 ```text
 <project>/.agents/drwn/card.lock
 ```
 
-The lockfile records exact versions and integrity so repeated writes are
-deterministic.
+The lockfile records exact root/member versions, immutable integrity, and the
+selected Blueprint closure so repeated writes are deterministic. Plain member
+Cards never become independent active Workers.
 
 ## Write Records
 

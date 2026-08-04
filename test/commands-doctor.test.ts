@@ -5,10 +5,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { chmod, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { cleanupTempRoots, envFor, publishCardWithSkills, publishExactOperatorProfile, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, envFor, installMachineBlueprint, publishCardWithSkills, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 import { createEmptyMachineConfig } from "../cli/core/machine-config";
 import { writeMachineConfig } from "../cli/core/card-store";
-import { resolveExtractedPath } from "../cli/core/store-paths";
 
 const tempRoots: string[] = [];
 
@@ -17,55 +16,51 @@ afterEach(async () => {
 });
 
 describe("drwn doctor", () => {
-  test("migrates prototype machine state instead of failing (I65 Fix 2)", async () => {
+  test("rejects prototype machine state without migrating or mutating it", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
     const machinePath = join(fixture.agentsDir, "drwn", "machine.json");
     await writeFile(machinePath, `${JSON.stringify({ version: 2, defaults: {} }, null, 2)}\n`);
 
+    const before = await readFile(machinePath, "utf8");
     const result = await runAgentsCli(["doctor", "--json"], envFor(fixture));
 
-    expect(result.exitCode).toBe(0);
-    expect(JSON.parse(await readFile(machinePath, "utf8")).schema).toBe("drwn.machine");
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("MACHINE_CONFIG_INVALID");
+    expect(await readFile(machinePath, "utf8")).toBe(before);
   });
 
-  test("reports missing pinned profile bytes without fetching or repairing", async () => {
+  test("reports missing active Worker bytes without fetching or repairing", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    const { profile } = await publishExactOperatorProfile(fixture);
-    await writeMachineConfig(fixture.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile, skills: [], mcpServers: [] },
-    });
-    await rm(resolveExtractedPath(fixture.agentsDir, profile.treeSha), { recursive: true, force: true });
+    const installed = await installMachineBlueprint(fixture, { skills: ["worker-skill"] });
+    const member = installed.locked.find((card) => card.name === "@me/machine-capabilities")!;
+    await rm(member.path, { recursive: true, force: true });
 
     const result = await runAgentsCli(["doctor", "--json"], envFor(fixture));
 
     expect(result.exitCode).toBe(0);
     const report = JSON.parse(result.stdout) as { machineCapabilityIssues: string[] };
-    expect(report.machineCapabilityIssues.some((issue) => issue.includes("MACHINE_PROFILE_NOT_AVAILABLE"))).toBe(true);
-    expect(existsSync(resolveExtractedPath(fixture.agentsDir, profile.treeSha))).toBe(false);
+    expect(report.machineCapabilityIssues.some((issue) => issue.includes("MACHINE_WORKER_CONTENT_MISSING"))).toBe(true);
+    expect(existsSync(member.path)).toBe(false);
   });
 
-  test("reports mutated pinned profile bytes without repairing them", async () => {
+  test("reports mutated active Worker bytes without repairing them", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    const { profile } = await publishExactOperatorProfile(fixture);
-    await writeMachineConfig(fixture.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile, skills: [], mcpServers: [] },
-    });
-    const skillPath = join(resolveExtractedPath(fixture.agentsDir, profile.treeSha), "skills", "bootstrap-project", "SKILL.md");
+    const installed = await installMachineBlueprint(fixture, { skills: ["worker-skill"] });
+    const member = installed.locked.find((card) => card.name === "@me/machine-capabilities")!;
+    const skillPath = join(member.path, "skills", "worker-skill", "SKILL.md");
     await chmod(skillPath, 0o644);
-    await writeFile(skillPath, "mutated profile bytes\n");
+    await writeFile(skillPath, "mutated Worker bytes\n");
 
     const result = await runAgentsCli(["doctor", "--json"], envFor(fixture));
 
     expect(result.exitCode).toBe(0);
     const report = JSON.parse(result.stdout) as { machineCapabilityIssues: string[] };
-    expect(report.machineCapabilityIssues.some((issue) => issue.includes("MACHINE_PROFILE_INVALID"))).toBe(true);
-    expect(await readFile(skillPath, "utf8")).toBe("mutated profile bytes\n");
+    expect(report.machineCapabilityIssues.some((issue) => issue.includes("MACHINE_WORKER_INTEGRITY_MISMATCH"))).toBe(true);
+    expect(await readFile(skillPath, "utf8")).toBe("mutated Worker bytes\n");
   });
 
   test("reports the supported error code for an invalid project schema", async () => {
@@ -106,21 +101,14 @@ describe("drwn doctor", () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
 
-    await runAgentsCli(["machine", "skill", "enable", "alpha"], {
+    await installMachineBlueprint(fixture, { skills: ["alpha"] });
+    await runAgentsCli(["write", "--root", "--skills-only"], {
       AGENTS_REPO_ROOT: fixture.repoRoot,
       AGENTS_HOME_DIR: fixture.homeDir,
       AGENTS_DIR: fixture.agentsDir,
     });
-    await runAgentsCli(["write", "--scope", "machine", "--skills-only"], {
-      AGENTS_REPO_ROOT: fixture.repoRoot,
-      AGENTS_HOME_DIR: fixture.homeDir,
-      AGENTS_DIR: fixture.agentsDir,
-    });
-    await runAgentsCli(["machine", "skill", "disable", "alpha"], {
-      AGENTS_REPO_ROOT: fixture.repoRoot,
-      AGENTS_HOME_DIR: fixture.homeDir,
-      AGENTS_DIR: fixture.agentsDir,
-    });
+    const { useMachineWorker } = await import("../cli/core/worker-machine");
+    await useMachineWorker(fixture.agentsDir, null);
 
     const result = await runAgentsCli(["doctor"], {
       AGENTS_REPO_ROOT: fixture.repoRoot,
@@ -137,7 +125,7 @@ describe("drwn doctor", () => {
   test("reports foreign machine projection conflicts without mutating them", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await runAgentsCli(["machine", "skill", "enable", "alpha"], envFor(fixture));
+    await installMachineBlueprint(fixture, { skills: ["alpha"] });
     const destination = join(fixture.homeDir, ".claude", "skills", "alpha");
     await mkdir(destination, { recursive: true });
     await writeFile(join(destination, "SKILL.md"), "foreign content\n");
@@ -186,8 +174,10 @@ describe("drwn doctor", () => {
   test("reports drift in a recorded machine-owned MCP field", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    expect((await runAgentsCli(["machine", "mcp", "enable", "context7"], envFor(fixture))).exitCode).toBe(0);
-    expect((await runAgentsCli(["write", "--scope", "machine", "--mcp-only"], envFor(fixture))).exitCode).toBe(0);
+    await installMachineBlueprint(fixture, {
+      servers: { context7: { description: "Context7", transport: "stdio", command: "context7", optional: false } },
+    });
+    expect((await runAgentsCli(["write", "--root", "--mcp-only"], envFor(fixture))).exitCode).toBe(0);
     const config = JSON.parse(await readFile(fixture.claudeUserMcp, "utf8"));
     config.mcpServers.context7.command = "mutated-command";
     await writeFile(fixture.claudeUserMcp, `${JSON.stringify(config, null, 2)}\n`);
@@ -204,8 +194,10 @@ describe("drwn doctor", () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
 
-    const configWithTildes = createEmptyMachineConfig();
-    configWithTildes.capabilities.mcpServers = ["context7"];
+    const installed = await installMachineBlueprint(fixture, {
+      servers: { context7: { description: "Context7", transport: "stdio", command: "context7", optional: false } },
+    });
+    const configWithTildes = installed.config;
     configWithTildes.policy.targets = {
         claude: {
           enabled: true,
@@ -229,7 +221,7 @@ describe("drwn doctor", () => {
     };
 
     await writeMachineConfig(fixture.agentsDir, configWithTildes);
-    expect((await runAgentsCli(["write", "--scope", "machine", "--mcp-only"], envFor(fixture))).exitCode).toBe(0);
+    expect((await runAgentsCli(["write", "--root", "--mcp-only"], envFor(fixture))).exitCode).toBe(0);
     const tildeConfigPath = join(fixture.homeDir, ".claude", "settings.json");
     const projected = JSON.parse(await readFile(tildeConfigPath, "utf8"));
     projected.mcpServers.context7.command = "mutated-command";
@@ -380,12 +372,10 @@ describe("drwn doctor", () => {
     expect(result.stdout).toContain("parallel-search");
   });
 
-  test("reports unresolved explicit machine capability references", async () => {
+  test("reports no capability issues for explicit empty V2 intent", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     const config = createEmptyMachineConfig();
-    config.capabilities.skills = ["missing-skill"];
-    config.capabilities.mcpServers = ["missing-mcp"];
     await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
     await writeFile(join(fixture.agentsDir, "drwn", "machine.json"), JSON.stringify(config, null, 2));
 
@@ -397,11 +387,7 @@ describe("drwn doctor", () => {
 
     expect(result.exitCode).toBe(0);
     const parsed = JSON.parse(result.stdout) as { machineCapabilityIssues: string[] };
-    expect(parsed.machineCapabilityIssues).toEqual(expect.arrayContaining([
-      expect.stringContaining("MACHINE_CAPABILITY_NOT_FOUND"),
-      expect.stringContaining("missing-skill"),
-      expect.stringContaining("missing-mcp"),
-    ]));
+    expect(parsed.machineCapabilityIssues).toEqual([]);
   });
 
   test("does not falsely report card-bundled-only skills as unknown", async () => {

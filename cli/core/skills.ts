@@ -290,10 +290,8 @@ export async function syncSkills(
     const scope = source.layer === "card" ? "shared" : source.scope;
     const layerLabel = source.layer === "card"
       ? `card ${source.cardName}@${source.cardVersion}`
-      : source.layer === "machine-profile"
-        ? `machine profile ${source.profileId}`
-        : source.layer === "machine-explicit"
-          ? "explicit machine selection"
+      : source.layer === "machine-worker"
+        ? `machine Worker Card ${source.cardName}@${source.cardVersion}`
           : "user-default";
     if (selectedSurfaces.has("claude")) {
       if (scope === "shared" || scope === "claude-only") {

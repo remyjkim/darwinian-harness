@@ -78,7 +78,9 @@ Status attributes local and committed sources separately.
 
 ## Capability Scope
 
-Project capabilities come from the selected root closure plus explicit project overlays. Machine profile and explicit machine inventory selections do not become project declarations. User-home target state may remain ambient and is reported separately.
+Project capabilities come from the selected root closure plus explicit project
+overlays. The machine Worker closure does not become a project declaration.
+User-home target state may remain ambient and is reported separately.
 
 ## Related
 

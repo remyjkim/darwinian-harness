@@ -6,17 +6,20 @@ sidebar_position: 1
 
 On disk: `~/.agents/drwn/machine.json`.
 
-Purpose: the first supported machine-scope policy and capability contract. The
-file is strict, namespaced, and independent from project Worker declarations.
+Purpose: strict machine policy plus one selected, immutable Worker Blueprint
+closure. Machine intent is independent from project Worker declarations and
+from authoring preferences in `~/.agents/drwn/config.json`.
+
+This contract ships with drwn 1.1.0. Operator 2.0.2 requires drwn 1.1.0 or
+newer.
 
 ## Schema
 
 ```json
 {
   "schema": "drwn.machine",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "policy": {
-    "authoring": { "scope": "@your-handle" },
     "targets": {
       "claude": { "enabled": true },
       "codex": { "enabled": true },
@@ -24,86 +27,95 @@ file is strict, namespaced, and independent from project Worker declarations.
     }
   },
   "capabilities": {
-    "profile": null,
-    "skills": [],
-    "mcpServers": []
+    "activeWorker": null,
+    "workerLock": null
   }
 }
 ```
 
-Every object rejects unknown fields. The only supported schema version is `1`.
-Prototype files are rejected with `MACHINE_CONFIG_INVALID`; they are never
-migrated, rewritten, or interpreted.
+Every object rejects unknown fields. The only supported machine schema version
+is `2`. V1 and prototype files fail with controlled-reset guidance and remain
+unchanged; they are never migrated, dual-read, rewritten, or interpreted.
 
 ## Fields
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `schema` | `"drwn.machine"` | yes | Namespaced contract identity. |
-| `schemaVersion` | `1` | yes | First supported local machine schema. |
-| `policy.authoring.scope` | `string` | no | Default scope for unscoped `drwn card new` names. |
+| `schemaVersion` | `2` | yes | Hard-cut machine Worker contract. |
 | `policy.targets` | partial target map | no | Approved target policy overrides. |
 | `policy.catalogs` | catalog policy | no | npm skill and MCP catalog policy. |
 | `policy.analyzer` | analyzer policy | no | Session analyzer endpoints and limits. |
-| `policy.trustedSources` | trust policy | no | Trusted Git/catalog source policy. |
-| `capabilities.profile` | immutable profile pin or `null` | yes | One approved machine capability profile. |
-| `capabilities.skills` | unique `string[]` | yes | Explicit machine skill IDs. |
-| `capabilities.mcpServers` | unique `string[]` | yes | Explicit machine MCP IDs. |
+| `policy.trustedSources` | trust policy | no | Allowed Git/file runtime source policy. |
+| `capabilities.activeWorker` | canonical Card name or `null` | yes | The one selected machine Worker root. |
+| `capabilities.workerLock` | validated `drwn.project-lock` V1 value or `null` | yes | Installed roots and immutable Card closure. |
 
-Capabilities never alter policy. Policy never activates capabilities.
+`activeWorker` never contains a version or transport. Its matching lock root
+stores the requested versioned Store/pinned Git ref or explicit integrity-locked
+file ref in `requested`. File-origin bytes are re-hashed before projection.
+A non-null selection requires a matching root. Empty intent uses two nulls;
+`use --root --none` may retain a valid lock while clearing selection.
 
-## Recommended Profile
+Machine V2 has no `policy.authoring`, profile, flat skill list, or flat MCP
+list. `config.json.defaultAuthorScope` and `catalogCheckouts` are independent
+authoring preferences. Mutable checkout paths are never runtime Card sources.
 
-Guided setup offers **Recommended Darwinian Operator** as an opt-out default.
-Its pin identifies `@darwinian/operator@1.0.2` at the exact Git tag, commit,
-tree SHA, and content integrity. The approved projection is 17 machine-safe
-skills and zero MCP servers.
+## Recommended Worker
 
-The profile is not a Worker. It contributes no instructions, hooks,
-permissions, governance, identity, or project state. Runtime reads its pinned
-extracted bytes offline and fails on missing or changed content.
+Guided setup offers the recommended
+`@curation-labs/machine-defaults` Blueprint as an opt-out default. The shipped
+descriptor pins an immutable source ref. Operator is a normal Card member of
+that closure, not a special activation profile.
+
+Non-interactive, minimal, or declined setup writes explicit empty V2 intent.
+Existing valid V2 intent is not reset or re-prompted.
 
 ## Activation And Mutation
 
-Effective machine capabilities are exactly:
-
-```text
-approved subset of the selected immutable profile
-+ capabilities.skills
-+ capabilities.mcpServers
-```
-
-Use the supported mutators:
+Effective machine capabilities come only from the selected, integrity-verified
+Card closure. Inactive roots, standalone inventory, authoring checkouts,
+ambient directories, and target output do not activate capabilities.
 
 ```bash
-drwn machine skill list
-drwn machine mcp list
-drwn machine skill enable <skill-id>
-drwn machine skill disable <skill-id>
-drwn machine mcp enable <server-id>
-drwn machine mcp disable <server-id>
+drwn apply --root <blueprint-ref>
+drwn use --root <installed-name-or-ref> --no-write
+drwn use --root --none --no-write
+drwn card trust <card> --hooks --scope machine
+drwn card trust <card> --instructions --scope machine
+drwn write --root --dry-run
+drwn write --root
 ```
 
-These commands edit machine intent only. Run `drwn write --scope machine` to
-project it. Inventory availability, packaged optional flags, Parallel flags,
-ambient directories, and existing downstream files do not activate anything.
+The retired `drwn machine skill|mcp enable|disable` commands exit nonzero with
+Blueprint guidance. Inventory lifecycle commands remain supported.
 
-## Initialization
+## Integrity And Consent
 
-- `drwn init --non-interactive` and `--minimal` create explicit empty intent.
-- Guided `drwn init` offers the Recommended profile as `[Y/n]`.
-- Declining writes empty intent.
-- Existing valid intent is never reset or re-prompted.
+Before projection, drwn validates the embedded lock, locates the canonical root,
+loads immutable Card content, and verifies content hashes. Missing or modified
+bytes fail closed. Hook and instruction consent is stored per locked Card,
+semver range, and digest. Same content in range is preserved; changed
+consent-relevant content in range is re-granted with a new digest/timestamp and
+warning; out-of-range or removed contributions require renewed consent.
+
+## Projection
+
+Machine projection can write closure-derived skills, MCP definitions, one
+generated aggregate Worker, Claude hooks, and instruction adapters at
+`~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. It never writes `~/AGENTS.md`.
+The global write record owns only managed paths/fields; foreign first-write
+content and unforced drift block before mutation.
 
 ## Project Boundary
 
-Project evaluation does not read machine capability selections. A project uses
-one selected Worker closure plus explicit project overlays. User-home output may
-remain ambient in the downstream client, but status reports it separately and
-never imports it into project intent.
+Project evaluation does not read the machine Worker. A project uses one selected
+project closure plus explicit overlays. User-home output may remain ambient in
+the downstream client, but status reports it separately and never imports it
+into project intent.
 
 ## Related
 
 - [Project Config JSON](./project-config-json)
 - [Write Record JSON](./write-record-json)
+- [Machine Inventory](../cli/machine)
 - [Local Store](../../concepts/local-store)

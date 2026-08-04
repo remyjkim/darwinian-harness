@@ -1,311 +1,344 @@
-# ABOUTME: As-built architecture reference for the first supported drwn project Worker contract.
-# ABOUTME: Covers state authority, graph resolution, transactions, projection, diagnostics, deploy, and machine boundaries.
+# ABOUTME: As-built architecture reference for project and machine Worker Blueprint contracts.
+# ABOUTME: Covers state authority, immutable graph resolution, transactions, projection, diagnostics, and safety.
 
 # drwn CLI Architecture
 
 ## Contract
 
-The first supported project model is:
+`drwn` is a local control plane for declared agent-harness state. Cards package
+capabilities. A Worker Blueprint composes Cards. Each scope selects at most one
+root closure, and `write` projects only that effective closure plus supported
+scope-owned overlays.
 
-```text
-Card capabilities -> one Blueprint root -> one selected Worker -> pure projection
-```
+The two selection scopes use the same Card-lock governance and remain exclusive:
 
-Cards remain the only reusable distribution unit. A Blueprint is a Card with `kind: "blueprint"` and an ordered `composedFrom` list of plain Cards. Projects may install multiple roots as alternatives but select at most one.
+- project scope: one selected Worker for one repository;
+- machine scope: one selected Worker for user-home ambient defaults.
 
-See [`docs/contracts/project-worker-v1.md`](../../docs/contracts/project-worker-v1.md) for serialized contracts.
+A project does not inherit the machine Worker. `drwn write` in a project and
+`drwn write --root` are separate resolutions, plans, destinations, and ownership
+records.
 
 ## Process And Context
 
-`cli/index.ts` registers Clipanion commands and creates `AgentsContext` from environment/path resolution. Core modules do not import Clipanion; they return typed values or throw `DrwnError` with stable codes.
+The package exposes `drwn` from `cli/index.ts`. It discovers:
 
-Important roots:
-
-- repository assets: `AGENTS_REPO_ROOT` or packaged files;
 - machine state root: `AGENTS_DIR/drwn`, normally `~/.agents/drwn`;
-- user home: `AGENTS_HOME_DIR` or the OS home;
-- project root: nearest ancestor containing `.agents/drwn/config.json`.
+- nearest project config by walking upward from CWD;
+- authoring preferences from machine `config.json`; and
+- packaged registries and policy shipped with the CLI.
 
-Tests override every root. Project tests must never inspect the developer's real user-home target files.
+`--root` forces machine scope even inside a project. Scope forcing must carry
+through intent mutation, consent replay, planning, projection, diagnostics, and
+write-record selection.
 
 ## State Ownership
 
-### Machine State
-
-`~/.agents/drwn/` owns:
+### Machine state
 
 ```text
-store.json
-machine.json
-config.json
-cards/
-extracted/
-skills/
-mcp-servers/
-catalogs/
-generated/
-projects.json
-credentials.json
+~/.agents/drwn/
+  machine.json                  # V2 machine policy + selected Worker lock
+  config.json                   # non-secret user authoring preferences
+  skills/                       # standalone package/loose-skill inventory
+  mcp-servers/                  # standalone MCP record inventory
+  cards/                        # immutable Card Store content
+  generated/                    # disposable machine projection artifacts
+  global-write-record.json      # user-home projection ownership
+  credentials/                  # operator-owned secrets/auth state
+  projects/                     # project registrations
 ```
 
-The root contains standalone inventory, machine intent, authoring preferences,
-caches, generated machine output, registrations, and credentials. `config.json`
-is strict `drwn.user-preferences` V1 state: configured catalog checkouts and an
-optional default author scope. It is distinct from capability intent in
-`machine.json`. These categories do not share one portability or ownership
-policy. No public whole-root archive command exists. A pre-I176 `sources/` tree
-may remain as legacy operator data, but drwn does not use, migrate, or delete it.
+These categories are deliberately separate:
 
-### Project Intent
+- `machine.json` says what immutable machine Worker is selected;
+- `config.json` says where the user authors Cards (`catalogCheckouts`,
+  `defaultAuthorScope`);
+- inventory says which standalone packages/records are locally available;
+- the Card Store holds immutable releases and content provenance;
+- generated files are disposable projections;
+- credentials and external runtime readiness are never Card content.
 
-Committed project authority is:
+`~/.agents/drwn/sources/` is unsupported legacy data. Runtime resolution never
+searches it or mutable `catalogCheckouts`.
+
+### Project state
 
 ```text
-.agents/drwn/config.json
-.agents/drwn/card.lock
+<project>/.agents/drwn/
+  config.json
+  card.lock
+  config.local.json             # ignored local overlay
+  card.lock.local               # ignored local lock
+  generated/
+  write-record.json
 ```
 
-Machine-local authority is:
-
-```text
-.agents/drwn/config.local.json
-.agents/drwn/card.lock.local
-```
-
-Generated directories, downstream target files, and write records are projections. They are never read to reconstruct root requirements or selection.
+Committed config records ordered root requirements and a canonical
+`activeWorker`. The lock records exact roots, deduplicated Card entries,
+integrity, provenance, topology, compatibility floors, and consent evidence.
+Local overlays remain attributed and cannot rewrite committed intent.
 
 ## Supported Schemas
 
-| Record | Identity | Version |
-| --- | --- | --- |
-| committed config | `drwn.project-config` | `1` |
-| committed/local Card lock | `drwn.project-lock` | `1` |
-| local overlay | `drwn.project-local` | `1` |
-| project status | `drwn.project-status` | `1` |
-| generated root index | `drwn.generated-worker` | `1` |
-| generated root registry | `drwn.generated-workers` | `1` |
-| generated selected root | `drwn.generated-active-worker` | `1` |
+| State | Schema | Version |
+|---|---|---|
+| project intent | `drwn.project-config` | 1 |
+| Card closure lock | `drwn.project-lock` | 1 |
+| project local overlay | `drwn.project-local` | 1 |
+| machine intent | `drwn.machine` | 2 |
+| user preferences | `drwn.user-config` | 1 |
 
-Validators require both schema identity and version, reject unknown fields where the contract is closed, and fail before side effects.
+Machine V2 is a pre-launch hard cut:
+
+```json
+{
+  "schema": "drwn.machine",
+  "schemaVersion": 2,
+  "policy": {},
+  "capabilities": {
+    "activeWorker": null,
+    "workerLock": null
+  }
+}
+```
+
+An active machine stores a canonical Card name in `activeWorker` and embeds a
+validated `drwn.project-lock` V1 value in `workerLock`. The lock root's
+`requested` field retains the immutable versioned source. V1 profile, skill,
+MCP, and `policy.authoring` fields are invalid. V1/prototype state is rejected
+with controlled-reset guidance; it is never migrated, dual-read, or silently
+deleted.
 
 ## Root Graph Resolution
 
-`cli/core/worker-graph.ts` resolves ordered root requirements:
+`resolveCard` resolves only reproducible sources allowed by trusted-source
+policy:
 
-1. Resolve each root ref through `card-store.ts`.
-2. Convert the immutable artifact to a `CardLockEntry`.
-3. For a Blueprint, resolve each ordered `composedFrom` member.
-4. Reject nested Blueprints, duplicate members, duplicate roots, and incompatible artifacts for the same Card name.
-5. Return `roots` plus a deduplicated `cards` sequence.
+- immutable local Store content;
+- explicit Git refs; and
+- explicit file refs.
 
-Example:
+The resolver validates manifest identity, version, kind, composed membership,
+content hashes, origin, and CLI compatibility. A Blueprint root composes ordered
+plain Cards under the current validator. Multiple roots are installed
+alternatives, not a merged capability set.
 
-```text
-requirements = [Blueprint(R, A, B), Card(C)]
-roots        = [R, C]
-cards        = [R, A, B, C]
-```
+`catalogCheckouts` is an authoring lookup used by source-oriented commands. It
+is intentionally absent from runtime `apply`, `use`, effective state, install,
+and write resolution.
 
-`workerRoots[].members` preserves closure order. `cards` preserves first reachability order and carries exact artifact provenance.
+## Selection And Transactions
 
-## Selection
+Project and machine mutations prepare config and lock together, validate the
+result, then commit through the scope's locked transaction.
 
-`cli/core/effective-state.ts` is the selection and declared-capability authority:
-
-- committed `activeWorker` is one installed root or `null`;
-- local config may override selection or add local roots/replacements;
-- one selected root expands to `[root, ...members]`;
-- inactive roots remain installed alternatives;
-- selected closure Cards produce Card skills, MCP definitions, hooks, persona/beliefs/memory, and generated Worker content;
-- explicit project overlays apply after Card capability selection;
-- machine profile and explicit machine inventory selections are not project declarations.
-
-No command should rebuild this state independently. Status, doctor, MCP listing, add flows, capture, write, and generated Worker materialization consume the same authority or a focused derivative.
-
-## Project Transactions
-
-`cli/core/project-state-transaction.ts` owns config/lock mutations:
-
-1. Acquire one exclusive owner lock.
-2. Recover any supported interrupted transaction using retained immutable sources and hashes.
-3. Read one config/lock snapshot.
-4. Resolve and validate complete next bytes.
-5. Persist retained sources and a phase journal.
-6. Replace targets in explicit phases.
-7. Verify committed hashes and remove transaction state.
-
-Stale-owner handling is fail-closed unless owner identity and liveness prove recovery is safe. Dry-run computes the same next bytes without locking or mutation.
-
-`worker-project.ts` implements add, apply, remove, pin, update, and use on top of this transaction. A projection failure after `use` does not roll back valid project intent; it leaves projection unchanged and tells the operator to fix the error and rerun `drwn write`.
-
-## Canonical Command Surface
-
-Project mutation:
+Project commands:
 
 ```text
-drwn add <root-ref>
-drwn apply <root-ref>... [--active <root>|--none]
-drwn remove <root-name>
-drwn pin <root-ref>
-drwn update [root-name]
-drwn use <root-name-or-ref>|--none
+drwn add|apply|remove|pin|update|use|install ...
 ```
 
-Card authoring remains under `drwn card`: source creation/editing, validation,
-publication, catalogs, remotes, trust, inspection, and capture. Editable sources
-are ordinary repositories selected by explicit path or by a unique manifest
-match under user-configured `catalogCheckouts`; the machine Store contains only
-immutable publications and operational state. Blueprint authoring uses
-`drwn worker new`, `drwn worker compose`, and `drwn worker publish`, with the
-same source-path contract. Remote runtime operations remain under
-`drwn worker deploy/list/status/...`.
+Machine selection commands:
+
+```text
+drwn apply --root <refs> [--active <name>|--none]
+drwn use --root <name-or-ref>|--none
+```
+
+`activeWorker` is canonical; version/transport stays in the lock. Machine
+`apply` replaces installed roots. Machine `use` selects or adds a root while
+retaining alternatives; `use --root --none` clears only selection. Consent uses
+the shared project range contract: same content in range is preserved, changed
+consent-relevant content in range is re-granted with current digest/timestamp
+and a warning, and out-of-range or removed contributions drop consent.
+
+Mutation and projection are distinct transactions. Selection commits valid
+intent before an optional projection. If projection fails, intent remains and
+the operator fixes the reported condition before rerunning `write`.
+
+The legacy `drwn machine skill|mcp enable|disable` surface exits nonzero with
+Blueprint guidance. Inventory lifecycle commands remain supported.
+
+## Consent
+
+Card hooks and instructions are denied until their exact locked release/digest
+is trusted. Consent lives on Card lock entries.
+
+Project trust targets the project lock. Machine trust uses:
+
+```bash
+drwn card trust <card> --hooks --scope machine
+drwn card trust <card> --instructions --scope machine
+```
+
+The acknowledgement key carries a typed scope identity. `use`, `apply`, and
+`write` replay acknowledgements in the selected scope, including `write --root`
+from inside a project. Machine trust accepts only a Card in the active closure;
+consent recorded while a Card was active remains on its lock entry if that root
+later becomes inactive. Dry-run and non-interactive refusal never write an
+acknowledgement.
+
+## Effective State
+
+`buildEffectiveState` selects exactly one authority:
+
+1. nearest project config and its committed/local lock state; or
+2. machine V2 and its embedded lock when machine scope is explicit.
+
+For either selected Worker it:
+
+- validates the lock/version floor;
+- locates the canonical active root;
+- reconstructs the active closure in deterministic order;
+- loads immutable Card content;
+- verifies locked content integrity;
+- composes consented instructions and hooks;
+- derives Card skill and MCP definitions; and
+- applies supported scope policy and filters.
+
+Machine state never derives capabilities from standalone inventory IDs.
+Inactive alternative roots, mutable authoring checkouts, ambient compatibility
+directories, and user-home target files are not activation authority.
 
 ## Pure Projection
 
-`cli/core/sync.ts` builds one `EffectiveState`, plans ownership-safe writes, and synchronizes selected targets. Modes include:
+`write` performs resolution and a complete ownership preflight before changing
+any destination. It does not mutate config, locks, root requirements, or
+selection.
 
-- full write;
-- `--dry-run`;
-- `--skills-only`;
-- `--mcp-only`;
-- `--target`;
-- explicit project or machine scope.
+Project destinations include repository-local Claude, Codex, Cursor, MCP,
+generated Worker, hook, skill, and instruction surfaces. Machine destinations
+include user-home equivalents plus the global generated directory.
 
-All project modes leave config and locks byte-identical. The write record tracks owned paths and hashes so cleanup never claims foreign bytes.
+Ownership rules:
 
-Project skill resolution does not scan machine-curated or target-specific compatibility directories. Project MCP registry construction includes only explicit built-ins/extensions, selected closure definitions, and full project-owned definitions.
+- an unrecorded existing destination/managed field is foreign and blocks first write;
+- recorded content with a mismatched digest is drift and blocks without force;
+- force repairs only prior drwn-owned content;
+- unrelated bytes/fields are preserved;
+- stale unchanged owned output is removed;
+- a late conflict discovered in preflight causes zero writes;
+- dry-run applies identical planning and conflict rules without mutation.
+
+Target filters, `--skills-only`, and `--mcp-only` limit both planning and
+mutation. Excluded surfaces are not claimed or cleaned.
 
 ## Generated Workers
 
-`cli/core/worker-generator/sync-worker.ts` iterates `installedRoots`, not every locked Card.
+Each installed root may have one aggregate generated Worker directory, but only
+the active closure projects downstream capabilities. A generated Worker carries
+root identity, member topology, effective skills/MCP, consented instructions,
+and consented hook assets. Member Cards do not become sibling Workers solely by
+being composed.
 
-For each root it:
+Machine generated output is beneath `~/.agents/drwn/generated`; project output
+is beneath `<project>/.agents/drwn/generated`. Generated bytes are disposable
+and never reconstructed into intent.
 
-1. Expands the root/member closure from selected graph state.
-2. Validates capability conflicts.
-3. Creates one stable root directory.
-4. Materializes closure skills with Card attribution.
-5. Merges MCP definitions.
-6. Bundles consented hooks for selected runtimes.
-7. Composes root and capability instructions.
-8. Writes `worker.json` with root and member provenance.
+## Machine Instruction And Hook Adapters
 
-`workers.json` lists all installed alternatives. `active-worker.json` and aggregate `instructions.md` identify the selected root. Dynamic labels and warnings never change stable directory dimensions or ownership paths.
+Machine instructions compose from the active root and member Cards and are
+stored in the generated Worker. Managed blocks adapt the same bytes to:
 
-## Effective Project Diagnostics
+- `~/.claude/CLAUDE.md`;
+- `~/.codex/AGENTS.md`.
 
-`buildProjectStatusV1` emits:
+drwn never writes `~/AGENTS.md`. Cursor/OpenCode user adapters remain
+unsupported until their discovery behavior is established.
 
-- installed Worker roots;
-- one selected root and its source lane;
-- active closure Cards;
-- local override details;
-- project skill/MCP/extension/target/hook overlays;
-- declared skills, MCP definitions, and hooks with source provenance;
-- ambient user-home observations;
-- projection currency.
+Machine Claude hooks use managed fields in `~/.claude/settings.json` and
+preserve unrelated settings. Unsupported target hook encoders fail/report as
+defined by their current target contract; I177 does not invent new encodings.
 
-Ambient observations are diagnostic-only state. Task 83 implements target-specific collision classification and selected-target write preflight.
+## Skills And MCP
 
-`status --why` uses the same provenance model. `doctor` is report-only and uses stable codes for invalid schema, graph, ownership, runtime, and ambient findings.
+Project overlays may explicitly include available standalone skills or define
+project MCP servers. Machine capability derivation is stricter: only Cards in
+the active machine closure contribute skills/MCP definitions.
 
-## Machine Inventory Boundaries
+MCP definitions may contain environment-variable references but never resolved
+secrets. OAuth grants, executables, environment expansion, timeouts, and
+initialize handshakes remain operator runtime readiness. Target-native ambient
+entries are observed for collision diagnostics, not imported into declarations.
 
-The pinned machine profile and explicit machine inventory selections remain a
-separate authority for machine writes. They are not prepended to project
-capability state.
+## Machine Inventory Boundary
 
-Task 80 defines the clean namespaced machine schema and the Recommended
-Darwinian Operator guided profile. The profile projects machine-safe skills and
-approved MCP definitions only; it does not create a project Worker or project
-declaration.
+Package-backed skills and MCP records under the machine Store are standalone
+inventory. Install/update/remove/list/show/reference commands manage
+availability, not machine activation.
 
-Task 81 defines drwn-managed standalone skill packages and MCP records.
-Inventory is inactive until selected. Skill lifecycle is package-scoped,
-package versions are immutable, MCP persistence is record-level, and stored
-definitions retain secret references. Reference-sensitive operations follow
-`inventory -> machine -> project`; stale registrations are repaired with
-`drwn projects unregister`. Removal uses tombstone recovery, and inventory GC
-is a dry-run by default. Cards own their bundled content.
+Portable inventory `export|bundle|verify|sync` remains inventory-only:
 
-Task 82 implements `drwn machine inventory export|bundle|verify|sync` over a
-strict `drwn.portable-inventory` V1 manifest. Export and bundle snapshot only
-active standalone records under the global inventory lock. Bundle staging uses
-typed record paths rather than a Store-root walk. Verify is exact and
-read-only. Sync validates and stages all bytes before target mutation,
-revalidates source and target state under the lock, blocks all conflicts, and
-installs only missing inactive records through Task 81 helpers. Extras are
-preserved. Fresh sync creates inventory infrastructure but no `machine.json`.
+- deterministic metadata manifest;
+- allowlisted package/MCP payload bytes in bundles;
+- additive sync that preserves extras and keeps imported entries inactive;
+- no machine intent, Worker lock, Cards, credentials, generated output,
+  projects, caches, write history, inactive versions, or tombstones.
 
-## MCP Runtime State
+Checksums prove equality, not authenticity. The secret scan is a bounded source
+safeguard, not a general secret detector.
 
-Card and project files describe MCP definitions, not runtime authorization:
+## Authoring
 
-- hosted OAuth such as Notion is completed in the downstream client;
-- API keys such as an `ntn` token remain in environment/secret storage;
-- stdio tools such as Momentic are separately installed on the machine;
-- startup failures are readiness diagnostics unless the definition itself is invalid.
+Card authoring lives under `drwn card` and `drwn worker`. Source roots are
+explicit paths or uniquely resolved matches in user-configured
+`catalogCheckouts`. `drwn worker new` creates a Blueprint source;
+`drwn worker compose` edits its membership. `drwn card publish --from <path>`
+publishes immutable content.
 
-Secret values never enter manifests, project state, generated provenance, status output, or deploy archives.
-
-## Deploy Adapter
-
-`cli/core/worker-deploy.ts` preserves remote contract version 1:
-
-- one `entrypoint`;
-- remote config `{ version: 1, cards: [rootRef] }`;
-- remote lock shape used by existing consumers;
-- root followed by pinned closure Cards;
-- allowlisted Store export containing only required bare repositories, extracted trees, and Store metadata.
-
-When run in project context, deploy accepts only the selected root. A member or inactive root fails locally before authentication/network access. Local schema names never enter the remote payload.
-
-## Mind Adapter
-
-Project Mind loading resolves the selected root followed by its ordered members. `mind.json` records:
-
-- one `worker` provenance record;
-- ordered `cards` provenance;
-- persona/belief indexes;
-- memory shape;
-- seeded-file ledger and ETags.
-
-Seed and sync reject an empty closure. Checkpoint maps provenance back to
-editable Card sources by consulting project-local `sourceOverrides` first and
-catalog checkouts second. Changed content with no resolved source fails with
-`MIND_CHECKPOINT_NO_SOURCE`; unattributed persona content also fails.
+The Card collection is a directory of independent source repositories, not one
+runtime Store. On this development machine it is
+`~/dev/darwinian-cards/cards/`. Runtime selection consumes published refs, not
+those mutable working directories.
 
 ## Capture
 
-`card new --from-project` captures the selected closure and explicit project
-overlays into the current directory or an explicit `--into` collection. It
-excludes inactive alternatives, machine profile and inventory selections,
-ambient user-home state, generated bytes, platform connectors, and resolved
-secrets. No selected root fails without creating a source.
+`drwn card new --from-project` captures the selected project closure plus
+explicit project overlays. `drwn card new --from-defaults` flattens the active
+machine closure into a new plain Card. Capture excludes inactive roots,
+standalone inventory not in the closure, ambient target state, generated bytes,
+credentials, and resolved secrets.
 
-## Machine State Safety
+## Diagnostics
 
-No public command archives the whole machine state root. Credentials, machine
-intent, registrations, write records, and caches therefore cannot be
-accidentally bundled by an inventory lifecycle command.
+Status and doctor distinguish declared, locked, effective, ambient, and
+projected state. Machine V2 reports:
 
-Deploy's scoped export is a separate allowlist-built internal path. Task 82 now
-provides a deterministic manifest and additive bundle format without changing
-deploy. Portable artifacts are not a backup or restore and must not archive the
-Store root. Their checksums detect corruption; a checksum is not authenticity.
-Known-value, private-key, and risky-filename screening is a source-content
-safeguard, not a general secret detector.
+- canonical active Worker and requested immutable ref;
+- installed roots and active Card closure;
+- lock/content integrity and compatibility floors;
+- closure-derived skill/MCP/hook/instruction provenance;
+- consent gaps; and
+- global projection ownership/currentness/conflicts.
+
+Diagnostics are bounded and report-only. They do not repair, fetch, trust,
+delete, or claim readiness for external runtimes.
+
+## Deploy And Organization Handoff
+
+Deploy and frozen organization Worker materialization use allowlisted,
+versioned artifacts rather than whole-Store archives. They preserve stable
+identity, receipts, provenance, compatibility, and consent boundaries. These
+project/remote flows do not consume machine intent or user-home state.
 
 ## Testing Boundaries
 
-- Unit: validators, graph selection, policy, merge, serialization.
-- Integration: project transactions, machine state resolution, target adapters.
-- Command: canonical routing, JSON/human output, non-mutation failures.
-- Smoke: clean project initialize/apply/use/write/status/doctor.
-- E2E: published Blueprint resolution, consumer reset, downstream runtime observation, remote services only when credentials are available.
+- unit: schema, graph/lock invariants, descriptor, consent, pure planning;
+- integration: isolated filesystem transactions and target adapters;
+- end-to-end: published fixture Blueprint through apply/trust/write/status;
+- release: shipped descriptors, Card contracts, docs, help, and hard-cut scans;
+- manual: disposable `HOME`, `AGENTS_DIR`, project, and Card collection only.
 
-Every filesystem test uses isolated roots. External OAuth/install prerequisites are reported as skips, not converted into CLI schema failures.
+The repository pins Bun `1.2.21`. Completion requires focused RED-GREEN
+evidence, typecheck, the full pinned suite, release readiness, and green CI at
+the reviewed commit.
 
 ## Reset
 
-Unsupported development projects are deliberately reset using [`docs/prelaunch-project-reset.md`](../../docs/prelaunch-project-reset.md). The supported runtime contains no compatibility readers or mutation aliases.
+There is no public whole-Store backup/restore command. For unsupported V1 or
+prototype machine intent, preserve any required non-secret audit copies outside
+the Store, deliberately remove the unsupported `machine.json` and associated
+global write record, rerun `drwn init`, and select an immutable Blueprint. Do
+not ask drwn to infer provenance or automatically delete user-home ownership
+state.

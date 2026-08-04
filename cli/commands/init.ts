@@ -10,8 +10,8 @@ import { ensureDefaultCommunityCatalog, resolveDefaultCommunityCatalogUrl } from
 import { loadConfig } from "../core/config";
 import { ensureBeadsProjectExtensionConfig, normalizeBeadsTargets } from "../core/extensions/beads";
 import { ensureParallelProjectExtensionConfig } from "../core/extensions/parallel";
-import { resolveInitMode, resolveRecommendedProfileChoice } from "../core/interactivity";
-import { initializeMachineCapabilities } from "../core/machine-profiles";
+import { resolveInitMode, resolveRecommendedWorkerChoice } from "../core/interactivity";
+import { initializeMachineWorker } from "../core/machine-worker-init";
 import { ensureGitignoreEntries, ensureVendorGitattributes } from "../core/git-hygiene";
 import { registerProject } from "../core/project-registry";
 import { scaffoldProjectConfig } from "../core/project";
@@ -115,7 +115,7 @@ export class InitCommand extends BaseCommand {
   }
 
   private async executeMinimal(projectDir: string) {
-    await initializeMachineCapabilities({
+    await initializeMachineWorker({
       agentsDir: this.context.agentsDir,
       repoRoot: this.context.repoRoot,
       guided: false,
@@ -126,12 +126,12 @@ export class InitCommand extends BaseCommand {
   private async executeGuided(projectDir: string) {
     const rl = createInterface({ input, output });
     try {
-      await initializeMachineCapabilities({
+      await initializeMachineWorker({
         agentsDir: this.context.agentsDir,
         repoRoot: this.context.repoRoot,
         guided: true,
-        promptRecommended: async () => resolveRecommendedProfileChoice(
-          await rl.question("Use Recommended Darwinian Operator machine capabilities? [Y/n] "),
+        promptRecommended: async () => resolveRecommendedWorkerChoice(
+          await rl.question("Use the Recommended Machine Defaults Worker Blueprint? [Y/n] "),
         ),
       });
       if (this.catalogCheckouts.length === 0) {

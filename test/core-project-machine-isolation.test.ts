@@ -115,10 +115,16 @@ test("project state and output are independent from machine capability state", a
   const baselineOutput = await snapshotTree(projectRoot, outputExclusions);
 
   const machinePath = resolveMachineConfigPath(fixture.agentsDir);
-  const machine = JSON.parse(await readFile(machinePath, "utf8"));
-  machine.defaults = { skills: ["beta"], mcpServers: ["context7"] };
-  machine.optional = { context7: true, "machine-only": true };
-  machine.parallel = { cli: { enabled: false }, mcp: { enabled: true } };
+  const machine = {
+    schemaVersion: 1,
+    capabilities: {
+      skills: ["beta"],
+      mcpServers: ["context7"],
+    },
+    defaults: { skills: ["beta"], mcpServers: ["context7"] },
+    optional: { context7: true, "machine-only": true },
+    parallel: { cli: { enabled: false }, mcp: { enabled: true } },
+  };
   await writeFile(machinePath, `${JSON.stringify(machine, null, 2)}\n`);
   await seedMcpInventory(fixture.agentsDir, {
     version: 1,

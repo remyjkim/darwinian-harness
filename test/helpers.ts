@@ -10,7 +10,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { CanonicalConfig, CanonicalRegistry, ProjectConfig } from "../cli/core/types";
 import { writeCardLock, type CardLockEntry, type ProjectLockGraph } from "../cli/core/card-lock";
-import { createDarwinianOperatorPin, DARWINIAN_OPERATOR_PROFILE } from "../cli/core/operator-profile-contract";
 
 export function projectLockGraph(cards: CardLockEntry[]): ProjectLockGraph {
   return {
@@ -206,6 +205,8 @@ export async function publishCardWithSkills(
     version?: string;
     skills: string[];
     servers?: Record<string, unknown>;
+    instructions?: { text: string };
+    hooks?: string[];
   },
 ): Promise<string> {
   const version = options.version ?? "1.0.0";
@@ -229,12 +230,26 @@ export async function publishCardWithSkills(
   if (options.servers) {
     manifest.servers = options.servers;
   }
+  if (options.instructions) {
+    manifest.instructions = options.instructions;
+  }
+  if (options.hooks && options.hooks.length > 0) {
+    manifest.hooks = { include: options.hooks };
+  }
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   for (const skill of options.skills) {
     const skillDir = join(sourceRoot, "skills", skill);
     await mkdir(skillDir, { recursive: true });
     await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${skill}\ndescription: ${skill}\n---\n`);
+  }
+  for (const hook of options.hooks ?? []) {
+    const hookDir = join(sourceRoot, "hooks", hook);
+    await mkdir(hookDir, { recursive: true });
+    await writeFile(
+      join(hookDir, "policy.ts"),
+      "export default { policyKind: 'observer' };\n",
+    );
   }
 
   const published = await runAgentsCli(["card", "publish", options.name, "--from", sourceRoot], envFor(fixture));
@@ -243,26 +258,63 @@ export async function publishCardWithSkills(
   return (await resolveCard(fixture.agentsDir, `${scope}/${cardName}@${version}`)).dir;
 }
 
-export async function publishExactOperatorProfile(
+export async function publishMachineBlueprint(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  options: {
+    rootName?: string;
+    memberName?: string;
+    skills?: string[];
+    servers?: Record<string, unknown>;
+    instructions?: { text: string };
+    hooks?: string[];
+  } = {},
+) {
+  const rootName = options.rootName ?? "@me/machine-worker";
+  const memberName = options.memberName ?? "@me/machine-capabilities";
+  await publishCardWithSkills(fixture, {
+    name: memberName,
+    skills: options.skills ?? [],
+    servers: options.servers,
+    instructions: options.instructions,
+    hooks: options.hooks,
+  });
+  const sourceDir = await createCatalogCardSource(fixture, rootName, {
+    kind: "blueprint",
+  });
+  const manifestPath = join(sourceDir, "card.json");
+  const manifest = JSON.parse(await Bun.file(manifestPath).text());
+  manifest.kind = "blueprint";
+  manifest.composedFrom = [`${memberName}@1.0.0`];
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const published = await runAgentsCli(
+    ["card", "publish", rootName],
+    envFor(fixture),
+  );
+  expect(published.exitCode, published.stderr).toBe(0);
+  return `${rootName}@1.0.0`;
+}
+
+export async function installMachineBlueprint(
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  options: {
+    rootName?: string;
+    memberName?: string;
+    skills?: string[];
+    servers?: Record<string, unknown>;
+    instructions?: { text: string };
+    hooks?: string[];
+  } = {},
+) {
+  const ref = await publishMachineBlueprint(fixture, options);
+  const { applyMachineWorkerRoots } = await import("../cli/core/worker-machine");
+  return applyMachineWorkerRoots(fixture.agentsDir, [ref]);
+}
+
+export async function clearMachineBlueprint(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
 ) {
-  const catalogRoot = join(fixture.root, "card-catalog");
-  const sourceRoot = join(catalogRoot, "cards", "operator");
-  await mkdir(dirname(sourceRoot), { recursive: true });
-  await cp(join(import.meta.dir, "..", "darwinian-worker-skills", "cards", "operator"), sourceRoot, {
-    recursive: true,
-  });
-  expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
-  const published = await runAgentsCli(["card", "publish", DARWINIAN_OPERATOR_PROFILE.name, "--from", sourceRoot], envFor(fixture));
-  expect(published.exitCode).toBe(0);
-  const { resolveCard } = await import("../cli/core/card-store");
-  const resolved = await resolveCard(
-    fixture.agentsDir,
-    `${DARWINIAN_OPERATOR_PROFILE.name}@${DARWINIAN_OPERATOR_PROFILE.version}`,
-  );
-  expect(resolved.treeSha).toBe(DARWINIAN_OPERATOR_PROFILE.treeSha);
-  expect(resolved.integrity).toBe(DARWINIAN_OPERATOR_PROFILE.integrity);
-  return { profile: createDarwinianOperatorPin(), resolved };
+  const { applyMachineWorkerRoots } = await import("../cli/core/worker-machine");
+  return applyMachineWorkerRoots(fixture.agentsDir, []);
 }
 
 export async function createInstalledSkillBundle(

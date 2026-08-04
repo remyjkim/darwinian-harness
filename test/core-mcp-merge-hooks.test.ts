@@ -2,7 +2,7 @@
 // ABOUTME: Protects hook drift detection and cleanup alongside MCP servers.
 
 import { describe, expect, test } from "bun:test";
-import { mergeClaudeSettingsText } from "../cli/core/mcp";
+import { mergeClaudeSettingsText, removeOwnedClaudeHookFields } from "../cli/core/mcp";
 import type { RegistryServer } from "../cli/core/types";
 
 const server: RegistryServer = {
@@ -69,6 +69,29 @@ describe("mergeClaudeSettingsText hooks", () => {
     expect(parsed.hooks).toEqual({ PreToolUse: [{ matcher: "Skill", hooks: [{ type: "command", command: "foreign" }] }] });
     expect(parsed._drwn.managedKeys).toEqual(["mcpServers"]);
     expect(parsed._drwn.ownedHooks).toBeUndefined();
+  });
+
+  test("removes only named owned hook fields and preserves retained plus foreign entries", () => {
+    const foreign = { matcher: "Bash", hooks: [{ type: "command" as const, command: "foreign" }] };
+    const retained = { matcher: "Skill", hooks: [{ type: "command" as const, command: "signal" }] };
+    const removed = { matcher: ".*", hooks: [{ type: "command" as const, command: "composer" }] };
+    const withHooks = mergeClaudeSettingsText(
+      JSON.stringify({ hooks: { PreToolUse: [foreign] } }),
+      {},
+      { hooks: { PreToolUse: [removed, retained], PostToolUse: [removed, retained] } },
+    );
+
+    const cleaned = removeOwnedClaudeHookFields(withHooks.text, [
+      "hooks:PreToolUse:m:.*",
+      "hooks:PostToolUse:m:.*",
+    ]);
+    const parsed = JSON.parse(cleaned);
+
+    expect(parsed.hooks.PreToolUse).toEqual([foreign, retained]);
+    expect(parsed.hooks.PostToolUse).toEqual([retained]);
+    expect(parsed._drwn.ownedHooks.PreToolUse["m:.*"]).toBeUndefined();
+    expect(parsed._drwn.ownedHooks.PreToolUse["m:Skill"]).toStartWith("sha256-");
+    expect(parsed._drwn.ownedHooks.PostToolUse["m:Skill"]).toStartWith("sha256-");
   });
 
   test("refuses managed hook drift unless forced", () => {

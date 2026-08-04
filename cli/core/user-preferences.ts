@@ -1,15 +1,14 @@
 // ABOUTME: Defines strict machine-local preferences for Card authoring and catalog checkout discovery.
-// ABOUTME: Migrates legacy authoring scope only after its replacement preference is durably written.
+// ABOUTME: Keeps user preferences independent from machine Worker intent and lifecycle.
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import { DrwnError } from "./errors";
 import { writeAtomically } from "./fs";
-import { withInventoryLock, withMachineLock } from "./inventory-lock";
-import { readMachineConfigFile, writeMachineConfigFile } from "./machine-config";
+import { withInventoryLock } from "./inventory-lock";
 import { resolveUserConfigPath } from "./paths";
-import { assertStoreWritable, resolveMachineConfigPath } from "./store-paths";
+import { assertStoreWritable } from "./store-paths";
 
 const checkoutPath = z.string().min(1).refine(
   (value) => value.trim() === value,
@@ -97,13 +96,7 @@ export async function writeUserPreferencesFile(path: string, preferences: UserPr
 
 export async function loadUserPreferences(agentsDir: string): Promise<UserPreferences> {
   const preferencesPath = resolveUserConfigPath(agentsDir);
-  const existing = await readUserPreferencesFile(preferencesPath);
-  const preferences = existing ?? createEmptyUserPreferences();
-  const machine = await readMachineConfigFile(resolveMachineConfigPath(agentsDir));
-  const legacyScope = machine?.policy.authoring?.scope;
-  return legacyScope && !preferences.defaultAuthorScope
-    ? { ...preferences, defaultAuthorScope: legacyScope }
-    : preferences;
+  return await readUserPreferencesFile(preferencesPath) ?? createEmptyUserPreferences();
 }
 
 export async function mutateUserPreferences<T>(
@@ -115,26 +108,10 @@ export async function mutateUserPreferences<T>(
 ): Promise<T> {
   const run = async () => {
     const preferencesPath = resolveUserConfigPath(agentsDir);
-    const machinePath = resolveMachineConfigPath(agentsDir);
-    const persisted = await readUserPreferencesFile(preferencesPath) ?? createEmptyUserPreferences();
-    const machine = await readMachineConfigFile(machinePath);
-    const legacyScope = machine?.policy.authoring?.scope;
-    const current = legacyScope && !persisted.defaultAuthorScope
-      ? { ...persisted, defaultAuthorScope: legacyScope }
-      : persisted;
+    const current = await readUserPreferencesFile(preferencesPath) ?? createEmptyUserPreferences();
     const prepared = await prepare(structuredClone(current));
     const validated = parseUserPreferences(prepared.preferences, preferencesPath);
-    if (!options.dryRun) {
-      await writeUserPreferencesFile(preferencesPath, validated);
-      if (legacyScope && machine) {
-        await withMachineLock(agentsDir, async () => {
-          const latest = await readMachineConfigFile(machinePath);
-          if (!latest?.policy.authoring) return;
-          delete latest.policy.authoring;
-          await writeMachineConfigFile(machinePath, latest);
-        });
-      }
-    }
+    if (!options.dryRun) await writeUserPreferencesFile(preferencesPath, validated);
     return prepared.value;
   };
   if (options.dryRun) return run();

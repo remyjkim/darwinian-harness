@@ -82,7 +82,7 @@ const managedPathSchema = z.discriminatedUnion("kind", [
   const valid = entry.surface === "worker"
     ? entry.target === undefined
     : entry.surface === "instructions"
-      ? entry.target === undefined
+      ? entry.target === undefined || entry.target === "claude" || entry.target === "codex"
     : entry.surface === "mcp"
       ? entry.target === "claude" || entry.target === "codex" || entry.target === "cursor" || entry.target === "opencode"
       : entry.surface === "skill"
@@ -115,8 +115,27 @@ const writeRecordSchema = z.object({
       context.addIssue({ code: "custom", path: ["managedPaths", index, "path"], message: `duplicate managed path: ${entry.path}` });
     }
     paths.add(entry.path);
-    if (record.scope === "machine" && entry.surface !== "mcp" && entry.surface !== "skill") {
-      context.addIssue({ code: "custom", path: ["managedPaths", index, "surface"], message: "machine records permit only skill and MCP ownership" });
+    if (
+      record.scope === "machine" &&
+      entry.surface !== "worker" &&
+      entry.surface !== "mcp" &&
+      entry.surface !== "skill" &&
+      entry.surface !== "hook" &&
+      entry.surface !== "instructions"
+    ) {
+      context.addIssue({ code: "custom", path: ["managedPaths", index, "surface"], message: "invalid machine projection ownership" });
+    }
+    if (
+      record.scope === "machine" &&
+      entry.surface === "instructions" &&
+      entry.target !== "claude" &&
+      entry.target !== "codex"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["managedPaths", index, "target"],
+        message: "machine instruction ownership requires a Claude or Codex target",
+      });
     }
   }
 });

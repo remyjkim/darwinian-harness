@@ -31,14 +31,14 @@ Claude, Codex, and Cursor files.
 Create an editable source:
 
 ```bash
-drwn card new @me/backend --no-git
-drwn card new backend --scope @me --no-git
+drwn card new @me/backend --into <card-collection> --no-git
+drwn card new backend --scope @me --into <card-collection> --no-git
 ```
 
-Card sources live under:
+Card sources are independent repositories under an explicit collection:
 
 ```text
-~/.agents/drwn/sources/
+<card-collection>/
 ```
 
 Each source contains `card.json`, `skills/`, and `mcp-servers/`.
@@ -58,7 +58,7 @@ the card.
 Publish a version:
 
 ```bash
-drwn card publish @me/backend
+drwn card publish --from <card-collection>/backend
 ```
 
 Published card versions are immutable Git tags in per-card bare repos under:
@@ -109,25 +109,25 @@ drwn write --dry-run
 drwn write
 ```
 
-`drwn apply` is an alias for `drwn card apply`. It replaces the current
-project's card set and writes a fresh lockfile.
+`drwn apply` replaces the current project's Worker root set and writes a fresh
+lockfile. Multiple alternatives require `--active <root>` or `--none`.
 
 Project mutation commands:
 
 ```bash
-drwn card apply @me/backend@^1.0.0
-drwn card add @me/observability@^1.0.0
-drwn card pin @me/backend@1.0.0
-drwn card remove @me/observability
-drwn card detach
-drwn card update
-drwn update
+drwn apply @me/backend@^1.0.0
+drwn add @me/observability@^1.0.0
+drwn pin @me/backend@1.0.0
+drwn remove @me/observability
+drwn update [root-name]
+drwn use @me/backend
+drwn use --none
 ```
 
 Use `--write` with mutation commands when you want to materialize immediately:
 
 ```bash
-drwn card add @me/observability@^1.0.0 --write
+drwn add @me/observability@^1.0.0 --write
 drwn update --write
 ```
 
@@ -158,8 +158,8 @@ for CI.
 Update the lockfile within configured ranges:
 
 ```bash
-drwn card update
-drwn card update --write
+drwn update
+drwn update --write
 ```
 
 ## Status

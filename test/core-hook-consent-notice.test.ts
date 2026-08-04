@@ -71,7 +71,7 @@ test("write prints cross-machine hook notice once and records ack", async () => 
     resolved.dir,
   );
   const ackKey = buildHookConsentAckKey({
-    projectRoot: projectDir,
+    scope: { kind: "project", projectRoot: projectDir },
     card: {
       name: resolved.name,
       requested: "@me/hooks@1.0.0",

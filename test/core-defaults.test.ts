@@ -1,28 +1,31 @@
-// ABOUTME: Verifies that profile and explicit selections are the only machine capability authority.
-// ABOUTME: Protects provenance, deduplication, missing-capability errors, and ambient-directory isolation.
+// ABOUTME: Verifies machine capability resolution flattens only the active verified Worker closure.
+// ABOUTME: Protects Card provenance and exclusion of packaged or standalone inventory defaults.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { resolveMachineCapabilities } from "../cli/core/defaults";
 import { writeMachineConfig } from "../cli/core/card-store";
 import { createEmptyMachineConfig } from "../cli/core/machine-config";
-import { DARWINIAN_OPERATOR_SKILL_IDS } from "../cli/core/operator-profile-contract";
-import { cleanupTempRoots, publishExactOperatorProfile, scaffoldCliFixture } from "./helpers";
+import { applyMachineWorkerRoots } from "../cli/core/worker-machine";
+import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 
-afterEach(async () => {
-  await cleanupTempRoots(tempRoots);
-});
+afterEach(async () => cleanupTempRoots(tempRoots));
 
-async function installProfileFixture(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
-  const { profile, resolved } = await publishExactOperatorProfile(fixture);
-  await writeMachineConfig(fixture.agentsDir, {
-    ...createEmptyMachineConfig(),
-    capabilities: { profile, skills: [], mcpServers: [] },
-  });
-  return { profile, resolved };
+async function writeCard(
+  dir: string,
+  manifest: Record<string, unknown>,
+  skills: string[] = [],
+) {
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "card.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  for (const skill of skills) {
+    const skillDir = join(dir, "skills", skill);
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), `---\nname: ${skill}\ndescription: fixture\n---\n`);
+  }
 }
 
 describe("machine capability resolution", () => {
@@ -36,16 +39,39 @@ describe("machine capability resolution", () => {
       agentsDir: fixture.agentsDir,
     });
 
+    expect(resolved.activeWorker).toBeNull();
+    expect(resolved.activeCards).toEqual([]);
     expect(resolved.skills).toEqual([]);
     expect(resolved.mcpServers).toEqual([]);
   });
 
-  test("resolves explicit Library skills and MCP servers", async () => {
+  test("flattens skills and MCP with exact Card provenance from the selected closure", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await writeMachineConfig(fixture.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: null, skills: ["alpha"], mcpServers: ["context7"] },
+    const memberDir = join(fixture.root, "member");
+    const workerDir = join(fixture.root, "worker");
+    await writeCard(memberDir, {
+      name: "@me/member",
+      version: "1.0.0",
+      skills: { include: ["alpha"] },
+      servers: {
+        notion: {
+          description: "Notion",
+          transport: "stdio",
+          command: "notion-mcp",
+          optional: false,
+        },
+      },
+    }, ["alpha"]);
+    await writeCard(workerDir, {
+      name: "@me/worker",
+      version: "1.0.0",
+      kind: "blueprint",
+      composedFrom: [`file:${memberDir}`],
+    });
+    await applyMachineWorkerRoots(fixture.agentsDir, [`file:${workerDir}`], {
+      allowUntrustedSource: true,
+      repoRoot: fixture.repoRoot,
     });
 
     const resolved = await resolveMachineCapabilities({
@@ -53,55 +79,43 @@ describe("machine capability resolution", () => {
       agentsDir: fixture.agentsDir,
     });
 
-    expect(resolved.skills).toEqual([expect.objectContaining({ id: "alpha", source: "explicit" })]);
-    expect(resolved.mcpServers).toEqual([expect.objectContaining({ id: "context7", source: "explicit" })]);
-  });
-
-  test("attributes profile and explicit overlap to the profile once", async () => {
-    const fixture = await scaffoldCliFixture();
-    tempRoots.push(fixture.root);
-    await mkdir(join(fixture.repoRoot, "skills", "shared", "bootstrap-project"), { recursive: true });
-    await writeFile(join(fixture.repoRoot, "skills", "shared", "bootstrap-project", "SKILL.md"), "---\nname: bootstrap-project\ndescription: explicit duplicate\n---\n");
-    const { profile, resolved: profileCard } = await installProfileFixture(fixture);
-    await writeMachineConfig(fixture.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile, skills: ["bootstrap-project"], mcpServers: [] },
-    });
-
-    const capabilities = await resolveMachineCapabilities({
-      repoRoot: fixture.repoRoot,
-      agentsDir: fixture.agentsDir,
-    });
-
-    expect(capabilities.skills).toContainEqual({
-      id: "bootstrap-project",
-      source: "profile",
-      profileId: "darwinian-operator",
-      path: join(profileCard.dir, "skills", "bootstrap-project"),
+    expect(resolved.activeCards.map((card) => card.name)).toEqual(["@me/worker", "@me/member"]);
+    expect(resolved.skills).toEqual([{
+      id: "alpha",
+      source: "worker",
+      cardName: "@me/member",
+      cardVersion: "1.0.0",
+      path: join(memberDir, "skills", "alpha"),
       scope: "shared",
-    });
-    expect(capabilities.skills.map((skill) => skill.id)).toEqual([...DARWINIAN_OPERATOR_SKILL_IDS]);
+    }]);
+    expect(resolved.mcpServers).toEqual([expect.objectContaining({
+      id: "notion",
+      source: "worker",
+      cardName: "@me/member",
+      cardVersion: "1.0.0",
+      server: expect.objectContaining({ command: "notion-mcp" }),
+    })]);
   });
 
-  test("fails with stable errors for missing explicit capabilities", async () => {
+  test("a null selection retains installed Cards without resolving their bytes as active", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await writeMachineConfig(fixture.agentsDir, {
-      ...createEmptyMachineConfig(),
-      capabilities: { profile: null, skills: ["missing-skill"], mcpServers: [] },
+    const workerDir = join(fixture.root, "worker");
+    await writeCard(workerDir, {
+      name: "@me/worker",
+      version: "1.0.0",
+      kind: "blueprint",
+      composedFrom: [],
+    });
+    await applyMachineWorkerRoots(fixture.agentsDir, [`file:${workerDir}`], {
+      none: true,
+      allowUntrustedSource: true,
+      repoRoot: fixture.repoRoot,
     });
 
-    await expect(resolveMachineCapabilities({ repoRoot: fixture.repoRoot, agentsDir: fixture.agentsDir }))
-      .rejects.toMatchObject({ code: "MACHINE_CAPABILITY_NOT_FOUND" });
-  });
-
-  test("fails when pinned profile bytes are missing instead of fetching", async () => {
-    const fixture = await scaffoldCliFixture();
-    tempRoots.push(fixture.root);
-    const { profile } = await installProfileFixture(fixture);
-    await rm(join(fixture.agentsDir, "drwn", "extracted", profile.treeSha), { recursive: true, force: true });
-
-    await expect(resolveMachineCapabilities({ repoRoot: fixture.repoRoot, agentsDir: fixture.agentsDir }))
-      .rejects.toMatchObject({ code: "MACHINE_PROFILE_NOT_AVAILABLE" });
+    const resolved = await resolveMachineCapabilities({ repoRoot: fixture.repoRoot, agentsDir: fixture.agentsDir });
+    expect(resolved.installedCards.map((card) => card.name)).toEqual(["@me/worker"]);
+    expect(resolved.activeCards).toEqual([]);
+    expect(resolved.contentRootsByCard).toEqual({});
   });
 });

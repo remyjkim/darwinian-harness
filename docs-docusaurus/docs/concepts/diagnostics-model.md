@@ -24,7 +24,7 @@ The categories surfaced:
 - **Instruction delivery** — consent, root `AGENTS.md` block state and ownership, and Claude adapter state without exposing instruction text.
 - **Project config issues** — invalid Worker roots or selection, unknown `mcpServers`, unknown skills in `skills.include`, unknown extensions, stale target overrides, and unavailable selected-closure skills
 
-`doctor` reports issues. It never fixes them. The intent is that an operator (or an agent following a skill) reads doctor output, decides what to do, and then runs the right command (`drwn write`, `drwn update`, `drwn machine skill disable`, and so on).
+`doctor` reports issues. It never fixes them. The intent is that an operator (or an agent following a skill) reads doctor output, decides what to do, and then runs the right command (`drwn write`, `drwn update`, `drwn apply --root`, and so on).
 
 See [reference/cli/doctor](../reference/cli/doctor) for the command surface and [troubleshooting/reading-doctor](../troubleshooting/reading-doctor) for how to triage common output.
 
@@ -94,7 +94,7 @@ drwn status --why <name>
 
 - Default mode renders concise per-target and per-source counts plus the full diagnostics sections in JSON form.
 - `--explain` adds a human-readable explanation of the same sections.
-- `--why <name>` answers a provenance question: which layer (Card, project overlay, machine profile or explicit selection, packaged registry) is making this skill, server, extension, or Card active.
+- `--why <name>` answers a provenance question: which selected Card closure, project overlay, standalone inventory, or packaged registry explains the skill, server, extension, or Card.
 
 `--why` is the right command before a write when an operator is unsure why a given skill or server is appearing in the effective state. It is the inverse of `doctor`: doctor surfaces problems, `--why` explains decisions.
 
@@ -136,7 +136,7 @@ Cursor's standalone JSON format means drwn owns the whole file as `managed-conte
 
 Both `doctor` and `status --explain` include:
 
-- machine-state status: schema version, Card count, source count, skill-package count, and MCP-record count
+- machine-state status: V2 active Worker/requested ref, installed roots, locked closure/integrity, consent, projection ownership, Card count, skill-package count, and MCP-record count
 - write-record status: presence, corruption, managed-path count, last write timestamp, and the harness version that produced the last write
 
 A missing write record is normal on a fresh project; a corrupt one is reported so the operator can decide whether to delete it and re-run `drwn write`.

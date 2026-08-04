@@ -4,7 +4,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { verifyAmbientMcpPolicy } from "../scripts/verify-release-readiness";
+import {
+  verifyAmbientMcpPolicy,
+  verifyRecommendedMachineWorkerContract,
+} from "../scripts/verify-release-readiness";
+import { MACHINE_WORKER_REGISTRY } from "../cli/core/machine-worker-contract";
 
 const repoRoot = join(import.meta.dir, "..");
 
@@ -84,4 +88,39 @@ describe("ambient MCP policy release gate", () => {
     expect(report.ok).toBe(true);
     expect(report.checks).toContainEqual({ name: "ambient MCP policy", ok: true });
   }, 20_000);
+});
+
+describe("recommended machine Worker release gate", () => {
+  test("accepts the immutable recommended Blueprint descriptor", () => {
+    expect(verifyRecommendedMachineWorkerContract(repoRoot)).toEqual({
+      name: "recommended machine Worker contract",
+      ok: true,
+      details: undefined,
+    });
+  });
+
+  test("rejects a missing descriptor", () => {
+    const result = verifyRecommendedMachineWorkerContract(repoRoot, {
+      "registry/machine-workers.json": "",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("registry/machine-workers.json");
+  });
+
+  test("rejects the bootstrap and incompatible personal-harness closure", () => {
+    const registry = JSON.parse(JSON.stringify(MACHINE_WORKER_REGISTRY));
+    registry.workers[0].source = "git+https://github.com/curation-labs/machine-defaults.git#v1.0.0";
+    registry.workers[0].version = "1.0.0";
+    registry.workers[0].members.push({
+      name: "@remyjkim/personal-harness",
+      source: "git+https://github.com/remyjkim/personal-harness-card.git#v0.1.0",
+    });
+
+    const result = verifyRecommendedMachineWorkerContract(repoRoot, {
+      "registry/machine-workers.json": `${JSON.stringify(registry, null, 2)}\n`,
+    });
+
+    expect(result.ok).toBe(false);
+  });
 });

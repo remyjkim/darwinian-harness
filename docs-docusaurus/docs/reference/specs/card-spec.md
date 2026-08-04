@@ -10,10 +10,10 @@ A Card is drwn's independently versioned capability unit. A Blueprint is a Card 
 
 | State | Location | Meaning |
 | --- | --- | --- |
-| Source | `~/.agents/drwn/sources/<scope>/<name>/` | Mutable authoring tree. |
+| Source | `<card-collection>/<name>/` | Mutable, user-owned source repository. |
 | Published | `~/.agents/drwn/cards/<scope>/<name>.git/` | Immutable Git-backed versions. |
 | Extracted | `~/.agents/drwn/extracted/<tree-sha>/` | Content-addressed materialization. |
-| Consumed | `<project>/.agents/drwn/card.lock` | Exact root graph and Card provenance. |
+| Consumed | project `card.lock` or machine V2 embedded lock | Exact root graph and Card provenance. |
 
 ## Card Refs
 
@@ -60,21 +60,17 @@ Blueprint members are ordered plain Cards. Nested Blueprints are rejected in the
 
 `<project>/.agents/drwn/card.lock` is self-identifying:
 
-```json
-{
-  "schema": "drwn.project-lock",
-  "schemaVersion": 1,
-  "store": { "minDrwnVersion": "0.8.0" },
-  "workerRoots": [
-    {
-      "name": "@your-handle/operator",
-      "requested": "@your-handle/operator@^1.0.0",
-      "kind": "blueprint",
-      "members": ["@your-handle/review", "@your-handle/testing"]
-    }
-  ],
-  "cards": []
-}
+```text
+drwn.project-lock V1
+store.minDrwnVersion = 0.8.0
+workerRoots:
+  - @your-handle/operator requested as @your-handle/operator@^1.0.0
+    kind = blueprint
+    members = [@your-handle/review, @your-handle/testing]
+cards:
+  - exact CardLockEntry for @your-handle/operator
+  - exact CardLockEntry for @your-handle/review
+  - exact CardLockEntry for @your-handle/testing
 ```
 
 ### Root Fields

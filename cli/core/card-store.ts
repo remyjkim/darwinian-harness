@@ -14,7 +14,7 @@ import { resolveManifestInstructionContribution } from "./instruction-contributi
 import type { CardLockEntry, CardOrigin, GitLockInfo } from "./card-lock";
 import { compareVersions, gt, isStrictSemver, maxSatisfying, validRange } from "./semver-utils";
 import { writeAtomically } from "./fs";
-import { createEmptyMachineConfig, initializeMachineConfig, readMachineConfigFile, writeMachineConfigFile } from "./machine-config";
+import { createEmptyMachineConfig, readMachineConfigFile, writeMachineConfigFile } from "./machine-config";
 import * as git from "./git";
 import { readCardMeta, readDeprecationMapFromMeta, writeCardMeta } from "./card-meta";
 import { DrwnError } from "./errors";
@@ -198,8 +198,6 @@ export async function ensureStoreInitialized(agentsDir: string) {
   if (!existsSync(metadataPath)) {
     await writeJson(metadataPath, { schemaVersion: 1, initAt: nowIso() } satisfies StoreMetadata);
   }
-  const machinePath = resolveMachineConfigPath(agentsDir);
-  await initializeMachineConfig(machinePath);
 }
 
 export async function readMachineConfig(agentsDir: string): Promise<MachineConfig> {

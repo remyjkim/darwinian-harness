@@ -4,9 +4,9 @@ sidebar_position: 5
 
 # MCP Servers
 
-MCP servers are reusable tool definitions that `drwn` can activate globally, attach to a project, bundle into a card source, and write into downstream agent tool configs.
+MCP servers are reusable tool definitions that `drwn` can attach to Cards or projects and write into downstream agent tool configs.
 
-Built-in definitions come from the harness registry. User definitions live under `~/.agents/drwn/mcp-servers`. Card-declared definitions come from the selected project Worker closure. Explicit machine MCP IDs live under `capabilities.mcpServers` in `~/.agents/drwn/machine.json`; project choices live in `.agents/drwn/config.json`.
+Built-in definitions come from the harness registry. User inventory definitions live under `~/.agents/drwn/mcp-servers`. Card-declared definitions come from the selected project or machine Worker closure. Machine V2 has no bare MCP-ID selection; project choices live in `.agents/drwn/config.json`.
 
 Inspect active MCP state:
 
@@ -16,13 +16,13 @@ drwn mcp list --json
 drwn doctor
 ```
 
-Register and activate reusable servers:
+Register reusable inventory, then add a reviewed definition to a Card or project:
 
 ```bash
 drwn machine mcp add ./context7.json --as context7
 drwn machine mcp list
-drwn machine mcp enable context7
-drwn machine mcp disable context7
+drwn card source add-mcp <card-source> context7 --from ./context7.json
+drwn apply --root <published-blueprint-ref>
 ```
 
 Attach MCP servers to a card source:
@@ -47,3 +47,6 @@ drwn mcp write --dry-run
 drwn mcp write
 drwn write --mcp-only
 ```
+
+Standalone inventory remains inactive at machine scope. The retired machine MCP
+enable/disable commands fail with Blueprint guidance.

@@ -41,7 +41,7 @@ test("instruction consent acknowledgement is idempotent and content-addressed", 
   const root = await mkdtemp(join(tmpdir(), "instruction-consent-ack-"));
   const agentsDir = join(root, ".agents");
   const key = buildInstructionConsentAckKey({
-    projectRoot: root,
+    scope: { kind: "project", projectRoot: root },
     card: card(`sha256-${"1".repeat(64)}`),
   });
 
@@ -51,7 +51,7 @@ test("instruction consent acknowledgement is idempotent and content-addressed", 
   expect(await hasInstructionConsentAck(agentsDir, key)).toBe(true);
 
   const changed = buildInstructionConsentAckKey({
-    projectRoot: root,
+    scope: { kind: "project", projectRoot: root },
     card: card(`sha256-${"2".repeat(64)}`),
   });
   expect(await hasInstructionConsentAck(agentsDir, changed)).toBe(false);

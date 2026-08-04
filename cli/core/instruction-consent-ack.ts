@@ -1,14 +1,19 @@
 // ABOUTME: Stores machine-local acknowledgements for consented Card instruction content.
 // ABOUTME: Prevents repeated cross-machine notices without weakening project-lock consent.
 
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { CardLockEntry } from "./card-lock";
+import {
+  consentScopesEqual,
+  projectConsentScope,
+  type ConsentScope,
+} from "./consent-scope";
 
 export interface InstructionConsentAckKey {
-  projectRoot: string;
+  scope: ConsentScope;
   cardName: string;
   contentDigest: `sha256-${string}`;
   consentedRange: string;
@@ -22,18 +27,16 @@ export function resolveInstructionConsentAckPath(agentsDir: string) {
   return join(agentsDir, "drwn", "state", "instruction-consent-acks.json");
 }
 
-function normalizeProjectRoot(projectRoot: string) {
-  try {
-    return realpathSync(projectRoot);
-  } catch {
-    return projectRoot;
-  }
-}
-
 function normalizeAckKey(
   key: InstructionConsentAckKey,
 ): InstructionConsentAckKey {
-  return { ...key, projectRoot: normalizeProjectRoot(key.projectRoot) };
+  return {
+    ...key,
+    scope:
+      key.scope.kind === "project"
+        ? projectConsentScope(key.scope.projectRoot)
+        : key.scope,
+  };
 }
 
 function ackKeysEqual(
@@ -43,7 +46,7 @@ function ackKeysEqual(
   const normalizedLeft = normalizeAckKey(left);
   const normalizedRight = normalizeAckKey(right);
   return (
-    normalizedLeft.projectRoot === normalizedRight.projectRoot &&
+    consentScopesEqual(normalizedLeft.scope, normalizedRight.scope) &&
     normalizedLeft.cardName === normalizedRight.cardName &&
     normalizedLeft.contentDigest === normalizedRight.contentDigest &&
     normalizedLeft.consentedRange === normalizedRight.consentedRange
@@ -82,14 +85,14 @@ export async function recordInstructionConsentAck(
 }
 
 export function buildInstructionConsentAckKey(options: {
-  projectRoot: string;
+  scope: ConsentScope;
   card: CardLockEntry;
 }): InstructionConsentAckKey {
   if (!options.card.instructionConsent) {
     throw new Error(`card ${options.card.name} is missing instructionConsent`);
   }
   return {
-    projectRoot: options.projectRoot,
+    scope: options.scope,
     cardName: options.card.name,
     contentDigest: options.card.instructionConsent.contentDigest,
     consentedRange: options.card.instructionConsent.consentedRange,

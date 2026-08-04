@@ -7,7 +7,8 @@ order: 7
 
 ## Creating a Project Config
 
-Use per-project config when one project needs a different effective view than the global default.
+Use per-project config to declare project-owned Worker roots, selection, and
+explicit overlays independently of machine intent.
 
 ```bash
 cd /path/to/project
@@ -24,7 +25,7 @@ This creates:
 
 Project config can:
 
-- Apply reusable Mind Cards
+- Declare alternative Worker roots and select at most one
 - Enable or disable MCP servers for one project
 - Add project-local MCP server definitions
 - Enable extensions such as Parallel, Beads, or MarkItDown for one project
@@ -41,8 +42,10 @@ Discovery walks upward from the current working directory and uses the nearest c
 
 ```json
 {
-  "version": 1,
-  "cards": ["@me/backend@^1.0.0"],
+  "schema": "drwn.project-config",
+  "schemaVersion": 1,
+  "workers": ["@me/backend@^1.0.0"],
+  "activeWorker": "@me/backend",
   "extensions": {
     "parallel": {
       "enabled": true,
@@ -62,10 +65,12 @@ Discovery walks upward from the current working directory and uses the nearest c
 }
 ```
 
-## Cards And Lockfiles
+## Workers And Lockfiles
 
-`cards` is an ordered array of Mind Card refs. The lockfile records exact
-resolved versions:
+`workers` is an ordered array of root requirements. `activeWorker` is one
+canonical installed root name or `null`. A Blueprint root expands to its one
+immutable ordered Card closure; member Cards are not independently active. The
+lockfile records exact resolved versions and integrity:
 
 ```text
 <project>/.agents/drwn/card.lock
@@ -78,13 +83,13 @@ machine-local materialization state:
 <project>/.agents/drwn/write-record.json
 ```
 
-When cards are present, effective state is:
+When a Worker is selected, effective state is:
 
 ```text
-built-in defaults + user library + cards in lockfile order + project overlay
+packaged project-safe policy + selected Worker closure + explicit project overlay
 ```
 
-Machine-only defaults from `~/.agents/drwn/machine.json` do not apply inside a
+Machine capabilities from `~/.agents/drwn/machine.json` do not apply inside a
 configured project.
 
 ## Project-local Materialization

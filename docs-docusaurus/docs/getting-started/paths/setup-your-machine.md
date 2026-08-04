@@ -4,7 +4,9 @@ sidebar_position: 3
 
 # Set Up Your Machine
 
-Set up `drwn` once per machine. After this path you will have an installed CLI, a machine state root under `~/.agents/drwn`, explicit machine capability intent, and a reviewed first projection into downstream tool config.
+Set up `drwn` once per machine. Machine capability intent is one selected,
+immutable Worker Blueprint closure. Standalone inventory remains available for
+inspection and authoring but is not activation authority.
 
 ## Prerequisites
 
@@ -12,113 +14,104 @@ Set up `drwn` once per machine. After this path you will have an installed CLI, 
 - npm (for the published package and npm-backed skill bundles)
 - Node.js (for optional MCP servers that spawn Node processes)
 
-The published package and checkout mode both run the TypeScript CLI through Bun.
-
-## Install
+## Install And Inspect
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
 npm install -g darwinian
 drwn --version
-```
-
-## Confirm the install
-
-`drwn status` summarizes the effective harness for the current directory. Outside any configured project it reflects machine state only.
-
-```bash
-drwn status
-drwn status --json
-```
-
-You should see the resolved store path under `~/.agents/drwn`, the list of enabled targets (`claude`, `codex`, `cursor`), and counts for skills and MCP servers. If `store.initialized` is false, the first store-mutating command will initialize it; nothing is broken.
-
-## Inspect machine inventory
-
-Repository skills and bundled registry MCP definitions are immutable discovery
-inputs. Installed packages and MCP records are standalone inventory. Listing
-them shows what is available before you decide what to activate.
-
-```bash
+drwn status --machine --json
 drwn machine skill list
 drwn machine mcp list
 ```
 
-Drill into a single entry to see what it does:
-
-```bash
-drwn machine skill show <name>
-```
+Outside a configured project, status reflects machine state. Inventory lists
+what is available; it does not say what is active.
 
 ## Initialize Machine Intent
 
-Prompt-free setup creates strict empty `drwn.machine` V1 intent:
+Prompt-free setup creates strict empty `drwn.machine` V2 intent:
 
 ```bash
 drwn init --non-interactive
-drwn machine skill list
-drwn machine mcp list
+drwn status --machine --json --explain
 ```
 
-Interactive `drwn init` offers the opt-out Recommended Darwinian Operator
-profile. The immutable `@darwinian/operator@1.0.2` pin contributes 17 approved
-machine-safe skills and zero MCP servers.
+```json
+{
+  "schema": "drwn.machine",
+  "schemaVersion": 2,
+  "policy": {},
+  "capabilities": {
+    "activeWorker": null,
+    "workerLock": null
+  }
+}
+```
 
-## Add Explicit Machine Capabilities
+Interactive `drwn init` offers the opt-out recommended
+`@curation-labs/machine-defaults` Blueprint. If accepted, `activeWorker` stores
+the canonical Card name and the embedded lock stores the exact versioned source
+and Card integrity. V1/prototype state is rejected without migration.
 
-Decide which skills and MCP servers should be visible in machine sessions:
+## Select A Machine Worker
+
+Use immutable Store content, a pinned Git ref, or an explicit integrity-locked
+file ref allowed by trusted-source policy:
 
 ```bash
-drwn machine skill enable <skill-name>
-drwn machine mcp enable <server-name>
+drwn apply --root <worker-blueprint-ref>
+drwn status --machine --json --explain
 ```
 
-For example, to select a code reviewer skill and the `context7` documentation MCP server:
+Use `drwn use --root <name-or-ref> --no-write` to switch among installed roots.
+Use `drwn use --root --none --no-write` to clear selection while retaining
+alternatives. Mutable `catalogCheckouts` are for authoring and are never runtime
+resolution sources.
+
+If the closure declares hooks or instructions, review the exact Card release:
 
 ```bash
-drwn machine skill enable reviewer
-drwn machine mcp enable context7
-drwn machine skill list
-drwn machine mcp list
+drwn card trust <card-name> --hooks --scope machine
+drwn card trust <card-name> --instructions --scope machine
 ```
 
-You can remove a default the same way:
+The legacy `drwn machine skill|mcp enable|disable` commands fail with Blueprint
+guidance. To change machine capabilities, publish/select a different Blueprint.
+
+## Preview, Then Write
 
 ```bash
-drwn machine skill disable <skill-name>
-drwn machine mcp disable <server-name>
+drwn write --root --dry-run
+drwn write --root
 ```
 
-## Preview, then write
-
-`drwn write --scope machine --dry-run` shows the exact changes the write would make to `~/.claude`, `~/.codex`, and `~/.cursor`. Read it before running the write.
-
-```bash
-drwn write --scope machine --dry-run
-drwn write --scope machine
-```
+Machine projection can update user-home skills/MCP config, one generated Worker,
+Claude hook fields, `~/.claude/CLAUDE.md`, and `~/.codex/AGENTS.md`. It never
+writes `~/AGENTS.md`.
 
 ## Verify
 
-After the first write, confirm the downstream state matches:
-
 ```bash
-drwn status
-drwn doctor
-ls ~/.claude/skills
-ls ~/.codex/skills
+drwn status --machine --json --explain
+drwn doctor --json
 ```
 
-`drwn doctor` is report-only. It reports invalid capability IDs, missing or changed profile bytes, and projection ownership conflicts without repairing them. The downstream skill directories should contain copied skill directories for selected skills.
+Verify the canonical active root, requested immutable ref, locked closure,
+content integrity, consent, and projection ownership. `doctor` is report-only.
 
-If a destination already exists without a matching global write-record entry,
+If a planned destination exists without a matching global write-record entry,
 the write fails with `MACHINE_PROJECTION_CONFLICT`. Do not use force to claim
-it. Move, remove, or reconcile foreign state explicitly; force repairs only
-drift in prior drwn-owned output.
+foreign content. Force repairs only drift in prior drwn-owned state.
+
+Run acceptance tests only with disposable `HOME`, `AGENTS_DIR`, project, and
+target paths; never experiment against a real user home.
 
 ## Cross-References
 
-- [Machine State](../../concepts/local-store) for the layout under `~/.agents/drwn`
-- [MCP Servers](../../concepts/mcp-servers) for how MCP server definitions flow through the layers
-- [Override for One Project](./override-one-project) when one project needs a different effective harness
-- [Reading Doctor](../../troubleshooting/reading-doctor) when the first write surfaces issues
+- [Machine JSON](../../reference/schemas/machine-json)
+- [Machine Inventory](../../reference/cli/machine)
+- [Machine State](../../concepts/local-store)
+- [MCP Servers](../../concepts/mcp-servers)
+- [Override for One Project](./override-one-project)
+- [Reading Doctor](../../troubleshooting/reading-doctor)

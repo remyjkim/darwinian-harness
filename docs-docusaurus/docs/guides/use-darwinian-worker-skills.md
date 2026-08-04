@@ -2,9 +2,9 @@
 sidebar_position: 5
 ---
 
-# Use Darwinian Minds Skills
+# Use Darwinian Worker Skills
 
-Darwinian Minds Skills is the workflow skill pack for operating `drwn` from
+Darwinian Worker Skills is the workflow skill pack for operating `drwn` from
 agent runtimes. Install it when you want agents to follow the same inspect,
 dry-run, approval, mutation, and verification sequence you would use manually.
 
@@ -38,31 +38,37 @@ Inside a project:
 
 ```bash
 drwn init --non-interactive
-drwn add skill inspect-harness --dry-run --json
-drwn add skill inspect-harness
+drwn add skill inspect-worker --dry-run --json
+drwn add skill inspect-worker
 drwn write --dry-run
 ```
 
 Use `drwn write` only after the dry run shows the downstream changes you expect.
 
-## Select A Skill For Machine Scope
+## Use The Operator Card At Machine Scope
 
-Use a machine selection only when machine sessions should expose the skill.
-Projects remain independent from this selection:
+Machine capabilities come from one immutable Blueprint closure. Select a
+Blueprint that includes the current `@darwinian/operator` Card; projects remain
+independent.
+
+drwn 1.1.0 introduces the strict machine Worker V2 contract. Operator 2.0.2
+requires drwn 1.1.0 or newer.
 
 ```bash
-drwn machine skill enable inspect-harness --dry-run --json
-drwn machine skill enable inspect-harness
-drwn write --scope machine --dry-run
-drwn write --scope machine
+drwn apply --root <blueprint-ref-containing-operator>
+drwn write --root --dry-run
+drwn write --root
 ```
 
-## Use The Stable Card During Development
+Installing the npm bundle alone is inventory, not machine activation. The
+retired machine skill enable/disable commands fail with Blueprint guidance.
 
-The skills repo also ships a stable Mind Card source. From a checkout:
+## Use The Operator Card During Development
+
+The skills repo also ships the Operator Card source. From a checkout:
 
 ```bash
-drwn apply file:/path/to/darwinian-worker-skills/cards/harness-skills
+drwn apply file:/path/to/darwinian-worker-skills/cards/operator
 drwn write --dry-run
 ```
 
@@ -75,18 +81,14 @@ selection.
 | User ask | Skill |
 | --- | --- |
 | Set up this repo | `bootstrap-project` |
-| I cloned this repo and it has `card.lock` | `install-harness-project` |
-| Apply or update a card | `apply-mind-card` |
-| Create or publish a card | `author-mind-card` |
-| Push, fetch, or clone a card through Git | `share-mind-card` |
-| Add a skill or MCP server to this project | `materialize-harness` |
-| Write generated Claude, Codex, or Cursor state | `materialize-harness` |
-| Install a bundle, MCP definition, or card catalog | `manage-harness-library` |
-| Select a skill or MCP server for machine scope | `manage-defaults` |
-| Explain current state or provenance | `inspect-harness` |
-| Fix projection drift or inventory-reference issues | `repair-harness` |
-| Recommend what to add | `recommend-harness` |
-| Export sessions or run support diagnostics | `support-harness` |
+| I cloned this repo and it has `card.lock` | `bootstrap-project` |
+| Apply or update a project Worker | `manage-project-worker` |
+| Create or publish a Card | `author-card` |
+| Push, fetch, or clone a Card through Git | `share-card` |
+| Install a bundle or MCP inventory record | `manage-machine-inventory` |
+| Select/trust/project a machine Worker | `manage-machine-capabilities` |
+| Explain current state or provenance | `inspect-worker` |
+| Fix projection drift or inventory-reference issues | `repair-worker` |
 
 `organize-workspace` is experimental and should not be treated as a stable
 workflow until `drwn scan` is implemented.

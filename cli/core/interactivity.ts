@@ -32,7 +32,7 @@ export function resolveInitMode(options: {
   return { mode: "error", message: "drwn init defaults to guided mode. Use --non-interactive for scripts." };
 }
 
-export function resolveRecommendedProfileChoice(answer: string): boolean {
+export function resolveRecommendedWorkerChoice(answer: string): boolean {
   const normalized = answer.trim().toLowerCase();
   return normalized === "" || normalized === "y" || normalized === "yes";
 }

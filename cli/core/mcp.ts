@@ -249,6 +249,7 @@ export function renderCursorConfig(servers: Record<string, RegistryServer>) {
 }
 
 export const CLAUDE_MCP_SERVER_HASH_PREFIX = "mcpServers:";
+export const CLAUDE_HOOK_FIELD_PREFIX = "hooks:";
 
 export function mcpServerHashKey(name: string) {
   return `${CLAUDE_MCP_SERVER_HASH_PREFIX}${name}`;
@@ -258,6 +259,36 @@ export function ownedMcpServerNames(fieldHashes: Record<string, string>) {
   return Object.keys(fieldHashes)
     .filter((key) => key.startsWith(CLAUDE_MCP_SERVER_HASH_PREFIX))
     .map((key) => key.slice(CLAUDE_MCP_SERVER_HASH_PREFIX.length));
+}
+
+function hookFieldKey(event: string, id: string) {
+  return `${CLAUDE_HOOK_FIELD_PREFIX}${event}:${id}`;
+}
+
+function parseHookFieldKey(field: string) {
+  if (!field.startsWith(CLAUDE_HOOK_FIELD_PREFIX)) return null;
+  const payload = field.slice(CLAUDE_HOOK_FIELD_PREFIX.length);
+  const separator = payload.indexOf(":");
+  if (separator < 1) return null;
+  return { event: payload.slice(0, separator), id: payload.slice(separator + 1) };
+}
+
+function hookOwnershipHash(entryHash: string, recordedHash: string | undefined) {
+  return canonicalJsonHash({ entryHash, recordedHash: recordedHash ?? null });
+}
+
+export function hashDesiredClaudeHookFields(
+  hooks: ClaudeHooksConfig,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(hooks).flatMap(([event, entries]) =>
+      (entries ?? []).map((entry) => {
+        const id = hookEntryIdentity(event, entry);
+        const entryHash = hookEntryHash(entry);
+        return [hookFieldKey(event, id), hookOwnershipHash(entryHash, entryHash)];
+      }),
+    ),
+  );
 }
 
 function readClaudeMcpServers(parsed: Record<string, unknown>) {
@@ -304,6 +335,82 @@ function readClaudeHooks(parsed: Record<string, unknown>) {
       ? parsed.hooks
       : undefined
   ) as Record<string, ClaudeHookGroup[]> | undefined;
+}
+
+export function hashClaudeHookFields(
+  currentText: string,
+  fields: string[],
+): Record<string, string> {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(currentText) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+  const hooks = readClaudeHooks(parsed) ?? {};
+  const owned = readDrwnMetaBlock(parsed)?.ownedHooks ?? {};
+  return Object.fromEntries(
+    fields.map((field) => {
+      const key = parseHookFieldKey(field);
+      if (!key) return [field, "absent"];
+      const entry = (hooks[key.event] ?? []).find(
+        (candidate) => hookEntryIdentity(key.event, candidate) === key.id,
+      );
+      if (!entry) return [field, "absent"];
+      const entryHash = hookEntryHash(entry);
+      return [
+        field,
+        hookOwnershipHash(entryHash, owned[key.event]?.[key.id]),
+      ];
+    }),
+  );
+}
+
+export function removeOwnedClaudeHookFields(currentText: string, fields: string[]): string {
+  const parsed = JSON.parse(currentText) as Record<string, unknown>;
+  const meta = readDrwnMetaBlock(parsed);
+  if (!meta?.ownedHooks) return currentText;
+
+  const hooks = Object.fromEntries(
+    Object.entries(readClaudeHooks(parsed) ?? {}).map(([event, entries]) => [event, [...entries]]),
+  );
+  const owned: OwnedHookEntries = Object.fromEntries(
+    Object.entries(meta.ownedHooks).map(([event, entries]) => [event, { ...entries }]),
+  );
+  let changed = false;
+
+  for (const field of fields) {
+    const key = parseHookFieldKey(field);
+    if (!key) continue;
+    const recordedHash = owned[key.event]?.[key.id];
+    if (!recordedHash) continue;
+    const entries = hooks[key.event] ?? [];
+    const index = entries.findIndex((entry) => hookEntryIdentity(key.event, entry) === key.id);
+    if (index < 0 || hookEntryHash(entries[index]) !== recordedHash) {
+      throw new Error(`Drift detected in drwn-owned Claude hook entry: ${key.event}/${key.id}`);
+    }
+    entries.splice(index, 1);
+    delete owned[key.event]![key.id];
+    if (entries.length === 0) delete hooks[key.event];
+    if (Object.keys(owned[key.event]!).length === 0) delete owned[key.event];
+    changed = true;
+  }
+
+  if (!changed) return currentText;
+  if (Object.keys(hooks).length > 0) parsed.hooks = hooks;
+  else delete parsed.hooks;
+
+  const { ownedHooks: _previousOwnedHooks, ...retainedMeta } = meta;
+  if ((retainedMeta.managedKeys?.length ?? 0) > 0 || Object.keys(owned).length > 0) {
+    parsed._drwn = {
+      ...retainedMeta,
+      ...(Object.keys(owned).length > 0 ? { ownedHooks: owned } : {}),
+      lastWriteAt: new Date().toISOString(),
+    };
+  } else {
+    delete parsed._drwn;
+  }
+  return `${JSON.stringify(parsed, null, 2)}\n`;
 }
 
 function mergeOwnedHooks(

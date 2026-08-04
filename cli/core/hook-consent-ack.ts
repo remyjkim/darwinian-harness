@@ -2,14 +2,19 @@
 // ABOUTME: Keys notices by project, card tree, policy digest, and consented range.
 
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { CardLockEntry } from "./card-lock";
+import {
+  consentScopesEqual,
+  projectConsentScope,
+  type ConsentScope,
+} from "./consent-scope";
 import { manifestIntegrityDigest, type ContentManifest, type ContentManifestFile } from "./content-manifest";
 
 export interface HookConsentAckKey {
-  projectRoot: string;
+  scope: ConsentScope;
   cardName: string;
   treeSha: string;
   hookPolicyDigest: string;
@@ -24,18 +29,13 @@ export function resolveHookConsentAckPath(agentsDir: string) {
   return join(agentsDir, "drwn", "state", "hook-consent-acks.json");
 }
 
-function normalizeProjectRoot(projectRoot: string) {
-  try {
-    return realpathSync(projectRoot);
-  } catch {
-    return projectRoot;
-  }
-}
-
 function normalizeAckKey(key: HookConsentAckKey): HookConsentAckKey {
   return {
     ...key,
-    projectRoot: normalizeProjectRoot(key.projectRoot),
+    scope:
+      key.scope.kind === "project"
+        ? projectConsentScope(key.scope.projectRoot)
+        : key.scope,
   };
 }
 
@@ -43,7 +43,7 @@ function ackKeysEqual(left: HookConsentAckKey, right: HookConsentAckKey) {
   const normalizedLeft = normalizeAckKey(left);
   const normalizedRight = normalizeAckKey(right);
   return (
-    normalizedLeft.projectRoot === normalizedRight.projectRoot &&
+    consentScopesEqual(normalizedLeft.scope, normalizedRight.scope) &&
     normalizedLeft.cardName === normalizedRight.cardName &&
     normalizedLeft.treeSha === normalizedRight.treeSha &&
     normalizedLeft.hookPolicyDigest === normalizedRight.hookPolicyDigest &&
@@ -96,7 +96,7 @@ export async function computeHookPolicyDigest(card: CardLockEntry, contentRoot: 
 }
 
 export function buildHookConsentAckKey(options: {
-  projectRoot: string;
+  scope: ConsentScope;
   card: CardLockEntry;
   hookPolicyDigest: string;
 }): HookConsentAckKey {
@@ -104,7 +104,7 @@ export function buildHookConsentAckKey(options: {
     throw new Error(`card ${options.card.name} is missing hookConsent`);
   }
   return {
-    projectRoot: options.projectRoot,
+    scope: options.scope,
     cardName: options.card.name,
     treeSha: options.card.treeSha ?? "",
     hookPolicyDigest: options.hookPolicyDigest,

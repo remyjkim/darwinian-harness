@@ -67,15 +67,16 @@ See [Machine Inventory](../reference/cli/machine) for skill commands.
 
 Cards are Git-backed reproducible harness intent. A card is a versioned bundle that may include skills, MCP server definitions, extension intent, target enablement, and quality-signal metadata. The unit of distribution is a Git repository.
 
-drwn stores cards in three on-disk forms:
+drwn stores consumed Cards in immutable Store forms and authors editable
+sources outside the Store:
 
 ```text
-~/.agents/drwn/sources/<scope>/<name>/      # editable working tree (authoring)
+<configured catalog checkout>/<card>/       # editable source repository
 ~/.agents/drwn/cards/<scope>/<name>.git/    # immutable bare repo (publication)
 ~/.agents/drwn/extracted/<tree-sha>/        # content-addressed extraction cache
 ```
 
-Cards consumed by a project record their resolution in `<project>/.agents/drwn/card.lock` so the same content reproduces on a clean clone.
+Cards consumed by a project record their resolution in `<project>/.agents/drwn/card.lock`; machine V2 embeds the same lock shape in `machine.json`. Mutable checkout paths are never runtime resolution sources.
 
 See [Cards](./cards) for the lifecycle and [reference/cli/card](../reference/cli/card) for the command surface.
 
@@ -84,18 +85,22 @@ See [Cards](./cards) for the lifecycle and [reference/cli/card](../reference/cli
 The three verbs do not mean the same thing. Keep them straight:
 
 - **added** — the bundle is available under `~/.agents/drwn/skills`. Adding does not change any downstream tool.
-- **selected** — machine or project intent names an available skill. Selection does not write to Claude, Codex, or Cursor.
+- **project-selected** — project overlay names an available skill, or the selected project closure contains it.
+- **machine-active** — the selected machine Blueprint closure contains the Card that owns it.
 - **written** — selected skill bytes are copied into ownership-recorded downstream directories. This is the only step that affects what an agent sees.
 
 Each step is a separate command so package installation never silently changes every agent on the machine:
 
 ```bash
 drwn machine skill install <pkg>              # available
-drwn machine skill enable <name>    # machine-selected
-drwn write --scope machine                # written to user-home targets
+drwn apply --root <published-blueprint-ref>   # machine-active closure
+drwn write --root                             # written to user-home targets
 ```
 
-Cards declare project capability content directly. The selected Worker closure and explicit project overlays determine project selection; Card-bundled content is authoritative for that project.
+Cards declare project or machine capability content directly. The selected
+Worker closure determines Card-owned capability activation; explicit overlays
+remain project-only. The retired machine skill/MCP enable/disable commands fail
+with Blueprint guidance.
 
 ## Cross-References
 

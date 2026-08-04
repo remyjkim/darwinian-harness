@@ -20,7 +20,7 @@ import {
   renderJsonMcpConfig,
   renderMcpServerForTarget,
 } from "./mcp";
-import { mergeUserMcpLibrary } from "./defaults";
+import { mergeUserMcpLibrary, resolveMachineCapabilities } from "./defaults";
 import { expandHomePath, resolveToolPaths } from "./paths";
 import { resolveHomeDir } from "./home";
 import { ALL_TARGET_NAMES, getTargetDescriptor } from "./targets";
@@ -46,6 +46,11 @@ import {
 } from "./store-paths";
 import { diffWriteRecord, hashManagedContent, loadWriteRecord, resolveProjectWriteRecordPath } from "./write-record";
 import { isHookConsentValid } from "./hook-consent";
+import {
+  isInstructionConsentValid,
+  resolveExplicitInstructionContribution,
+} from "./instruction-contribution";
+import { collectEffectiveCardServerDefinitions } from "./card-mcp";
 import { DRWN_VERSION } from "./version";
 import type { CanonicalConfig, RegistryServer } from "./types";
 import {
@@ -56,7 +61,6 @@ import {
 } from "./sync";
 import { readMachineConfig } from "./card-store";
 import { DrwnError } from "./errors";
-import { verifyMachineProfilePin } from "./machine-profiles";
 import { parseManagedBlock } from "./managed-block";
 import {
   CLAUDE_ADAPTER_BLOCK_MARKERS,
@@ -178,7 +182,7 @@ export interface ProjectStatusV1 {
   installedWorkers: ProjectStatusItem[];
   activeWorker: string | null;
   activeCards: ProjectStatusItem[];
-  selectionSource: "project" | "local";
+  selectionSource: "project" | "local" | "machine";
   localOverrides: {
     activeWorker: string | null;
     cardReplacements: string[];
@@ -263,24 +267,40 @@ export interface OrgWorkerMaterializationStatus {
 
 export interface MachineStatusCapability {
   id: string;
-  provenance: "profile" | "explicit";
-  profileId?: "darwinian-operator";
-  source: "profile" | "repo" | "package" | "registry" | "library";
-  status: "resolved" | "missing";
+  provenance: "worker";
+  cardName: string;
+  cardVersion: string;
+  source: "worker";
+  status: "resolved" | "unavailable";
 }
 
-export interface MachineStatusV1 {
+export interface MachineStatusV2 {
   schema: "drwn.machine-status";
-  schemaVersion: 1;
+  schemaVersion: 2;
   repoRoot: string;
   agentsDir: string;
   homeDir: string;
   enabledTargets: string[];
-  config: { schema: "drwn.machine"; schemaVersion: 1 };
-  profile: (NonNullable<Awaited<ReturnType<typeof readMachineConfig>>["capabilities"]["profile"]> & {
-    status: "verified" | "missing" | "invalid";
-    issueCode?: string;
-  }) | null;
+  config: { schema: "drwn.machine"; schemaVersion: 2 };
+  selection: {
+    activeWorker: string | null;
+    installedRoots: Array<{
+      name: string;
+      requested: string;
+      kind: "blueprint";
+      members: string[];
+      selected: boolean;
+    }>;
+    activeClosure: Array<{
+      name: string;
+      requested: string;
+      version: string;
+      integrity: string;
+      treeSha?: string;
+      origin: string;
+      consent: { hooks: boolean; instructions: boolean };
+    }>;
+  };
   capabilities: {
     skills: MachineStatusCapability[];
     mcpServers: MachineStatusCapability[];
@@ -833,85 +853,92 @@ export async function buildEffectiveStateForDiagnostics(
   }
 }
 
-export async function buildMachineStatusV1(
+export async function buildMachineStatusV2(
   repoRoot: string,
   agentsDir: string,
   homeDir: string,
-): Promise<MachineStatusV1> {
-  const [machine, repoConfig, builtInRegistry, skillInventory, userMcpLibrary] = await Promise.all([
+): Promise<MachineStatusV2> {
+  const [machine, repoConfig, skillInventory, userMcpLibrary] = await Promise.all([
     readMachineConfig(agentsDir),
     loadConfig(repoRoot),
-    loadRegistry(repoRoot),
     buildSkillInventory(repoRoot, agentsDir, homeDir),
     loadMcpLibrary(agentsDir),
   ]);
   const { config: effectiveConfig } = await loadEffectiveConfig(repoConfig, agentsDir);
-  const registry = mergeUserMcpLibrary(builtInRegistry, userMcpLibrary);
-  const skillById = new Map(skillInventory.map((skill) => [skill.name, skill]));
-  const profileSkillIds = new Set(machine.capabilities.profile?.skills ?? []);
-  const profileMcpIds = new Set(machine.capabilities.profile?.mcpServers ?? []);
   const issues: string[] = [];
-  let profileStatus: "verified" | "missing" | "invalid" = "verified";
-  let profileIssueCode: string | undefined;
+  const lock = machine.capabilities.workerLock;
+  const selectedRoot = machine.capabilities.activeWorker === null
+    ? null
+    : lock?.workerRoots.find((root) => root.name === machine.capabilities.activeWorker) ?? null;
+  const cardsByName = new Map((lock?.cards ?? []).map((card) => [card.name, card]));
+  const activeCards = selectedRoot
+    ? [selectedRoot.name, ...selectedRoot.members].flatMap((name) => {
+        const card = cardsByName.get(name);
+        return card ? [card] : [];
+      })
+    : [];
+  let resolved: Awaited<ReturnType<typeof resolveMachineCapabilities>> | null = null;
+  try {
+    resolved = await resolveMachineCapabilities({ repoRoot, agentsDir });
+  } catch (error) {
+    if (!(error instanceof DrwnError)) throw error;
+    issues.push(`${error.code}: ${error.message}`);
+  }
 
-  if (machine.capabilities.profile) {
-    try {
-      await verifyMachineProfilePin(agentsDir, machine.capabilities.profile);
-    } catch (error) {
-      if (!(error instanceof DrwnError)) throw error;
-      profileStatus = error.code === "MACHINE_PROFILE_NOT_AVAILABLE" ? "missing" : "invalid";
-      profileIssueCode = error.code;
-      issues.push(`${error.code}: ${error.message}`);
+  const status = resolved ? "resolved" as const : "unavailable" as const;
+  const skills: MachineStatusCapability[] = resolved
+    ? resolved.skills.map((skill) => ({
+        id: skill.id,
+        provenance: "worker",
+        cardName: skill.cardName,
+        cardVersion: skill.cardVersion,
+        source: "worker",
+        status,
+      }))
+    : activeCards.flatMap((card) => card.skills.map((id) => ({
+        id,
+        provenance: "worker" as const,
+        cardName: card.name,
+        cardVersion: card.version,
+        source: "worker" as const,
+        status,
+      })));
+  const mcpServers: MachineStatusCapability[] = resolved
+    ? resolved.mcpServers.map((server) => ({
+        id: server.id,
+        provenance: "worker",
+        cardName: server.cardName,
+        cardVersion: server.cardVersion,
+        source: "worker",
+        status,
+      }))
+    : collectEffectiveCardServerDefinitions(activeCards).map((definition) => ({
+        id: definition.serverName,
+        provenance: "worker" as const,
+        cardName: definition.cardName,
+        cardVersion: definition.cardVersion,
+        source: "worker" as const,
+        status,
+      }));
+
+  const consentByCard = new Map(activeCards.map((card) => {
+    const hooks = isHookConsentValid(card);
+    let instructions = card.manifest.instructions === undefined;
+    if (!instructions) {
+      const contentRoot = resolved?.contentRootsByCard[card.name];
+      if (contentRoot) {
+        try {
+          const contribution = resolveExplicitInstructionContribution(card, contentRoot);
+          instructions = contribution !== null && isInstructionConsentValid(card, contribution);
+        } catch {
+          instructions = false;
+        }
+      }
     }
-  }
-
-  const skills: MachineStatusCapability[] = [
-    ...(machine.capabilities.profile?.skills ?? []).map((id) => ({
-      id,
-      provenance: "profile" as const,
-      profileId: "darwinian-operator" as const,
-      source: "profile" as const,
-      status: profileStatus === "verified" ? "resolved" as const : "missing" as const,
-    })),
-    ...machine.capabilities.skills
-      .filter((id) => !profileSkillIds.has(id))
-      .map((id) => {
-        const skill = skillById.get(id);
-        return {
-          id,
-          provenance: "explicit" as const,
-          source: skill?.sourceType === "npm" ? "package" as const : "repo" as const,
-          status: skill ? "resolved" as const : "missing" as const,
-        };
-      }),
-  ];
-  const mcpServers: MachineStatusCapability[] = [
-    ...(machine.capabilities.profile?.mcpServers ?? []).map((id) => ({
-      id,
-      provenance: "profile" as const,
-      profileId: "darwinian-operator" as const,
-      source: "profile" as const,
-      status: profileStatus === "verified" ? "resolved" as const : "missing" as const,
-    })),
-    ...machine.capabilities.mcpServers
-      .filter((id) => !profileMcpIds.has(id))
-      .map((id) => {
-        const server = registry.servers[id];
-        const resolved = Boolean(server && server.transport !== "platform-provided");
-        return {
-          id,
-          provenance: "explicit" as const,
-          source: userMcpLibrary.servers[id] ? "library" as const : "registry" as const,
-          status: resolved ? "resolved" as const : "missing" as const,
-        };
-      }),
-  ];
-  for (const skill of skills.filter((entry) => entry.status === "missing" && entry.provenance === "explicit")) {
-    issues.push(`MACHINE_CAPABILITY_NOT_FOUND: Explicit machine skill is not available in machine inventory: ${skill.id}`);
-  }
-  for (const server of mcpServers.filter((entry) => entry.status === "missing" && entry.provenance === "explicit")) {
-    issues.push(`MACHINE_CAPABILITY_NOT_FOUND: Explicit machine MCP server is not available in machine inventory: ${server.id}`);
-  }
+    if (!hooks) issues.push(`${card.name} hook consent is missing or stale`);
+    if (!instructions) issues.push(`${card.name} instruction consent is missing or stale`);
+    return [card.name, { hooks, instructions }] as const;
+  }));
 
   const machineRecordPath = resolveGlobalWriteRecordPath(agentsDir);
   let record = null;
@@ -939,21 +966,37 @@ export async function buildMachineStatusV1(
 
   const counts = {
     resolvedSkills: skills.filter((entry) => entry.status === "resolved").length,
-    missingSkills: skills.filter((entry) => entry.status === "missing").length,
+    missingSkills: skills.filter((entry) => entry.status === "unavailable").length,
     resolvedMcpServers: mcpServers.filter((entry) => entry.status === "resolved").length,
-    missingMcpServers: mcpServers.filter((entry) => entry.status === "missing").length,
+    missingMcpServers: mcpServers.filter((entry) => entry.status === "unavailable").length,
   };
   return {
     schema: "drwn.machine-status",
-    schemaVersion: 1,
+    schemaVersion: 2,
     repoRoot,
     agentsDir,
     homeDir,
     enabledTargets: Object.entries(effectiveConfig.targets).filter(([, target]) => target.enabled).map(([id]) => id),
     config: { schema: machine.schema, schemaVersion: machine.schemaVersion },
-    profile: machine.capabilities.profile
-      ? { ...machine.capabilities.profile, status: profileStatus, ...(profileIssueCode ? { issueCode: profileIssueCode } : {}) }
-      : null,
+    selection: {
+      activeWorker: machine.capabilities.activeWorker,
+      installedRoots: (lock?.workerRoots ?? []).map((root) => ({
+        name: root.name,
+        requested: root.requested,
+        kind: "blueprint",
+        members: [...root.members],
+        selected: root.name === machine.capabilities.activeWorker,
+      })),
+      activeClosure: activeCards.map((card) => ({
+        name: card.name,
+        requested: card.requested,
+        version: card.version,
+        integrity: card.integrity,
+        ...(card.treeSha ? { treeSha: card.treeSha } : {}),
+        origin: card.origin,
+        consent: consentByCard.get(card.name) ?? { hooks: false, instructions: false },
+      })),
+    },
     capabilities: { skills, mcpServers, counts },
     projection: {
       healthy: issues.length === 0 && conflicts.length === 0,
@@ -1255,7 +1298,7 @@ export async function buildProjectStatusV1(options: {
 }
 
 export async function buildStatusReport(repoRoot: string, agentsDir: string, homeDir: string, projectConfigPath?: string | null) {
-  const machineStatus = await buildMachineStatusV1(repoRoot, agentsDir, homeDir);
+  const machineStatus = await buildMachineStatusV2(repoRoot, agentsDir, homeDir);
   let projectSummary: ReturnType<typeof summarizeProjectConfig> | undefined;
 
   if (projectConfigPath) {
@@ -1351,7 +1394,7 @@ export async function buildDiagnosticsSections(
     loadConfig(repoRoot),
     listRepoSkills(repoRoot),
     currentStateStatus(agentsDir),
-    buildMachineStatusV1(repoRoot, agentsDir, homeDir),
+    buildMachineStatusV2(repoRoot, agentsDir, homeDir),
   ]);
   const loadedConfig = await loadEffectiveConfig(repoConfig, agentsDir);
   const projectState = projectConfigPath
@@ -1370,12 +1413,22 @@ export async function buildDiagnosticsSections(
   const lock = projectRoot ? await loadCardLock(projectRoot) : null;
   const writeRecordPath = projectRoot ? resolveProjectWriteRecordPath(projectRoot) : resolveGlobalWriteRecordPath(agentsDir);
 
-  const cardIncludes = cardLocks.flatMap((card) =>
-    (card.manifest.skills?.include ?? []).map((skill) => ({ card: `${card.name}@${card.version}`, skill })),
-  );
-  const cardServers = cardLocks.flatMap((card) =>
-    Object.keys(card.manifest.servers ?? {}).map((server) => ({ card: `${card.name}@${card.version}`, server })),
-  );
+  const cardIncludes = projectState
+    ? cardLocks.flatMap((card) =>
+        (card.manifest.skills?.include ?? []).map((skill) => ({ card: `${card.name}@${card.version}`, skill })),
+      )
+    : machineStatus.capabilities.skills.map((skill) => ({
+        card: `${skill.cardName}@${skill.cardVersion}`,
+        skill: skill.id,
+      }));
+  const cardServers = projectState
+    ? cardLocks.flatMap((card) =>
+        Object.keys(card.manifest.servers ?? {}).map((server) => ({ card: `${card.name}@${card.version}`, server })),
+      )
+    : machineStatus.capabilities.mcpServers.map((server) => ({
+        card: `${server.cardName}@${server.cardVersion}`,
+        server: server.id,
+      }));
 
   return {
     machine: { repoRoot, agentsDir, homeDir },
@@ -1404,8 +1457,12 @@ export async function buildDiagnosticsSections(
       projectExtensions: Object.keys(projectConfig?.extensions ?? {}),
     },
     cards: {
-      configuredRefs: projectConfig?.workers ?? [],
-      lockedVersions: (lock?.cards ?? []).map((card) => `${card.name}@${card.version}`),
+      configuredRefs: projectState
+        ? projectConfig?.workers ?? []
+        : machineStatus.selection.installedRoots.map((root) => root.requested),
+      lockedVersions: projectState
+        ? (lock?.cards ?? []).map((card) => `${card.name}@${card.version}`)
+        : machineStatus.selection.activeClosure.map((card) => `${card.name}@${card.version}`),
       warnings: [],
     },
     versionFloor: evaluateVersionFloor(lock?.store?.minDrwnVersion),
@@ -1468,7 +1525,7 @@ async function collectWhyMatches(
   const cardLocks = projectState?.activeCards ?? [];
   const effectiveConfig = projectState?.effectiveConfig ?? loadedConfig.config;
   const effectiveRegistry = projectState?.effectiveRegistry ?? baseRegistry;
-  const machineStatus = projectState ? null : await buildMachineStatusV1(repoRoot, agentsDir, homeDir);
+  const machineStatus = projectState ? null : await buildMachineStatusV2(repoRoot, agentsDir, homeDir);
   const activeServerNames = new Set(
     projectState
       ? Object.keys(projectState.activeServers)
@@ -1485,7 +1542,7 @@ async function collectWhyMatches(
       : projectSkill
         ? "project config"
         : machineSkill
-          ? machineSkill.provenance === "profile" ? "machine profile" : "explicit machine selection"
+          ? `machine Worker Card ${machineSkill.cardName}@${machineSkill.cardVersion}`
           : "repo or installed skill inventory";
     const state = cardSkill || projectSkill || (machineSkill?.status === "resolved") ? "active" : "available";
     matches.push({ kind: "skill", name, message: `skill:${name} is ${state} from ${source}.\n` });
@@ -1502,7 +1559,7 @@ async function collectWhyMatches(
       : projectServer
         ? "project config"
         : machineServer
-          ? machineServer.provenance === "profile" ? "machine profile" : "explicit machine selection"
+          ? `machine Worker Card ${machineServer.cardName}@${machineServer.cardVersion}`
           : "registry or standalone machine inventory";
     matches.push({ kind: "server", name, message: `server:${name} is ${active ? "active" : "available"} from ${source}.\n` });
   }
@@ -1522,9 +1579,40 @@ async function collectWhyMatches(
     });
   }
 
-  const card = cardLocks.find((entry) => entry.name === name || `${entry.name}@${entry.version}` === name);
-  if (card) {
-    matches.push({ kind: "card", name: card.name, message: `card:${card.name} is locked at ${card.version} from ${card.requested}.\n` });
+  const projectCard = cardLocks.find((entry) => entry.name === name || `${entry.name}@${entry.version}` === name);
+  if (projectCard) {
+    matches.push({
+      kind: "card",
+      name: projectCard.name,
+      message: `card:${projectCard.name} is locked at ${projectCard.version} from ${projectCard.requested}.\n`,
+    });
+  } else if (machineStatus) {
+    const machineRoot = machineStatus.selection.installedRoots.find(
+      (entry) => entry.name === name || entry.requested === name,
+    );
+    const machineCard = machineStatus.selection.activeClosure.find(
+      (entry) => entry.name === name || `${entry.name}@${entry.version}` === name,
+    );
+    if (machineRoot) {
+      const rootCard = machineStatus.selection.activeClosure.find(
+        (entry) => entry.name === machineRoot.name,
+      );
+      const identity = rootCard
+        ? `${machineRoot.name}@${rootCard.version}`
+        : machineRoot.requested;
+      const state = machineRoot.selected ? "active" : "installed inactive";
+      matches.push({
+        kind: "card",
+        name: machineRoot.name,
+        message: `card:${machineRoot.name} is the ${state} machine Worker root ${identity} from ${machineRoot.requested}.\n`,
+      });
+    } else if (machineCard) {
+      matches.push({
+        kind: "card",
+        name: machineCard.name,
+        message: `card:${machineCard.name} is active as machine Worker Card ${machineCard.name}@${machineCard.version} from ${machineCard.requested}.\n`,
+      });
+    }
   }
 
   return matches;
@@ -1805,7 +1893,7 @@ export async function buildDoctorReport(repoRoot: string, agentsDir: string, hom
   const [repoConfig, sections, machineStatus] = await Promise.all([
     loadConfig(repoRoot),
     buildDiagnosticsSections(repoRoot, agentsDir, homeDir),
-    buildMachineStatusV1(repoRoot, agentsDir, homeDir),
+    buildMachineStatusV2(repoRoot, agentsDir, homeDir),
   ]);
   const { config } = await loadEffectiveConfig(repoConfig, agentsDir);
   let machineRecord = null;

@@ -1,29 +1,16 @@
-// ABOUTME: Defines and persists the first supported namespaced machine capability contract.
-// ABOUTME: Strictly rejects prototype, unknown, mutable, and unapproved machine state.
+// ABOUTME: Defines and persists the strict machine V2 Worker-selection contract.
+// ABOUTME: Rejects V1, prototypes, invalid embedded locks, and inconsistent selections without mutation.
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 import { z } from "zod";
+import { validateCardLockfile } from "./card-lock";
+import { isCardScopeName, isCardUnscopedName } from "./card-manifest";
 import { DrwnError } from "./errors";
 import { writeAtomically } from "./fs";
 import { withInventoryLock, withMachineLock } from "./inventory-lock";
-import { DARWINIAN_OPERATOR_SKILL_IDS, supportedOperatorProfilePinSchema } from "./operator-profile-contract";
-import { withOwnerLock } from "./owner-lock";
-import { MACHINE_LOCK_FILENAME, resolveMachineConfigPath } from "./store-paths";
+import { resolveMachineConfigPath } from "./store-paths";
 import type { MachineConfig } from "./types";
-
-export { DARWINIAN_OPERATOR_SKILL_IDS } from "./operator-profile-contract";
-const capabilityId = z.string().min(1).refine((value) => value.trim() === value, "must not have surrounding whitespace");
-const uniqueIds = z.array(capabilityId).superRefine((values, context) => {
-  const seen = new Set<string>();
-  for (const [index, value] of values.entries()) {
-    if (seen.has(value)) {
-      context.addIssue({ code: "custom", path: [index], message: `duplicate capability ID: ${value}` });
-    }
-    seen.add(value);
-  }
-});
 
 const targetOverrideSchema = z.object({
   enabled: z.boolean().optional(),
@@ -69,22 +56,23 @@ const trustedSourcesSchema = z.object({
   refs: z.array(z.string().min(1)).optional(),
 }).strict();
 
-const profileSchema = supportedOperatorProfilePinSchema;
+const canonicalCardName = z.string().refine(
+  (value) => isCardScopeName(value) || isCardUnscopedName(value),
+  "must be a canonical Card name",
+);
 
 const machineConfigSchema = z.object({
   schema: z.literal("drwn.machine"),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   policy: z.object({
-    authoring: z.object({ scope: z.string().min(1).optional() }).strict().optional(),
     targets: targetsSchema.optional(),
     catalogs: catalogsSchema.optional(),
     analyzer: analyzerSchema.optional(),
     trustedSources: trustedSourcesSchema.optional(),
   }).strict(),
   capabilities: z.object({
-    profile: profileSchema.nullable(),
-    skills: uniqueIds,
-    mcpServers: uniqueIds,
+    activeWorker: canonicalCardName.nullable(),
+    workerLock: z.unknown().nullable(),
   }).strict(),
 }).strict();
 
@@ -92,37 +80,19 @@ function invalidMachineConfig(message: string, cause?: unknown): DrwnError {
   return new DrwnError(
     "MACHINE_CONFIG_INVALID",
     message,
-    ["Reset ~/.agents/drwn/machine.json and rerun drwn init; prototype machine formats are not supported."],
+    [
+      "Machine V1 and prototype formats are unsupported. Preserve any required non-secret audit copies. Reset ~/.agents/drwn/machine.json and ~/.agents/drwn/global-write-record.json, then rerun drwn init.",
+    ],
     cause,
   );
-}
-
-// Pre-operator-v2 prototype configs carry a bare `version` marker and no `schema` identity (I65 Fix 2).
-function isLegacyMachineConfig(value: unknown): value is { authoring?: { scope?: string } } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    (value as Record<string, unknown>).schema === undefined &&
-    "version" in value
-  );
-}
-
-function migrateLegacyMachineConfig(legacy: { authoring?: { scope?: string } }): MachineConfig {
-  const config = createEmptyMachineConfig();
-  const scope = legacy.authoring?.scope;
-  if (typeof scope === "string" && scope.length > 0) {
-    config.policy.authoring = { scope };
-  }
-  return config;
 }
 
 export function createEmptyMachineConfig(): MachineConfig {
   return {
     schema: "drwn.machine",
-    schemaVersion: 1,
+    schemaVersion: 2,
     policy: {},
-    capabilities: { profile: null, skills: [], mcpServers: [] },
+    capabilities: { activeWorker: null, workerLock: null },
   };
 }
 
@@ -134,37 +104,35 @@ export function parseMachineConfig(value: unknown, path = "machine.json"): Machi
       .join("; ");
     throw invalidMachineConfig(`Invalid machine config at ${path}: ${details}`, parsed.error);
   }
-  return parsed.data as MachineConfig;
-}
-
-// Persists a migrated config under the machine lock so a read never clobbers a
-// concurrent locked mutation. A busy lock means a writer is active and will
-// persist its own migrated view, so the read returns without writing.
-async function persistMigratedMachineConfig(path: string, migrated: MachineConfig): Promise<void> {
-  try {
-    await withOwnerLock({
-      path: join(dirname(path), MACHINE_LOCK_FILENAME),
-      label: "Machine config transaction",
-      busyCode: "MACHINE_TRANSACTION_BUSY",
-      unrecoverableCode: "MACHINE_TRANSACTION_LOCK_UNRECOVERABLE",
-    }, async () => {
-      const raw: unknown = JSON.parse(await readFile(path, "utf8"));
-      if (isLegacyMachineConfig(raw)) {
-        await writeMachineConfigFile(path, migrated);
-      }
-    });
-  } catch (error) {
-    if (error instanceof DrwnError) {
-      if (error.code === "MACHINE_TRANSACTION_BUSY") return;
-      throw error;
+  let workerLock = null;
+  if (parsed.data.capabilities.workerLock !== null) {
+    try {
+      workerLock = validateCardLockfile(parsed.data.capabilities.workerLock, `${path} capabilities.workerLock`);
+    } catch (error) {
+      throw invalidMachineConfig(
+        `Invalid machine config at ${path}: capabilities.workerLock must be a valid drwn.project-lock V1`,
+        error,
+      );
     }
-    throw new DrwnError(
-      "MACHINE_CONFIG_MIGRATION_WRITE_FAILED",
-      `Failed to persist migrated machine config at ${path}`,
-      ["Check write permission on the machine config directory."],
-      error,
+    const plainRoot = workerLock.workerRoots.find((root) => root.kind !== "blueprint");
+    if (plainRoot) {
+      throw invalidMachineConfig(
+        `Invalid machine config at ${path}: machine Worker root ${plainRoot.name} must be a Blueprint`,
+      );
+    }
+  }
+
+  const activeWorker = parsed.data.capabilities.activeWorker;
+  if (activeWorker !== null && !workerLock?.workerRoots.some((root) => root.name === activeWorker)) {
+    throw invalidMachineConfig(
+      `Invalid machine config at ${path}: capabilities.activeWorker must name an installed workerLock root`,
     );
   }
+
+  return {
+    ...parsed.data,
+    capabilities: { activeWorker, workerLock },
+  };
 }
 
 export async function readMachineConfigFile(path: string): Promise<MachineConfig | null> {
@@ -173,11 +141,6 @@ export async function readMachineConfigFile(path: string): Promise<MachineConfig
   }
   try {
     const raw: unknown = JSON.parse(await readFile(path, "utf8"));
-    if (isLegacyMachineConfig(raw)) {
-      const migrated = migrateLegacyMachineConfig(raw);
-      await persistMigratedMachineConfig(path, migrated);
-      return migrated;
-    }
     return parseMachineConfig(raw, path);
   } catch (error) {
     if (error instanceof DrwnError) {

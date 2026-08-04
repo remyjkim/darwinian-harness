@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import { cleanupTempRoots, createFixtureRegistry, installMachineBlueprint, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
 
 const tempRoots: string[] = [];
 
@@ -15,16 +15,14 @@ afterEach(async () => {
 async function selectMachineMcp(
   fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
   id: string,
+  server: unknown = createFixtureRegistry().servers[id],
 ) {
-  const result = await runAgentsCli(
-    ["machine", "mcp", "enable", id],
-    {
-      AGENTS_REPO_ROOT: fixture.repoRoot,
-      AGENTS_HOME_DIR: fixture.homeDir,
-      AGENTS_DIR: fixture.agentsDir,
-    },
-  );
-  expect(result.exitCode).toBe(0);
+  if (!server) throw new Error(`Missing MCP fixture for ${id}`);
+  await installMachineBlueprint(fixture, {
+    rootName: `@me/${id}-worker`,
+    memberName: `@me/${id}-capabilities`,
+    servers: { [id]: server },
+  });
 }
 
 describe("drwn mcp", () => {
@@ -183,18 +181,19 @@ describe("drwn mcp", () => {
     const { ensureStoreInitialized } = await import("../cli/core/card-store");
     const { seedMcpInventory } = await import("./mcp-inventory-fixture");
     await ensureStoreInitialized(fixture.agentsDir);
+    const github = {
+      description: "GitHub",
+      transport: "stdio" as const,
+      command: "npx",
+      optional: true,
+    };
     await seedMcpInventory(fixture.agentsDir, {
       version: 1,
       servers: {
-        github: {
-          description: "GitHub",
-          transport: "stdio",
-          command: "npx",
-          optional: true,
-        },
+        github,
       },
     });
-    await selectMachineMcp(fixture, "github");
+    await selectMachineMcp(fixture, "github", github);
 
     const result = await runAgentsCli(["mcp", "list", "--json"], {
       AGENTS_REPO_ROOT: fixture.repoRoot,

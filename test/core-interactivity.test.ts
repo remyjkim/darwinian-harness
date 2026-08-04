@@ -26,14 +26,14 @@ describe("core interactivity", () => {
     expect(result.message).toContain("TTY");
   });
 
-  test("preselects the Recommended profile unless the guided answer opts out", async () => {
-    const { resolveRecommendedProfileChoice } = await import("../cli/core/interactivity");
+  test("preselects the recommended machine Worker unless the guided answer opts out", async () => {
+    const { resolveRecommendedWorkerChoice } = await import("../cli/core/interactivity");
 
-    expect(resolveRecommendedProfileChoice("")).toBe(true);
-    expect(resolveRecommendedProfileChoice("yes")).toBe(true);
-    expect(resolveRecommendedProfileChoice("Y")).toBe(true);
-    expect(resolveRecommendedProfileChoice("n")).toBe(false);
-    expect(resolveRecommendedProfileChoice("no")).toBe(false);
+    expect(resolveRecommendedWorkerChoice("")).toBe(true);
+    expect(resolveRecommendedWorkerChoice("yes")).toBe(true);
+    expect(resolveRecommendedWorkerChoice("Y")).toBe(true);
+    expect(resolveRecommendedWorkerChoice("n")).toBe(false);
+    expect(resolveRecommendedWorkerChoice("no")).toBe(false);
   });
 
   test("resolves install decision mode for explicit MarkItDown setup flags", async () => {

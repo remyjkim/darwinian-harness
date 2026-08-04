@@ -2,9 +2,24 @@
 // ABOUTME: Protects explicit user consent before hook materialization.
 
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cleanupTempRoots, createCatalogCardSource, envFor, runAgentsCli, scaffoldCliFixture, writeSupportedProjectConfig } from "./helpers";
+import {
+  cleanupTempRoots,
+  createCatalogCardSource,
+  envFor,
+  installMachineBlueprint,
+  publishMachineBlueprint,
+  runAgentsCli,
+  scaffoldCliFixture,
+  writeSupportedProjectConfig,
+} from "./helpers";
+import { applyMachineWorkerRoots } from "../cli/core/worker-machine";
+import { readMachineConfigFile } from "../cli/core/machine-config";
+import { resolveMachineConfigPath } from "../cli/core/store-paths";
+import { resolveHookConsentAckPath } from "../cli/core/hook-consent-ack";
+import { resolveInstructionConsentAckPath } from "../cli/core/instruction-consent-ack";
 
 const tempRoots: string[] = [];
 
@@ -30,6 +45,169 @@ async function setupProjectWithHookCard() {
 async function readLock(projectDir: string) {
   return JSON.parse(await readFile(join(projectDir, ".agents", "drwn", "card.lock"), "utf8"));
 }
+
+async function setupMachineConsentFixture() {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  await installMachineBlueprint(fixture, {
+    rootName: "@me/operator-worker",
+    memberName: "@me/policy",
+    instructions: { text: "Follow the reviewed machine policy." },
+    hooks: ["guard"],
+  });
+  return fixture;
+}
+
+async function readMachine(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
+  return JSON.parse(
+    await readFile(resolveMachineConfigPath(fixture.agentsDir), "utf8"),
+  );
+}
+
+test("card trust/untrust records machine hook and instruction consent in the active closure", async () => {
+  const fixture = await setupMachineConsentFixture();
+  const trusted = await runAgentsCli(
+    [
+      "card",
+      "trust",
+      "@me/policy@1.0.0",
+      "--scope",
+      "machine",
+      "--hooks",
+      "--instructions",
+      "--range",
+      "^1.0.0",
+    ],
+    envFor(fixture),
+  );
+
+  expect(trusted.exitCode, trusted.stderr).toBe(0);
+  let card = (await readMachine(fixture)).capabilities.workerLock.cards.find(
+    (entry: { name: string }) => entry.name === "@me/policy",
+  );
+  expect(card.hookConsent.consentedRange).toBe("^1.0.0");
+  expect(card.instructionConsent.consentedRange).toBe("^1.0.0");
+  expect(card.instructionConsent.contentDigest).toMatch(/^sha256-[a-f0-9]{64}$/);
+
+  const untrusted = await runAgentsCli(
+    ["card", "untrust", "@me/policy", "--scope=machine", "--instructions"],
+    envFor(fixture),
+  );
+  expect(untrusted.exitCode, untrusted.stderr).toBe(0);
+  card = (await readMachine(fixture)).capabilities.workerLock.cards.find(
+    (entry: { name: string }) => entry.name === "@me/policy",
+  );
+  expect(card.instructionConsent).toBeUndefined();
+  expect(card.hookConsent).toBeDefined();
+});
+
+test("machine consent refuses inactive Cards without dropping consent recorded while active", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  const policyRef = await publishMachineBlueprint(fixture, {
+    rootName: "@me/policy-worker",
+    memberName: "@me/policy",
+    instructions: { text: "Policy instructions." },
+    hooks: ["guard"],
+  });
+  const otherRef = await publishMachineBlueprint(fixture, {
+    rootName: "@me/other-worker",
+    memberName: "@me/other",
+  });
+  await applyMachineWorkerRoots(fixture.agentsDir, [policyRef, otherRef], {
+    active: "@me/policy-worker",
+  });
+  expect((await runAgentsCli(
+    ["card", "trust", "@me/policy", "--scope=machine", "--hooks"],
+    envFor(fixture),
+  )).exitCode).toBe(0);
+  const selected = await runAgentsCli(
+    ["use", "@me/other-worker", "--root", "--no-write"],
+    envFor(fixture),
+  );
+  expect(selected.exitCode, selected.stderr).toBe(0);
+  const before = await readFile(resolveMachineConfigPath(fixture.agentsDir));
+
+  const rejected = await runAgentsCli(
+    ["card", "untrust", "@me/policy", "--scope=machine", "--hooks"],
+    envFor(fixture),
+  );
+
+  expect(rejected.exitCode).toBe(1);
+  expect(rejected.stderr).toContain("active machine Worker closure");
+  expect(await readFile(resolveMachineConfigPath(fixture.agentsDir))).toEqual(before);
+  const policy = (await readMachine(fixture)).capabilities.workerLock.cards.find(
+    (entry: { name: string }) => entry.name === "@me/policy",
+  );
+  expect(policy.hookConsent).toBeDefined();
+});
+
+test("write --root replays typed machine acknowledgements from inside a project but dry-run does not", async () => {
+  const fixture = await setupMachineConsentFixture();
+  expect((await runAgentsCli(
+    [
+      "card",
+      "trust",
+      "@me/policy",
+      "--scope=machine",
+      "--hooks",
+      "--instructions",
+    ],
+    envFor(fixture),
+  )).exitCode).toBe(0);
+  const hookAckPath = resolveHookConsentAckPath(fixture.agentsDir);
+  const instructionAckPath = resolveInstructionConsentAckPath(fixture.agentsDir);
+  await rm(hookAckPath, { force: true });
+  await rm(instructionAckPath, { force: true });
+  const projectDir = join(fixture.root, "project");
+  const configPath = await writeSupportedProjectConfig(projectDir);
+  const projectBefore = await readFile(configPath);
+
+  const preview = await runAgentsCli(
+    ["write", "--root", "--dry-run"],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(preview.exitCode, preview.stderr).toBe(0);
+  expect(existsSync(hookAckPath)).toBe(false);
+  expect(existsSync(instructionAckPath)).toBe(false);
+
+  const write = await runAgentsCli(
+    ["write", "--root"],
+    envFor(fixture),
+    projectDir,
+  );
+  expect(write.exitCode, write.stderr).toBe(0);
+  expect(write.stderr).toContain("hooks present, consented by @me/policy");
+  expect(write.stderr).toContain("instructions present, consented by @me/policy");
+  expect(await readFile(configPath)).toEqual(projectBefore);
+  expect(JSON.parse(await readFile(hookAckPath, "utf8")).acks[0].scope)
+    .toMatchObject({ kind: "machine", activeWorker: "@me/operator-worker" });
+  expect(JSON.parse(await readFile(instructionAckPath, "utf8")).acks[0].scope)
+    .toMatchObject({ kind: "machine", activeWorker: "@me/operator-worker" });
+});
+
+test("machine consent rejects an unsupported lock floor without mutating machine intent", async () => {
+  const fixture = await setupMachineConsentFixture();
+  const machinePath = resolveMachineConfigPath(fixture.agentsDir);
+  const machine = await readMachineConfigFile(machinePath);
+  if (!machine?.capabilities.workerLock) throw new Error("missing machine lock");
+  machine.capabilities.workerLock.cards[0]!.manifest.harness = {
+    minVersion: "9.9.9",
+  };
+  machine.capabilities.workerLock.store.minDrwnVersion = "9.9.9";
+  await writeFile(machinePath, `${JSON.stringify(machine, null, 2)}\n`);
+  const before = await readFile(machinePath);
+
+  const result = await runAgentsCli(
+    ["card", "trust", "@me/policy", "--scope=machine", "--hooks"],
+    envFor(fixture),
+  );
+
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("requires drwn >= 9.9.9");
+  expect(await readFile(machinePath)).toEqual(before);
+});
 
 test("card trust --hooks records explicit consent range", async () => {
   const { fixture, projectDir } = await setupProjectWithHookCard();

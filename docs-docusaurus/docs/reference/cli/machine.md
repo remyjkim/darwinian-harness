@@ -10,9 +10,11 @@ skill packages and standalone MCP records. Repository skills and bundled
 registry MCP definitions are immutable discovery inputs. Card-owned copies are
 owned by their Card source and are outside standalone lifecycle commands.
 
-New inventory remains inactive until a machine or project explicitly selects
-it. Skill install, update, and uninstall are package-scoped: each operation
-reports every exported skill ID and known machine or project reference.
+New inventory remains inactive until a supported project or Card-authoring
+workflow uses it. Machine activation never names bare inventory IDs; it derives
+only from the selected Worker Blueprint closure. Skill install, update, and
+uninstall are package-scoped: each operation reports every exported skill ID
+and known Card-lock or project reference.
 
 ## Skills
 
@@ -25,8 +27,6 @@ drwn machine skill references --package <package-name> --json
 drwn machine skill install <package-spec|SKILL.md|skill-dir> --dry-run
 drwn machine skill update <package-name> --from <source> --dry-run
 drwn machine skill uninstall <package-name> --dry-run
-drwn machine skill enable <skill-id>
-drwn machine skill disable <skill-id>
 ```
 
 Package versions are immutable package versions stored under
@@ -44,8 +44,6 @@ drwn machine mcp references <server-id> --project <root> --json
 drwn machine mcp add <file> --as <server-id> --dry-run
 drwn machine mcp update <server-id> --from <file> --dry-run
 drwn machine mcp remove <server-id> --dry-run
-drwn machine mcp enable <server-id>
-drwn machine mcp disable <server-id>
 ```
 
 Standalone definitions use record-level atomic persistence. Stored `env` and
@@ -55,9 +53,9 @@ through these commands.
 
 ## References And Locking
 
-Reference reports cover explicit machine intent plus valid registered and
-explicitly supplied project roots. Use repeated `--project` flags to widen the
-declared scan scope. Invalid registered roots fail closed. Repair a stale
+Reference reports cover supported Card-lock references plus valid registered
+and explicitly supplied project roots. Use repeated `--project` flags to widen
+the declared scan scope. Invalid registered roots fail closed. Repair a stale
 registration explicitly:
 
 ```bash
@@ -65,10 +63,25 @@ drwn projects unregister /absolute/stale/root --dry-run
 drwn projects unregister /absolute/stale/root
 ```
 
-Reference-sensitive mutations follow the global lock order
-`inventory -> machine -> project`. Network and source staging happen before the
-inventory lock; identity, digests, uniqueness, and references are revalidated
-under it.
+Network and source staging happen before the inventory lock; identity, digests,
+uniqueness, and references are revalidated under it. Installing inventory never
+mutates `machine.json` or its Worker lock.
+
+## Machine Activation
+
+Select a published Worker Blueprint instead of enabling individual records:
+
+```bash
+drwn apply --root <worker-blueprint-ref>
+drwn use --root <installed-name-or-ref> --no-write
+drwn write --root --dry-run
+drwn write --root
+```
+
+The retired `drwn machine skill|mcp enable|disable` commands exit nonzero with
+this replacement guidance. To add package or MCP content to a machine Worker,
+put the reviewed definition in a Card, publish it, and compose/select the
+resulting immutable Blueprint.
 
 ## Portable Transfer
 

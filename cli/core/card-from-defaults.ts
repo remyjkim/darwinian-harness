@@ -1,11 +1,11 @@
-// ABOUTME: Captures effective machine-safe capabilities into a normal Card source.
-// ABOUTME: Flattens profile and explicit selections without copying profile identity or policy.
+// ABOUTME: Captures the active machine Worker closure into a normal Card source.
+// ABOUTME: Flattens only effective skills and MCP definitions without copying Blueprint identity.
 
 import { cp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { sanitizeServerForCapture } from "./card-capture";
 import type { CardManifest } from "./card-manifest";
-import { createCardSource, readMachineConfig } from "./card-store";
+import { createCardSource } from "./card-store";
 import { resolveMachineCapabilities } from "./defaults";
 import { writeAtomically } from "./fs";
 
@@ -18,20 +18,19 @@ export async function createCapabilityCardFromDefaults(options: {
   scope?: string;
   noGit?: boolean;
 }) {
-  const machine = await readMachineConfig(options.agentsDir);
   const capabilities = await resolveMachineCapabilities({
     repoRoot: options.repoRoot,
     agentsDir: options.agentsDir,
   });
   if (capabilities.skills.length === 0 && capabilities.mcpServers.length === 0) {
     throw new Error(
-      "No effective machine capabilities are configured. Add selections with drwn machine skill enable <id> or drwn machine mcp enable <id>.",
+      "No effective machine capabilities are configured. Select a machine Worker Blueprint with drwn apply --root <blueprint-ref>.",
     );
   }
   const source = await createCardSource({
     sourceDir: options.sourceDir,
     name: options.name,
-    scope: options.scope ?? machine.policy.authoring?.scope,
+    scope: options.scope,
     noGit: options.noGit,
   });
 

@@ -18,39 +18,33 @@ order: 3
 | `drwn write` | Write effective config to target tools |
 | `drwn write --force` | Overwrite drift in drwn-managed regions |
 
-## Card Commands
+## Worker Root Commands
 
 | Command | Description |
 |---------|-------------|
-| `drwn apply <refs...>` | Alias for `drwn card apply` |
-| `drwn update` | Alias for `drwn card update` |
-| `drwn card new <name>` | Create an editable card source under `~/.agents/drwn/sources` |
+| `drwn add <ref>` | Add one alternative Worker root |
+| `drwn apply <refs...>` | Replace Worker roots and select one explicitly |
+| `drwn remove <name>` | Remove one installed Worker root |
+| `drwn pin <ref>` | Replace one root requirement with an exact ref |
+| `drwn update [name]` | Refresh one or all roots within configured ranges |
+| `drwn use <name-or-ref>` | Select an installed root or add and select a new one |
+| `drwn apply --root <blueprint-ref>` | Replace machine Blueprint roots |
+| `drwn use --root <name-or-ref>` | Select an installed machine Blueprint |
+
+## Card Lifecycle Commands
+
+| Command | Description |
+|---------|-------------|
+| `drwn card new <name> --into <collection>` | Create an independent editable Card source repository |
 | `drwn card new <name> --from-project [path]` | Capture a project's effective harness as a card source |
 | `drwn card publish <name>` | Publish a card source into the Git-backed local store |
 | `drwn card show <ref>` | Show one resolved card version |
 | `drwn card list` | List published cards in the local store |
 | `drwn card diff <before> <after>` | Compare two published card versions |
 | `drwn card deprecate <ref>` | Mark a published version as deprecated |
-| `drwn card apply <refs...>` | Replace the current project's card set and write `card.lock` |
-| `drwn card add <ref>` | Add one card to the current project |
-| `drwn card pin <ref>` | Pin or replace one card ref |
-| `drwn card remove <name>` | Remove one card from the project |
-| `drwn card detach` | Remove all cards from the project |
-| `drwn card update` | Refresh `card.lock` from configured card refs |
 | `drwn card outdated` | Report cards with newer local versions available |
 | `drwn card status` | Show configured refs, lock entries, and outdated cards |
 | `drwn card validate <ref>` | Resolve and validate one card ref without mutating project config |
-
-## Store Commands
-
-| Command | Description |
-|---------|-------------|
-| `drwn store status` | Show cards-era store status |
-| `drwn store migrate` | Migrate the pre-cards layout to `~/.agents/drwn` |
-| `drwn store migrate-to-git` | Convert legacy per-version card directories into bare Git repos |
-| `drwn store verify` | Verify Git-backed store health |
-| `drwn store gc` | Run Git maintenance in card repos |
-| `drwn store export --out <tar>` | Export the local store as a tar archive |
 
 ## Add Commands
 
@@ -66,19 +60,15 @@ order: 3
 | `drwn search skill <query>` | Search for skills in the library and online catalogs |
 | `drwn search mcp <query>` | Search for MCP servers |
 
-## Library Commands
+## Machine Inventory Commands
 
 | Command | Description |
 |---------|-------------|
-| `drwn library list [skills\|mcp\|tools]` | List library contents |
-| `drwn library show <id>` | Show details for a library item |
-| `drwn library add skill <packageSpec>` | Add a package-backed skill bundle |
-| `drwn library add mcp <jsonFile> --as <serverId>` | Register a user MCP server |
-| `drwn library defaults list` | List machine-wide defaults |
-| `drwn library defaults add skill <skillName>` | Add a skill to defaults |
-| `drwn library defaults remove skill <skillName>` | Remove a skill from defaults |
-| `drwn library defaults add mcp <serverName>` | Add an MCP server to defaults |
-| `drwn library defaults remove mcp <serverName>` | Remove an MCP server from defaults |
+| `drwn machine skill list` | List standalone skill inventory |
+| `drwn machine skill show <id>` | Show skill/package details |
+| `drwn machine skill install <packageSpec>` | Install a package-backed skill bundle |
+| `drwn machine mcp list` | List standalone MCP records |
+| `drwn machine mcp add <jsonFile> --as <serverId>` | Register a user MCP record |
 
 ## Extension Commands
 
@@ -104,13 +94,12 @@ order: 3
 
 | Command | Description |
 |---------|-------------|
-| `drwn skills list` | List available skills |
-| `drwn skills packages add <packageSpec>` | Add a package-backed skill bundle |
-| `drwn skills packages list` | List installed skill packages |
-| `drwn skills packages show <packageName>` | Show package details |
+| `drwn machine skill list` | List available skill inventory |
+| `drwn machine skill install <packageSpec>` | Add a package-backed skill bundle |
+| `drwn machine skill show --package <packageName>` | Show package details |
 
-Use `drwn library defaults add skill <skillName>` for an explicit machine
-selection or `drwn add skill <skillName>` for the current project.
+Use a published Card in the selected machine Blueprint for machine activation,
+or `drwn add skill <skillName>` for the current project.
 
 ## Common Flags
 
@@ -124,12 +113,11 @@ Use `--help` on any command for details:
 drwn --help
 drwn write --help
 drwn card --help
-drwn store --help
 drwn status --help
 drwn add skill --help
-drwn library list --help
+drwn machine skill list --help
 drwn search skill --help
 drwn extensions setup beads --help
 drwn extensions setup markitdown --help
-drwn skills packages add --help
+drwn machine skill install --help
 ```

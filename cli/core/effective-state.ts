@@ -20,8 +20,7 @@ import { loadConfigLocal, loadCardLockLocal, mergeProjectWithLocal, type ConfigL
 import { resolveCardContentRoot } from "./card-content-root";
 import { resolveMode } from "./mode-resolution";
 import { loadConfig } from "./config";
-import { mergeUserMcpLibrary, resolveMachineCapabilities, type ResolvedMachineCapabilities } from "./defaults";
-import { loadMcpLibrary } from "./mcp-library";
+import { resolveMachineCapabilities, type ResolvedMachineCapabilities } from "./defaults";
 import { buildActiveServers, renderMcpServerForTarget } from "./mcp";
 import { normalizeSyncPathOptions, resolveToolPaths } from "./paths";
 import { findProjectConfig, isServerToggle, loadProjectConfig, mergeProjectConfig, resolveProjectRootFromConfigPath } from "./project";
@@ -84,7 +83,7 @@ export interface EffectiveWorkerSelection {
   selectedRoot: WorkerRootLockEntry | null;
   installedCards: CardLockEntry[];
   activeCards: CardLockEntry[];
-  selectionSource: "project" | "local";
+  selectionSource: "project" | "local" | "machine";
   localOverrides: {
     activeWorker: string | null;
     cardReplacements: string[];
@@ -260,9 +259,7 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
   const projectConfigPath = normalized.forceMachineScope ? null : findProjectConfig(normalized.cwd ?? process.cwd());
   const projectRoot = projectConfigPath ? resolveProjectRootFromConfigPath(projectConfigPath) : null;
   const builtInRegistry = await loadRegistry(normalized.repoRoot);
-  const registry = projectConfigPath
-    ? builtInRegistry
-    : mergeUserMcpLibrary(builtInRegistry, await loadMcpLibrary(normalized.agentsDir));
+  const registry = builtInRegistry;
   const baseConfig = projectConfigPath
     ? projectBaseConfig(repoConfig)
     : (await loadEffectiveConfig(repoConfig, normalized.agentsDir)).config;
@@ -300,6 +297,49 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
   let organizationInstructionConsent =
     normalized.organizationInstructionConsent ?? null;
   const cardsSourcePath = process.env.CARDS_SOURCE_PATH ?? null;
+
+  if (!projectConfigPath && machineCapabilities) {
+    lockedCards = machineCapabilities.installedCards;
+    activeCards = machineCapabilities.activeCards;
+    skillApplyOrderCards = activeCards;
+    assertWorkerCapabilityCompatibility(activeCards);
+    const selectedRoot = machineCapabilities.activeWorker === null
+      ? null
+      : machineCapabilities.installedRoots.find((root) => root.name === machineCapabilities.activeWorker) ?? null;
+    workerSelection = {
+      installedRoots: machineCapabilities.installedRoots,
+      activeWorker: machineCapabilities.activeWorker,
+      selectedRoot,
+      installedCards: machineCapabilities.installedCards,
+      activeCards,
+      selectionSource: "machine",
+      localOverrides: {
+        activeWorker: null,
+        cardReplacements: [],
+        localOnlyRoots: [],
+        sourceOverrides: [],
+      },
+      localCardNames: new Set(),
+    };
+    for (const card of lockedCards) cardLanes[card.name] = "committed";
+    for (const card of activeCards) {
+      const contentRoot = machineCapabilities.contentRootsByCard[card.name]!;
+      contentRootsByCard[card.name] = contentRoot;
+      cardModes[card.name] = {
+        mode: "overlay",
+        reason: card.origin === "file"
+          ? "integrity-locked machine file source"
+          : "immutable machine Store extraction",
+        vendorEligible: false,
+        sourcePath: contentRoot,
+      };
+    }
+    cardServerDefinitions = collectCardServerDefinitions(activeCards);
+    const activeNames = new Set(activeCards.map((card) => card.name));
+    inactiveCardServerDefinitions = collectCardServerDefinitions(
+      lockedCards.filter((card) => !activeNames.has(card.name)),
+    );
+  }
 
   if (projectConfigPath) {
     projectConfig = await loadProjectConfig(projectConfigPath);

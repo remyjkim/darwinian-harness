@@ -1,4 +1,4 @@
-// ABOUTME: Verifies the exact Operator profile payload and its canonical source remain release-safe.
+// ABOUTME: Verifies the exact Operator Card payload and its canonical source remain release-safe.
 // ABOUTME: Rejects retired commands, generated drift, unapproved MCPs, and portable-inventory mischaracterization.
 
 import { describe, expect, test } from "bun:test";
@@ -28,6 +28,17 @@ describe("Operator release contract", () => {
     expect(result.details).toContain("retired Operator command");
   });
 
+  test("rejects retired direct machine activation commands in Operator guidance", async () => {
+    const path = "darwinian-worker-skills/skills/manage-machine-capabilities/SKILL.md";
+    const source = readFileSync(join(repoRoot, path), "utf8");
+    const result = await verifyOperatorContract(repoRoot, {
+      [path]: `${source}\nRun \`drwn machine skill enable alpha\`.\n`,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("retired Operator command");
+  });
+
   test("rejects a retired Operator skill ID restored to bundle metadata", async () => {
     const path = "darwinian-worker-skills/bundle.json";
     const bundle = JSON.parse(readFileSync(join(repoRoot, path), "utf8"));
@@ -51,24 +62,44 @@ describe("Operator release contract", () => {
     expect(result.details).toContain("bundled Operator skill differs from canonical source");
   });
 
-  test.each([
-    ["source tag", (profile: Record<string, unknown>) => { profile.source = "git+https://github.com/curation-labs/darwinian-operator.git#v2.0.0"; }],
-    ["version", (profile: Record<string, unknown>) => { profile.version = "2.0.0"; }],
-    ["commit", (profile: Record<string, unknown>) => { profile.commit = "f".repeat(40); }],
-    ["tree", (profile: Record<string, unknown>) => { profile.treeSha = "e".repeat(40); }],
-    ["integrity", (profile: Record<string, unknown>) => { profile.integrity = `sha256-${"d".repeat(64)}`; }],
-    ["skill list", (profile: Record<string, unknown>) => { profile.skills = ["author-mind-content"]; }],
-    ["MCP list", (profile: Record<string, unknown>) => { profile.mcpServers = ["notion"]; }],
-  ] as const)("rejects profile %s mismatch", async (_label, mutate) => {
-    const path = "registry/machine-profiles.json";
-    const registry = JSON.parse(readFileSync(join(repoRoot, path), "utf8"));
-    mutate(registry.profiles[0]);
+  test("rejects coordinated canonical and bundled drift against the pinned Card integrity", async () => {
+    const canonicalPath = "darwinian-worker-skills/skills/inspect-worker/SKILL.md";
+    const bundledPath = "darwinian-worker-skills/cards/operator/skills/inspect-worker/SKILL.md";
+    const drift = `${readFileSync(join(repoRoot, canonicalPath), "utf8")}\ndrift\n`;
     const result = await verifyOperatorContract(repoRoot, {
-      [path]: `${JSON.stringify(registry, null, 2)}\n`,
+      [canonicalPath]: drift,
+      [bundledPath]: drift,
     });
 
     expect(result.ok).toBe(false);
-    expect(result.details).toContain("registry must deep-equal the centralized Operator contract");
+    expect(result.details).toContain("content integrity differs from the Operator Card contract");
+  });
+
+  test.each([
+    ["version", (manifest: Record<string, any>) => { manifest.version = "2.0.1"; }],
+    ["harness floor", (manifest: Record<string, any>) => { manifest.harness.minVersion = "1.0.0"; }],
+    ["validation claim", (manifest: Record<string, any>) => { delete manifest.lastValidatedWith; }],
+    ["skill list", (manifest: Record<string, any>) => { manifest.skills.include = ["author-card"]; }],
+    ["MCP list", (manifest: Record<string, any>) => { manifest.servers = { notion: { transport: "http", url: "https://example.test" } }; }],
+  ] as const)("rejects Operator Card %s mismatch", async (_label, mutate) => {
+    const path = "darwinian-worker-skills/cards/operator/card.json";
+    const manifest = JSON.parse(readFileSync(join(repoRoot, path), "utf8"));
+    mutate(manifest);
+    const result = await verifyOperatorContract(repoRoot, {
+      [path]: `${JSON.stringify(manifest, null, 2)}\n`,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toMatch(/Operator|unapproved/);
+  });
+
+  test("rejects restoration of the retired machine profile registry", async () => {
+    const result = await verifyOperatorContract(repoRoot, {
+      "registry/machine-profiles.json": '{"schema":"drwn.machine-profiles"}\n',
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("retired machine profile registry");
   });
 
   test("rejects MCP exposure and backup or restore claims", async () => {

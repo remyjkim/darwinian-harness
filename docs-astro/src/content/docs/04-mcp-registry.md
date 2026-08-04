@@ -26,11 +26,14 @@ server:
 Add a user MCP server:
 
 ```bash
-drwn library add mcp my-server.json --as my-server
+drwn machine mcp add my-server.json --as my-server
 ```
 
-Explicit machine MCP selections live in `~/.agents/drwn/machine.json` under
-`capabilities.mcpServers` and are projected with `drwn write --scope machine`.
+Machine MCP definitions come only from Cards in the active Worker Blueprint
+closure embedded in `~/.agents/drwn/machine.json` V2. Select a published
+Blueprint with `drwn apply --root <ref>`, then project machine scope with
+`drwn write --root`. Project scope uses `drwn write`. Standalone MCP records
+remain inactive inventory.
 
 Reusable MCP definitions use the current `~/.agents/drwn/mcp-servers/`
 directory.
@@ -68,5 +71,5 @@ drwn mcp write --target=opencode
 - **Platform-provided entries** can live in the registry but are excluded from generated local tool configs
 - **Optional servers** are included only when enabled in `registry/config.json`
 - **Parallel MCP** is controlled by `config.parallel.mcp.enabled`
-- **Card-provided servers** and project-local server overrides apply when commands run inside a configured project
+- **Card-provided servers** apply from the selected project or machine Worker closure; project-local server overrides apply only inside that project
 - **Project-local extension settings** such as `extensions.parallel.mcp` are applied when commands run inside that project

@@ -25,13 +25,13 @@ For focused subsystem docs, see:
 
 `drwn` is the operator CLI for `darwinian-minds`.
 
-`darwinian-minds` is the local meta-harness control plane around the agent tools you already use. It organizes reusable inventory, explicit machine capabilities, project Workers, downstream tool state, and diagnostics into one local harness.
+`darwinian-minds` is the local meta-harness control plane around the agent tools you already use. It organizes reusable inventory, Card-governed machine and project Workers, downstream tool state, and diagnostics into one local harness.
 
 It operates on this model:
 
 - the packaged or checkout harness source provides policy and available built-in capabilities
 - `~/.agents/drwn` is the machine state root
-- `~/.agents/drwn/machine.json` stores strict `drwn.machine` V1 intent
+- `~/.agents/drwn/machine.json` stores strict machine Worker V2 intent and its embedded immutable closure lock
 - `<project>/.agents/drwn/config.json` stores strict project Worker V1 intent
 - package-backed skill bundles and MCP definitions are drwn-managed standalone inventory
 - Claude/Codex/Cursor state is an explicit projection of machine or project intent
@@ -99,8 +99,13 @@ Important directories:
 - card extracted trees: `~/.agents/drwn/extracted/<tree-sha>`
 - card catalogs: `~/.agents/drwn/catalogs`
 - card catalog index: `~/.agents/drwn/catalogs.json`
+- strict machine Worker intent: `~/.agents/drwn/machine.json`
+- non-secret authoring preferences: `~/.agents/drwn/config.json`
+- machine generated Workers: `~/.agents/drwn/generated/workers`
 - machine-scope Claude downstream skills: `~/.claude/skills`
+- machine-scope Claude instructions: `~/.claude/CLAUDE.md`
 - machine-scope Codex downstream skills: `~/.codex/skills`
+- machine-scope Codex instructions: `~/.codex/AGENTS.md`
 - project-scope downstream state: `<project>/.claude`, `<project>/.codex`, and `<project>/.cursor`
 
 ## Recommended First-Run Sequence
@@ -109,8 +114,10 @@ Important directories:
 drwn status
 drwn machine skill list
 drwn mcp list
-drwn write --dry-run
-drwn write
+drwn init --non-interactive
+drwn apply --root <worker-blueprint-ref>
+drwn write --root --dry-run
+drwn write --root
 ```
 
 If you want project-local overrides, scaffold them before writing from that project:
@@ -167,62 +174,69 @@ What it does:
 - `--guided` forces the interactive guided flow when stdin and stdout are TTYs
 - writes a minimal `drwn.project-config` V1 document with `workers: []` and `activeWorker: null` when `--non-interactive` or `--minimal` is used
 - initializes missing machine state as explicit empty intent for `--non-interactive` and `--minimal`
-- offers the opt-out Recommended Darwinian Operator profile when guided setup initializes machine state
+- offers the opt-out recommended machine-defaults Blueprint when guided setup initializes machine state
 - warns if `.gitignore` appears to exclude `.agents`
 
-Existing valid machine intent is never reset or re-prompted.
+Existing valid V2 machine intent is never reset or re-prompted. V1 and
+prototype state fail with controlled-reset guidance and remain byte-identical.
 
 ## Machine Capability Contract
 
 The only supported machine format is `~/.agents/drwn/machine.json` with this
-namespaced V1 shape:
+namespaced V2 shape:
 
 ```json
 {
   "schema": "drwn.machine",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "policy": {},
   "capabilities": {
-    "profile": null,
-    "skills": [],
-    "mcpServers": []
+    "activeWorker": null,
+    "workerLock": null
   }
 }
 ```
 
-Prototype machine shapes are rejected. The CLI does not migrate, dual-read, or
-infer them. Non-interactive and minimal setup create the exact empty intent.
+V1 and prototype machine shapes are rejected. The CLI does not migrate,
+dual-read, infer provenance, delete them, or bridge `policy.authoring` into user
+preferences. Non-interactive and minimal setup create exact empty V2 intent.
 
-Guided setup preselects **Recommended Darwinian Operator** as `[Y/n]`. The
-approved `@darwinian/operator@1.0.2` profile is pinned to the exact Git tag,
-commit, tree SHA, and content integrity. Runtime verifies its extracted bytes
-offline. The profile filters the Card to 17 approved machine-safe skills and
-zero MCP servers. It contributes no Worker identity, instructions, hooks,
-permissions, governance, or project state.
+Guided setup offers the recommended `@curation-labs/machine-defaults`
+Blueprint. When accepted, `activeWorker` stores its canonical Card name and
+`workerLock` embeds the validated immutable closure. The root's `requested`
+field stores the versioned Store/pinned Git ref or explicit integrity-locked
+file ref. File-origin bytes are re-hashed before projection. The closure may contribute
+skills, MCP definitions, one generated Worker, consented hooks, and consented
+instructions.
 
-Machine activation is only:
+Machine activation is exactly the selected, integrity-verified closure.
+Inactive roots, standalone inventory, target files, compatibility directories,
+and mutable authoring checkouts are not activation authority.
 
-```text
-approved capabilities from the selected immutable profile
-+ explicit capabilities.skills
-+ explicit capabilities.mcpServers
-```
-
-Available machine inventory is selected explicitly with:
+Select or replace the machine Worker with:
 
 ```bash
-drwn machine skill enable <skill-name>
-drwn machine skill disable <skill-name>
-drwn machine mcp enable <server-name>
-drwn machine mcp disable <server-name>
+drwn apply --root <worker-blueprint-ref>
+drwn use --root <installed-name-or-ref> --no-write
+drwn use --root --none --no-write
 ```
 
-These commands mutate machine intent only. They do not project target files.
-Packaged optional flags, Parallel flags, ambient compatibility directories, and
-existing target output are not activation authority.
+Machine `apply` replaces installed roots; machine `use` selects or adds a root
+while retaining alternatives. `use --none` clears only selection. The retired
+`drwn machine skill|mcp enable|disable` commands fail nonzero with replacement
+guidance; inventory lifecycle commands remain supported.
 
-Project with `drwn write --scope machine --dry-run`, then write with
-`drwn write --scope machine`. A first write refuses every foreign destination
+Grant reviewed Card surfaces, then project:
+
+```bash
+drwn card trust <card> --hooks --scope machine
+drwn card trust <card> --instructions --scope machine
+drwn write --root --dry-run
+drwn write --root
+```
+
+Preview with `drwn write --root --dry-run`, then write with
+`drwn write --root`. A first write refuses every foreign destination
 or same-ID MCP field with `MACHINE_PROJECTION_CONFLICT`, including identical
 bytes and `--force`. Force repairs only drift in prior drwn-owned state.
 Removal deletes only unchanged prior-owned bytes or fields; foreign and drifted
@@ -230,7 +244,8 @@ state remains untouched and reportable through status and doctor.
 
 For a controlled prelaunch reset, record only non-secret current intent, back
 up `machine.json` and `global-write-record.json` outside the state root, remove the
-unsupported prototype state, rerun setup, and reselect capabilities. Resolve
+unsupported V1/prototype state deliberately, rerun setup, and select a
+Blueprint. Resolve
 foreign ownership findings explicitly; never use force to claim foreign paths.
 
 ## Add Commands
@@ -543,8 +558,9 @@ https://github.com/curation-labs/dm-cards-catalog-v1.git
 
 Machine inventory contains drwn-managed standalone skill packages and MCP
 records. Repository skills and bundled registry MCP definitions are immutable
-discovery inputs. Inventory is inactive until explicit machine or project
-intent selects it.
+discovery inputs. Inventory is inactive until a supported project or Card
+authoring workflow uses it. Machine activation does not select bare inventory
+IDs; it derives only from the active Worker closure.
 
 ```bash
 drwn machine skill list
@@ -564,10 +580,6 @@ drwn catalog list
 drwn catalog add <git-url>
 drwn catalog refresh [@scope]
 drwn catalog remove <scope-or-url>
-drwn machine skill enable <skill-name>
-drwn machine skill disable <skill-name>
-drwn machine mcp enable <server-name>
-drwn machine mcp disable <server-name>
 drwn machine inventory gc --json
 ```
 
@@ -586,7 +598,8 @@ unless `--no-default-catalogs` is passed.
 catalog remotes and updates Card counts; `catalog remove` removes
 catalog registrations and local clones by scope or URL.
 
-Reference-sensitive mutations follow `inventory -> machine -> project`.
+Reference-sensitive mutations account for supported Card-lock and project
+references.
 Registered roots that are missing or unreadable fail closed; repair stale
 entries explicitly with `drwn projects unregister <root>`. Inventory GC is a
 dry-run by default and uses tombstone recovery. Current inventory is never
@@ -605,6 +618,7 @@ drwn write --mcp-only
 drwn write --skills-only
 drwn write --force
 drwn write --scope machine
+drwn write --root
 drwn write --strict-hooks
 drwn write --strict
 ```
@@ -623,7 +637,7 @@ Write records make cleanup explicit:
 - drwn-owned paths that leave the effective state are removed on the next write
 - user-owned replacements are preserved and reported
 - `--force` repairs only drift already recorded as drwn-owned; it never claims foreign state
-- `--scope machine` explicitly ignores project config and targets user-home surfaces
+- `--scope machine` and `--root` explicitly ignore project config and target user-home surfaces
 - `--strict-hooks` fails when card hooks are present but missing valid hook consent
 - `--strict` fails when this project's `card.lock` requires a newer drwn than you are running
 
@@ -640,11 +654,10 @@ The local store lives under `~/.agents/drwn`. Card content is Git-backed:
 
 The strict `drwn.user-preferences` file stores `catalogCheckouts` and optional
 `defaultAuthorScope`; it is separate from capability intent in `machine.json`.
-When loaded, a valid legacy `machine.policy.authoring.scope` is durably moved
-to `config.json.defaultAuthorScope` and removed from `machine.json`. A legacy
-`~/.agents/drwn/sources/` tree is not an authoring location: drwn inventories it
-read-only and never migrates or deletes it. Verify canonical repositories before
-manual cleanup.
+Machine V2 has no `policy.authoring`, and the preference loader does not read or
+mutate unsupported V1/prototype state. A legacy `~/.agents/drwn/sources/` tree
+is not an authoring or runtime location: drwn inventories it read-only and never
+migrates or deletes it. Verify canonical repositories before manual cleanup.
 
 Inspect machine state:
 
@@ -733,52 +746,47 @@ Behavior:
 
 - a bundle is ingested into immutable versioned inventory (`~/.agents/drwn/skills`)
 - adding a bundle does not select or write any skill automatically
-- bundles are content sources; `drwn` remains the only supported selection and write surface
+- bundles are content sources; `drwn` remains the supported project-selection, Card-authoring, and write surface
 - update and uninstall operate on the package and enumerate every exported skill ID and known reference
 
 See [03_npm-skill-bundles-guide.md](./03_npm-skill-bundles-guide.md) for the full bundle model.
 
-### Select a machine skill
+### Activate skills through a machine Worker
 
 ```bash
-drwn machine skill enable <name>
+drwn apply --root <worker-blueprint-ref>
+drwn write --root --skills-only --dry-run
+drwn write --root --skills-only
 ```
 
-This records the skill ID as explicit machine intent after resolving it from
-available repo-native or package-backed inventory.
+The Blueprint closure supplies Card-owned skill bytes with version and content
+provenance. Installing a package or importing a loose skill does not activate it
+at machine scope. To use those bytes in a machine Worker, copy/review them in a
+Card source, publish that Card, and include it in the Blueprint.
 
 Important:
 
-- this does not automatically write tool directories
-- preview with `drwn write --scope machine --skills-only --dry-run`
-- machine projection copies supported shared/target-scoped skills into recorded owned destinations
-
-Remove the explicit selection with:
-
-```bash
-drwn machine skill disable <name>
-```
-
-The next machine write removes only unchanged prior-owned output. A profile may
-continue to supply the same ID even after an overlapping explicit selection is
-removed.
+- runtime selection never searches mutable `catalogCheckouts`
+- inactive roots and standalone inventory do not contribute
+- target scope and `--skills-only` filters apply to planning and cleanup
+- `drwn machine skill enable|disable` exits nonzero with Blueprint guidance
 
 ### Write skills downstream
 
 ```bash
-drwn write --scope machine --skills-only
+drwn write --root --skills-only
 ```
 
 Dry-run:
 
 ```bash
-drwn write --scope machine --skills-only --dry-run
+drwn write --root --skills-only --dry-run
 ```
 
 JSON:
 
 ```bash
-drwn write --scope machine --skills-only --json
+drwn write --root --skills-only --json
 ```
 
 Behavior:
@@ -1022,8 +1030,8 @@ What it reports:
 - repo root
 - `~/.agents` path
 - enabled targets
-- strict machine schema and selected profile pin
-- profile/explicit capability provenance and resolved/missing counts
+- strict machine V2 schema, canonical active Worker, requested root ref, and embedded lock integrity
+- closure-derived skill, MCP, hook, and instruction provenance plus consent gaps
 - machine projection health, currentness, conflicts, and write-record presence
 - standalone MCP inventory counts without definition or secret-bearing values
 - installed package-backed bundle counts
@@ -1051,8 +1059,8 @@ What it reports:
 - missing required directories or config files
 - stale skill symlinks
 - MCP drift indicators
-- invalid or unresolved machine capability references
-- missing or mutated pinned profile bytes without repair
+- invalid machine Worker/lock relationships or unsupported lock versions
+- missing or mutated locked Card bytes without repair
 - foreign or drifted machine projection ownership
 - store and card lock issues
 - write-record ownership issues
@@ -1120,24 +1128,24 @@ What it does:
 ### Global machine write
 
 ```bash
-drwn write --scope machine --dry-run
-drwn write --scope machine
+drwn write --root --dry-run
+drwn write --root
 ```
 
-### Add reusable inventory and make it global
+### Select a machine Worker Blueprint
 
 ```bash
-drwn machine skill install <bundle>
-drwn machine skill enable <skill-name>
-drwn machine mcp add ./github-mcp.json --as github
-drwn machine mcp enable github
-drwn write --scope machine --dry-run
-drwn write --scope machine
+drwn apply --root <worker-blueprint-ref>
+drwn card trust <card-name> --hooks --scope machine
+drwn card trust <card-name> --instructions --scope machine
+drwn write --root --dry-run
+drwn write --root
 ```
 
-Use this for machine-scope sessions. Project declarations do not inherit machine
-capabilities; user-home capabilities may still be ambient to downstream tools and
-are reported separately by project status and doctor.
+Use this for machine-scope sessions. The active immutable Card closure—not
+standalone inventory IDs—defines capabilities. Project declarations do not
+inherit the machine Worker; user-home capabilities may still be ambient to
+downstream tools and are reported separately by project status and doctor.
 
 ### Project-specific override setup
 

@@ -1,15 +1,22 @@
-// ABOUTME: Resolves user global defaults for skills and MCP servers.
-// ABOUTME: Keeps default policy separate from reusable library inventory.
+// ABOUTME: Resolves machine capabilities exclusively from the selected verified Worker closure.
+// ABOUTME: Keeps packaged defaults and standalone inventory outside machine activation authority.
 
 import type { CanonicalConfig, CanonicalRegistry, UserMcpLibrary } from "./types";
 import type { RegistryServer } from "./types";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
+import { join, resolve } from "node:path";
+import type { CardLockEntry, ProjectLockV1, WorkerRootLockEntry } from "./card-lock";
+import { evaluateVersionFloor } from "./card-lock";
+import { assertValidCardManifest } from "./card-manifest";
 import { readMachineConfig } from "./card-store";
-import { verifyMachineProfilePin } from "./machine-profiles";
-import { findAvailableSkill, type SkillScope } from "./skills";
-import { loadRegistry } from "./registry";
-import { loadMcpLibrary } from "./mcp-library";
+import { collectEffectiveCardServerDefinitions } from "./card-mcp";
+import { assertWorkerCapabilityCompatibility } from "./card-skill-resolver";
+import { computeIntegrityFromDir } from "./content-manifest";
 import { DrwnError } from "./errors";
+import { resolveExtractedPath } from "./store-paths";
+import type { SkillScope } from "./skills";
 
 function isParallelMcpName(name: string) {
   return name === "parallel-search" || name === "parallel-task";
@@ -92,30 +99,99 @@ export function mergeUserMcpLibrary(registry: CanonicalRegistry, library: UserMc
 
 export interface ResolvedMachineSkill {
   id: string;
-  source: "profile" | "explicit";
-  profileId?: "darwinian-operator";
+  source: "worker";
+  cardName: string;
+  cardVersion: string;
   path: string;
   scope: SkillScope;
 }
 
 export interface ResolvedMachineMcpServer {
   id: string;
-  source: "profile" | "explicit";
-  profileId?: "darwinian-operator";
+  source: "worker";
+  cardName: string;
+  cardVersion: string;
   server: RegistryServer;
 }
 
 export interface ResolvedMachineCapabilities {
-  profileId: "darwinian-operator" | null;
+  activeWorker: string | null;
+  workerLock: ProjectLockV1 | null;
+  installedRoots: WorkerRootLockEntry[];
+  installedCards: CardLockEntry[];
+  activeCards: CardLockEntry[];
+  contentRootsByCard: Record<string, string>;
   skills: ResolvedMachineSkill[];
   mcpServers: ResolvedMachineMcpServer[];
 }
 
-function capabilityNotFound(kind: "skill" | "MCP server", id: string): never {
-  throw new DrwnError(
-    "MACHINE_CAPABILITY_NOT_FOUND",
-    `Explicit machine ${kind} is not available in machine inventory: ${id}`,
-  );
+function invalidMachineWorker(code: string, message: string, cause?: unknown): never {
+  throw new DrwnError(code, message, undefined, cause);
+}
+
+async function verifyMachineCardContent(agentsDir: string, card: CardLockEntry): Promise<string> {
+  let contentRoot: string;
+  if (card.origin === "store" || card.origin === "git") {
+    if (!card.treeSha) {
+      invalidMachineWorker(
+        "MACHINE_WORKER_CONTENT_MISSING",
+        `Machine Worker Card ${card.name} is missing its immutable tree SHA`,
+      );
+    }
+    contentRoot = resolveExtractedPath(agentsDir, card.treeSha);
+    if (resolve(card.path) !== resolve(contentRoot)) {
+      invalidMachineWorker(
+        "MACHINE_WORKER_CONTENT_INVALID",
+        `Machine Worker Card ${card.name} path does not match its immutable extracted tree`,
+      );
+    }
+  } else if (card.origin === "file") {
+    if (!card.requested.startsWith("file:") || resolve(card.requested.slice(5)) !== resolve(card.path)) {
+      invalidMachineWorker(
+        "MACHINE_WORKER_CONTENT_INVALID",
+        `Machine Worker Card ${card.name} file source does not match its locked path`,
+      );
+    }
+    contentRoot = resolve(card.path);
+  } else {
+    invalidMachineWorker(
+      "MACHINE_WORKER_CONTENT_INVALID",
+      `Machine Worker Card ${card.name} has unsupported ${card.origin} origin`,
+    );
+  }
+
+  const manifestPath = join(contentRoot, "card.json");
+  if (!existsSync(manifestPath)) {
+    invalidMachineWorker(
+      "MACHINE_WORKER_CONTENT_MISSING",
+      `Machine Worker Card bytes are missing for ${card.name}: ${contentRoot}`,
+    );
+  }
+
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    assertValidCardManifest(manifest);
+  } catch (error) {
+    invalidMachineWorker(
+      "MACHINE_WORKER_CONTENT_INVALID",
+      `Machine Worker Card manifest is invalid for ${card.name}: ${manifestPath}`,
+      error,
+    );
+  }
+  if (!isDeepStrictEqual(manifest, card.manifest)) {
+    invalidMachineWorker(
+      "MACHINE_WORKER_INTEGRITY_MISMATCH",
+      `Machine Worker Card manifest changed for ${card.name}`,
+    );
+  }
+  if (await computeIntegrityFromDir(contentRoot) !== card.integrity) {
+    invalidMachineWorker(
+      "MACHINE_WORKER_INTEGRITY_MISMATCH",
+      `Machine Worker Card content integrity changed for ${card.name}`,
+    );
+  }
+  return contentRoot;
 }
 
 export async function resolveMachineCapabilities(options: {
@@ -123,55 +199,80 @@ export async function resolveMachineCapabilities(options: {
   agentsDir: string;
 }): Promise<ResolvedMachineCapabilities> {
   const machine = await readMachineConfig(options.agentsDir);
-  const skills: ResolvedMachineSkill[] = [];
-  const mcpServers: ResolvedMachineMcpServer[] = [];
-  const selectedSkills = new Set<string>();
-  const selectedServers = new Set<string>();
+  const lock = machine.capabilities.workerLock;
+  const activeWorker = machine.capabilities.activeWorker;
+  const installedRoots = lock?.workerRoots ?? [];
+  const installedCards = lock?.cards ?? [];
+  if (lock) {
+    const floor = evaluateVersionFloor(lock.store.minDrwnVersion);
+    if (!floor.satisfied) {
+      invalidMachineWorker(
+        "MACHINE_WORKER_VERSION_UNSUPPORTED",
+        `Machine Worker requires drwn >= ${floor.required}, but this CLI is ${floor.running}`,
+      );
+    }
+  }
 
-  if (machine.capabilities.profile) {
-    const pin = machine.capabilities.profile;
-    const verified = await verifyMachineProfilePin(options.agentsDir, pin);
-    for (const id of pin.skills) {
-      skills.push({
+  const selectedRoot = activeWorker === null
+    ? null
+    : installedRoots.find((root) => root.name === activeWorker) ?? null;
+  if (activeWorker !== null && !selectedRoot) {
+    invalidMachineWorker(
+      "ACTIVE_WORKER_NOT_INSTALLED",
+      `Active machine Worker ${activeWorker} is not an installed root`,
+    );
+  }
+  const cardsByName = new Map(installedCards.map((card) => [card.name, card]));
+  const activeCards = selectedRoot
+    ? [selectedRoot.name, ...selectedRoot.members].map((name) => {
+        const card = cardsByName.get(name);
+        if (!card) {
+          invalidMachineWorker(
+            "MACHINE_WORKER_LOCK_INVALID",
+            `Active machine Worker ${selectedRoot.name} is missing Card ${name}`,
+          );
+        }
+        return card;
+      })
+    : [];
+
+  assertWorkerCapabilityCompatibility(activeCards);
+
+  const contentRootsByCard: Record<string, string> = {};
+  for (const card of activeCards) {
+    contentRootsByCard[card.name] = await verifyMachineCardContent(options.agentsDir, card);
+  }
+
+  const skillById = new Map<string, ResolvedMachineSkill>();
+  for (const card of activeCards) {
+    for (const id of card.skills) {
+      skillById.set(id, {
         id,
-        source: "profile",
-        profileId: pin.id,
-        path: join(verified.dir, "skills", id),
+        source: "worker",
+        cardName: card.name,
+        cardVersion: card.version,
+        path: join(contentRootsByCard[card.name]!, "skills", id),
         scope: "shared",
       });
-      selectedSkills.add(id);
-    }
-    for (const id of pin.mcpServers) {
-      const server = verified.manifest.servers?.[id];
-      if (!server || !("transport" in server)) capabilityNotFound("MCP server", id);
-      mcpServers.push({ id, source: "profile", profileId: pin.id, server });
-      selectedServers.add(id);
     }
   }
 
-  for (const id of machine.capabilities.skills) {
-    if (selectedSkills.has(id)) continue;
-    const skill = await findAvailableSkill(options.repoRoot, options.agentsDir, id);
-    if (!skill) capabilityNotFound("skill", id);
-    skills.push({ id, source: "explicit", path: skill.path, scope: skill.scope });
-    selectedSkills.add(id);
-  }
-
-  const registry = mergeUserMcpLibrary(
-    await loadRegistry(options.repoRoot),
-    await loadMcpLibrary(options.agentsDir),
-  );
-  for (const id of machine.capabilities.mcpServers) {
-    if (selectedServers.has(id)) continue;
-    const server = registry.servers[id];
-    if (!server || server.transport === "platform-provided") capabilityNotFound("MCP server", id);
-    mcpServers.push({ id, source: "explicit", server });
-    selectedServers.add(id);
-  }
+  const mcpServers = collectEffectiveCardServerDefinitions(activeCards).map((definition) => ({
+    id: definition.serverName,
+    source: "worker" as const,
+    cardName: definition.cardName,
+    cardVersion: definition.cardVersion,
+    server: definition.server,
+  }));
 
   return {
-    profileId: machine.capabilities.profile?.id ?? null,
-    skills,
+    activeWorker,
+    workerLock: lock,
+    installedRoots,
+    installedCards,
+    activeCards,
+    contentRootsByCard,
+    skills: [...skillById.values()],
     mcpServers,
   };
 }

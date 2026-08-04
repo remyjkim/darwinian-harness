@@ -1,11 +1,10 @@
-// ABOUTME: Discovers explicit machine and project references to standalone inventory.
+// ABOUTME: Discovers project references to standalone skill and MCP inventory.
 // ABOUTME: Fails closed when registered or supplied project roots cannot be verified.
 
 import { access, lstat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DrwnError } from "./errors";
 import { withInventoryLock, withMachineLock } from "./inventory-lock";
-import { readMachineConfigFile } from "./machine-config";
 import { loadProjectConfig } from "./project";
 import { listRegisteredProjects } from "./project-registry";
 import { withProjectStateLock } from "./project-state-transaction";
@@ -16,8 +15,8 @@ export type InventoryReferenceKind = "skill" | "mcp";
 export interface InventoryReference {
   kind: InventoryReferenceKind;
   id: string;
-  surface: "machine" | "project";
-  relation: "explicit-selection" | "include" | "exclude" | "mcp-toggle";
+  surface: "project";
+  relation: "include" | "exclude" | "mcp-toggle";
   sourcePath: string;
   projectRoot?: string;
 }
@@ -93,20 +92,6 @@ async function scanInventoryReferenceScope(
   const skillIds = new Set(options.skillIds ?? []);
   const mcpIds = new Set(options.mcpIds ?? []);
   const references: InventoryReference[] = [];
-  const machinePath = scope.machineConfigPath;
-  let machine;
-  try {
-    machine = await readMachineConfigFile(machinePath);
-  } catch (error) {
-    throw scanFailed(machinePath, error);
-  }
-  for (const id of machine?.capabilities.skills ?? []) {
-    if (skillIds.has(id)) references.push({ kind: "skill", id, surface: "machine", relation: "explicit-selection", sourcePath: machinePath });
-  }
-  for (const id of machine?.capabilities.mcpServers ?? []) {
-    if (mcpIds.has(id)) references.push({ kind: "mcp", id, surface: "machine", relation: "explicit-selection", sourcePath: machinePath });
-  }
-
   for (const projectRoot of scope.projectRoots) {
     await validateProjectRoot(projectRoot);
     const configPath = `${projectRoot}/.agents/drwn/config.json`;

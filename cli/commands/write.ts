@@ -26,6 +26,11 @@ import { findProjectConfig, resolveProjectRootFromConfigPath } from "../core/pro
 import { syncRepository } from "../core/sync";
 import { isTargetName } from "../core/targets";
 import { startWriteWatch } from "../core/write-watch";
+import {
+  machineConsentScope,
+  projectConsentScope,
+  type ConsentScope,
+} from "../core/consent-scope";
 import { BaseCommand } from "./base";
 
 function renderWriteError(error: unknown, json: boolean) {
@@ -161,68 +166,64 @@ export class WriteCommand extends BaseCommand {
       return 1;
     }
 
-    if (!(this.root || this.user)) {
+    let consentScope: ConsentScope | null = null;
+    if (preflightState.scopedOptions.writeScope === "machine") {
+      const activeWorker = preflightState.workerSelection?.selectedRoot?.name;
+      if (activeWorker) consentScope = machineConsentScope(activeWorker);
+    } else {
       const projectConfigPath = findProjectConfig(this.context.cwd);
-      const projectRoot = projectConfigPath ? resolveProjectRootFromConfigPath(projectConfigPath) : null;
+      const projectRoot = projectConfigPath
+        ? resolveProjectRootFromConfigPath(projectConfigPath)
+        : null;
       if (projectRoot) {
+        consentScope = projectConsentScope(projectRoot);
         const lock = await loadCardLock(projectRoot);
         const floor = evaluateVersionFloor(lock?.store?.minDrwnVersion);
         if (!floor.satisfied) {
           this.context.stderr.write(`${formatVersionFloorWarning(floor)}\n`);
-          if (this.strict) {
-            return 1;
-          }
+          if (this.strict) return 1;
         }
-        if (!this.dryRun) {
-          const consentState = preflightState;
-          for (const card of consentState.activeCards) {
-            if (!card.hookConsent || card.hooks.length === 0) {
-              continue;
-            }
-            const contentRoot = consentState.contentRootsByCard[card.name] ?? card.path;
-            const hookPolicyDigest = await computeHookPolicyDigest(card, contentRoot);
-            const ackKey = buildHookConsentAckKey({ projectRoot, card, hookPolicyDigest });
-            if (await hasHookConsentAck(this.context.agentsDir, ackKey)) {
-              continue;
-            }
-            this.context.stderr.write(
-              `hooks present, consented by ${card.name} (${card.hookConsent.consentedRange}) on another machine\n`,
-            );
-            await recordHookConsentAck(this.context.agentsDir, ackKey);
-            break;
-          }
-          for (const card of consentState.activeCards) {
-            if (!card.instructionConsent) continue;
-            const contentRoot =
-              consentState.contentRootsByCard[card.name] ?? card.path;
-            const contribution = resolveExplicitInstructionContribution(
-              card,
-              contentRoot,
-            );
-            if (
-              !contribution ||
-              !isInstructionConsentValid(card, contribution)
-            ) {
-              continue;
-            }
-            const ackKey = buildInstructionConsentAckKey({
-              projectRoot,
-              card,
-            });
-            if (
-              await hasInstructionConsentAck(this.context.agentsDir, ackKey)
-            ) {
-              continue;
-            }
-            this.context.stderr.write(
-              `instructions present, consented by ${card.name} (${card.instructionConsent.consentedRange}) on another machine\n`,
-            );
-            await recordInstructionConsentAck(
-              this.context.agentsDir,
-              ackKey,
-            );
-          }
+      }
+    }
+
+    if (!this.dryRun && consentScope) {
+      for (const card of preflightState.activeCards) {
+        if (!card.hookConsent || card.hooks.length === 0) continue;
+        const contentRoot = preflightState.contentRootsByCard[card.name] ?? card.path;
+        const hookPolicyDigest = await computeHookPolicyDigest(card, contentRoot);
+        const ackKey = buildHookConsentAckKey({
+          scope: consentScope,
+          card,
+          hookPolicyDigest,
+        });
+        if (await hasHookConsentAck(this.context.agentsDir, ackKey)) continue;
+        this.context.stderr.write(
+          `hooks present, consented by ${card.name} (${card.hookConsent.consentedRange}) on another machine\n`,
+        );
+        await recordHookConsentAck(this.context.agentsDir, ackKey);
+      }
+      for (const card of preflightState.activeCards) {
+        if (!card.instructionConsent) continue;
+        const contentRoot =
+          preflightState.contentRootsByCard[card.name] ?? card.path;
+        const contribution = resolveExplicitInstructionContribution(
+          card,
+          contentRoot,
+        );
+        if (!contribution || !isInstructionConsentValid(card, contribution)) {
+          continue;
         }
+        const ackKey = buildInstructionConsentAckKey({
+          scope: consentScope,
+          card,
+        });
+        if (await hasInstructionConsentAck(this.context.agentsDir, ackKey)) {
+          continue;
+        }
+        this.context.stderr.write(
+          `instructions present, consented by ${card.name} (${card.instructionConsent.consentedRange}) on another machine\n`,
+        );
+        await recordInstructionConsentAck(this.context.agentsDir, ackKey);
       }
     }
 

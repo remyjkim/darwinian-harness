@@ -9,8 +9,6 @@ import {
   scanInventoryReferences,
   withLockedInventoryReferenceReport,
 } from "../cli/core/inventory-references";
-import { createEmptyMachineConfig, writeMachineConfigFile } from "../cli/core/machine-config";
-import { createDarwinianOperatorPin } from "../cli/core/operator-profile-contract";
 import { registerProject, resolveProjectsIndexPath } from "../cli/core/project-registry";
 import { resolveMachineConfigPath } from "../cli/core/store-paths";
 import { cleanupTempRoots, createTempRoot, writeSupportedProjectConfig } from "./helpers";
@@ -30,12 +28,8 @@ async function fixture() {
 }
 
 describe("standalone inventory reference discovery", () => {
-  test("reports explicit machine and committed project references deterministically", async () => {
+  test("reports committed project references deterministically without V1 machine selections", async () => {
     const state = await fixture();
-    const machine = createEmptyMachineConfig();
-    machine.capabilities.skills = ["alpha"];
-    machine.capabilities.mcpServers = ["notion"];
-    await writeMachineConfigFile(resolveMachineConfigPath(state.agentsDir), machine);
     const project = join(state.root, "project");
     await writeSupportedProjectConfig(project, {
       skills: { include: ["alpha"], exclude: ["beta"] },
@@ -54,9 +48,7 @@ describe("standalone inventory reference discovery", () => {
     });
 
     expect(references.map((entry) => [entry.surface, entry.kind, entry.id, entry.relation])).toEqual([
-      ["machine", "mcp", "notion", "explicit-selection"],
       ["project", "mcp", "notion", "mcp-toggle"],
-      ["machine", "skill", "alpha", "explicit-selection"],
       ["project", "skill", "alpha", "include"],
       ["project", "skill", "beta", "exclude"],
     ]);
@@ -64,12 +56,8 @@ describe("standalone inventory reference discovery", () => {
     expect(references.some((entry) => entry.id === "inline")).toBe(false);
   });
 
-  test("does not treat profile-owned capabilities as standalone references", async () => {
+  test("does not invent standalone references from machine scope", async () => {
     const state = await fixture();
-    const machine = createEmptyMachineConfig();
-    machine.capabilities.profile = createDarwinianOperatorPin();
-    await writeMachineConfigFile(resolveMachineConfigPath(state.agentsDir), machine);
-
     expect(await scanInventoryReferences({ agentsDir: state.agentsDir, skillIds: ["bootstrap-project"] })).toEqual([]);
   });
 
