@@ -3,12 +3,12 @@
 
 # I153 · Sub-PR 3 — Live qualification Q1–Q9 · G2 Plan
 
-**Status**: Planning (GATE 2 artifact for sub-PR 3) — v1, 2026-08-04
+**Status**: v2, 2026-08-05 — **Q1–Q5 CANCELLED BY DIRECTION** (cursor support dropped, I213; I153 📝 entry 080526). Live scope: **Q6–Q9** (credential-free; Q8 executed — `.jsonc` wins). Cursor probe rows retained as historical record. Prior: Planning (GATE 2 artifact for sub-PR 3) — v1, 2026-08-04
 **Issue**: [I153](https://app.notion.com/p/curation-labs/I153-drwn-support-for-cursor-opencode-3aef1fbef8c28017b1dee2019cfc63f6)
 **Repo**: the branch `<author>/153-live-qualification` lives in **darwinian-minds** and carries the docs deltas (docs 120/122 verified-state updates, any pinned fixtures); the probe scripts and NOTES live in **drwn-lab** `experiments/06-live-qualification/` (not a git repo — no PR there) (R3-F12)
 **Branch**: `<author>/153-live-qualification`, off `main`
 **G1**: [`../analyses/cl0153_cursor_opencode_integration_target_architecture.md`](../analyses/cl0153_cursor_opencode_integration_target_architecture.md) §3 Gap 2 (v4.1) — the Q1–Q9 table is the contract
-**Operator prerequisites**: `cursor-agent login` (Q1–Q5) · Cloudflare gateway env (Q5/Q6 hook-fire where session-signal delivery is involved). **Q6–Q9 need no operator credentials** — executable immediately with the local opencode install
+**Operator prerequisites (v2)**: none for the live scope, except possibly the Cloudflare gateway env for Q6's session-signal half. Q6–Q9 executable immediately with the local opencode install
 
 ---
 
