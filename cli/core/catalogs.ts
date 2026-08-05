@@ -5,6 +5,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { npmCommand } from "./process";
 import type { CanonicalConfig, RegistryServer } from "./types";
 
+const NPM_SEARCH_TIMEOUT_MS = Number(process.env.DRWN_NPM_TIMEOUT_MS ?? 30_000);
+
 export interface CatalogSearchResult {
   id: string;
   kind: "skill-package" | "mcp";
@@ -41,13 +43,23 @@ export async function searchNpmSkillCatalog(
 
   const searchLimit = config.catalogs?.npmSkills?.searchLimit ?? 20;
   const proc = Bun.spawn([npmCommand(), "search", query, "--json", `--searchlimit=${searchLimit}`], {
+    stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
     env: { ...process.env, ...env },
   });
+  // A hung registry request must degrade to a warning, never block the CLI forever.
+  const timer = setTimeout(() => {
+    try {
+      proc.kill();
+    } catch {
+      // The process may have already exited.
+    }
+  }, NPM_SEARCH_TIMEOUT_MS);
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   const exitCode = await proc.exited;
+  clearTimeout(timer);
   if (exitCode !== 0) {
     return { results: [], warnings: [`npm skill catalog search failed: ${`${stdout}${stderr}`.trim()}`] };
   }

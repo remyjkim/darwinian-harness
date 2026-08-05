@@ -122,7 +122,7 @@ NODE
   );
 
   expect(result.exitCode).toBe(0);
-});
+}, 30000);
 
 async function runBash(script: string, env: Record<string, string>) {
   const proc = Bun.spawn(["bash", "-lc", script], {

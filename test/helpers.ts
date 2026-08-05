@@ -191,7 +191,7 @@ export async function createCatalogCardSource(
     [command, "new", name, "--into", cardsDir, ...(options.noGit === false ? [] : ["--no-git"])],
     envFor(fixture),
   );
-  expect(result.exitCode).toBe(0);
+  expect(result.exitCode, result.stderr).toBe(0);
   expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
   const baseName = name.split("/").at(-1);
   if (!baseName) throw new Error(`Invalid Card name: ${name}`);
@@ -220,7 +220,8 @@ export async function publishCardWithSkills(
   const sourceParent = join(catalogRoot, "cards");
   const sourceRoot = join(sourceParent, cardName!);
   if (!existsSync(join(sourceRoot, "card.json"))) {
-    expect((await runAgentsCli(["card", "new", options.name, "--into", sourceParent, "--no-git"], envFor(fixture))).exitCode).toBe(0);
+    const created = await runAgentsCli(["card", "new", options.name, "--into", sourceParent, "--no-git"], envFor(fixture));
+    expect(created.exitCode, created.stderr).toBe(0);
   }
   expect((await runAgentsCli(["config", "set", "catalogCheckouts", JSON.stringify([catalogRoot])], envFor(fixture))).exitCode).toBe(0);
 

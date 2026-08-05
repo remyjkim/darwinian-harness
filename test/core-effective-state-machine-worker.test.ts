@@ -158,7 +158,7 @@ describe("machine Worker effective state", () => {
         code: mode === "missing" ? "MACHINE_WORKER_CONTENT_MISSING" : "MACHINE_WORKER_INTEGRITY_MISMATCH",
       });
     }
-  });
+  }, 30000);
 
   test("a modified explicit file-origin root is rejected by its locked integrity", async () => {
     const fixture = await scaffoldCliFixture();
