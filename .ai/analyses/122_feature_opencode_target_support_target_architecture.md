@@ -386,13 +386,13 @@ For Remy (decisions):
 Empirical verification (needs a real OpenCode and Cursor install; none of these block
 starting Phase 1, but V1-V2 should land before the ambient codes ship):
 - **V1:** Cursor tolerance of `type` in remote server entries (§2.3).
-- **V2:** Same-ID project/global merge semantics — field-inheritance vs wholesale-wins —
+- **V2 — ANSWERED 2026-08-05 (experiment 06 Q7): per-field deep merge, NOT wholesale.** Project wins conflicting fields (verified behaviorally); non-conflicting user-scope fields (e.g. `environment`) merge INTO the project entry — an injection surface, disposition tracked on I153. Original question: same-ID project/global merge semantics — field-inheritance vs wholesale-wins —
   for both Cursor (§2.4) and OpenCode (D5). Correct `ambient-policy.ts` texts accordingly.
 - **V3:** OpenCode behavior on duplicate skill names across `.opencode/skills/` and
   `.claude/skills/` (affects Phase 2 design).
 - **V4:** Whether `tool.execute.after` output mutation is honored for injecting
   `additionalContext` (affects D7 table).
-- **V5:** Precedence between `opencode.json` and `opencode.jsonc` when both exist
+- **V5 — ANSWERED 2026-08-04 (experiment 06 Q8): `.jsonc` wins** when both exist. Original question: precedence between `opencode.json` and `opencode.jsonc` when both exist
   (affects D4 guard messaging).
 
 Risks:

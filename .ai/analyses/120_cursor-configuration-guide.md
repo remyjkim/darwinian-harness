@@ -1,5 +1,11 @@
 # Cursor Configuration Manual — MCP, Hooks & Skills
 
+> **HISTORICAL (2026-08-05):** Cursor support is deprecated (owner decision, tracked as
+> I213; deprecation signal shipped in PR #89, removal gated separately). This guide is
+> retained as a point-in-time reference; nothing here was ever live-verified (the
+> planned qualification was cancelled by direction). Goose replaces Cursor as the
+> fourth target — see analysis 134 and issue I214.
+
 A practical, end-to-end reference for wiring Cursor's agent harness. Covers the three
 extension surfaces that let you connect external tools, intercept the agent loop, and
 package reusable capabilities.
