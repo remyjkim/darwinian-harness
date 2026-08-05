@@ -105,10 +105,10 @@ Sub-PR 1 is now **low-priority card housekeeping**, not the headline. Sub-PR 2 (
 
 ## 6. What "done" looks like for I153 (revised)
 
-- [ ] **G1 passed**: this architecture reviewed (note: much of the design is doc 126's, already approved — G1 review is largely scope confirmation).
-- [ ] **Sub-PR 2 merged**: OpenCode loads the *project's customized* skills, not uncustomized home copies (experiment 04 T7a → green, re-verified with the experiment-05 sentinel probes).
-- [ ] **Sub-PR 2 also ships the shadowing diagnostic**: doctor/ambient reports cross-scope same-name skill shadowing, so the fix has regression detection.
-- [ ] **Sub-PR 3 done (v5)**: Q6–Q9 executed and recorded in drwn-lab; Q1–Q5 recorded as cancelled-by-direction (I213).
+- [x] **G1 passed** — 2026-08-04, independent review `cl0153_review02` (PASS WITH CORRECTIONS, applied in v4.1).
+- [x] **Sub-PR 2 merged** — PR #81, 2026-08-04 (G2 `cl0153_review03`; G3 `cl0153_review04` changes-requested → corrections → MERGE): project's composed bytes win the large majority; residual race owner-adjudicated as recorded limitation (full closure = I199).
+- [x] **Sub-PR 2 also ships the shadowing diagnostic** — `OPENCODE_SKILL_SHADOWED`, honest reduced-not-eliminated advisory, merged with PR #81.
+- [x] **Sub-PR 3 done (v5)** — experiment 06 complete 2026-08-05: Q6 PASS (live hook enforcement, no gateway needed), Q8 answered (`.jsonc` wins), Q9 PASS (real-install MCP smoke), **Q7 FAIL — scoped finding**: OpenCode deep-merges same-ID MCP entries per-field (user-scope `environment` leaks into managed servers; doc 88 V2 falsified) — disposition pending owner (document-as-limitation vs merge-slot guard + diagnostic); Q1–Q5 cancelled-by-direction (I213).
 - [ ] **Sub-PR 1 (optional) merged**: `org-conventions` hook reconciled with its demoted role; card bumped to the next free version (1.2.0 is already taken by the in-flight I176-era bump — reconcile with that uncommitted state first; see the G2's reality-check note).
 - [ ] **Owner endorsement recorded** for the §7 exclusions (sub-worker surfaces; agent-uptake smoke) — deliberate scope, not inherited default.
 - [ ] drwn-lab card annotation updated: cursor/opencode show the doc-126 Layer-1 reality (AGENTS.md ✅; hook is secondary).
