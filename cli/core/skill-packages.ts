@@ -467,6 +467,8 @@ interface SkillPackageSourceOptions {
   afterCommit?: SkillBundleCommitOptions["afterCommit"];
 }
 
+const NPM_PACK_TIMEOUT_MS = Number(process.env.DRWN_NPM_TIMEOUT_MS ?? 30_000);
+
 async function commitSkillPackageSource(
   options: SkillPackageSourceOptions,
   operation: SkillPackageOperation,
@@ -478,11 +480,21 @@ async function commitSkillPackageSource(
   try {
     const packProc = Bun.spawn(
       [npmCommand(), "pack", options.packageSpec, "--ignore-scripts", "--json", "--pack-destination", packDir],
-      { stdout: "pipe", stderr: "pipe", env: process.env },
+      { stdin: "ignore", stdout: "pipe", stderr: "pipe", env: process.env },
     );
+    // A hung registry fetch must fail the install, never block the CLI forever.
+    const packTimer = setTimeout(() => {
+      try {
+        packProc.kill();
+      } catch {
+        // The process may have already exited.
+      }
+    }, NPM_PACK_TIMEOUT_MS);
     const packStdout = await new Response(packProc.stdout).text();
     const packStderr = await new Response(packProc.stderr).text();
-    if ((await packProc.exited) !== 0) {
+    const packExit = await packProc.exited;
+    clearTimeout(packTimer);
+    if (packExit !== 0) {
       throw new Error(`${packStdout}${packStderr}`.trim() || `npm pack failed for ${options.packageSpec}`);
     }
 
