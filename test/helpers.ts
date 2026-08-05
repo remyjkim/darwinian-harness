@@ -452,6 +452,9 @@ export async function runAgentsCli(
       // Force non-interactive git so credential prompts fail fast instead of hanging on CI.
       GIT_TERMINAL_PROMPT: "0",
       ...process.env,
+      // Safety net: cap the authoring-scope gh/git probe so a slow or hung probe can never
+      // balloon the suite. (The probe is also skipped non-interactively; see authoring-scope.)
+      DRWN_PROBE_TIMEOUT_MS: "500",
       ...env,
     },
   });
