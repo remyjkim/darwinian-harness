@@ -38,7 +38,7 @@ drwn mcp write --target=cursor
 drwn mcp write --json
 ```
 
-`drwn mcp write` is equivalent to `drwn write --mcp-only`. `--dry-run` previews changes without mutating files. `--target` limits the write to one of `claude`, `codex`, or `cursor`.
+`drwn mcp write` is equivalent to `drwn write --mcp-only`. `--dry-run` previews changes without mutating files. `--target` limits the write to one of `claude`, `codex`, or `cursor` (deprecated).
 
 ## Where MCP definitions live
 

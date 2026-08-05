@@ -4,7 +4,7 @@ sidebar_position: 7
 
 # Materialization
 
-Materialization is the second half of `drwn write`: resolving the effective harness, then applying it to downstream agent tool directories with explicit ownership. The first half is the layered config model; this page covers how the resolved state actually reaches Claude, Codex, and Cursor on disk.
+Materialization is the second half of `drwn write`: resolving the effective harness, then applying it to downstream agent tool directories with explicit ownership. The first half is the layered config model; this page covers how the resolved state actually reaches Claude, Codex, and Cursor (deprecated) on disk.
 
 ## The Five-Layer Model
 

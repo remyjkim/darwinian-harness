@@ -38,7 +38,7 @@ Roots are plain Cards or Blueprints. Blueprint members are recorded in `card.loc
 | `skills.include` / `skills.exclude` | Explicit project skill overlays. |
 | `hooks` | Exclusions, runtime selection, and session signals. |
 | `extensions` | Semantic extension choices such as Parallel, Beads, and MarkItDown. |
-| `targets` | Per-project Claude/Codex/Cursor enablement. |
+| `targets` | Per-project Claude/Codex/Cursor enablement (the cursor target is deprecated). |
 | `trustedSources` | Project source trust policy. |
 
 Unknown fields, wrong schema identity/version, missing required selection, and malformed overlays fail with `PROJECT_CONFIG_INVALID` before mutation.

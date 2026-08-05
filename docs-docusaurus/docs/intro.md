@@ -18,7 +18,7 @@ Agents are only as reliable as the harness around them. `darwinian` makes that h
 - **Extensions** such as Parallel, Beads, and MarkItDown that bundle project-level setup and diagnostics
 - **Explicit machine intent** for reusable local capabilities
 - **Project overlays** for repository-specific agent behavior
-- **Downstream state** for Claude Code, Codex, Cursor, and `~/.agents`
+- **Downstream state** for Claude Code, Codex, Cursor (deprecated), and `~/.agents`
 - **Diagnostics** that report drift before mutating local files
 
 ## Why this exists
