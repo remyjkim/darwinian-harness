@@ -96,6 +96,13 @@ export class DoctorCommand extends BaseCommand {
         output += `  - ${issue.code} (${issue.severity}): ${issue.skill} collides with ${issue.machinePaths.join(", ")} (${remediation})\n`;
       }
     }
+    const deprecations = projectStatus?.targetDeprecations ?? [];
+    if (deprecations.length > 0) {
+      output += "\nTarget deprecations:\n";
+      for (const issue of deprecations) {
+        output += `  - ${issue.code} (${issue.severity}): ${issue.message}\n`;
+      }
+    }
     this.context.stdout.write(output);
     return unhealthy ? 1 : 0;
   }
