@@ -4,7 +4,7 @@ sidebar_position: 5
 
 # Write
 
-`drwn write` materializes the effective harness into downstream local agent tool files. It is the command that turns the resolved model into Claude, Codex, Cursor, and MCP config state.
+`drwn write` materializes the effective harness into downstream local agent tool files. It is the command that turns the resolved model into Claude, Codex, Cursor (deprecated), and MCP config state.
 
 Preview first:
 

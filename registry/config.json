@@ -15,7 +15,8 @@
       "mcpKey": "mcp_servers"
     },
     "cursor": {
-      "enabled": true,
+      "enabled": false,
+      "notes": "Deprecated (owner decision 2026-08-05, tracked as I213): cursor support was never live-verified and will be removed in a later release. Enable explicitly to keep projecting.",
       "configPath": "~/.cursor/mcp.json",
       "format": "json-standalone",
       "mcpKey": "mcpServers"

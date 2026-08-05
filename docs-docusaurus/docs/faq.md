@@ -6,7 +6,7 @@ sidebar_position: 7
 
 ## What is the difference between `darwinian` and the agent itself (Claude, Codex)?
 
-`darwinian` (the `drwn` CLI) is a control plane around the agent tools you already have installed. The agents — Claude Code, Codex, Cursor — execute the tasks. `drwn` decides which skills, MCP servers, and extensions each agent has access to, then writes that decision into `~/.claude`, `~/.codex`, and `~/.cursor` so the agents can find it. `drwn` does not run agents and does not call models.
+`darwinian` (the `drwn` CLI) is a control plane around the agent tools you already have installed. The agents — Claude Code, Codex, Cursor (deprecated) — execute the tasks. `drwn` decides which skills, MCP servers, and extensions each agent has access to, then writes that decision into `~/.claude`, `~/.codex`, and `~/.cursor` so the agents can find it. `drwn` does not run agents and does not call models.
 
 See [Concepts overview](./concepts/layered-model) for the layered model.
 

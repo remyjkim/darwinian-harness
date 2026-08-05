@@ -177,6 +177,16 @@ missing project-safe package/record. Fix machine state by selecting a valid
 immutable Blueprint or repairing its Store content; do not hand-edit the
 embedded lock or infer provenance from standalone inventory.
 
+### Cursor target deprecation
+
+`targetDeprecations` carries a `CURSOR_TARGET_DEPRECATED` advisory when the
+project's effective config has the `cursor` target enabled. Cursor support is
+deprecated (owner decision 2026-08-05, tracked as I213): it was never
+live-verified and will be removed in a later release. The advisory does not
+change doctor's exit code. Silence it by disabling the target in the project
+config (`targets.cursor.enabled: false`) and moving the project to the
+`claude`, `codex`, or `opencode` targets.
+
 ## Cross-References
 
 - [reference/cli/doctor](../reference/cli/doctor) for the command surface

@@ -80,6 +80,24 @@ which projects `.agents/drwn/opencode-skills/` and declares it in
 closure. See [Use drwn with OpenCode](../guides/using-opencode) for the
 mechanism and the residual-race measurements.
 
+### Cursor target deprecation
+
+:::warning Cursor target deprecated
+
+Cursor support is deprecated (owner decision 2026-08-05, tracked as I213).
+Cursor projection was never live-verified and will be removed in a later
+release. Migrate cursor-enabled projects to the `claude`, `codex`, or
+`opencode` targets.
+
+:::
+
+Project status adds `targetDeprecations`. When a project's effective config
+has the `cursor` target enabled, doctor and status emit a
+`CURSOR_TARGET_DEPRECATED` issue at **advisory** severity. The advisory never
+changes doctor's exit code; it only signals that the target is scheduled for
+removal. The packaged registry default for the `cursor` target is off, so the
+advisory appears only where machine policy or a project override enables it.
+
 ### Organization Worker materialization
 
 Project status adds `orgWorkerMaterialization` alongside instruction delivery.

@@ -181,6 +181,16 @@ export interface ProjectStatusItem {
   health: "installed" | "active" | "declared";
 }
 
+export interface TargetDeprecationIssue {
+  code: "CURSOR_TARGET_DEPRECATED";
+  severity: "advisory";
+  target: "cursor";
+  message: string;
+}
+
+const CURSOR_TARGET_DEPRECATION_MESSAGE =
+  "cursor support is deprecated (owner decision 2026-08-05, tracked as I213): it was never live-verified and will be removed in a later release";
+
 export interface ProjectStatusV1 {
   schema: "drwn.project-status";
   schemaVersion: 1;
@@ -212,6 +222,7 @@ export interface ProjectStatusV1 {
     opencodeSkillShadowing: OpencodeSkillShadowingIssue[];
     enforcement: "target-native";
   };
+  targetDeprecations: TargetDeprecationIssue[];
   projection: { current: boolean; issues: string[] };
   instructionDelivery: {
     state: "absent" | "current" | "drifted" | "blocked";
@@ -1281,6 +1292,16 @@ export async function buildProjectStatusV1(options: {
         projectedSkillIds: await opencodeProjectedSkillIds(state, options, skillItems.map((entry) => entry.id)),
       })
     : [];
+  const targetDeprecations: TargetDeprecationIssue[] = state.effectiveConfig.targets.cursor?.enabled
+    ? [
+        {
+          code: "CURSOR_TARGET_DEPRECATED",
+          severity: "advisory",
+          target: "cursor",
+          message: CURSOR_TARGET_DEPRECATION_MESSAGE,
+        },
+      ]
+    : [];
   let projection: { current: boolean; issues: string[] };
   try {
     projection = await planRepositoryProjection({
@@ -1337,6 +1358,7 @@ export async function buildProjectStatusV1(options: {
       opencodeSkillShadowing,
       enforcement: "target-native",
     },
+    targetDeprecations,
     projection: { current: projection.current, issues: projection.issues },
     instructionDelivery,
     orgWorkerMaterialization,

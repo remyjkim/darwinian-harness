@@ -24,6 +24,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   current. A manual declaration in a user-maintained `opencode.jsonc` is
   recognized. Doctor exit codes are unchanged.
 
+### Deprecated
+
+- The `cursor` target is deprecated (owner decision 2026-08-05, tracked as
+  I213). Cursor projection was never live-verified and will be removed in a
+  later release. `drwn doctor` and `drwn status` report an advisory
+  `CURSOR_TARGET_DEPRECATED` issue for projects whose effective config has
+  the cursor target enabled; doctor exit codes are unchanged. The packaged
+  registry default for the cursor target is now off — enable it explicitly
+  via machine policy or a project override to keep projecting.
+
 ## [0.10.1] - 2026-07-29
 
 ### Fixed
