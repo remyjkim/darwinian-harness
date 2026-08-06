@@ -2,9 +2,14 @@
 // ABOUTME: pure config/lock derivations now; validation, store seeding, and orchestration follow.
 
 import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CardLockEntry, ProjectLockV1 } from "./card-lock";
+import { extract } from "./archive";
+import { ensureCardPresentFromLock } from "./card-install";
+import { serializeCardLock, type CardLockEntry, type ProjectLockV1 } from "./card-lock";
 import { DrwnError } from "./errors";
+import { syncRepository } from "./sync";
 import type { ProjectConfig } from "./types";
 import { WORKER_DEPLOY_CONTRACT_VERSION, type WorkerDeployPayload } from "./worker-deploy";
 
@@ -80,5 +85,59 @@ export function deriveMaterializeLock(payload: WorkerDeployPayload, agentsDir: s
       },
     ],
     cards,
+  };
+}
+
+export interface MaterializeWorkerOptions {
+  payload: WorkerDeployPayload;
+  projectRoot: string;
+  agentsDir: string;
+  homeDir: string;
+  /** The packaged drwn checkout (registry/config.json lives here), as resolved by the CLI context. */
+  repoRoot: string;
+  /** External store bytes (e.g. an R2-staged archive); defaults to the payload's inline base64. */
+  storeExportBytes?: Buffer;
+}
+
+export interface MaterializeWorkerResult {
+  cards: number;
+  changes: string[];
+  warnings: string[];
+}
+
+/**
+ * The full V1-payload → V2-project materialization: seed the store, stage the derived
+ * config and lock, hydrate cards frozen from the lock, and project with the same sync
+ * pipeline drwn install composes. Single-shot on clean roots by contract.
+ */
+export async function materializeWorkerPayload(options: MaterializeWorkerOptions): Promise<MaterializeWorkerResult> {
+  const { payload, projectRoot, agentsDir, homeDir, repoRoot } = options;
+  const storeBytes = options.storeExportBytes ?? Buffer.from(payload.storeExport.bytesBase64, "base64");
+
+  await mkdir(agentsDir, { recursive: true });
+  const tempDir = await mkdtemp(join(tmpdir(), "drwn-materialize-"));
+  try {
+    const tarPath = join(tempDir, "store-seed.tar");
+    await writeFile(tarPath, storeBytes);
+    await extract(tarPath, agentsDir);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+
+  const drwnDir = join(projectRoot, ".agents", "drwn");
+  await mkdir(drwnDir, { recursive: true });
+  await writeFile(join(drwnDir, "config.json"), `${JSON.stringify(deriveMaterializeConfig(payload), null, 2)}\n`);
+  const lock = deriveMaterializeLock(payload, agentsDir);
+  await writeFile(join(drwnDir, "card.lock"), serializeCardLock(lock));
+
+  for (const entry of lock.cards) {
+    await ensureCardPresentFromLock(agentsDir, entry, true, { projectRoot });
+  }
+
+  const sync = await syncRepository({ repoRoot, agentsDir, homeDir, cwd: projectRoot });
+  return {
+    cards: lock.cards.length,
+    changes: sync.changes,
+    warnings: sync.warnings,
   };
 }
