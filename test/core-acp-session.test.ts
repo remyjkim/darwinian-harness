@@ -751,6 +751,53 @@ describe("AcpSessionManager", () => {
     }
   });
 
+  test("does not resurrect a cached session after a peer safely prunes its durable mapping", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-pruned-cache-"));
+    let staleRequests = 0;
+    try {
+      const stale = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        maxSessions: 1,
+        idFactory: () => "sess_pruned_old",
+        sleep: async () => {},
+        request: async (url, init) => {
+          staleRequests += 1;
+          if (init?.method === "POST") return json({ runId: "run_pruned_old" });
+          if (url.endsWith("/status")) return json(runStatus("yielded"));
+          return json({ lastSeq: 1, events: [] });
+        },
+      });
+      await stale.newSession({ cwd: "/old", mcpServers: [] });
+
+      const peer = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        maxSessions: 1,
+        idFactory: () => "sess_pruned_new",
+      });
+      await peer.newSession({ cwd: "/new", mcpServers: [] });
+      const afterPrune = await Bun.file(join(agentsDir, "drwn", "acp-sessions.json")).json() as {
+        sessions: Array<{ sessionId: string }>;
+      };
+      expect(afterPrune.sessions.map((session) => session.sessionId)).toEqual(["sess_pruned_new"]);
+
+      await expect(stale.prompt(
+        { sessionId: "sess_pruned_old", prompt: [{ type: "text", text: "resurrect" }] },
+        async () => {},
+      )).rejects.toMatchObject({ code: -32002 });
+      expect(staleRequests).toBe(0);
+      const afterAttempt = await Bun.file(join(agentsDir, "drwn", "acp-sessions.json")).json() as {
+        sessions: Array<{ sessionId: string }>;
+      };
+      expect(afterAttempt.sessions.map((session) => session.sessionId)).toEqual(["sess_pruned_new"]);
+    } finally {
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
   test("holds one cross-manager session lock for the full prompt and rejects prompt or load contenders", async () => {
     const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-prompt-lock-"));
     let releasePoll!: () => void;

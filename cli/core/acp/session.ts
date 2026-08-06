@@ -470,7 +470,10 @@ export class AcpSessionManager {
     if (this.options.store === false) return cached;
     await this.refreshPersistedSessions();
     const persisted = this.persistedSessions.get(sessionId);
-    if (!persisted) return cached;
+    if (!persisted) {
+      this.sessions.delete(sessionId);
+      return null;
+    }
     if (persisted.slug !== this.options.slug) return null;
     const authoritative: SessionState = {
       sessionId: persisted.sessionId,
