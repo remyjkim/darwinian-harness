@@ -39,10 +39,11 @@
   editor launch configs and `BUZZ_ACP_AGENT_ARGS`-less setups); if neither is present and
   `~/.agents/drwn/mind-bindings.json` holds exactly one binding, use it; otherwise exit 1
   with guidance on stderr. No new "selected worker" state is introduced.
-- **Pre-I106 cancellation stance:** `session/cancel` is honored protocol-side (stop polling,
-  resolve the in-flight prompt `cancelled`) with a loud stderr warning that the server-side
-  run continues. That is acceptable for an editor at a keyboard and documented as such; the
-  Buzz profile stays disabled until I106 lands, per the architecture's Phase-4 gate.
+- **Pre-I106 cancellation stance:** the ACP notification is registered so clients do not hit
+  an unknown-method path, but its handler is an explicit no-op. It does not stop polling,
+  resolve the prompt `cancelled`, or imply that the server-side run stopped. Truthful
+  cancellation remains gated on I106, and the Buzz profile stays disabled until that Phase-4
+  contract lands.
 - **Delivery: B-lean + rider (decided 2026-08-04, decision analysis §7.7).** The container
   publishes via the `buzz` CLI — binary in the mind-runtime image (darwinian-services PR),
   `BUZZ_RELAY_URL`/`BUZZ_PRIVATE_KEY`/`BUZZ_AUTH_TAG` as per-Worker `kind:"env"` secrets
@@ -244,6 +245,11 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   earlier v1 `runId` records, and intentionally has no `taskId`. When a real Tasks API ships, add
   `{taskId, activeRunId}` through an explicit index-version migration rather than treating a
   Task ID as a run ID or inventing an API contract here.
+  **Residual risk:** the owner lock and re-read merge prevent lost writes, but the persisted LRU
+  has no cross-process active-session lease. At capacity, one adapter cannot see that a peer
+  process is actively using the oldest durable mapping and may evict that mapping from the
+  index. This does not cancel the remote run, but restart/load of that evicted session can fail;
+  a multi-process lease protocol is deferred beyond Phase 3.
   Tests prove two-turn continuation, second-manager restart/load by the original ACP ID,
   concurrent-manager merge, snapshot replay, cursor priming, busy rejection, LRU eviction,
   and DAH device authentication/credential persistence. Manual editor restart and live DAH
