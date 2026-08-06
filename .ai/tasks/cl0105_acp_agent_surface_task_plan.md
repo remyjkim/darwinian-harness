@@ -91,7 +91,7 @@ Nothing below L2 knows what ACP is; nothing above L2 knows what the Deploy API i
 | `session/new` | *(deferred)* | Local state only; no `runId` until the first prompt. |
 | first `session/prompt` | `POST /api/minds/:slug/chat` | Returns `{runId}`; duplicate starts dedupe to the same `{runId}` or `409 invocation_pending` — on 409, back off and retry once before erroring the turn. |
 | later `session/prompt` | `POST /api/chat/:runId/message` | Reject locally if a prompt is already active on the session. |
-| `session/update` | `GET /api/minds/:slug/chat/:runId/stream-poll?since=` | Cursor = `lastSeq`; L2 owns it; replay-safe on reconnect. |
+| `session/update` | `GET /api/minds/:slug/chat/:runId/stream-poll?since=` | Cursor = `lastSeq`; L2 owns it; replay-safe on reconnect. **Live-verified wire shape (2026-08-05, `run-42118fae…`):** the response is `{lastSeq, events: [{seq, sourceId, event: StreamEvent}]}` — each entry **wraps** the event; the session layer unwraps `entry.event` before projection, may use outer `seq`/`sourceId` (`"orchestrator"`; panels are multi-source). `text.delta`/`step`/`agent.completed` shapes confirmed exact; `v: 1`; seq monotonic from 1; settle observed as `agent.completed` + run status `yielded`. |
 | `session/load` | `GET /api/chat/:runId/snapshot` | Roles + text + tool chips; fidelity limit documented in architecture §4. |
 | prompt result | run settles | `yielded` → `end_turn`; `done` → `end_turn` + session marked non-continuable; `failed` → JSON-RPC error; `not_found` → error. |
 | `session/cancel` | Phase 4: `POST /api/chat/:runId/cancel` | Pre-I106: protocol-side resolution + stderr warning. |
@@ -107,6 +107,14 @@ Nothing below L2 knows what ACP is; nothing above L2 knows what the Deploy API i
 | `step {finishReason?, usage?}` | dropped in v1 (Buzz reads usage via a goose-private method, not ACP) |
 | `agent.completed` / `agent.failed` | no update — resolves the prompt (`end_turn` / error) |
 | unknown type or `v ≠ 1` | dropped, debug-logged to stderr |
+
+Live-verification ledger (fold-forward as e2e lands): ✅ start contract (`200 {runId}`) ·
+✅ raw-stream fidelity for `text.delta`/`step`/`agent.completed` + cursor + `yielded` settle ·
+✅ boot-failure runs emit **zero** entries (no terminal event — settlement detection must
+dual-track run status, never stream-only) · ⏳ `tool.call` `args` and `reasoning.delta` text
+remain code-verified only — first live observation lands with `e2e-acp-editor` against a
+tool-bearing Worker. Cost note: a one-word turn consumed ~13k input tokens (≈$0.04) — e2e
+prompts stay minimal and turn counts small.
 
 Stop reasons emitted are exactly the five Buzz recognizes — `end_turn`, `cancelled`,
 `max_tokens`, `max_turn_requests`, `refusal` — since an unknown string is a hard Protocol
