@@ -182,11 +182,12 @@ export async function materializeWorkerPayload(options: MaterializeWorkerOptions
       cwd: join(projectRoot, ".agents"),
       entries: ["drwn/config.json", "drwn/card.lock"],
       gzip: false,
+      noMtime: true,
     });
     emitted.projectTar = await emittedArtifact(options.emitProjectTar);
   }
   if (options.emitStoreTar) {
-    await createStoreExportForLock(agentsDir, lock.cards, options.emitStoreTar);
+    await createStoreExportForLock(agentsDir, lock.cards, options.emitStoreTar, { noMtime: true });
     emitted.storeTar = await emittedArtifact(options.emitStoreTar);
   }
 

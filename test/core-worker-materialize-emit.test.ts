@@ -39,6 +39,33 @@ describe("materializeWorkerPayload snapshot emission", () => {
     expect(result.emitted.storeTar?.sha256).toHaveLength(64);
   }, 60_000);
 
+  test("determinism: same payload + same layout re-emits byte-identical snapshots", async () => {
+    const { payload, repoRoot } = await goldenPayload();
+    const roots = await freshRoots();
+    const emit = async (suffix: string) => {
+      const projectTar = join(roots.base, `project-${suffix}.tar`);
+      const storeTar = join(roots.base, `store-${suffix}.tar`);
+      const result = await materializeWorkerPayload({
+        payload,
+        repoRoot,
+        ...roots,
+        emitProjectTar: projectTar,
+        emitStoreTar: storeTar,
+      });
+      return { project: result.emitted.projectTar?.sha256, store: result.emitted.storeTar?.sha256 };
+    };
+
+    const first = await emit("one");
+    await rm(roots.projectRoot, { recursive: true, force: true });
+    await rm(roots.homeDir, { recursive: true, force: true });
+    // Cross a whole-second boundary so recorded mtimes would differ if they were recorded.
+    await Bun.sleep(1100);
+    const second = await emit("two");
+
+    expect(second.project).toBe(first.project!);
+    expect(second.store).toBe(first.store!);
+  }, 120_000);
+
   test("restore replica: the emitted tars rebuild a clean project in the same layout via the real CLI", async () => {
     const { payload, repoRoot } = await goldenPayload();
     const roots = await freshRoots();

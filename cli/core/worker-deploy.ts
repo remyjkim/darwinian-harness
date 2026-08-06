@@ -245,11 +245,13 @@ export async function createStoreExportForLock(
   agentsDir: string,
   cards: CardLockEntry[],
   outPath: string,
+  options: { noMtime?: boolean } = {},
 ): Promise<string> {
   await createArchive(outPath, {
     cwd: agentsDir,
     entries: storeExportEntries(agentsDir, cards),
     gzip: false,
+    noMtime: options.noMtime,
   });
   return outPath;
 }

@@ -26,9 +26,14 @@ export interface CreateOptions {
   cwd: string;
   entries: string[];
   gzip?: boolean;
+  /** Omit mtimes so identical content archives to identical bytes. */
+  noMtime?: boolean;
 }
 
 /** Create a portable tar (no platform-specific metadata) from entries relative to cwd. */
 export async function create(outputPath: string, options: CreateOptions): Promise<void> {
-  await tar.c({ file: outputPath, cwd: options.cwd, gzip: options.gzip === true, portable: true }, options.entries);
+  await tar.c(
+    { file: outputPath, cwd: options.cwd, gzip: options.gzip === true, portable: true, noMtime: options.noMtime === true },
+    options.entries,
+  );
 }
