@@ -124,13 +124,6 @@ function validateInstructionsField(input: Record<string, unknown>, errors: strin
 // Governance fields are forward-declared: shape-validated here, enforced by the deployment runtime, not the CLI.
 function validateBlueprintFields(input: Record<string, unknown>, isBlueprint: boolean, errors: string[]) {
   const blueprintOnly = ["composedFrom", "tools", "evals", "contextMounts", "identity"] as const;
-  // permissions and escalation were retired (I220): no shape, no consumer. Authoring rejects
-  // them; consume paths never run this validator, so published history stays installable.
-  for (const retired of ["permissions", "escalation"] as const) {
-    if (input[retired] !== undefined) {
-      errors.push(`${retired} was retired (I220); remove it from card.json`);
-    }
-  }
   for (const field of blueprintOnly) {
     if (input[field] !== undefined && !isBlueprint) {
       errors.push(`${field} requires kind: "blueprint"`);
@@ -369,4 +362,20 @@ export function assertValidCardManifest(input: unknown): asserts input is CardMa
   if (!result.ok) {
     throw new Error(result.errors.join("; "));
   }
+}
+
+// permissions and escalation were retired (I220): no shape, no consumer. Authoring surfaces
+// reject them; the shared validator stays tolerant because lock validation runs it over
+// published history, which must remain installable.
+export const RETIRED_GOVERNANCE_FIELDS = ["permissions", "escalation"] as const;
+
+export function findRetiredGovernanceFields(input: unknown): string[] {
+  if (!isObject(input)) return [];
+  return RETIRED_GOVERNANCE_FIELDS.filter((field) => input[field] !== undefined);
+}
+
+export function retiredGovernanceFieldErrors(input: unknown): string[] {
+  return findRetiredGovernanceFields(input).map(
+    (field) => `${field} was retired (I220); remove it from card.json`,
+  );
 }
