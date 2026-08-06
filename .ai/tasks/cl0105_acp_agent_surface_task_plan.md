@@ -77,7 +77,7 @@ exponentially toward the idle cadence and never abandon a live session.
 cli/commands/acp/acp.ts          parent stub
 cli/commands/acp/serve.ts        L0  Clipanion command, stdio wiring, stderr-only logging
 cli/core/acp/connection.ts       L1  @agentclientprotocol/sdk agent(), NDJSON framing
-cli/core/acp/session.ts          L2  ACP sessionId ↔ runId, lifecycle, load/resume, local LRU
+cli/core/acp/session.ts          L2  ACP sessionId ↔ runId, lifecycle, load/resume, safe LRU
 cli/core/acp/project-events.ts   L3  StreamEntry → session/update (pure function)
 cli/core/acp/worker-binding.ts   L4  slug resolution → mind binding + base URLs
 cli/core/acp/buzz-profile.ts     L5  Buzz detection, version answer, delivery (Phase 5)
@@ -236,29 +236,31 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   remains unclaimed.
 
 ### Phase 3 — Lifecycle (architecture Phase 3)
-- Multi-turn `/message`, `session/load` from snapshot, cursor reconnect, bounded in-memory LRU,
-  durable session retention, and `authenticate` via device flow. Increments 5 and 7;
+- Multi-turn `/message`, `session/load` from snapshot, cursor reconnect, peer-safe durable LRU,
+  and `authenticate` via device flow. Increments 5 and 7;
   increment 6 remains gated with I106 instead of presenting a local stop as cancellation.
 - Exit: a two-turn editor conversation survives adapter restart via `session/load`.
 - **Automated implementation status (2026-08-05): complete.** A versioned local index
   preserves ACP `sessionId` → opaque `activeRunId`, cursor, cwd, continuability, and last-used
   metadata; index updates use a cross-process owner lock plus read-under-lock merge and atomic
   write. Prompt and load hold one shared per-session owner lock (SHA-256 filename) for the full
-  operation and map a live peer to ACP `-32001`; the only nested order is session → index.
-  Load refreshes the durable index on an in-memory miss and rejects cached-active or remotely
-  `running` sessions before replay notifications and raw-cursor priming.
+  operation, make the locked durable record authoritative over stale process state, and map a
+  live peer to ACP `-32001`. Load rejects cached-active or remotely `running` sessions before
+  replay notifications and raw-cursor priming.
   Schema v2 names the current run binding `activeRunId`, reads and upgrades the branch's
   earlier v1 `runId` records, and intentionally has no `taskId`. When a real Tasks API ships, add
   `{taskId, activeRunId}` through an explicit index-version migration rather than treating a
   Task ID as a run ID or inventing an API contract here.
-  **Residual risk:** durable GC is intentionally absent. `maxSessions` bounds only each
-  process's in-memory LRU; the index can grow until ACP supplies session-end semantics or a
-  cross-process lease makes inactivity provable. Phase 3 prefers retained restart/load mappings
-  over unsafe peer eviction.
+  Durable GC runs after the current operation releases its session lock. It takes exactly one
+  oldest candidate's session lock before the index lock and deletes only after re-reading the
+  index under that proof of inactivity. Busy or fail-closed candidates are skipped, allowing
+  temporary soft overflow rather than unsafe peer eviction. The only nested order is session →
+  index, and no path holds two session locks.
   Tests prove two-turn continuation, second-manager restart/load by the original ACP ID,
   concurrent-manager merge, prompt/load lock contention in both directions, load-time store
-  refresh, running-snapshot rejection, snapshot replay, cursor priming, in-memory LRU eviction,
-  durable retention at capacity, and DAH device authentication/credential persistence. Manual
+  refresh, stale-manager reconciliation, running-snapshot rejection, snapshot replay, cursor
+  priming, in-memory LRU eviction, peer-safe durable LRU/soft overflow, and DAH device
+  authentication/credential persistence. Manual
   editor restart and live DAH device-flow validation remain unclaimed. The real-API two-turn
   restart gate now exists at
   `test/e2e-acp-editor.test.ts`; this implementation run verified its named skip with
@@ -276,7 +278,7 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   surface `cancelling`-but-not-yet-settled honestly on stderr. Do not build a
   "stopped instantly" UX expectation into v1; `cancelling` is the truthful state until the
   accelerator lands.
-- Pre-gate: increment 6 semantics ship in Phase 3; this phase swaps in
+- Pre-gate: increment 6 remains a no-op in Phase 3; this phase swaps in
   `POST /api/chat/:runId/cancel`, maps ack → `stopReason: cancelled`, handles
   `already_terminal`, and unskips the cancellation e2e.
 - Exit: cancel settles the run server-side within the ratified bound (verified by run

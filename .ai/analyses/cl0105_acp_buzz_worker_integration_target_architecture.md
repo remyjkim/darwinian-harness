@@ -325,16 +325,16 @@ acknowledgements non-issues.
 
 Concurrency is per local ACP identity. Prompt and load both hold the same owner-record lock
 whose filename is the SHA-256 of `sessionId`; a live peer process maps lock contention to ACP
-`-32001`. The only nested order is session lock → session-index lock — index-only creation never
-acquires a session lock — so there is no reverse-order cycle. On an in-memory load miss, the
-manager atomically re-reads the durable index before resolving the session's slug. A cached
-active session or a snapshot still marked `running` is rejected before notifications and raw
-cursor priming.
+`-32001`. Once inside that lock, the durable record is re-read and made authoritative over any
+stale in-process cache. A cached active session or a snapshot still marked `running` is rejected
+before notifications and raw cursor priming.
 
-`maxSessions` bounds only the process-local LRU. The durable session index is deliberately not
-pruned: without an ACP session-end signal or cross-process lease, one adapter cannot prove that
-the oldest mapping is inactive in a peer. Durable mappings may therefore grow until a safe
-lease/session-end garbage-collection contract exists.
+`maxSessions` bounds both the process-local LRU and, when inactivity can be proven, the durable
+index. Durable GC runs only after the current operation releases its session lock. It selects an
+oldest candidate, takes exactly that candidate's session lock, then re-reads and prunes under the
+index lock. A live or fail-closed candidate is skipped, allowing temporary soft overflow rather
+than deleting a peer-active mapping. The only nested order is session lock → session-index lock;
+no path holds two session locks, so there is no reverse-order cycle.
 
 ```ts
 // cli/core/acp/session.ts

@@ -670,6 +670,87 @@ describe("AcpSessionManager", () => {
     }
   });
 
+  test("uses a newer durable terminal state instead of a stale cached session", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-authoritative-"));
+    let ownerTurn = 0;
+    try {
+      const owner = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        idFactory: () => "sess_authoritative",
+        sleep: async () => {},
+        request: async (url, init) => {
+          if (url.endsWith("/api/minds/harari/chat")) return json({ runId: "run_authoritative" });
+          if (url.endsWith("/message")) {
+            ownerTurn += 1;
+            return json({ accepted: true });
+          }
+          if (url.endsWith("/status")) {
+            return json(runStatus(ownerTurn === 0 ? "yielded" : "done"));
+          }
+          return json({ lastSeq: ownerTurn === 0 ? 1 : 9, events: [] });
+        },
+      });
+      await owner.newSession({ cwd: "/workspace", mcpServers: [] });
+      await owner.prompt(
+        { sessionId: "sess_authoritative", prompt: [{ type: "text", text: "first" }] },
+        async () => {},
+      );
+
+      let staleContinuationPosts = 0;
+      const stale = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        sleep: async () => {},
+        request: async (url) => {
+          if (url.endsWith("/snapshot")) return json({ status: "yielded", items: [] });
+          if (url.endsWith("/message")) {
+            staleContinuationPosts += 1;
+            return json({ accepted: true });
+          }
+          if (url.endsWith("/status")) return json(runStatus("yielded"));
+          if (url.includes("stream-poll")) return json({ lastSeq: 2, events: [] });
+          return json({ error: `unexpected ${url}` }, 400);
+        },
+      });
+      await stale.loadSession(
+        { sessionId: "sess_authoritative", cwd: "/workspace", mcpServers: [] },
+        async () => {},
+      );
+
+      await owner.prompt(
+        { sessionId: "sess_authoritative", prompt: [{ type: "text", text: "finish" }] },
+        async () => {},
+      );
+      const beforeStalePrompt = await Bun.file(join(agentsDir, "drwn", "acp-sessions.json")).json() as {
+        sessions: Array<{ sessionId: string; cursor: number; continuable: boolean }>;
+      };
+      expect(beforeStalePrompt.sessions).toContainEqual(expect.objectContaining({
+        sessionId: "sess_authoritative",
+        cursor: 9,
+        continuable: false,
+      }));
+
+      await expect(stale.prompt(
+        { sessionId: "sess_authoritative", prompt: [{ type: "text", text: "stale" }] },
+        async () => {},
+      )).rejects.toMatchObject({ code: -32001 });
+      expect(staleContinuationPosts).toBe(0);
+      const afterStalePrompt = await Bun.file(join(agentsDir, "drwn", "acp-sessions.json")).json() as {
+        sessions: Array<{ sessionId: string; cursor: number; continuable: boolean }>;
+      };
+      expect(afterStalePrompt.sessions).toContainEqual(expect.objectContaining({
+        sessionId: "sess_authoritative",
+        cursor: 9,
+        continuable: false,
+      }));
+    } finally {
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
   test("holds one cross-manager session lock for the full prompt and rejects prompt or load contenders", async () => {
     const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-prompt-lock-"));
     let releasePoll!: () => void;
@@ -804,7 +885,7 @@ describe("AcpSessionManager", () => {
     }
   });
 
-  test("keeps durable mappings when a capacity-one peer writes while another manager is active", async () => {
+  test("keeps an active peer mapping during overflow, then safely returns durable storage to capacity", async () => {
     const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-durable-capacity-"));
     let releasePoll!: () => void;
     let pollEntered!: () => void;
@@ -852,12 +933,101 @@ describe("AcpSessionManager", () => {
         "sess_active_peer",
         "sess_capacity_peer",
       ]);
-      expect(afterPrompt.sessions.map((session) => session.sessionId).sort()).toEqual([
-        "sess_active_peer",
-        "sess_capacity_peer",
-      ]);
+      expect(afterPrompt.sessions.map((session) => session.sessionId)).toEqual(["sess_active_peer"]);
     } finally {
       releasePoll?.();
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("prunes the least-recently-used inactive durable mapping while protecting the new session", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-durable-lru-"));
+    const ids = ["sess_old", "sess_recent", "sess_new"];
+    let tick = 0;
+    try {
+      const manager = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        maxSessions: 2,
+        idFactory: () => ids.shift()!,
+        now: () => ++tick,
+        sleep: async () => {},
+        request: async (url, init) => {
+          if (init?.method === "POST") return json({ runId: "run_old" });
+          if (url.endsWith("/status")) return json(runStatus("yielded"));
+          return json({ lastSeq: 1, events: [] });
+        },
+      });
+      await manager.newSession({ cwd: "/old", mcpServers: [] });
+      await manager.newSession({ cwd: "/recent", mcpServers: [] });
+      await manager.prompt(
+        { sessionId: "sess_old", prompt: [{ type: "text", text: "touch" }] },
+        async () => {},
+      );
+      await manager.newSession({ cwd: "/new", mcpServers: [] });
+
+      const index = await Bun.file(join(agentsDir, "drwn", "acp-sessions.json")).json() as {
+        sessions: Array<{ sessionId: string }>;
+      };
+      expect(index.sessions.map((session) => session.sessionId).sort()).toEqual([
+        "sess_new",
+        "sess_old",
+      ]);
+    } finally {
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("prunes durable overflow after a successful load while protecting the loaded session", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-load-prune-"));
+    const indexPath = join(agentsDir, "drwn", "acp-sessions.json");
+    try {
+      await mkdir(join(agentsDir, "drwn"), { recursive: true });
+      await Bun.write(indexPath, `${JSON.stringify({
+        version: 2,
+        sessions: [
+          {
+            sessionId: "sess_load_old",
+            activeRunId: "run_load_old",
+            cursor: 1,
+            continuable: true,
+            cwd: "/old",
+            lastUsed: 1,
+            slug: "harari",
+          },
+          {
+            sessionId: "sess_load_target",
+            activeRunId: "run_load_target",
+            cursor: 2,
+            continuable: true,
+            cwd: "/target",
+            lastUsed: 2,
+            slug: "harari",
+          },
+        ],
+      }, null, 2)}\n`);
+      const manager = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        maxSessions: 1,
+        now: () => 3,
+        request: async (url) => {
+          if (url.endsWith("/snapshot")) return json({ status: "yielded", items: [] });
+          if (url.includes("stream-poll")) return json({ lastSeq: 3, events: [] });
+          return json({ error: `unexpected ${url}` }, 400);
+        },
+      });
+
+      await manager.loadSession(
+        { sessionId: "sess_load_target", cwd: "/target", mcpServers: [] },
+        async () => {},
+      );
+
+      const index = await Bun.file(indexPath).json() as { sessions: Array<{ sessionId: string }> };
+      expect(index.sessions.map((session) => session.sessionId)).toEqual(["sess_load_target"]);
+    } finally {
       await rm(agentsDir, { recursive: true, force: true });
     }
   });

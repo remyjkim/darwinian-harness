@@ -87,6 +87,7 @@ const SESSION_INDEX_VERSION = 2;
 const LEGACY_SESSION_INDEX_VERSION = 1;
 const SESSION_INDEX_BUSY = "ACP_SESSION_INDEX_BUSY";
 const SESSION_OPERATION_BUSY = "ACP_SESSION_OPERATION_BUSY";
+const SESSION_OPERATION_UNRECOVERABLE = "ACP_SESSION_OPERATION_LOCK_UNRECOVERABLE";
 const sessionIndexWrites = new Map<string, Promise<unknown>>();
 
 interface PersistedSession {
@@ -307,6 +308,7 @@ export class AcpSessionManager {
     };
     this.remember(session, sessionId);
     await this.persistSession(session);
+    await this.prunePersistedSessions(sessionId);
     return { sessionId };
   }
 
@@ -317,7 +319,12 @@ export class AcpSessionManager {
   ): Promise<PromptResponse> {
     throwIfAborted(signal);
     await this.ensureStoreLoaded();
-    return this.withSessionOwnerLock(params.sessionId, () => this.promptLocked(params, notify, signal));
+    const response = await this.withSessionOwnerLock(
+      params.sessionId,
+      () => this.promptLocked(params, notify, signal),
+    );
+    await this.prunePersistedSessions(params.sessionId);
+    return response;
   }
 
   private async promptLocked(
@@ -325,7 +332,7 @@ export class AcpSessionManager {
     notify: NotifySessionUpdate,
     signal?: AbortSignal,
   ): Promise<PromptResponse> {
-    const session = this.sessions.get(params.sessionId);
+    const session = await this.resolveSessionAfterLock(params.sessionId);
     if (!session) throw RequestError.resourceNotFound(`session:${params.sessionId}`);
     if (session.active) throw new RequestError(-32001, `Session ${params.sessionId} already has an active prompt`);
     if (!session.continuable) throw new RequestError(-32001, `Session ${params.sessionId} is terminal`);
@@ -356,7 +363,12 @@ export class AcpSessionManager {
   ): Promise<LoadSessionResponse> {
     throwIfAborted(signal);
     await this.ensureStoreLoaded();
-    return this.withSessionOwnerLock(params.sessionId, () => this.loadSessionLocked(params, notify, signal));
+    const response = await this.withSessionOwnerLock(
+      params.sessionId,
+      () => this.loadSessionLocked(params, notify, signal),
+    );
+    await this.prunePersistedSessions(params.sessionId);
+    return response;
   }
 
   private async loadSessionLocked(
@@ -364,21 +376,11 @@ export class AcpSessionManager {
     notify: NotifySessionUpdate,
     signal?: AbortSignal,
   ): Promise<LoadSessionResponse> {
-    const cached = this.sessions.get(params.sessionId);
+    const cached = await this.resolveSessionAfterLock(params.sessionId);
     if (cached?.active) {
       throw new RequestError(-32001, `Session ${params.sessionId} already has an active prompt`);
     }
-    if (!cached) await this.refreshPersistedSessions();
-    const persisted = this.persistedSessions.get(params.sessionId);
-    const source = cached ?? (persisted && persisted.slug === this.options.slug ? {
-      sessionId: persisted.sessionId,
-      runId: persisted.activeRunId,
-      cursor: persisted.cursor,
-      active: false,
-      continuable: persisted.continuable,
-      cwd: persisted.cwd,
-      lastUsed: persisted.lastUsed,
-    } : null);
+    const source = cached;
     if (!source?.runId) throw RequestError.resourceNotFound(`session:${params.sessionId}`);
     if (source.cwd !== params.cwd) {
       throw RequestError.invalidParams(undefined, `Session ${params.sessionId} belongs to cwd ${source.cwd}`);
@@ -463,6 +465,26 @@ export class AcpSessionManager {
     this.persistedSessions = latest;
   }
 
+  private async resolveSessionAfterLock(sessionId: string): Promise<SessionState | null> {
+    const cached = this.sessions.get(sessionId) ?? null;
+    if (this.options.store === false) return cached;
+    await this.refreshPersistedSessions();
+    const persisted = this.persistedSessions.get(sessionId);
+    if (!persisted) return cached;
+    if (persisted.slug !== this.options.slug) return null;
+    const authoritative: SessionState = {
+      sessionId: persisted.sessionId,
+      runId: persisted.activeRunId,
+      cursor: persisted.cursor,
+      active: false,
+      continuable: persisted.continuable,
+      cwd: persisted.cwd,
+      lastUsed: persisted.lastUsed,
+    };
+    this.remember(authoritative, sessionId);
+    return authoritative;
+  }
+
   private async persistSession(session: SessionState): Promise<void> {
     if (this.options.store === false) return;
     const persisted: PersistedSession = {
@@ -480,9 +502,9 @@ export class AcpSessionManager {
       const latest = await readPersistedIndex(this.sessionIndexPath);
       latest.delete(session.sessionId);
       latest.set(session.sessionId, persisted);
-      // Durable mappings are not pruned by the bounded in-memory LRU. A process cannot
-      // observe whether a peer owns an active session, so safe durable GC needs a future
-      // cross-process lease or explicit session-end contract.
+      // Pruning happens after the current operation releases its session lock. The GC
+      // then proves a candidate inactive by taking that candidate's lock before the
+      // index lock, preserving the one session -> index lock order.
       const index: PersistedSessionIndex = {
         version: SESSION_INDEX_VERSION,
         sessions: [...latest.values()],
@@ -492,16 +514,77 @@ export class AcpSessionManager {
     });
   }
 
+  private sessionOwnerLockOptions(sessionId: string) {
+    const digest = createHash("sha256").update(sessionId).digest("hex");
+    return {
+      path: join(this.options.context.agentsDir, "drwn", "acp-session-locks", `${digest}.lock`),
+      label: `ACP session ${sessionId}`,
+      busyCode: SESSION_OPERATION_BUSY,
+      unrecoverableCode: SESSION_OPERATION_UNRECOVERABLE,
+    };
+  }
+
+  private async prunePersistedSessions(protectedId: string): Promise<void> {
+    if (this.options.store === false) return;
+    const skipped = new Set<string>();
+    for (;;) {
+      await this.refreshPersistedSessions();
+      if (this.persistedSessions.size <= this.maxSessions) return;
+      const candidate = [...this.persistedSessions.values()]
+        .filter((session) => session.sessionId !== protectedId && !skipped.has(session.sessionId))
+        .sort((left, right) => left.lastUsed - right.lastUsed || left.sessionId.localeCompare(right.sessionId))[0];
+      if (!candidate) return;
+
+      let removed = false;
+      try {
+        removed = await withOwnerLock(this.sessionOwnerLockOptions(candidate.sessionId), async () =>
+          serializeSessionIndexWrite(this.sessionIndexPath, async () => {
+            const latest = await readPersistedIndex(this.sessionIndexPath);
+            if (latest.size <= this.maxSessions) {
+              this.persistedSessions = latest;
+              return false;
+            }
+            const oldest = [...latest.values()]
+              .filter((session) => session.sessionId !== protectedId && !skipped.has(session.sessionId))
+              .sort((left, right) =>
+                left.lastUsed - right.lastUsed || left.sessionId.localeCompare(right.sessionId)
+              )[0];
+            if (!oldest || oldest.sessionId !== candidate.sessionId) {
+              this.persistedSessions = latest;
+              return false;
+            }
+            latest.delete(candidate.sessionId);
+            const index: PersistedSessionIndex = {
+              version: SESSION_INDEX_VERSION,
+              sessions: [...latest.values()],
+            };
+            await writeAtomically(this.sessionIndexPath, `${JSON.stringify(index, null, 2)}\n`);
+            this.persistedSessions = latest;
+            return true;
+          })
+        );
+      } catch (error) {
+        if (
+          error instanceof DrwnError &&
+          (error.code === SESSION_OPERATION_BUSY || error.code === SESSION_OPERATION_UNRECOVERABLE)
+        ) {
+          skipped.add(candidate.sessionId);
+          continue;
+        }
+        throw error;
+      }
+      if (removed) {
+        skipped.clear();
+      } else {
+        skipped.add(candidate.sessionId);
+      }
+    }
+  }
+
   private async withSessionOwnerLock<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
     if (this.options.store === false) return operation();
-    const digest = createHash("sha256").update(sessionId).digest("hex");
     try {
-      return await withOwnerLock({
-        path: join(this.options.context.agentsDir, "drwn", "acp-session-locks", `${digest}.lock`),
-        label: `ACP session ${sessionId}`,
-        busyCode: SESSION_OPERATION_BUSY,
-        unrecoverableCode: "ACP_SESSION_OPERATION_LOCK_UNRECOVERABLE",
-      }, operation);
+      return await withOwnerLock(this.sessionOwnerLockOptions(sessionId), operation);
     } catch (error) {
       if (error instanceof DrwnError && error.code === SESSION_OPERATION_BUSY) {
         throw new RequestError(-32001, `Session ${sessionId} already has an active prompt or load`);
