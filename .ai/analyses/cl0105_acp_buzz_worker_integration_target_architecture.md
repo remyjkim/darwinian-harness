@@ -104,7 +104,7 @@ with an append-only event log addressed by a monotonic cursor.
 | `session/new` | *(deferred)* | Allocate local state only. No `runId` exists until a prompt arrives, because the start call requires a `message`. |
 | first `session/prompt` | `POST /api/minds/:slug/chat` → `{runId}` | `chat-proxy.ts:353`, via the I50 invocation service — duplicate starts dedupe to the same `{runId}` or `409 invocation_pending`; response is `ChatStartResSchema` (`deploy-contracts.ts:216-218`). |
 | later `session/prompt` | `POST /api/chat/:runId/message` | `chat-proxy.ts:481`. |
-| `sessionId` | `runId` | Stable across turns, survives reload. |
+| `sessionId` | local durable ID → `activeRunId` | **Superseding implementation decision (2026-08-05):** ACP identity remains the `sess_*` ID allocated before a run exists; a versioned local binding resolves the opaque Deploy API run. This avoids changing ACP identity after the first prompt and leaves a migration path for future `{taskId, activeRunId}` without pretending a Task ID is a run ID. |
 | `session/load` | `GET /api/chat/:runId/snapshot` | `chat-proxy.ts:445`. Roles, text, and tool chips only — no `args`/`result`/reasoning, but enough for `loadSession: true`. |
 | `session/update` | `GET /api/chat/:runId/stream-poll?since=` | Raw `StreamEntry` with real deltas. See §5. |
 | `stopReason: end_turn` | run status `yielded` | Not `done`. `done`/`failed` are terminal and cannot be continued (`coordinator-do.ts:1687-1729`). |
@@ -120,12 +120,16 @@ The event vocabulary maps almost one-to-one
 | `tool.call` (`toolCallId`, `toolName`, `args`) | `tool_call` | yes, resets idle clock |
 | `tool.result` (`toolCallId`, `result`) | `tool_call_update` | yes |
 | `step` (`finishReason`, `usage`) | `usage_update` | tolerated |
-| `agent.completed` | prompt result `end_turn` | — |
-| `agent.failed` | prompt result error | — |
+| `agent.completed` | no update; run status remains authoritative | — |
+| `agent.failed` | no update; run status remains authoritative | — |
 
 `toolCallId` correlates `tool.call`→`tool.result` exactly as ACP correlates
 `tool_call`→`tool_call_update`. `WIRE.md` anticipates this: *"an adapter to/from that shape
 is a thin mapping at the edge."*
+
+The two agent events above are not run terminals: panel workers can complete or fail while
+the run continues, and the orchestrator can emit `agent.failed` before retrying the turn.
+Only the owner-gated run-status response settles or fails an ACP prompt.
 
 ## 5. Use `stream-poll`, Not SSE
 
@@ -371,8 +375,9 @@ because the runtime is remote.
 - **Protocol**: exact serialized bytes. One JSON object per line, no embedded newlines,
   numeric and string ids, unknown methods answered `-32601` (Buzz hangs on silence),
   unknown `_meta` tolerated, stdout uncontaminated.
-- **Projection**: table-driven `StreamEntry` → `session/update`, including out-of-order
-  arrival, gaps in `seq`, and unknown event types.
+- **Projection**: table-driven per-entry `StreamEntry` → `session/update`, independent of
+  the numeric `seq` value and tolerant of gaps/unknown event types. It preserves arrival
+  order; the Deploy API wire contract, not the projector, supplies monotonic ordering.
 - **Lifecycle**: cancel before start, mid-stream, and during a tool call; terminal-run
   continuation rejected; snapshot reload.
 - **Buzz profile**: a fake Buzz client reproducing the real handshake — `protocolVersion: 2`,
@@ -385,7 +390,7 @@ because the runtime is remote.
 
 | Acceptance criterion (I105 row) | Evidence that proves it |
 | --- | --- |
-| Zed launches `drwn acp` and completes a multi-turn session that survives an adapter restart | Lifecycle suite: the in-process command harness (`Cli.run` + `CaptureStream` + `globalThis.fetch` stub, pattern at `test/commands-worker-chat.test.ts:49-102`) drives `initialize → session/new → session/prompt ×2`, then tears the command down and re-enters via `session/load` with the same `runId`, asserting context survives. |
+| Zed launches `drwn acp` and completes a multi-turn session that survives an adapter restart | Lifecycle suite: the in-process command harness (`Cli.run` + `CaptureStream` + `globalThis.fetch` stub, pattern at `test/commands-worker-chat.test.ts:49-102`) drives `initialize → session/new → session/prompt ×2`, then tears the command down and re-enters via `session/load` with the same local ACP `sessionId`, asserting its durable `activeRunId` binding preserves context. |
 | A Buzz mention produces a streamed answer from the deployed Worker in the correct channel | Credential-gated E2E (`test/e2e-acp-buzz.test.ts`, `skipIf` pattern per `test/e2e-mind-journey.test.ts:13-14`): real relay, real `buzz-acp`, real deployed Worker; asserts the reply lands in the configured channel. Never mocked. |
 | A permanent Buzz-profile compatibility suite passes against a fake client reproducing Buzz's real handshake | `test/core-acp-buzz-profile.test.ts`: fake Buzz client replaying the recorded handshake — `protocolVersion: 2`, goose `_meta`, no `fs`/`terminal` capability, auto-`allow_once`, `session/cancel`. Permanent suite because this interface is ahead of stable ACP. |
 | Buzz integration does not ship before [I106] lands | Phase gate plus a skipped suite: Phase 4's cancellation tests exist from day one but `skipIf` until `POST /api/chat/:runId/cancel` is live; the Buzz profile stays disabled until that suite runs unskipped. |

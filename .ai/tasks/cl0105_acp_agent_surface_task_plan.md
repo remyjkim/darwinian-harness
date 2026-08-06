@@ -92,9 +92,17 @@ Nothing below L2 knows what ACP is; nothing above L2 knows what the Deploy API i
 | first `session/prompt` | `POST /api/minds/:slug/chat` | Returns `{runId}`; duplicate starts dedupe to the same `{runId}` or `409 invocation_pending` — on 409, back off and retry once before erroring the turn. |
 | later `session/prompt` | `POST /api/chat/:runId/message` | Reject locally if a prompt is already active on the session. |
 | `session/update` | `GET /api/minds/:slug/chat/:runId/stream-poll?since=` | Cursor = `lastSeq`; L2 owns it; replay-safe on reconnect. **Live-verified wire shape (2026-08-05, `run-42118fae…`):** the response is `{lastSeq, events: [{seq, sourceId, event: StreamEvent}]}` — each entry **wraps** the event; the session layer unwraps `entry.event` before projection, may use outer `seq`/`sourceId` (`"orchestrator"`; panels are multi-source). `text.delta`/`step`/`agent.completed` shapes confirmed exact; `v: 1`; seq monotonic from 1; settle observed as `agent.completed` + run status `yielded`. |
+| prompt settlement | `GET /api/chat/:runId/status` | Lightweight second track for zero-event failures; exact response is `{status, runMetrics:{startedAt,finishedAt,totalTokens}}` (verified against Darwinian Services `d6575105`). |
 | `session/load` | `GET /api/chat/:runId/snapshot` | Roles + text + tool chips; fidelity limit documented in architecture §4. |
-| prompt result | run settles | `yielded` → `end_turn`; `done` → `end_turn` + session marked non-continuable; `failed` → JSON-RPC error; `not_found` → error. |
-| `session/cancel` | Phase 4: `POST /api/chat/:runId/cancel` | Pre-I106: protocol-side resolution + stderr warning. |
+| prompt result | run settles | `yielded` → `end_turn`; `done` → `end_turn` + session marked non-continuable; `failed` → JSON-RPC error; missing/non-owner runs → HTTP-backed error. |
+| `session/cancel` | Phase 4: `POST /api/chat/:runId/cancel` | I106-gated; the currently registered notification handler is an explicit no-op and makes no false server-side cancellation claim. |
+
+**Superseding implementation decision (2026-08-05):** architecture §4 originally equated
+ACP `sessionId` with Deploy API `runId`. The adapter instead keeps the pre-run local
+`sess_*` identity stable and resolves it through the durable `activeRunId` binding. A run
+does not exist at `session/new`, and changing the ACP identity after the first prompt would
+break restart/load. The versioned store is also the explicit seam for a future Tasks-era
+`{taskId, activeRunId}` migration; no nonexistent Tasks API is implemented here.
 
 ### Event projection (L3, table-driven)
 
@@ -105,16 +113,23 @@ Nothing below L2 knows what ACP is; nothing above L2 knows what the Deploy API i
 | `tool.call {toolCallId, toolName, args}` | `tool_call` (status `in_progress`, `rawInput: args`) |
 | `tool.result {toolCallId, result}` | `tool_call_update` (status `completed`, `rawOutput: result`) |
 | `step {finishReason?, usage?}` | dropped in v1 (Buzz reads usage via a goose-private method, not ACP) |
-| `agent.completed` / `agent.failed` | no update — resolves the prompt (`end_turn` / error) |
-| unknown type or `v ≠ 1` | dropped, debug-logged to stderr |
+| `agent.completed` / `agent.failed` | no update — never settles the prompt; panels may terminate and orchestrator failures may retry while the run continues |
+| unknown type or `v ≠ 1` | silently dropped; the pure projector does not write stderr |
 
 Live-verification ledger (fold-forward as e2e lands): ✅ start contract (`200 {runId}`) ·
 ✅ raw-stream fidelity for `text.delta`/`step`/`agent.completed` + cursor + `yielded` settle ·
 ✅ boot-failure runs emit **zero** entries (no terminal event — settlement detection must
-dual-track run status, never stream-only) · ⏳ `tool.call` `args` and `reasoning.delta` text
+dual-track run status, never stream-only) · ✅ run status is the sole settlement authority
+even when panel/orchestrator agent events arrive · ⏳ `tool.call` `args` and `reasoning.delta` text
 remain code-verified only — first live observation lands with `e2e-acp-editor` against a
 tool-bearing Worker. Cost note: a one-word turn consumed ~13k input tokens (≈$0.04) — e2e
 prompts stay minimal and turn counts small.
+
+The current `/status` response intentionally contains status and metrics, not a terminal
+error payload. A prior orchestrator `agent.failed` may describe an attempt that the engine
+then retried, so the adapter does not reuse that potentially stale text when a later status
+becomes `failed`; it reports a generic run failure until the status contract carries
+authoritative failure detail.
 
 Stop reasons emitted are exactly the five Buzz recognizes — `end_turn`, `cancelled`,
 `max_tokens`, `max_turn_requests`, `refusal` — since an unknown string is a hard Protocol
@@ -123,8 +138,8 @@ error in Buzz (`acp.rs:1960-1965`).
 ### Auth
 
 `resolveToken` / `fetchJsonWithWorkerAuth` are reused verbatim (401 → one refresh+retry for
-stored credentials). Phase 1–2: a missing credential fails `initialize` with guidance to run
-`drwn login`. Phase 3 adds `authMethods: [{id: "dah-device"}]` and an `authenticate`
+stored credentials). Phase 1–2: a missing credential fails the first authenticated Worker
+request with guidance to run `drwn login`. Phase 3 adds `authMethods: [{id: "dah-device"}]` and an `authenticate`
 implementation over the existing device flow, with the terminal interaction on stderr.
 
 ## Testing strategy (TDD contract)
@@ -133,11 +148,13 @@ implementation over the existing device flow, with the terminal interaction on s
 
 - stdout carries only complete, single-line JSON-RPC frames — enforced by a stdout-purity
   guard test, since nothing else in the CLI enforces it.
-- Every request is answered: unknown methods get `-32601` (Buzz hangs on silence), malformed
-  JSON gets `-32700`, and an in-flight prompt always resolves — on settle, cancel, error, or
-  EOF — never leaks.
+- Every valid request is answered: unknown methods get `-32601` (Buzz hangs on silence),
+  malformed JSON is silently ignored without killing the SDK connection (the pinned SDK
+  behavior), and an in-flight prompt settles, errors, or aborts promptly with its request
+  signal on EOF — never leaks local polling. This does not claim server-side cancellation.
 - The projection is a pure function: same `StreamEntry` list in, same `session/update` list
-  out, order-preserving on `seq`, tolerant of gaps and unknown types.
+  out in arrival order. Per-entry mapping is independent of numeric `seq` and tolerates
+  gaps/unknown types; the Deploy API wire contract supplies monotonic order.
 - One active prompt per session; sessions are independent; cursor survives reconnect.
 - No test touches real machine state (`envFor` fixtures) and no mock stands in for a real
   API in e2e suites (credential-gated skips instead, per repo rules).
@@ -163,7 +180,7 @@ implementation over the existing device flow, with the terminal interaction on s
 4. Prompt → start-run → poll → stream → settle (fetch stub); `409 invocation_pending` retry;
    `failed` → error; cursor advance.
 5. Multi-turn `/message`; busy-session rejection; `session/load` from snapshot fixture.
-6. Cancel pre-I106 semantics (resolve + warn + stop polling); cancel idempotent.
+6. Reserved for Phase 4/I106 server cancellation; the current notification handler is a no-op.
 7. `authenticate` over device flow (stub hub).
 8. Buzz profile suite (fake client, permanent).
 9. Phase-4/5 increments per their gates.
@@ -176,8 +193,10 @@ the `darwinian-worker-skills` submodule initialized (per the I176 handoff, unset
 
 ### Definition of green
 
-Typecheck 0 errors; full suite 0 fail with skips ≤ the Phase 0 baseline; every new suite
-green; stdout-purity guard green; no mocked-behavior tests.
+Typecheck 0 errors; full suite 0 fail with no unaccounted skips. The six Phase-0 skips plus
+the named credential gate in `test/e2e-acp-editor.test.ts` are expected when
+`DRWN_E2E_DEPLOY` is absent (seven total); every new non-live suite green; stdout-purity
+guard green; no mock substitutes for the credential-gated real-API test.
 
 ### Non-goals & residual risk
 
@@ -208,11 +227,29 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
 - `worker-binding.ts` (slug contract), `session.ts` (start/poll/settle, backoff),
   `project-events.ts` (increment 3), streaming loop wiring (increment 4).
 - Exit: `drwn acp serve <slug>` streams a real deployed Worker's answer into Zed; suite green.
+- **Automated implementation status (2026-08-05): complete.** Start/poll/project/settle,
+  exact `invocation_pending` retry, unbounded transient backoff, wrapped raw-event cursors,
+  and lightweight `/status` settlement are covered. The manual deployed-Worker/Zed exit
+  remains unclaimed.
 
 ### Phase 3 — Lifecycle (architecture Phase 3)
 - Multi-turn `/message`, `session/load` from snapshot, cursor reconnect, session GC (LRU —
-  Buzz never sends a session-end), `authenticate` via device flow. Increments 5–7.
+  Buzz never sends a session-end), `authenticate` via device flow. Increments 5 and 7;
+  increment 6 remains gated with I106 instead of presenting a local stop as cancellation.
 - Exit: a two-turn editor conversation survives adapter restart via `session/load`.
+- **Automated implementation status (2026-08-05): complete.** A versioned local index
+  preserves ACP `sessionId` → opaque `activeRunId`, cursor, cwd, continuability, and LRU metadata;
+  index updates use a cross-process owner lock plus read-under-lock merge and atomic write.
+  Schema v2 names the current run binding `activeRunId`, reads and upgrades the branch's
+  earlier v1 `runId` records, and intentionally has no `taskId`. When a real Tasks API ships, add
+  `{taskId, activeRunId}` through an explicit index-version migration rather than treating a
+  Task ID as a run ID or inventing an API contract here.
+  Tests prove two-turn continuation, second-manager restart/load by the original ACP ID,
+  concurrent-manager merge, snapshot replay, cursor priming, busy rejection, LRU eviction,
+  and DAH device authentication/credential persistence. Manual editor restart and live DAH
+  device-flow validation remain unclaimed. The real-API two-turn restart gate now exists at
+  `test/e2e-acp-editor.test.ts`; this implementation run verified its named skip with
+  `DRWN_E2E_DEPLOY` absent, not a live deployment. Phases 4–5 remain unimplemented.
 
 ### Phase 4 — Cancellation ⛔ gated on [I106]
 - **Contract ratified 2026-08-05 (build against this):** terminal event = new

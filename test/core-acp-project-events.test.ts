@@ -56,12 +56,12 @@ describe("projectStreamEntry", () => {
       expected: [],
     },
     {
-      name: "agent.completed produces no update (it resolves the prompt)",
+      name: "agent.completed produces no update and is not a run terminal",
       input: entry({ type: "agent.completed", finishReason: "stop" }),
       expected: [],
     },
     {
-      name: "agent.failed produces no update (it errors the prompt)",
+      name: "agent.failed produces no update and is not a run terminal",
       input: entry({ type: "agent.failed", error: "boom" }),
       expected: [],
     },

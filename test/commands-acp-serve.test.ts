@@ -12,7 +12,7 @@ import { runAgentsCli, scaffoldCliFixture, envFor } from "./helpers";
 async function driveServe(fixtureEnv: Record<string, string>, requests: unknown[]) {
   const entrypoint = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
   const bunBin = Bun.which("bun") ?? process.execPath;
-  const proc = Bun.spawn([bunBin, "run", entrypoint, "acp", "serve"], {
+  const proc = Bun.spawn([bunBin, "run", entrypoint, "acp", "serve", "harari"], {
     cwd: join(import.meta.dir, ".."),
     stdin: "pipe",
     stdout: "pipe",
@@ -79,29 +79,36 @@ describe("drwn acp", () => {
     expect(init.id).toBe(0);
     expect(init.result.protocolVersion).toBe(1);
     expect(init.result.agentInfo.name).toBe("drwn-acp");
+    expect(init.result.authMethods).toEqual([{
+      id: "dah-device",
+      name: "Darwinian device login",
+      description: "Sign in through Darwinian Auth Hub using a browser device code.",
+    }]);
     const session = JSON.parse(sessionLine);
     expect(session.id).toBe(1);
     expect(typeof session.result.sessionId).toBe("string");
   });
 
-  test("stdout carries only protocol frames: canned prompt, -32601 for unknown methods", async () => {
+  test("serve fails with slug guidance when no positional, env, or binding exists", async () => {
+    const fixture = await scaffoldCliFixture();
+    const result = await runAgentsCli(["acp", "serve"], envFor(fixture), undefined, {
+      skipWriteScopeAuto: true,
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("No Worker slug for the ACP session");
+  });
+
+  test("stdout carries only protocol frames and -32601 for unknown methods", async () => {
     const fixture = await scaffoldCliFixture();
     const { frames, exitCode } = await driveServe(envFor(fixture), [
       { jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: 1, clientCapabilities: {} } },
       { jsonrpc: "2.0", id: 1, method: "session/new", params: { cwd: "/tmp", mcpServers: [] } },
-      {
-        jsonrpc: "2.0",
-        id: 2,
-        method: "session/prompt",
-        params: { sessionId: "ignored-by-canned-hooks", prompt: [{ type: "text", text: "hi" }] },
-      },
-      { jsonrpc: "2.0", id: 3, method: "made/up", params: {} },
+      { jsonrpc: "2.0", id: 2, method: "made/up", params: {} },
     ]);
     expect(exitCode).toBe(0);
     const parsed = frames.map((line) => JSON.parse(line));
     for (const frame of parsed) expect(frame.jsonrpc).toBe("2.0");
     const byId = new Map(parsed.map((frame) => [frame.id, frame]));
-    expect(byId.get(2)?.result?.stopReason).toBe("end_turn");
-    expect(byId.get(3)?.error?.code).toBe(-32601);
+    expect(byId.get(2)?.error?.code).toBe(-32601);
   });
 });
