@@ -215,10 +215,22 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
 - Exit: a two-turn editor conversation survives adapter restart via `session/load`.
 
 ### Phase 4 — Cancellation ⛔ gated on [I106]
+- **Contract ratified 2026-08-05 (build against this):** terminal event = new
+  `agent.cancelled` stream variant (DS coordinates the exact shape with us before it
+  ships); auth = owner-only; mechanism = staged C+A — the first release returns an honest
+  `cancelling` status with settlement bounded by one unit/turn (the cooperative-flag
+  backbone), and the AbortSignal accelerator that stops spend within seconds follows.
+- Adapter semantics accordingly: on `session/cancel`, POST cancel, resolve the ACP prompt
+  `cancelled` on the acknowledgement (criterion 3's ack-fast contract), keep polling until
+  the `agent.cancelled` terminal entry or a terminal run status confirms settlement, and
+  surface `cancelling`-but-not-yet-settled honestly on stderr. Do not build a
+  "stopped instantly" UX expectation into v1; `cancelling` is the truthful state until the
+  accelerator lands.
 - Pre-gate: increment 6 semantics ship in Phase 3; this phase swaps in
   `POST /api/chat/:runId/cancel`, maps ack → `stopReason: cancelled`, handles
   `already_terminal`, and unskips the cancellation e2e.
-- Exit: cancel stops the run server-side (verified by run status) and the Buzz gate lifts.
+- Exit: cancel settles the run server-side within the ratified bound (verified by run
+  status + the `agent.cancelled` entry) and the Buzz gate lifts.
 
 ### Phase 5 — Buzz profile and delivery (B-lean + rider)
 - `buzz-profile.ts`: Buzz detection (clientInfo), `[Base]` handling, idle-clock awareness
