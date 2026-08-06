@@ -77,9 +77,9 @@
           "name": "@me/frontend-eng",
           "requested": "@me/frontend-eng@^1.0.0",
           "version": "1.0.0",
-          "path": "drwn/extracted/12cbddc028129937e2cc5e66421a94709c34f75f",
-          "integrity": "sha256-f23fd7b62045cbacf0a45a5e1d3c178c07e16c2a02be783a55102d64710067af",
-          "treeSha": "12cbddc028129937e2cc5e66421a94709c34f75f",
+          "path": "drwn/extracted/1c7db5312ea2786aa33ed5dd9c7f8bb3acc974b7",
+          "integrity": "sha256-9582b626dc187aa4ccb58862681b77a5c56b4ec4fef9ca38e63c28c5a7e0b630",
+          "treeSha": "1c7db5312ea2786aa33ed5dd9c7f8bb3acc974b7",
           "manifest": {
             "name": "@me/frontend-eng",
             "version": "1.0.0",
@@ -88,9 +88,6 @@
             "composedFrom": [
               "@me/react-builder@^1.0.0"
             ],
-            "permissions": {
-              "canMergePr": false
-            },
             "evals": [
               "passes_tests"
             ],
@@ -145,9 +142,6 @@
       "composedFrom": [
         "@me/react-builder@^1.0.0"
       ],
-      "permissions": {
-        "canMergePr": false
-      },
       "evals": [
         "passes_tests"
       ],
