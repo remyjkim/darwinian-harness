@@ -122,6 +122,10 @@ export interface EmittedArtifact {
 
 export interface MaterializeWorkerResult {
   cards: number;
+  staged: {
+    config: string;
+    lock: string;
+  };
   changes: string[];
   warnings: string[];
   emitted: {
@@ -160,9 +164,10 @@ export async function materializeWorkerPayload(options: MaterializeWorkerOptions
 
   const drwnDir = join(projectRoot, ".agents", "drwn");
   await mkdir(drwnDir, { recursive: true });
-  await writeFile(join(drwnDir, "config.json"), `${JSON.stringify(deriveMaterializeConfig(payload), null, 2)}\n`);
+  const staged = { config: join(drwnDir, "config.json"), lock: join(drwnDir, "card.lock") };
+  await writeFile(staged.config, `${JSON.stringify(deriveMaterializeConfig(payload), null, 2)}\n`);
   const lock = deriveMaterializeLock(payload, agentsDir);
-  await writeFile(join(drwnDir, "card.lock"), serializeCardLock(lock));
+  await writeFile(staged.lock, serializeCardLock(lock));
 
   for (const entry of lock.cards) {
     await ensureCardPresentFromLock(agentsDir, entry, true, { projectRoot });
@@ -186,6 +191,7 @@ export async function materializeWorkerPayload(options: MaterializeWorkerOptions
 
   return {
     cards: lock.cards.length,
+    staged,
     changes: sync.changes,
     warnings: sync.warnings,
     emitted,
