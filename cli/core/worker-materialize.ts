@@ -25,8 +25,15 @@ function invalidPayload(detail: string): never {
  * Gate the payload before any filesystem effect: exact contract version, the one supported
  * materialization mode, and the store-export digest. Forward payload versions must fail
  * loudly here — silent tolerance is how the V1↔V2 bridge broke in production.
+ *
+ * When external store bytes are supplied (the `--store-export` lane; the payload may then
+ * carry an empty inline base64), the digest check runs against those bytes — the payload's
+ * declared sha256/byteLength stay the single source of truth for both lanes.
  */
-export function validateMaterializePayload(raw: unknown): WorkerDeployPayload {
+export function validateMaterializePayload(
+  raw: unknown,
+  options: { storeExportBytes?: Buffer } = {},
+): WorkerDeployPayload {
   if (typeof raw !== "object" || raw === null) invalidPayload("expected an object");
   const payload = raw as Partial<WorkerDeployPayload>;
   if (payload.contractVersion !== WORKER_DEPLOY_CONTRACT_VERSION) {
@@ -39,7 +46,7 @@ export function validateMaterializePayload(raw: unknown): WorkerDeployPayload {
   if (!payload.lockfile || !Array.isArray(payload.lockfile.cards)) invalidPayload("lockfile is incomplete");
   const storeExport = payload.storeExport;
   if (!storeExport || typeof storeExport.bytesBase64 !== "string") invalidPayload("storeExport is incomplete");
-  const bytes = Buffer.from(storeExport.bytesBase64, "base64");
+  const bytes = options.storeExportBytes ?? Buffer.from(storeExport.bytesBase64, "base64");
   if (bytes.byteLength !== storeExport.byteLength) {
     invalidPayload(`storeExport byteLength ${storeExport.byteLength} does not match the supplied bytes (${bytes.byteLength})`);
   }
