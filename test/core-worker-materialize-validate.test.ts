@@ -13,7 +13,7 @@ function rawPayload(storeBytes: Buffer): Record<string, unknown> {
     lockfile: {
       lockfileVersion: 5,
       store: { minDrwnVersion: "0.8.0" },
-      cards: [],
+      cards: [{ name: "@me/bp", requested: "@me/bp@^1.0.0", version: "1.0.0" }],
     },
     config: { version: 1, cards: ["@me/bp"] },
     governance: null,
@@ -57,5 +57,11 @@ describe("validateMaterializePayload", () => {
   test("an unsupported materialization mode rejects", () => {
     const raw = { ...rawPayload(bytes), materialization: "something-else" };
     expect(() => validateMaterializePayload(raw)).toThrow(/materialization/);
+  });
+
+  test("an empty card closure rejects — cards[0] is the contractual entrypoint root", () => {
+    const raw = rawPayload(bytes);
+    (raw.lockfile as Record<string, unknown>).cards = [];
+    expect(() => validateMaterializePayload(raw)).toThrow(/cards/);
   });
 });

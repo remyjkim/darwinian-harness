@@ -1,5 +1,5 @@
 // ABOUTME: Owns the V1-deploy-payload → V2-project translation for drwn worker materialize:
-// ABOUTME: pure config/lock derivations now; validation, store seeding, and orchestration follow.
+// ABOUTME: validation gate, T1/T2 derivations, store seeding, orchestration, snapshot emission.
 
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -44,6 +44,7 @@ export function validateMaterializePayload(
   }
   if (!payload.entrypoint?.name || !payload.entrypoint.requested) invalidPayload("entrypoint is incomplete");
   if (!payload.lockfile || !Array.isArray(payload.lockfile.cards)) invalidPayload("lockfile is incomplete");
+  if (payload.lockfile.cards.length === 0) invalidPayload("lockfile.cards is empty — cards[0] must be the entrypoint root");
   const storeExport = payload.storeExport;
   if (!storeExport || typeof storeExport.bytesBase64 !== "string") invalidPayload("storeExport is incomplete");
   const bytes = options.storeExportBytes ?? Buffer.from(storeExport.bytesBase64, "base64");
