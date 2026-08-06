@@ -4,6 +4,8 @@
 # ACP Line — Successor Handoff
 
 **Written**: 2026-08-06 · **Author**: Remy (with the session that closed [I220]/[I221])
+**Corrected**: 2026-08-06 · successor custody transferred to the architecture coordinator;
+cross-repo pointers and the Task/Run boundary re-verified after PR #98 merged.
 **Mission**: give drwn a first-class ACP agent surface so ACP clients (Zed, Buzz) can
 drive deployed Darwinian Workers — delivery decision **B-lean + delivery-verification
 rider** (ratified; see `cl0105_review01_g1_g2_readiness.md`).
@@ -24,10 +26,11 @@ lane broke four ways; the fixes are shipped and Knowledge-captured:
   G3 review record: `cl0220_cl0221_review02_g3_implementation.md`.
 
 **Layer 2 — the adapter: Phases 0–3 in draft on PR #97** (`remy/I105-acp-adapter-phase-0-3`,
-a coworker's active draft — do not modify without coordinating). It carries session core
-with real settlement, multi-turn continuation, durable restart/load with cross-process
-ownership, and device auth. Its stated boundaries: pre-[I106] cancellation is an honest
-no-op; Phase 5 Buzz delivery unimplemented; manual/live exits unclaimed.
+now under architecture-coordinator custody; coordinate changes through the I105 issue thread
+and PR owner). It carries session core with real settlement, multi-turn continuation,
+durable restart/load with cross-process ownership, and device auth. Its stated boundaries:
+pre-[I106] cancellation is an honest no-op; Phase 5 Buzz delivery unimplemented;
+manual/live exits unclaimed.
 
 **Layer 3 — remaining to "fully achieved"** (§3 below): Phase 4 cancellation, Phase 5 Buzz
 delivery rider, live evidence, ship mechanics.
@@ -37,6 +40,11 @@ delivery rider, live evidence, ship mechanics.
 - `POST /api/minds/:slug/chat` → `200 {runId}`. Stream-poll entries are
   `{seq, sourceId, event: {v, seq, ts, type, ...}}` — **the entry wraps the event**;
   unwrap before dispatch.
+- `runId` predates ACP and remains the Deploy API's current execution handle. ACP keeps its
+  pre-run `sess_*` identity stable and persists `activeRunId`; when the Darwinian Services
+  Tasks API exists, evolve the versioned binding to `{taskId, activeRunId}`. A Task is the
+  stable 0..n-run product aggregate, not a replacement for the run used by status, stream,
+  cancellation, artifacts, ownership, and billing routes.
 - **Boot-failure runs emit ZERO StreamEntries.** Adapters must dual-track run status —
   never wait on the stream alone.
 - Settle = `agent.completed` event + run status `yielded`. ~13k input tokens/turn
@@ -54,8 +62,10 @@ delivery rider, live evidence, ship mechanics.
 ## 3. Remaining work, in order
 
 1. **Phase 4 — cancellation** against the ratified [I106] contract
-   (`darwinian-services/.ai/analyses/cl0106_run_cancellation_interface_request.md` +
-   the decisions message): `agent.cancelled` stream variant, owner-only auth, staged
+   (`darwinian-worker/.ai/analyses/cl0106_run_cancellation_interface_request.md` for the
+   cross-repo interface; `darwinian-services/.ai/analyses/cl0106_cancellation_target_architecture.md`
+   and `.ai/tasks/cl0106_cancellation_task_plan.md` for the DS design and execution ladder):
+   `agent.cancelled` stream variant, owner-only auth, staged
    C+A mechanism (cooperative flag + AbortSignal accelerator), v1 returns honest
    `cancelling`. DS builds the endpoint; our side is a RED suite first (the I105 plan's
    Phase 4 section in `cl0105_acp_agent_surface_task_plan.md` has the folded-in ratified
@@ -66,7 +76,7 @@ delivery rider, live evidence, ship mechanics.
    compatibility verified in the spike), `com.block.buzz` `_meta` upstream draft,
    `drwn worker secret set` (per-worker secrets — DS moved to the per-worker framework;
    secrets still key on mind_id as naming lag, see
-   `cl0105_posting_identity_relay_membership_analysis.md` in darwinian-services).
+   `cl0105_posting_identity_relay_membership_analysis.md` in this repo).
 3. **Live evidence**: manual Zed smoke (Remy's item), `DRWN_E2E_DEPLOY=1` two-turn
    deployed-worker gate (test exists on PR #97, credential-gated), live device flow.
 4. **Ship mechanics**: cut a `darwinian` release carrying `acp` + `materialize`; DS bumps
@@ -96,11 +106,13 @@ this held when [I220]'s payload change merged mid-flight with zero golden-suite 
 
 **Architecture/decision docs (this repo):** `cl0105_acp_buzz_worker_integration_target_architecture.md`,
 `cl0105_acp_agent_surface_task_plan.md` (wire facts + ratified Phase 4 folded in),
-`cl0220_*`/`cl0221_*` G1s, plans, review01/review02, completions.
+`cl0106_run_cancellation_interface_request.md`, `cl0107_tool_governance_constraint_analysis.md`,
+and the `cl0220_*`/`cl0221_*` G1s, plans, review01/review02, completions.
 **Cross-repo (darwinian-services `.ai/analyses/`):** `cl0106_acp_deploy_api_remediation_handoff.md`,
 `cl0106_addendum01_staging_runtime_bump_request.md` (§7 ledger, §8 verified-transform recipe),
 `cl0204_acp_live_lane_completion_handoff.md` (SCQA, all open questions + options),
-`cl0107_tool_governance_constraint_analysis.md`.
+`cl0106_cancellation_target_architecture.md`, and `cl0107_tool_governance_target_architecture.md`;
+the corresponding execution plans live under `darwinian-services/.ai/tasks/`.
 
 ## 5. Environment traps (each cost real time)
 
