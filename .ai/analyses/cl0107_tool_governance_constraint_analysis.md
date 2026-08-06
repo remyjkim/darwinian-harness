@@ -22,17 +22,13 @@ Two candidate enforcement seams were investigated for the ACP work. Both fail:
 - **Interactive, via ACP `session/request_permission`** — impossible for remote execution.
   Tools run inside a Cloudflare container the ACP client cannot reach.
 - **Declarative, via the `toolPolicy` field on the chat start call** — the field exists and
-  is enforced, but only for routines and only at MCP-*server* granularity (corrected
-  2026-08-04 by the DS-side review, `darwinian-services`
-  `cl0106_acp_deploy_api_remediation_review01.md`; the original "serialized and ignored"
-  reading stopped one hop short — see §3).
+  is threaded through, but it enforces only Pipedream app/account routing. Any other shape
+  is serialized and ignored.
 
-The correct conclusion, refined: **for an interactive (ACP) run, the only real tool
-boundary today is the set of MCP servers the Card ships, plus the container sandbox** —
-`ROUTINE_TOOL_POLICY` is unset, so every Card-declared server connects. Routines do get
-enforcement, at server granularity. Per-tool-name governance (`tools.deny: ["x"]`) is inert
-everywhere, and the Card manifest governance fields are read by nothing in the deployed
-runtime.
+The correct conclusion is uncomfortable and should be stated plainly: **the only real tool
+boundary for a deployed Worker today is the set of MCP servers the Card ships, plus the
+container sandbox.** That is coarse but genuine. Everything finer-grained that we currently
+declare is documentation, not enforcement.
 
 ## 2. The Retraction
 
@@ -88,21 +84,16 @@ if (policy.version !== 1 || !Array.isArray(policy.allowedApps) ||
     typeof policy.policyHash !== "string") return { serialized: JSON.stringify(policy) };
 ```
 
-**Correction (2026-08-04, DS-side review):** the fall-through `{ serialized: … }` is *not*
-merely recorded — it continues into the container as the `ROUTINE_TOOL_POLICY` env var
-(`mind-streaming-runtime.ts:305-306`), where `routine-tool-policy.js` parses it into one of
-three modes: absent → `interactive` (every Card server connects, no gating);
-present-and-valid → a *server-level* allowlist for routines; present-but-malformed →
-`invalid`, which **fails closed** — all card servers suppressed, health 503, chat 409
-(`routine-tool-policy.js:64-90`, `server.js`).
+Anything that does not match falls through to `{ serialized: … }` — recorded in run config,
+never enforced. And the one recognized shape is consumed at a single site, `:480-486`, feeding
+Pipedream app/account routing. It is a Pipedream credential-scoping mechanism that happens to
+be named generically.
 
-**So the failure mode is loud, not silent.** If the adapter projected Card
-`tools.allow`/`tools.deny` into `toolPolicy` today, the run would break with a 409 rather
-than silently succeed — still wrong, for a different reason. The real gaps are: enforcement
-granularity is the MCP *server*, never the tool name (`tools.deny: ["x"]` is inert even in
-a valid policy); and interactive/ACP runs carry no policy at all, so today's enforcement
-exists only for routines, which mint a signed policy that nothing derives from Card
-manifest `tools.*`.
+**The failure mode this creates is the dangerous kind.** If the adapter projected Card
+`tools.allow`/`tools.deny` into `toolPolicy` today, the call would succeed, the policy would
+be stored, and nothing would be enforced. `drwn status` would report governance as configured.
+An operator would reasonably believe a deny list was active. A silent no-op that is reported
+as a control is worse than an absent control.
 
 ## 4. What Actually Constrains A Deployed Worker
 
@@ -127,8 +118,8 @@ Not on that list, and not enforced: `tools.allow`, `tools.deny`, `permissions`, 
 ### 5.1 For the ACP adapter (`drwn` CLI)
 
 - The adapter **must not** advertise or imply tool gating. It has none.
-- It should not send Card `tools.*` in `toolPolicy` until §6 lands: an unrecognized shape
-  trips the container's fail-closed `invalid` mode and 409s the run outright.
+- It should not send Card `tools.*` in `toolPolicy` until §6 lands, because doing so
+  manufactures a false positive.
 - Buzz's auto-approval of ACP permission requests (`acp.rs:1671-1731`, unconditional
   `allow_once` by `kind`) cannot be compensated for from the client side. This is worth
   stating in operator-facing docs rather than leaving implicit.
@@ -167,9 +158,8 @@ Pipedream routes. Sketch, deliberately close to the existing shape so it can sub
 Requirements that matter more than the exact schema:
 
 1. **Deny beats allow**, unconditionally.
-2. **Unknown policy versions keep failing closed** — already true in-container for the
-   routine path (§3 correction); preserve that property when generalizing to per-tool
-   granularity and interactive scope.
+2. **Unknown policy versions fail closed**, not open. Today's fall-through to
+   `{ serialized }` is the opposite, and is the root cause of the silent no-op in §3.
 3. **Enforced at the call site**, inside the container's tool wrapper, so it covers every
    tool regardless of origin.
 4. **Denials are observable** — emitted on the event stream so an ACP client can render them
