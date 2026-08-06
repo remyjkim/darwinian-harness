@@ -122,17 +122,17 @@ function portableCardEntry(card: CardLockEntry): CardLockEntry {
   };
 }
 
-function governanceFromEntry(card: CardLockEntry): WorkerDeployGovernance | null {
+export function governanceFromEntry(card: CardLockEntry): WorkerDeployGovernance | null {
   if (card.manifest.kind !== "blueprint") {
     return null;
   }
   const manifest = card.manifest;
+  // permissions and escalation were retired (I220); legacy manifests may still carry them
+  // at runtime, and the payload must not forward them.
   return {
     composedFrom: manifest.composedFrom ?? [],
     ...(manifest.tools ? { tools: manifest.tools } : {}),
-    ...(manifest.permissions ? { permissions: manifest.permissions } : {}),
     ...(manifest.evals ? { evals: manifest.evals } : {}),
-    ...(manifest.escalation ? { escalation: manifest.escalation } : {}),
     ...(manifest.contextMounts ? { contextMounts: manifest.contextMounts } : {}),
     ...(manifest.identity ? { identity: manifest.identity } : {}),
   };
