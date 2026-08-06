@@ -92,13 +92,26 @@ const DETAILS = ["Available commands:", "  drwn worker routine create <slug>", "
 
 export class WorkerRoutineCommand extends BaseCommand {
   static override paths = [["worker", "routine"]];
-  static override usage = BaseCommand.Usage({ category: "Worker", description: "Schedule and manage recurring Worker runs.", details: DETAILS });
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "Schedule and manage recurring Worker runs.",
+    details: DETAILS,
+    examples: [
+      ["Create a daily 9am Routine", 'drwn worker routine create harari --name digest --cron "0 9 * * *"'],
+      ["List a Worker's Routines", "drwn worker routine list harari"],
+    ],
+  });
   async execute(): Promise<number> { this.context.stdout.write(`${DETAILS}\n`); return 0; }
 }
 
 export class WorkerRoutineCreateCommand extends BaseCommand {
   static override paths = [["worker", "routine", "create"]];
-  static override usage = BaseCommand.Usage({ category: "Worker", description: "Create a cron Routine." });
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "Create a cron Routine.",
+    details: "Registers a cron-triggered Routine on the deployed Worker. --cron takes a five-field cron expression evaluated in --timezone (default UTC). The run payload comes from --prompt or --payload (a JSON file); --account selects connected accounts; --jitter (default true) spreads start times.",
+    examples: [["Create a daily 9am Routine", 'drwn worker routine create harari --name digest --cron "0 9 * * *"']],
+  });
   slug = Option.String();
   name = Option.String("--name", { required: true });
   cron = Option.String("--cron", { required: true });
@@ -116,7 +129,12 @@ export class WorkerRoutineCreateCommand extends BaseCommand {
 
 export class WorkerRoutineListCommand extends BaseCommand {
   static override paths = [["worker", "routine", "list"]];
-  static override usage = BaseCommand.Usage({ category: "Worker", description: "List a Worker's Routines." });
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "List a Worker's Routines.",
+    details: "Shows every Routine on the Worker with its state, schedule, timezone, and next run. --json emits the raw records.",
+    examples: [["List Routines", "drwn worker routine list harari"]],
+  });
   slug = Option.String(); json = Option.Boolean("--json", false);
   async execute(): Promise<number> { return guarded(this, async (base) => {
     const data = await request(this, `${base}/api/minds/${enc(this.slug)}/routines`, z.object({ routines: z.array(routineSchema) }));
@@ -128,7 +146,12 @@ export class WorkerRoutineListCommand extends BaseCommand {
 
 export class WorkerRoutineUpdateCommand extends BaseCommand {
   static override paths = [["worker", "routine", "update"]];
-  static override usage = BaseCommand.Usage({ category: "Worker", description: "Update a Routine definition." });
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "Update a Routine definition.",
+    details: "Patches only the fields you pass (--name, --cron, --timezone, --prompt/--payload, --account, --jitter); at least one is required. Unset fields keep their current values.",
+    examples: [["Move a Routine to 6pm Seoul time", 'drwn worker routine update harari rtn_123 --cron "0 18 * * *" --timezone Asia/Seoul']],
+  });
   slug = Option.String(); id = Option.String();
   name = Option.String("--name"); cron = Option.String("--cron"); timezone = Option.String("--timezone");
   prompt = Option.String("--prompt"); payloadFile = Option.String("--payload"); accounts = Option.Array("--account");
@@ -154,12 +177,35 @@ abstract class ToggleCommand extends BaseCommand {
     writeRoutine(this, data.routine, this.json);
   }); }
 }
-export class WorkerRoutineEnableCommand extends ToggleCommand { static override paths = [["worker", "routine", "enable"]]; enabled = true; }
-export class WorkerRoutineDisableCommand extends ToggleCommand { static override paths = [["worker", "routine", "disable"]]; enabled = false; }
+export class WorkerRoutineEnableCommand extends ToggleCommand {
+  static override paths = [["worker", "routine", "enable"]];
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "Enable a Routine.",
+    details: "Turns the Routine's schedule back on; the next run is computed from the cron expression at enable time.",
+    examples: [["Enable a Routine", "drwn worker routine enable harari rtn_123"]],
+  });
+  enabled = true;
+}
+export class WorkerRoutineDisableCommand extends ToggleCommand {
+  static override paths = [["worker", "routine", "disable"]];
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "Disable a Routine.",
+    details: "Pauses the schedule without deleting the Routine; run history stays readable and enable restores it.",
+    examples: [["Disable a Routine", "drwn worker routine disable harari rtn_123"]],
+  });
+  enabled = false;
+}
 
 export class WorkerRoutineRunsCommand extends BaseCommand {
   static override paths = [["worker", "routine", "runs"]];
-  static override usage = BaseCommand.Usage({ category: "Worker", description: "Show Routine run history." });
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "Show Routine run history.",
+    details: "Pages through the Routine's runs newest-first with status, scheduled time, attempts, and the engine run id. --limit takes 1-100 (default 20); pass the printed cursor back with --cursor for the next page.",
+    examples: [["Show the latest runs", "drwn worker routine runs harari rtn_123"]],
+  });
   slug = Option.String(); id = Option.String(); limit = Option.String("--limit", "20"); cursor = Option.String("--cursor"); json = Option.Boolean("--json", false);
   async execute(): Promise<number> { return guarded(this, async (base) => {
     const limit = Number(this.limit); if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new RoutineApiError("--limit must be an integer from 1 to 100");
@@ -172,7 +218,12 @@ export class WorkerRoutineRunsCommand extends BaseCommand {
 
 export class WorkerRoutineRemoveCommand extends BaseCommand {
   static override paths = [["worker", "routine", "rm"]];
-  static override usage = BaseCommand.Usage({ category: "Worker", description: "Remove a Routine definition." });
+  static override usage = BaseCommand.Usage({
+    category: "Worker",
+    description: "Remove a Routine definition.",
+    details: "Deletes the Routine definition; refuses without --force. Run history remains readable until retention.",
+    examples: [["Remove a Routine", "drwn worker routine rm harari rtn_123 --force"]],
+  });
   slug = Option.String(); id = Option.String(); force = Option.Boolean("--force", false);
   async execute(): Promise<number> {
     if (!this.force) { this.context.stderr.write(`Refusing to remove Routine "${this.id}" without --force.\n`); return 1; }
