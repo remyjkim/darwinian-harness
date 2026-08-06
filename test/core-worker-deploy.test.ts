@@ -60,7 +60,6 @@ function normalizeForFixture(payload: WorkerDeployPayload): WorkerDeployPayload 
 async function publishBlueprintFixture(fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>) {
   await publishCardWithSkills(fixture, { name: "@me/react-builder", skills: ["react"] });
   await publishBlueprint(fixture, "@me/frontend-eng", ["@me/react-builder@^1.0.0"], {
-    permissions: { canMergePr: false },
     evals: ["passes_tests"],
     identity: { instructions: "Blueprint identity." },
   });

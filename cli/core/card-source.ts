@@ -6,6 +6,7 @@ import { cp, lstat, mkdir, readdir, readFile, rm, stat } from "node:fs/promises"
 import { basename, dirname, join, resolve } from "node:path";
 import {
   assertValidCardManifest,
+  retiredGovernanceFieldErrors,
   validateCardManifest,
   type CardManifest,
   type MindContentVisibility,
@@ -408,9 +409,11 @@ export async function readCardSourceState(sourceDirInput: string): Promise<CardS
       issues.push(issue("invalid_card_json", `card.json is not valid JSON: ${parsed.error}`, manifestPath));
     } else {
       const validation = validateCardManifest(parsed.value);
-      if (!validation.ok) {
-        manifestErrors.push(...validation.errors);
-        issues.push(issue("invalid_card_manifest", validation.errors.join("; "), manifestPath));
+      const retired = retiredGovernanceFieldErrors(parsed.value);
+      if (!validation.ok || retired.length > 0) {
+        const combined = [...validation.errors, ...retired];
+        manifestErrors.push(...combined);
+        issues.push(issue("invalid_card_manifest", combined.join("; "), manifestPath));
       } else {
         const validManifest = parsed.value as CardManifest;
         manifest = validManifest;

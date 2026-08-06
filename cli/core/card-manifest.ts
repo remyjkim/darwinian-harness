@@ -35,9 +35,7 @@ export interface CardManifest {
   kind?: "card" | "blueprint";
   composedFrom?: string[];
   tools?: { allow?: string[]; deny?: string[] };
-  permissions?: Record<string, unknown>;
   evals?: string[];
-  escalation?: { humanOwner?: string; escalateWhen?: string[] };
   contextMounts?: { read?: string[]; writeProposals?: string[] };
   identity?: Record<string, unknown>;
   instructions?: { text?: string; path?: string };
@@ -125,7 +123,7 @@ function validateInstructionsField(input: Record<string, unknown>, errors: strin
 
 // Governance fields are forward-declared: shape-validated here, enforced by the deployment runtime, not the CLI.
 function validateBlueprintFields(input: Record<string, unknown>, isBlueprint: boolean, errors: string[]) {
-  const blueprintOnly = ["composedFrom", "tools", "permissions", "evals", "escalation", "contextMounts", "identity"] as const;
+  const blueprintOnly = ["composedFrom", "tools", "evals", "contextMounts", "identity"] as const;
   for (const field of blueprintOnly) {
     if (input[field] !== undefined && !isBlueprint) {
       errors.push(`${field} requires kind: "blueprint"`);
@@ -143,19 +141,8 @@ function validateBlueprintFields(input: Record<string, unknown>, isBlueprint: bo
       if (tools.deny !== undefined && !isStringArray(tools.deny)) errors.push("tools.deny must be an array of strings");
     }
   }
-  if (input.permissions !== undefined && !isObject(input.permissions)) {
-    errors.push("permissions must be an object");
-  }
   if (input.evals !== undefined && !isStringArray(input.evals)) {
     errors.push("evals must be an array of strings");
-  }
-  if (input.escalation !== undefined) {
-    const escalation = input.escalation;
-    if (!isObject(escalation)) {
-      errors.push("escalation must be an object");
-    } else if (escalation.escalateWhen !== undefined && !isStringArray(escalation.escalateWhen)) {
-      errors.push("escalation.escalateWhen must be an array of strings");
-    }
   }
   if (input.contextMounts !== undefined) {
     const mounts = input.contextMounts;
@@ -375,4 +362,20 @@ export function assertValidCardManifest(input: unknown): asserts input is CardMa
   if (!result.ok) {
     throw new Error(result.errors.join("; "));
   }
+}
+
+// permissions and escalation were retired (I220): no shape, no consumer. Authoring surfaces
+// reject them; the shared validator stays tolerant because lock validation runs it over
+// published history, which must remain installable.
+export const RETIRED_GOVERNANCE_FIELDS = ["permissions", "escalation"] as const;
+
+export function findRetiredGovernanceFields(input: unknown): string[] {
+  if (!isObject(input)) return [];
+  return RETIRED_GOVERNANCE_FIELDS.filter((field) => input[field] !== undefined);
+}
+
+export function retiredGovernanceFieldErrors(input: unknown): string[] {
+  return findRetiredGovernanceFields(input).map(
+    (field) => `${field} was retired (I220); remove it from card.json`,
+  );
 }

@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type CardManifest, isCardScopeName, isCardUnscopedName, validateCardManifest } from "./card-manifest";
+import { type CardManifest, isCardScopeName, isCardUnscopedName, retiredGovernanceFieldErrors, validateCardManifest } from "./card-manifest";
 import { DrwnError } from "./errors";
 import { expandHomePath } from "./paths";
 
@@ -69,6 +69,10 @@ async function readValidatedSource(sourcePath: string, resolution: "explicit" | 
   const validation = validateCardManifest(raw);
   if (!validation.ok) {
     throw sourceError("CARD_SOURCE_INVALID", `Invalid Card manifest at ${manifestPath}: ${validation.errors.join("; ")}`);
+  }
+  const retired = retiredGovernanceFieldErrors(raw);
+  if (retired.length > 0) {
+    throw sourceError("CARD_SOURCE_INVALID", `Invalid Card manifest at ${manifestPath}: ${retired.join("; ")}`);
   }
   return { sourceDir, manifestPath, manifest: raw as CardManifest, resolution };
 }
