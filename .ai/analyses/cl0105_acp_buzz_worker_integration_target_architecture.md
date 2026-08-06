@@ -105,7 +105,7 @@ with an append-only event log addressed by a monotonic cursor.
 | first `session/prompt` | `POST /api/minds/:slug/chat` → `{runId}` | `chat-proxy.ts:353`, via the I50 invocation service — duplicate starts dedupe to the same `{runId}` or `409 invocation_pending`; response is `ChatStartResSchema` (`deploy-contracts.ts:216-218`). |
 | later `session/prompt` | `POST /api/chat/:runId/message` | `chat-proxy.ts:481`. |
 | `sessionId` | local durable ID → `activeRunId` | **Superseding implementation decision (2026-08-05):** ACP identity remains the `sess_*` ID allocated before a run exists; a versioned local binding resolves the opaque Deploy API run. This avoids changing ACP identity after the first prompt and leaves a migration path for future `{taskId, activeRunId}` without pretending a Task ID is a run ID. |
-| `session/load` | `GET /api/chat/:runId/snapshot` | `chat-proxy.ts:445`. Roles, text, and tool chips only — no `args`/`result`/reasoning, but enough for `loadSession: true`. |
+| `session/load` | `GET /api/chat/:runId/snapshot` | `chat-proxy.ts:445`. Roles, text, and tool chips only — no `args`/`result`/reasoning, but enough for `loadSession: true`. A `running` snapshot is rejected before replay or cursor priming; load never races an active turn. |
 | `session/update` | `GET /api/chat/:runId/stream-poll?since=` | Raw `StreamEntry` with real deltas. See §5. |
 | `stopReason: end_turn` | run status `yielded` | Not `done`. `done`/`failed` are terminal and cannot be continued (`coordinator-do.ts:1687-1729`). |
 | `stopReason: cancelled` | — | **No server support.** §6.1. |
@@ -322,6 +322,19 @@ export function projectStreamEntry(entry: StreamEntry): SessionUpdate[] {
 L2 owns the cursor. Every `session/update` batch advances `since`, and reconnection replays
 from the last delivered `seq` — which is what makes duplicate delivery and lost
 acknowledgements non-issues.
+
+Concurrency is per local ACP identity. Prompt and load both hold the same owner-record lock
+whose filename is the SHA-256 of `sessionId`; a live peer process maps lock contention to ACP
+`-32001`. The only nested order is session lock → session-index lock — index-only creation never
+acquires a session lock — so there is no reverse-order cycle. On an in-memory load miss, the
+manager atomically re-reads the durable index before resolving the session's slug. A cached
+active session or a snapshot still marked `running` is rejected before notifications and raw
+cursor priming.
+
+`maxSessions` bounds only the process-local LRU. The durable session index is deliberately not
+pruned: without an ACP session-end signal or cross-process lease, one adapter cannot prove that
+the oldest mapping is inactive in a peer. Durable mappings may therefore grow until a safe
+lease/session-end garbage-collection contract exists.
 
 ```ts
 // cli/core/acp/session.ts

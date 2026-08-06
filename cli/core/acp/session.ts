@@ -12,6 +12,7 @@ import {
   type SessionNotification,
   type SessionUpdate,
 } from "@agentclientprotocol/sdk";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentsContext } from "../../context";
@@ -85,6 +86,7 @@ const DEFAULT_MAX_SESSIONS = 100;
 const SESSION_INDEX_VERSION = 2;
 const LEGACY_SESSION_INDEX_VERSION = 1;
 const SESSION_INDEX_BUSY = "ACP_SESSION_INDEX_BUSY";
+const SESSION_OPERATION_BUSY = "ACP_SESSION_OPERATION_BUSY";
 const sessionIndexWrites = new Map<string, Promise<unknown>>();
 
 interface PersistedSession {
@@ -276,7 +278,7 @@ export class AcpSessionManager {
   private readonly maxSessions: number;
   private readonly now: () => number;
   private readonly sessionIndexPath: string;
-  private readonly persistedSessions = new Map<string, PersistedSession>();
+  private persistedSessions = new Map<string, PersistedSession>();
   private storeLoad: Promise<void> | null = null;
 
   constructor(private readonly options: AcpSessionManagerOptions) {
@@ -304,7 +306,7 @@ export class AcpSessionManager {
       lastUsed: this.now(),
     };
     this.remember(session, sessionId);
-    await this.persistSession(session, sessionId);
+    await this.persistSession(session);
     return { sessionId };
   }
 
@@ -315,6 +317,14 @@ export class AcpSessionManager {
   ): Promise<PromptResponse> {
     throwIfAborted(signal);
     await this.ensureStoreLoaded();
+    return this.withSessionOwnerLock(params.sessionId, () => this.promptLocked(params, notify, signal));
+  }
+
+  private async promptLocked(
+    params: PromptRequest,
+    notify: NotifySessionUpdate,
+    signal?: AbortSignal,
+  ): Promise<PromptResponse> {
     const session = this.sessions.get(params.sessionId);
     if (!session) throw RequestError.resourceNotFound(`session:${params.sessionId}`);
     if (session.active) throw new RequestError(-32001, `Session ${params.sessionId} already has an active prompt`);
@@ -326,7 +336,7 @@ export class AcpSessionManager {
       const message = promptText(params);
       if (session.runId === null) {
         session.runId = await this.startRun(message, signal);
-        await this.persistSession(session, session.sessionId);
+        await this.persistSession(session);
       } else {
         await this.continueRun(session.runId, message, signal);
       }
@@ -346,7 +356,19 @@ export class AcpSessionManager {
   ): Promise<LoadSessionResponse> {
     throwIfAborted(signal);
     await this.ensureStoreLoaded();
+    return this.withSessionOwnerLock(params.sessionId, () => this.loadSessionLocked(params, notify, signal));
+  }
+
+  private async loadSessionLocked(
+    params: LoadSessionRequest,
+    notify: NotifySessionUpdate,
+    signal?: AbortSignal,
+  ): Promise<LoadSessionResponse> {
     const cached = this.sessions.get(params.sessionId);
+    if (cached?.active) {
+      throw new RequestError(-32001, `Session ${params.sessionId} already has an active prompt`);
+    }
+    if (!cached) await this.refreshPersistedSessions();
     const persisted = this.persistedSessions.get(params.sessionId);
     const source = cached ?? (persisted && persisted.slug === this.options.slug ? {
       sessionId: persisted.sessionId,
@@ -372,6 +394,9 @@ export class AcpSessionManager {
     }
     const snapshot = body as ThreadSnapshotBody;
     const status = typeof snapshot.status === "string" ? snapshot.status : "yielded";
+    if (status === "running") {
+      throw new RequestError(-32001, `Session ${params.sessionId} is still running and cannot be loaded`);
+    }
     const session: SessionState = {
       sessionId: params.sessionId,
       runId,
@@ -402,7 +427,7 @@ export class AcpSessionManager {
     }
     const lastSeq = (cursorPoll.body as StreamPollBody).lastSeq;
     if (typeof lastSeq === "number") session.cursor = Math.max(0, lastSeq);
-    await this.persistSession(session, session.sessionId);
+    await this.persistSession(session);
     return {};
   }
 
@@ -429,7 +454,16 @@ export class AcpSessionManager {
     await this.storeLoad;
   }
 
-  private async persistSession(session: SessionState, protectedId?: string): Promise<void> {
+  private async refreshPersistedSessions(): Promise<void> {
+    if (this.options.store === false) return;
+    const latest = await serializeSessionIndexWrite(
+      this.sessionIndexPath,
+      () => readPersistedIndex(this.sessionIndexPath),
+    );
+    this.persistedSessions = latest;
+  }
+
+  private async persistSession(session: SessionState): Promise<void> {
     if (this.options.store === false) return;
     const persisted: PersistedSession = {
       sessionId: session.sessionId,
@@ -446,21 +480,34 @@ export class AcpSessionManager {
       const latest = await readPersistedIndex(this.sessionIndexPath);
       latest.delete(session.sessionId);
       latest.set(session.sessionId, persisted);
-      while (latest.size > this.maxSessions) {
-        const evictable = [...latest.values()].find((candidate) =>
-          candidate.sessionId !== protectedId && !this.sessions.get(candidate.sessionId)?.active
-        );
-        if (!evictable) break;
-        latest.delete(evictable.sessionId);
-      }
+      // Durable mappings are not pruned by the bounded in-memory LRU. A process cannot
+      // observe whether a peer owns an active session, so safe durable GC needs a future
+      // cross-process lease or explicit session-end contract.
       const index: PersistedSessionIndex = {
         version: SESSION_INDEX_VERSION,
         sessions: [...latest.values()],
       };
       await writeAtomically(this.sessionIndexPath, `${JSON.stringify(index, null, 2)}\n`);
-      this.persistedSessions.clear();
-      for (const value of latest.values()) this.persistedSessions.set(value.sessionId, value);
+      this.persistedSessions = latest;
     });
+  }
+
+  private async withSessionOwnerLock<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    if (this.options.store === false) return operation();
+    const digest = createHash("sha256").update(sessionId).digest("hex");
+    try {
+      return await withOwnerLock({
+        path: join(this.options.context.agentsDir, "drwn", "acp-session-locks", `${digest}.lock`),
+        label: `ACP session ${sessionId}`,
+        busyCode: SESSION_OPERATION_BUSY,
+        unrecoverableCode: "ACP_SESSION_OPERATION_LOCK_UNRECOVERABLE",
+      }, operation);
+    } catch (error) {
+      if (error instanceof DrwnError && error.code === SESSION_OPERATION_BUSY) {
+        throw new RequestError(-32001, `Session ${sessionId} already has an active prompt or load`);
+      }
+      throw error;
+    }
   }
 
   private async wait(ms: number, signal?: AbortSignal): Promise<void> {
@@ -631,7 +678,7 @@ export class AcpSessionManager {
         session.continuable = false;
         throw new RequestError(-32001, "Worker run failed: unknown failure");
       }
-      await this.persistSession(session, session.sessionId);
+      await this.persistSession(session);
       await this.wait(this.pollMs, signal);
     }
   }

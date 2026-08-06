@@ -77,7 +77,7 @@ exponentially toward the idle cadence and never abandon a live session.
 cli/commands/acp/acp.ts          parent stub
 cli/commands/acp/serve.ts        L0  Clipanion command, stdio wiring, stderr-only logging
 cli/core/acp/connection.ts       L1  @agentclientprotocol/sdk agent(), NDJSON framing
-cli/core/acp/session.ts          L2  ACP sessionId ↔ runId, lifecycle, load/resume, GC
+cli/core/acp/session.ts          L2  ACP sessionId ↔ runId, lifecycle, load/resume, local LRU
 cli/core/acp/project-events.ts   L3  StreamEntry → session/update (pure function)
 cli/core/acp/worker-binding.ts   L4  slug resolution → mind binding + base URLs
 cli/core/acp/buzz-profile.ts     L5  Buzz detection, version answer, delivery (Phase 5)
@@ -94,7 +94,7 @@ Nothing below L2 knows what ACP is; nothing above L2 knows what the Deploy API i
 | later `session/prompt` | `POST /api/chat/:runId/message` | Reject locally if a prompt is already active on the session. |
 | `session/update` | `GET /api/minds/:slug/chat/:runId/stream-poll?since=` | Cursor = `lastSeq`; L2 owns it; replay-safe on reconnect. **Live-verified wire shape (2026-08-05, `run-42118fae…`):** the response is `{lastSeq, events: [{seq, sourceId, event: StreamEvent}]}` — each entry **wraps** the event; the session layer unwraps `entry.event` before projection, may use outer `seq`/`sourceId` (`"orchestrator"`; panels are multi-source). `text.delta`/`step`/`agent.completed` shapes confirmed exact; `v: 1`; seq monotonic from 1; settle observed as `agent.completed` + run status `yielded`. |
 | prompt settlement | `GET /api/chat/:runId/status` | Lightweight second track for zero-event failures; exact response is `{status, runMetrics:{startedAt,finishedAt,totalTokens}}` (verified against Darwinian Services `d6575105`). |
-| `session/load` | `GET /api/chat/:runId/snapshot` | Roles + text + tool chips; fidelity limit documented in architecture §4. |
+| `session/load` | `GET /api/chat/:runId/snapshot` | Roles + text + tool chips; fidelity limit documented in architecture §4. Cached-active sessions and `running` snapshots reject with `-32001` before replay/cursor priming. |
 | prompt result | run settles | `yielded` → `end_turn`; `done` → `end_turn` + session marked non-continuable; `failed` → JSON-RPC error; missing/non-owner runs → HTTP-backed error. |
 | `session/cancel` | Phase 4: `POST /api/chat/:runId/cancel` | I106-gated; the currently registered notification handler is an explicit no-op and makes no false server-side cancellation claim. |
 
@@ -174,13 +174,15 @@ implementation over the existing device flow, with the terminal interaction on s
 
 ### Ordered RED→GREEN increments
 
-1. Framing: one frame per line, ids echoed, `-32601`, `-32700`, stdout purity.
+1. Framing: one frame per line, numeric and string ids echoed, `-32601`, malformed-line survival
+   (the pinned SDK stays silent and keeps serving), stdout purity.
 2. `initialize` (version 1 answer; Buzz's version-2 request answered 1), `session/new`,
    canned `session/prompt` → `end_turn`.
 3. Projection table — every `stream-events.ts` variant, then gaps/out-of-order/unknown.
 4. Prompt → start-run → poll → stream → settle (fetch stub); `409 invocation_pending` retry;
    `failed` → error; cursor advance.
-5. Multi-turn `/message`; busy-session rejection; `session/load` from snapshot fixture.
+5. Multi-turn `/message`; local and cross-process busy-session rejection; `session/load` from
+   snapshot fixture and durable-index refresh on an in-memory miss.
 6. Reserved for Phase 4/I106 server cancellation; the current notification handler is a no-op.
 7. `authenticate` over device flow (stub hub).
 8. Buzz profile suite (fake client, permanent).
@@ -234,26 +236,31 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   remains unclaimed.
 
 ### Phase 3 — Lifecycle (architecture Phase 3)
-- Multi-turn `/message`, `session/load` from snapshot, cursor reconnect, session GC (LRU —
-  Buzz never sends a session-end), `authenticate` via device flow. Increments 5 and 7;
+- Multi-turn `/message`, `session/load` from snapshot, cursor reconnect, bounded in-memory LRU,
+  durable session retention, and `authenticate` via device flow. Increments 5 and 7;
   increment 6 remains gated with I106 instead of presenting a local stop as cancellation.
 - Exit: a two-turn editor conversation survives adapter restart via `session/load`.
 - **Automated implementation status (2026-08-05): complete.** A versioned local index
-  preserves ACP `sessionId` → opaque `activeRunId`, cursor, cwd, continuability, and LRU metadata;
-  index updates use a cross-process owner lock plus read-under-lock merge and atomic write.
+  preserves ACP `sessionId` → opaque `activeRunId`, cursor, cwd, continuability, and last-used
+  metadata; index updates use a cross-process owner lock plus read-under-lock merge and atomic
+  write. Prompt and load hold one shared per-session owner lock (SHA-256 filename) for the full
+  operation and map a live peer to ACP `-32001`; the only nested order is session → index.
+  Load refreshes the durable index on an in-memory miss and rejects cached-active or remotely
+  `running` sessions before replay notifications and raw-cursor priming.
   Schema v2 names the current run binding `activeRunId`, reads and upgrades the branch's
   earlier v1 `runId` records, and intentionally has no `taskId`. When a real Tasks API ships, add
   `{taskId, activeRunId}` through an explicit index-version migration rather than treating a
   Task ID as a run ID or inventing an API contract here.
-  **Residual risk:** the owner lock and re-read merge prevent lost writes, but the persisted LRU
-  has no cross-process active-session lease. At capacity, one adapter cannot see that a peer
-  process is actively using the oldest durable mapping and may evict that mapping from the
-  index. This does not cancel the remote run, but restart/load of that evicted session can fail;
-  a multi-process lease protocol is deferred beyond Phase 3.
+  **Residual risk:** durable GC is intentionally absent. `maxSessions` bounds only each
+  process's in-memory LRU; the index can grow until ACP supplies session-end semantics or a
+  cross-process lease makes inactivity provable. Phase 3 prefers retained restart/load mappings
+  over unsafe peer eviction.
   Tests prove two-turn continuation, second-manager restart/load by the original ACP ID,
-  concurrent-manager merge, snapshot replay, cursor priming, busy rejection, LRU eviction,
-  and DAH device authentication/credential persistence. Manual editor restart and live DAH
-  device-flow validation remain unclaimed. The real-API two-turn restart gate now exists at
+  concurrent-manager merge, prompt/load lock contention in both directions, load-time store
+  refresh, running-snapshot rejection, snapshot replay, cursor priming, in-memory LRU eviction,
+  durable retention at capacity, and DAH device authentication/credential persistence. Manual
+  editor restart and live DAH device-flow validation remain unclaimed. The real-API two-turn
+  restart gate now exists at
   `test/e2e-acp-editor.test.ts`; this implementation run verified its named skip with
   `DRWN_E2E_DEPLOY` absent, not a live deployment. Phases 4–5 remain unimplemented.
 

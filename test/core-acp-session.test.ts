@@ -434,6 +434,89 @@ describe("AcpSessionManager", () => {
     expect(calls).toContain("GET https://api.example.test/api/minds/harari/chat/run_loaded/stream-poll?since=9");
   });
 
+  test("rejects a cached active session load before snapshot or cursor requests", async () => {
+    let releasePoll!: () => void;
+    let pollEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { pollEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePoll = resolve; });
+    const calls: string[] = [];
+    let streamPolls = 0;
+    const request: AcpSessionRequest = async (url, init) => {
+      calls.push(url);
+      if (init?.method === "POST") return json({ runId: "run_active_load" });
+      if (url.endsWith("/status")) return json(runStatus("yielded"));
+      if (url.endsWith("/snapshot")) return json({ status: "yielded", items: [] });
+      streamPolls += 1;
+      if (streamPolls === 1) {
+        pollEntered();
+        await release;
+      }
+      return json({ lastSeq: 0, events: [] });
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_active_load",
+    });
+
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    const prompt = manager.prompt(
+      { sessionId: "sess_active_load", prompt: [{ type: "text", text: "first" }] },
+      async () => {},
+    );
+    await entered;
+    const callsBeforeLoad = calls.length;
+    await expect(manager.loadSession(
+      { sessionId: "sess_active_load", cwd: "/workspace", mcpServers: [] },
+      async () => {},
+    )).rejects.toMatchObject({ code: -32001 });
+    expect(calls).toHaveLength(callsBeforeLoad);
+    releasePoll();
+    await expect(prompt).resolves.toEqual({ stopReason: "end_turn" });
+  });
+
+  test("rejects a running snapshot before replay notifications or cursor priming", async () => {
+    const calls: string[] = [];
+    const request: AcpSessionRequest = async (url, init) => {
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (init?.method === "POST") return json({ runId: "run_loading" });
+      if (url.endsWith("/status")) return json(runStatus("yielded"));
+      if (url.endsWith("/snapshot")) {
+        return json({ status: "running", items: [{ type: "assistant", text: "partial" }] });
+      }
+      return json({ lastSeq: 4, events: [] });
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_loading",
+    });
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    await manager.prompt(
+      { sessionId: "sess_loading", prompt: [{ type: "text", text: "first" }] },
+      async () => {},
+    );
+    calls.length = 0;
+    const updates: SessionNotification[] = [];
+
+    await expect(manager.loadSession(
+      { sessionId: "sess_loading", cwd: "/workspace", mcpServers: [] },
+      async (notification) => updates.push(notification),
+    )).rejects.toMatchObject({ code: -32001 });
+    expect(updates).toEqual([]);
+    expect(calls).toEqual([
+      "GET https://api.example.test/api/chat/run_loading/snapshot",
+    ]);
+  });
+
   test("persists the local sessionId to runId mapping and reloads it after adapter restart", async () => {
     const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-store-"));
     try {
@@ -533,6 +616,248 @@ describe("AcpSessionManager", () => {
         "sess_second",
       ]);
     } finally {
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("refreshes the persisted index on a load cache miss before resolving the slug", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-refresh-"));
+    try {
+      const staleManager = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        idFactory: () => "sess_stale",
+        request: async (url) => {
+          if (url.endsWith("/api/chat/run_peer/snapshot")) {
+            return json({ status: "yielded", items: [{ type: "assistant", text: "peer history" }] });
+          }
+          if (url.endsWith("/stream-poll?since=0")) return json({ lastSeq: 7, events: [] });
+          return json({ error: `unexpected ${url}` }, 400);
+        },
+      });
+      await staleManager.newSession({ cwd: "/stale", mcpServers: [] });
+
+      const peerManager = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        idFactory: () => "sess_peer",
+        sleep: async () => {},
+        request: async (url, init) => {
+          if (init?.method === "POST") return json({ runId: "run_peer" });
+          if (url.endsWith("/status")) return json(runStatus("yielded"));
+          return json({ lastSeq: 6, events: [] });
+        },
+      });
+      await peerManager.newSession({ cwd: "/peer", mcpServers: [] });
+      await peerManager.prompt(
+        { sessionId: "sess_peer", prompt: [{ type: "text", text: "first" }] },
+        async () => {},
+      );
+
+      const updates: SessionNotification[] = [];
+      await expect(staleManager.loadSession(
+        { sessionId: "sess_peer", cwd: "/peer", mcpServers: [] },
+        async (notification) => updates.push(notification),
+      )).resolves.toEqual({});
+      expect(updates.at(0)?.update).toMatchObject({
+        sessionUpdate: "agent_message_chunk",
+        content: { text: "peer history" },
+      });
+    } finally {
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("holds one cross-manager session lock for the full prompt and rejects prompt or load contenders", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-prompt-lock-"));
+    let releasePoll!: () => void;
+    let pollEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { pollEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePoll = resolve; });
+    let turn = 0;
+    try {
+      const owner = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        idFactory: () => "sess_shared_lock",
+        sleep: async () => {},
+        request: async (url, init) => {
+          if (url.endsWith("/api/minds/harari/chat")) return json({ runId: "run_shared_lock" });
+          if (url.endsWith("/message")) {
+            turn += 1;
+            return json({ accepted: true });
+          }
+          if (url.endsWith("/status")) return json(runStatus("yielded"));
+          if (turn > 0) {
+            pollEntered();
+            await release;
+          }
+          return json({ lastSeq: turn + 1, events: [] });
+        },
+      });
+      await owner.newSession({ cwd: "/workspace", mcpServers: [] });
+      await owner.prompt(
+        { sessionId: "sess_shared_lock", prompt: [{ type: "text", text: "first" }] },
+        async () => {},
+      );
+
+      let contenderRequests = 0;
+      const contender = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        request: async (url) => {
+          contenderRequests += 1;
+          if (url.endsWith("/snapshot")) return json({ status: "yielded", items: [] });
+          if (url.includes("stream-poll")) return json({ lastSeq: 1, events: [] });
+          return json({ error: `unexpected ${url}` }, 400);
+        },
+      });
+      await contender.loadSession(
+        { sessionId: "sess_shared_lock", cwd: "/workspace", mcpServers: [] },
+        async () => {},
+      );
+      const prompt = owner.prompt(
+        { sessionId: "sess_shared_lock", prompt: [{ type: "text", text: "second" }] },
+        async () => {},
+      );
+      await entered;
+      const requestsBeforeContention = contenderRequests;
+
+      const promptContention = await contender.prompt(
+        { sessionId: "sess_shared_lock", prompt: [{ type: "text", text: "contend" }] },
+        async () => {},
+      ).then(() => ({ code: 0 }), (error: unknown) => error);
+      const loadContention = await contender.loadSession(
+        { sessionId: "sess_shared_lock", cwd: "/workspace", mcpServers: [] },
+        async () => {},
+      ).then(() => ({ code: 0 }), (error: unknown) => error);
+      releasePoll();
+      await expect(prompt).resolves.toEqual({ stopReason: "end_turn" });
+      expect(promptContention).toMatchObject({ code: -32001 });
+      expect(loadContention).toMatchObject({ code: -32001 });
+      expect(contenderRequests).toBe(requestsBeforeContention);
+    } finally {
+      releasePoll?.();
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("holds the cross-manager session lock while load replays and rejects a prompt contender", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-load-lock-"));
+    let releaseSnapshot!: () => void;
+    let snapshotEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { snapshotEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releaseSnapshot = resolve; });
+    try {
+      const owner = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        idFactory: () => "sess_load_lock",
+        sleep: async () => {},
+        request: async (url, init) => {
+          if (init?.method === "POST") return json({ runId: "run_load_lock" });
+          if (url.endsWith("/status")) return json(runStatus("yielded"));
+          return json({ lastSeq: 2, events: [] });
+        },
+      });
+      await owner.newSession({ cwd: "/workspace", mcpServers: [] });
+      await owner.prompt(
+        { sessionId: "sess_load_lock", prompt: [{ type: "text", text: "first" }] },
+        async () => {},
+      );
+
+      const loader = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        request: async (url) => {
+          if (url.endsWith("/snapshot")) {
+            snapshotEntered();
+            await release;
+            return json({ status: "yielded", items: [] });
+          }
+          if (url.includes("stream-poll")) return json({ lastSeq: 2, events: [] });
+          return json({ error: `unexpected ${url}` }, 400);
+        },
+      });
+      const load = loader.loadSession(
+        { sessionId: "sess_load_lock", cwd: "/workspace", mcpServers: [] },
+        async () => {},
+      );
+      await entered;
+
+      const contention = await owner.prompt(
+        { sessionId: "sess_load_lock", prompt: [{ type: "text", text: "contend" }] },
+        async () => {},
+      ).then(() => ({ code: 0 }), (error: unknown) => error);
+      releaseSnapshot();
+      await expect(load).resolves.toEqual({});
+      expect(contention).toMatchObject({ code: -32001 });
+    } finally {
+      releaseSnapshot?.();
+      await rm(agentsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps durable mappings when a capacity-one peer writes while another manager is active", async () => {
+    const agentsDir = await mkdtemp(join(tmpdir(), "acp-session-durable-capacity-"));
+    let releasePoll!: () => void;
+    let pollEntered!: () => void;
+    const entered = new Promise<void>((resolve) => { pollEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releasePoll = resolve; });
+    try {
+      const activeManager = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        maxSessions: 1,
+        idFactory: () => "sess_active_peer",
+        request: async (url, init) => {
+          if (init?.method === "POST") return json({ runId: "run_active_peer" });
+          if (url.endsWith("/status")) return json(runStatus("yielded"));
+          pollEntered();
+          await release;
+          return json({ lastSeq: 1, events: [] });
+        },
+      });
+      const peerManager = new AcpSessionManager({
+        context: { agentsDir },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        maxSessions: 1,
+        idFactory: () => "sess_capacity_peer",
+      });
+      await activeManager.newSession({ cwd: "/active", mcpServers: [] });
+      const prompt = activeManager.prompt(
+        { sessionId: "sess_active_peer", prompt: [{ type: "text", text: "first" }] },
+        async () => {},
+      );
+      await entered;
+      await peerManager.newSession({ cwd: "/peer", mcpServers: [] });
+
+      const duringPrompt = await Bun.file(join(agentsDir, "drwn", "acp-sessions.json")).json() as {
+        sessions: Array<{ sessionId: string }>;
+      };
+      releasePoll();
+      await expect(prompt).resolves.toEqual({ stopReason: "end_turn" });
+      const afterPrompt = await Bun.file(join(agentsDir, "drwn", "acp-sessions.json")).json() as {
+        sessions: Array<{ sessionId: string }>;
+      };
+      expect(duringPrompt.sessions.map((session) => session.sessionId).sort()).toEqual([
+        "sess_active_peer",
+        "sess_capacity_peer",
+      ]);
+      expect(afterPrompt.sessions.map((session) => session.sessionId).sort()).toEqual([
+        "sess_active_peer",
+        "sess_capacity_peer",
+      ]);
+    } finally {
+      releasePoll?.();
       await rm(agentsDir, { recursive: true, force: true });
     }
   });

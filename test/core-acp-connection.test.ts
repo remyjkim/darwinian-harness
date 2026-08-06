@@ -54,6 +54,32 @@ describe("acp connection layer", () => {
     }]);
   });
 
+  test("preserves a string JSON-RPC request id on the wire response", async () => {
+    const { hooks } = hooksWithLog();
+    const inbound = new TransformStream<Uint8Array, Uint8Array>();
+    const outbound = new TransformStream<Uint8Array, Uint8Array>();
+    const connection = createAcpAgent(hooks).connect(ndJsonStream(outbound.writable, inbound.readable));
+    const writer = inbound.writable.getWriter();
+    const reader = outbound.readable.getReader();
+    await writer.write(new TextEncoder().encode(`${JSON.stringify({
+      jsonrpc: "2.0",
+      id: "init:string-id",
+      method: "initialize",
+      params: { protocolVersion: 1, clientCapabilities: {} },
+    })}\n`));
+    const decoder = new TextDecoder();
+    let buffered = "";
+    while (!buffered.includes("\n")) {
+      const { value, done } = await reader.read();
+      expect(done).toBe(false);
+      buffered += decoder.decode(value, { stream: true });
+    }
+    const frame = JSON.parse(buffered.slice(0, buffered.indexOf("\n")));
+    expect(frame.id).toBe("init:string-id");
+    expect(frame.result.protocolVersion).toBe(1);
+    connection.close();
+  });
+
   test("identifies itself as drwn-acp in agentInfo", async () => {
     const { hooks } = hooksWithLog();
     const init = await client().connectWith(createAcpAgent(hooks), (ctx) =>
