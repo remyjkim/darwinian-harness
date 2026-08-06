@@ -2,16 +2,20 @@
 // ABOUTME: pure config/lock derivations now; validation, store seeding, and orchestration follow.
 
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extract } from "./archive";
+import { create as createArchive, extract } from "./archive";
 import { ensureCardPresentFromLock } from "./card-install";
 import { serializeCardLock, type CardLockEntry, type ProjectLockV1 } from "./card-lock";
 import { DrwnError } from "./errors";
 import { syncRepository } from "./sync";
 import type { ProjectConfig } from "./types";
-import { WORKER_DEPLOY_CONTRACT_VERSION, type WorkerDeployPayload } from "./worker-deploy";
+import {
+  createStoreExportForLock,
+  WORKER_DEPLOY_CONTRACT_VERSION,
+  type WorkerDeployPayload,
+} from "./worker-deploy";
 
 function invalidPayload(detail: string): never {
   throw new DrwnError("WORKER_MATERIALIZE_PAYLOAD_INVALID", `Invalid materialize payload: ${detail}`);
@@ -97,12 +101,35 @@ export interface MaterializeWorkerOptions {
   repoRoot: string;
   /** External store bytes (e.g. an R2-staged archive); defaults to the payload's inline base64. */
   storeExportBytes?: Buffer;
+  /** Emit the minimal project snapshot (config + lock only — generated output is disposable). */
+  emitProjectTar?: string;
+  /** Re-archive the seeded store for the caller's boot contract. */
+  emitStoreTar?: string;
+}
+
+export interface EmittedArtifact {
+  path: string;
+  sha256: string;
+  byteLength: number;
 }
 
 export interface MaterializeWorkerResult {
   cards: number;
   changes: string[];
   warnings: string[];
+  emitted: {
+    projectTar?: EmittedArtifact;
+    storeTar?: EmittedArtifact;
+  };
+}
+
+async function emittedArtifact(path: string): Promise<EmittedArtifact> {
+  const bytes = await readFile(path);
+  return {
+    path,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    byteLength: bytes.byteLength,
+  };
 }
 
 /**
@@ -135,9 +162,25 @@ export async function materializeWorkerPayload(options: MaterializeWorkerOptions
   }
 
   const sync = await syncRepository({ repoRoot, agentsDir, homeDir, cwd: projectRoot });
+
+  const emitted: MaterializeWorkerResult["emitted"] = {};
+  if (options.emitProjectTar) {
+    await createArchive(options.emitProjectTar, {
+      cwd: join(projectRoot, ".agents"),
+      entries: ["drwn/config.json", "drwn/card.lock"],
+      gzip: false,
+    });
+    emitted.projectTar = await emittedArtifact(options.emitProjectTar);
+  }
+  if (options.emitStoreTar) {
+    await createStoreExportForLock(agentsDir, lock.cards, options.emitStoreTar);
+    emitted.storeTar = await emittedArtifact(options.emitStoreTar);
+  }
+
   return {
     cards: lock.cards.length,
     changes: sync.changes,
     warnings: sync.warnings,
+    emitted,
   };
 }
