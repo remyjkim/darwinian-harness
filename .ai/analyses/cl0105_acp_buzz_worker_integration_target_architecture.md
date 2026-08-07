@@ -39,7 +39,7 @@ one `StreamEvent` vocabulary onto one protocol. Nothing here is architecturally 
 The two source guides (`128_acp_guide.md`, `128_2_buzz_acp_integration_guide.md`, committed
 beside this document) carry unresolvable citation tokens and a June 2026 cutoff. Their load-bearing
 claims were re-verified against primary sources on 2026-07-24. Three were wrong. Server-side
-claims were re-verified again on 2026-08-04 against `darwinian-services` `main` @ `ec7f9ff2`:
+claims were re-verified again on 2026-08-06 against `darwinian-services` `main` @ `04cb2db5`:
 every behavior held; line anchors stale since the I50 chat-proxy rewrite are corrected inline.
 Buzz-side claims were re-verified the same day against `block/buzz` `main` @ `0afeac8a7`; two
 refinements surfaced — the system-prompt branch is now three-way by agent identity, and only
@@ -105,10 +105,10 @@ with an append-only event log addressed by a monotonic cursor.
 | first `session/prompt` | `POST /api/minds/:slug/chat` → `{runId}` | `chat-proxy.ts:353`, via the I50 invocation service — duplicate starts dedupe to the same `{runId}` or `409 invocation_pending`; response is `ChatStartResSchema` (`deploy-contracts.ts:216-218`). |
 | later `session/prompt` | `POST /api/chat/:runId/message` | `chat-proxy.ts:481`. |
 | `sessionId` | local durable ID → `activeRunId` | **Superseding implementation decision (2026-08-05):** ACP identity remains the `sess_*` ID allocated before a run exists; a versioned local binding resolves the opaque Deploy API run. This avoids changing ACP identity after the first prompt and leaves a migration path for future `{taskId, activeRunId}` without pretending a Task ID is a run ID. |
-| `session/load` | `GET /api/chat/:runId/snapshot` | `chat-proxy.ts:445`. Roles, text, and tool chips only — no `args`/`result`/reasoning, but enough for `loadSession: true`. A `running` snapshot is rejected before replay or cursor priming; load never races an active turn. |
+| `session/load` | `GET /api/chat/:runId/snapshot` | Roles, text, and tool chips only. A v2 snapshot supplies the atomic `streamCursor`; legacy snapshots use cursor-zero fallback. `running`/`cancelling` reject before replay, while `cancelled` is terminal and non-continuable. |
 | `session/update` | `GET /api/chat/:runId/stream-poll?since=` | Raw `StreamEntry` with real deltas. See §5. |
 | `stopReason: end_turn` | run status `yielded` | Not `done`. `done`/`failed` are terminal and cannot be continued (`coordinator-do.ts:1687-1729`). |
-| `stopReason: cancelled` | — | **No server support.** §6.1. |
+| `stopReason: cancelled` | terminal `agent.cancelled` or authoritative `cancelled` status | A `202 cancelling` acknowledgement is explicitly nonterminal. §6.1. |
 
 The event vocabulary maps almost one-to-one
 (`containerized-cli-harness/packages/stream-protocol/src/stream-events.ts`):
@@ -118,10 +118,11 @@ The event vocabulary maps almost one-to-one
 | `text.delta` | `agent_message_chunk` | yes |
 | `reasoning.delta` | `agent_thought_chunk` | yes |
 | `tool.call` (`toolCallId`, `toolName`, `args`) | `tool_call` | yes, resets idle clock |
-| `tool.result` (`toolCallId`, `result`) | `tool_call_update` | yes |
+| `tool.result` (`toolCallId`, `result`) | `tool_call_update` (`failed` when `result.isError === true`) | yes |
 | `step` (`finishReason`, `usage`) | `usage_update` | tolerated |
 | `agent.completed` | no update; run status remains authoritative | — |
 | `agent.failed` | no update; run status remains authoritative | — |
+| `agent.cancelled` | lifecycle only; terminal cancelled settlement | — |
 
 `toolCallId` correlates `tool.call`→`tool.result` exactly as ACP correlates
 `tool_call`→`tool_call_update`. `WIRE.md` anticipates this: *"an adapter to/from that shape
@@ -157,21 +158,22 @@ and status helpers are reusable; its payload is not sufficient for ACP.
 
 These are the real cost of this project. None can be worked around adapter-side.
 
-### 6.1 Cancellation — blocking
+### 6.1 Cancellation — implemented by I106; exact consumer contract
 
-No cancel, abort, stop, or terminate route exists at any layer reachable over HTTP.
-Closing the SSE connection stops the bridge; **the run keeps executing in the Workflow**.
-Only an `AbortSignal` inside the container base can stop a turn, and nothing HTTP-reachable
-triggers it.
+I106 now provides owner-gated cancellation at `POST /api/chat/:runId/cancel`, durable
+`cancelling → cancelled` settlement, and one terminal
+`agent.cancelled {reason:"owner_cancel"}` event. Its `202` response is acknowledgement only,
+not terminal completion; the adapter keeps polling until the event or authoritative
+`cancelled` status. Typed `409 not_active` and `409 not_eligible` outcomes preserve the
+actual lifecycle instead of coercing it to cancellation.
 
-This blocks Buzz. Its idle timeout (default 900 s, `BUZZ_ACP_IDLE_TIMEOUT`) sends
+Buzz's idle timeout (default 900 s, `BUZZ_ACP_IDLE_TIMEOUT`) sends
 `session/cancel` and drains until the prompt resolves `cancelled`; its hard turn cap
 (default 7200 s) does not cancel at all — it declares the subprocess unrecoverable and
-respawns it (`pool.rs:2182-2184`, `:2263-2288`). Either way the server-side run keeps
-executing. Without a server cancel the adapter must either lie — resolve the prompt
-`cancelled` while the run continues to burn tokens — or hang until Buzz kills it. Both are
-unacceptable. **Required: `POST /api/chat/:runId/cancel`**, threading an abort into the
-container.
+respawns it (`pool.rs:2182-2184`, `:2263-2288`). The adapter therefore needs concurrent
+cancel intent: it cannot wait behind its own prompt owner lock, and a notification received
+before start returns a run ID must be posted as soon as that durable ID exists. Local EOF
+remains only local abort and cannot claim server settlement.
 
 Full gap analysis and proposed contract:
 [`cl0106`](./cl0106_run_cancellation_interface_request.md) — filed as **[I106]**.
@@ -231,9 +233,10 @@ fail-closed (`src/consent/gate.ts:19-23`), which is wrong for a headless chat ag
 
 **Resolved 2026-08-04 — Option B-lean with a delivery-verification rider** (Remy): the
 container publishes via the `buzz` CLI — binary in the mind-runtime image, `BUZZ_*`
-per-Worker env secrets, a Card-carried stdio MCP wrapper exposing the send tools — and the
-adapter observes send `tool.call`s on the stream, issuing one corrective continuation when
-a Buzz-bound turn settles without one. The evidence pass and full pricing live in
+per-Worker env secrets, a Card-carried stdio MCP wrapper exposing only send/thread — and the
+adapter correlates a send `tool.call` with its non-error `tool.result`, issuing one corrective
+continuation when a Buzz-bound turn settles without successful delivery. A denied I107 call
+emits a call plus failed result, so a call alone is never delivery evidence. The evidence pass and full pricing live in
 [`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md)
 §7, which governs; the summary below is the original framing, kept as the record.
 
@@ -312,7 +315,8 @@ export function projectStreamEntry(entry: StreamEntry): SessionUpdate[] {
                 title: entry.toolName, status: "in_progress", rawInput: entry.args }];
     case "tool.result":
       return [{ sessionUpdate: "tool_call_update", toolCallId: entry.toolCallId,
-                status: "completed", rawOutput: entry.result }];
+                status: entry.result?.isError === true ? "failed" : "completed",
+                rawOutput: entry.result }];
     default:
       return [];
   }
@@ -374,11 +378,19 @@ answer from the deployed Worker.
 `/message`, cursor-based reconnect, `authenticate` over DAH device flow. Success: a channel
 conversation retains context across mentions and survives an adapter restart.
 
-**Phase 4 — cancellation.** Consumes §6.1. Success: `session/cancel` stops the run
-server-side and resolves the prompt `cancelled`. **Do not ship Buzz integration before this
-lands** — without it, Buzz's idle timeout silently orphans paid runs.
+The 2026-08-06 continuation audit tightens that phase: consume the v2 snapshot
+`streamCursor` atomically before replay; keep cursor-zero fallback only for legacy snapshots;
+recognize all six run statuses; reject `cancelling` load, keep `cancelled` non-continuable,
+and add a command-level prompt/update/settlement test rather than relying only on direct
+manager tests.
 
-**Phase 5 — delivery.** Consumes the §8 decision (B-lean + rider), plus tool policy projection.
+**Phase 4 — cancellation.** Consumes §6.1. `202 cancelling` keeps the prompt live; only the
+terminal event/status resolves it as `cancelled`. Success includes cancel-before-start,
+mid-stream, repeated-cancel, and no-deadlock proofs.
+
+**Phase 5 — delivery.** Consumes the §8 decision (B-lean + rider), plus I107 exact-selector
+Card MCP governance. The dedicated wrapper exposes only send/thread, invokes the pinned
+official `buzz` CLI without a shell, and never uses broad `buzz-dev-mcp`.
 
 ## 11. Testing
 

@@ -4,9 +4,9 @@
 # [I105] ACP Agent Surface — Implementation Plan (GATE 2)
 
 **Issue:** [I105] `[I105, DW] ACP agent surface for deployed Darwinian Workers`.
-**Architecture:** [`analyses/cl0105_acp_buzz_worker_integration_target_architecture.md`](../analyses/cl0105_acp_buzz_worker_integration_target_architecture.md) — verified against `darwinian-services` @ `ec7f9ff2` and `block/buzz` @ `0afeac8a7` on 2026-08-04.
-**Owner:** Remy K · **Reviewer:** Minseung Lee.
-**Gates in force:** Phase 4 requires [I106] (`POST /api/chat/:runId/cancel`) live. Phase 5 consumes the delivery decision in [`analyses/cl0105_buzz_tooling_delivery_decision_analysis.md`](../analyses/cl0105_buzz_tooling_delivery_decision_analysis.md) — **decided 2026-08-04: B-lean with the delivery-verification rider** (§7.7). Phases 0–3 have no external gate.
+**Architecture:** [`analyses/cl0105_acp_buzz_worker_integration_target_architecture.md`](../analyses/cl0105_acp_buzz_worker_integration_target_architecture.md) — amended 2026-08-06 against `darwinian-services` @ `04cb2db5`, Darwinian Worker `main` @ `203e1ab8`, and the local Buzz evidence checkout @ `0afeac8a7` (remote `main` observed at `f53bbd11`).
+**Owner:** Remy K · **Reviewer:** Remy K (owner-as-reviewer authorized 2026-08-06).
+**Gates in force:** [I106] and [I107] are merged and knowledge-captured in `darwinian-services`. Phase 5 consumes the delivery decision in [`analyses/cl0105_buzz_tooling_delivery_decision_analysis.md`](../analyses/cl0105_buzz_tooling_delivery_decision_analysis.md) — **decided 2026-08-04: B-lean with the delivery-verification rider** (§7.7). Package release, environment secret installation, live inventory, staging/production deployment, and literal Zed/Buzz live proof remain separate operational gates.
 
 ## Decisions and supersessions
 
@@ -39,20 +39,25 @@
   editor launch configs and `BUZZ_ACP_AGENT_ARGS`-less setups); if neither is present and
   `~/.agents/drwn/mind-bindings.json` holds exactly one binding, use it; otherwise exit 1
   with guidance on stderr. No new "selected worker" state is introduced.
-- **Pre-I106 cancellation stance:** the ACP notification is registered so clients do not hit
-  an unknown-method path, but its handler is an explicit no-op. It does not stop polling,
-  resolve the prompt `cancelled`, or imply that the server-side run stopped. Truthful
-  cancellation remains gated on I106, and the Buzz profile stays disabled until that Phase-4
-  contract lands.
+- **Cancellation consumes I106 exactly.** A `202` response is only durable acknowledgement
+  that the run is `cancelling`; it is never an ACP terminal result. The prompt resolves
+  `cancelled` only after `agent.cancelled` or authoritative status `cancelled`. `200`
+  `already_cancelled` is terminal; typed `409 not_active` settles according to its returned
+  status; `409 not_eligible` is nonterminal and explicit. Cancellation is concurrent with
+  the prompt owner lock and latches before `activeRunId` exists so a cancel-before-start
+  race cannot orphan the server run.
 - **Delivery: B-lean + rider (decided 2026-08-04, decision analysis §7.7).** The container
   publishes via the `buzz` CLI — binary in the mind-runtime image (darwinian-services PR),
   `BUZZ_RELAY_URL`/`BUZZ_PRIVATE_KEY`/`BUZZ_AUTH_TAG` as per-Worker `kind:"env"` secrets
   (existing `PUT /api/minds/:slug/secrets/:server` route — the deploy-api control plane
   still speaks the pre-rename mind vocabulary; worker↔mind is 1:1), and a Card-carried
-  stdio MCP wrapper exposing
-  `buzz_messages_send`/`buzz_messages_thread`. The adapter verifies delivery through
-  stream-visible `tool.call` events and issues one corrective continuation via `/message`
-  when a Buzz-bound turn settles without a send.
+  narrow stdio MCP wrapper exposing only `buzz_messages_send`/`buzz_messages_thread`. It
+  invokes the `buzz` CLI without a shell and sends content over stdin. The adapter
+  correlates a send `tool.call` with its matching non-error `tool.result`; a call alone is
+  not delivery evidence. It issues at most one corrective continuation via `/message` when
+  a Buzz-bound turn settles without a successful send. I107 governs these as ordinary Card
+  MCP tools using exact selectors `mcp:buzz-tools/buzz_messages_send` and
+  `mcp:buzz-tools/buzz_messages_thread`; no carve-out or inferred policy is permitted.
 
 ## Target contracts
 
@@ -85,7 +90,7 @@ cli/core/acp/buzz-profile.ts     L5  Buzz detection, version answer, delivery (P
 
 Nothing below L2 knows what ACP is; nothing above L2 knows what the Deploy API is.
 
-### Deploy API mapping (verified @ `ec7f9ff2`)
+### Deploy API mapping (verified @ `04cb2db5`)
 
 | ACP | Deploy API | Behavior notes |
 | --- | --- | --- |
@@ -94,9 +99,9 @@ Nothing below L2 knows what ACP is; nothing above L2 knows what the Deploy API i
 | later `session/prompt` | `POST /api/chat/:runId/message` | Reject locally if a prompt is already active on the session. |
 | `session/update` | `GET /api/minds/:slug/chat/:runId/stream-poll?since=` | Cursor = `lastSeq`; L2 owns it; replay-safe on reconnect. **Live-verified wire shape (2026-08-05, `run-42118fae…`):** the response is `{lastSeq, events: [{seq, sourceId, event: StreamEvent}]}` — each entry **wraps** the event; the session layer unwraps `entry.event` before projection, may use outer `seq`/`sourceId` (`"orchestrator"`; panels are multi-source). `text.delta`/`step`/`agent.completed` shapes confirmed exact; `v: 1`; seq monotonic from 1; settle observed as `agent.completed` + run status `yielded`. |
 | prompt settlement | `GET /api/chat/:runId/status` | Lightweight second track for zero-event failures; exact response is `{status, runMetrics:{startedAt,finishedAt,totalTokens}}` (verified against Darwinian Services `d6575105`). |
-| `session/load` | `GET /api/chat/:runId/snapshot` | Roles + text + tool chips; fidelity limit documented in architecture §4. Cached-active sessions and `running` snapshots reject with `-32001` before replay/cursor priming. |
-| prompt result | run settles | `yielded` → `end_turn`; `done` → `end_turn` + session marked non-continuable; `failed` → JSON-RPC error; missing/non-owner runs → HTTP-backed error. |
-| `session/cancel` | Phase 4: `POST /api/chat/:runId/cancel` | I106-gated; the currently registered notification handler is an explicit no-op and makes no false server-side cancellation claim. |
+| `session/load` | `GET /api/chat/:runId/snapshot` | Roles + text + tool chips; fidelity limit documented in architecture §4. A v2 snapshot's `streamCursor` is captured atomically and raw replay resumes from it; legacy snapshots retain the cursor-zero fallback. Cached-active sessions and remotely `running` or `cancelling` sessions reject with `-32001`; `cancelled` is terminal and non-continuable. |
+| prompt result | run settles | `yielded` → `end_turn`; `cancelled` → `cancelled` + non-continuable; `done` → `end_turn` + non-continuable; `failed` → JSON-RPC error; `running`/`cancelling` remain live. |
+| `session/cancel` | `POST /api/chat/:runId/cancel` | `202` is nonterminal; `200 already_cancelled` is terminal; typed `409` outcomes remain truthful. A pre-start intent is latched until `activeRunId` is durably known. |
 
 **Superseding implementation decision (2026-08-05):** architecture §4 originally equated
 ACP `sessionId` with Deploy API `runId`. The adapter instead keeps the pre-run local
@@ -112,7 +117,8 @@ break restart/load. The versioned store is also the explicit seam for a future T
 | `text.delta {text}` | `agent_message_chunk` |
 | `reasoning.delta {text}` | `agent_thought_chunk` |
 | `tool.call {toolCallId, toolName, args}` | `tool_call` (status `in_progress`, `rawInput: args`) |
-| `tool.result {toolCallId, result}` | `tool_call_update` (status `completed`, `rawOutput: result`) |
+| `tool.result {toolCallId, result}` | `tool_call_update` (`failed` when `result.isError === true`, otherwise `completed`; `rawOutput: result`) |
+| `agent.cancelled {reason:"owner_cancel"}` | lifecycle signal only; settles the owning prompt as `cancelled` exactly once |
 | `step {finishReason?, usage?}` | dropped in v1 (Buzz reads usage via a goose-private method, not ACP) |
 | `agent.completed` / `agent.failed` | no update — never settles the prompt; panels may terminate and orchestrator failures may retry while the run continues |
 | unknown type or `v ≠ 1` | silently dropped; the pure projector does not write stderr |
@@ -261,45 +267,62 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   refresh, stale-manager reconciliation, running-snapshot rejection, snapshot replay, cursor
   priming, in-memory LRU eviction, peer-safe durable LRU/soft overflow, and DAH device
   authentication/credential persistence. Manual
-  editor restart and live DAH device-flow validation remain unclaimed. The real-API two-turn
+  editor restart and live DAH device-flow validation remain unclaimed. The 2026-08-06
+  continuation audit adds required corrections before Phase 3 is accepted: consume v2
+  `streamCursor` without a snapshot/replay loss window; parse all six run statuses centrally;
+  reject `cancelling` loads and make `cancelled` non-continuable; project failed tool results
+  as failed; and drive a real `drwn acp serve` prompt/update/settlement wire test. The real-API two-turn
   restart gate now exists at
   `test/e2e-acp-editor.test.ts`; this implementation run verified its named skip with
   `DRWN_E2E_DEPLOY` absent, not a live deployment. Phases 4–5 remain unimplemented.
 
-### Phase 4 — Cancellation ⛔ gated on [I106]
-- **Contract ratified 2026-08-05 (build against this):** terminal event = new
-  `agent.cancelled` stream variant (DS coordinates the exact shape with us before it
-  ships); auth = owner-only; mechanism = staged C+A — the first release returns an honest
-  `cancelling` status with settlement bounded by one unit/turn (the cooperative-flag
-  backbone), and the AbortSignal accelerator that stops spend within seconds follows.
-- Adapter semantics accordingly: on `session/cancel`, POST cancel, resolve the ACP prompt
-  `cancelled` on the acknowledgement (criterion 3's ack-fast contract), keep polling until
-  the `agent.cancelled` terminal entry or a terminal run status confirms settlement, and
-  surface `cancelling`-but-not-yet-settled honestly on stderr. Do not build a
-  "stopped instantly" UX expectation into v1; `cancelling` is the truthful state until the
-  accelerator lands.
-- Pre-gate: increment 6 remains a no-op in Phase 3; this phase swaps in
-  `POST /api/chat/:runId/cancel`, maps ack → `stopReason: cancelled`, handles
-  `already_terminal`, and unskips the cancellation e2e.
-- Exit: cancel settles the run server-side within the ratified bound (verified by run
-  status + the `agent.cancelled` entry) and the Buzz gate lifts.
+### Phase 4 — Cancellation (I106 available)
+- Consume the exact owner-gated I106 route and result union. `202 accepted` and
+  `202 already_cancelling` are nonterminal; keep the prompt and stream/status loops alive.
+  `200 already_cancelled` is terminal. Handle `409 not_active` using its returned
+  `yielded|done|failed` status, and expose `409 not_eligible` as cancellation unavailable
+  without lying that a still-running run stopped. Preserve ordinary authentication and
+  ownership errors.
+- Cancellation must not take the long-lived prompt owner lock. Maintain a per-session
+  cancel intent/generation that can race the active prompt safely. If the intent arrives
+  before the first start response, post it immediately after `activeRunId` is persisted.
+  Repeated notifications are idempotent.
+- Continue polling through `cancelling`; settle exactly once on terminal
+  `agent.cancelled {reason:"owner_cancel"}` or authoritative `cancelled` status, mark the
+  session non-continuable, and return ACP `stopReason: "cancelled"`. EOF/request abort only
+  stops local waits and never claims the remote run was cancelled.
+- RED→GREEN coverage: cancel-before-start, mid-stream, tool-call wait, repeated cancel,
+  202 nonterminal acknowledgement, 200 already-cancelled, both typed 409s, 401/404,
+  missing terminal stream event repaired by status, and no prompt-lock deadlock.
+- Exit: adapter tests prove the exact contract against the real session manager and command
+  surface. Live server cancellation remains a credential/deployment-gated acceptance exit.
 
 ### Phase 5 — Buzz profile and delivery (B-lean + rider)
-- `buzz-profile.ts`: Buzz detection (clientInfo), `[Base]` handling, idle-clock awareness
+- `buzz-profile.ts`: Buzz detection by the verified
+  `clientInfo {name:"buzz-acp", version:<semver>}` handshake, `[Base]` handling, idle-clock awareness
   (any frame resets Buzz's 900 s idle timer; the 7200 s hard cap never resets — publish
-  early, never hold answers to end-of-run), and the delivery-verification rider: watch
-  `stream-poll` for a send-tool `tool.call`; if the turn settles without one, issue one
-  corrective continuation via `/message`; if still none, log the undelivered text to stderr
-  and error the turn rather than silently succeeding.
-- Cross-repo deliverables, sequenced before the e2e: `buzz` binary in
-  `images/mind-runtime/Dockerfile.cloud` (darwinian-services PR), the buzz-tools Card MCP
-  wrapper (stdio exec of the CLI, idempotency key `runId + turn index`), and a secrets
-  runbook for `PUT /api/minds/:slug/secrets/:server` with `kind:"env"`.
+  early, never hold answers to end-of-run), and the delivery-verification rider. Track a
+  bare stream `toolName` only after it is correlated by `toolCallId` to a non-error
+  `tool.result`. A denied I107 call emits a call plus failed result and must count as no
+  delivery. If the turn settles without successful delivery, issue exactly one corrective
+  continuation via `/message`; if the second turn still lacks a successful result, emit a
+  redacted stderr diagnostic and fail visibly.
+- Cross-repo deliverables, sequenced before the live e2e: install the official Buzz
+  `desktop-v0.5.5` amd64 Debian asset into the mind-runtime image with fail-closed SHA-256
+  verification (`4bd115a5…`; exact value lives in the Dockerfile/test), add a dedicated
+  `buzz-tools` stdio MCP wrapper that exposes only send/thread and spawns `buzz` with an argv
+  array plus stdin content (never a shell), and author a Card declaration with the exact
+  I107 selectors. Do not use broad `buzz-dev-mcp`.
 - New command `drwn worker secret set <slug> <name>` (`--kind env|mcp`) against
   `PUT /api/minds/:slug/secrets/:server`: the deploy payload carries `kind:"mcp"` secrets
   only and no CLI surface exists for the PUT route today, so the Buzz secrets runbook has
-  no supported client without it. Small command, `worker-http` reuse, RED→GREEN like the
-  rest.
+  no supported client without it. Secret bytes come from stdin, never argv or diagnostics;
+  `--env-var` is mandatory for `kind:"env"`. Small command, `worker-http` reuse,
+  RED→GREEN like the rest.
+- The I105/Worker owner authors rollout evidence
+  `{schemaVersion, workerSourceRevision, cardMcpServerKey, authoredSelectors,
+  candidateDeploymentId}`. Code may prove the schema and selectors, but it must not invent
+  a candidate deployment or claim a live inventory.
 - `com.block.buzz` `_meta` proposal drafted upstream. The secrets runbook documents both
   key-custody profiles (decision analysis §7.6): same-key default (no attribution split,
   Buzz's own k8s custody model) and split-key hardened (dedicated rotatable posting
@@ -309,15 +332,18 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   produces the Worker's streamed answer in the right channel.
 
 ### Phase 6 — Evidence and workflow close-out
-- Completion doc `tasks/cl0105_completion_acp_agent_surface.md`; PR with the mandatory
+- Completion doc `tasks/cl0105_acp_agent_surface_completion.md`; PR with the mandatory
   `Testing & CI evidence` section; v0.4 transactions (G3 request on the I105 row).
 
 ## Success criteria
 
-- [ ] All four architecture acceptance criteria (cl0105 §11.1) demonstrated with evidence.
+- [ ] All code-level architecture acceptance criteria demonstrated with evidence; literal
+      Zed, deployed-worker, relay-delivery, secret-installation, and deployment exits are
+      itemized honestly if the required environment is unavailable.
 - [ ] Full suite ≥ baseline, 0 fail; stdout-purity guard permanent.
 - [ ] Buzz-profile suite permanent and green against the recorded `0afeac8a7` handshake.
-- [ ] No governance claim anywhere in adapter output or docs (I107 boundary respected).
+- [ ] Buzz tools are governed as ordinary Card MCP with exact I107 selectors; no bypass,
+      inferred declaration, or false live-inventory claim.
 - [ ] I106 consumed, not worked around — no fake-cancel shipped to Buzz.
 
 ## Risks
