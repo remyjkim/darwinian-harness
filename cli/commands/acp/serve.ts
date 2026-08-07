@@ -64,9 +64,7 @@ export class AcpServeCommand extends BaseCommand {
         newSession: (params) => sessions.newSession(params),
         loadSession: (params, notify, signal) => sessions.loadSession(params, notify, signal),
         prompt: (params, notify, signal) => sessions.prompt(params, notify, signal),
-        // I106 owns truthful server-side cancellation. This phase deliberately wires no
-        // local fake-cancel behavior; the notification remains a no-op until Phase 4.
-        cancel: async () => {},
+        cancel: (params) => sessions.cancelSession(params),
       },
       { version: this.cli.binaryVersion ?? "0.0.0" },
     );

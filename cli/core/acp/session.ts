@@ -3,6 +3,7 @@
 
 import {
   RequestError,
+  type CancelNotification,
   type LoadSessionRequest,
   type LoadSessionResponse,
   type NewSessionRequest,
@@ -70,6 +71,21 @@ interface ThreadSnapshotBody {
   items?: unknown;
 }
 
+type CancelRunResult =
+  | { runId: string; outcome: "accepted" | "already_cancelling"; status: "cancelling" }
+  | { runId: string; outcome: "already_cancelled"; status: "cancelled" }
+  | { runId: string; outcome: "not_active"; status: "yielded" | "done" | "failed" }
+  | { runId: string; outcome: "not_eligible"; status: "running" };
+
+interface ActiveTurn {
+  generation: number;
+  runId: string | null;
+  cancelRequested: boolean;
+  cancelPost: Promise<void> | null;
+  terminalStatus: "yielded" | "cancelled" | "done" | "failed" | null;
+  cancelError: RequestError | null;
+}
+
 export interface AcpSessionManagerOptions {
   context: Pick<AgentsContext, "agentsDir">;
   slug: string;
@@ -81,6 +97,7 @@ export interface AcpSessionManagerOptions {
   maxSessions?: number;
   now?: () => number;
   store?: boolean;
+  onDiagnostic?: (message: string) => void;
 }
 
 const DEFAULT_POLL_MS = 1_000;
@@ -167,6 +184,33 @@ function projectSnapshotItem(item: unknown): SessionUpdate | null {
 
 function isTransientPollStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
+}
+
+function parseCancelRunResult(runId: string, response: Response, body: unknown): CancelRunResult | null {
+  const record = asRecord(body);
+  if (record.runId !== runId || typeof record.outcome !== "string" || typeof record.status !== "string") {
+    return null;
+  }
+  if (
+    response.status === 202 &&
+    (record.outcome === "accepted" || record.outcome === "already_cancelling") &&
+    record.status === "cancelling"
+  ) {
+    return record as CancelRunResult;
+  }
+  if (response.status === 200 && record.outcome === "already_cancelled" && record.status === "cancelled") {
+    return record as CancelRunResult;
+  }
+  if (
+    response.status === 409 && record.outcome === "not_active" &&
+    (record.status === "yielded" || record.status === "done" || record.status === "failed")
+  ) {
+    return record as CancelRunResult;
+  }
+  if (response.status === 409 && record.outcome === "not_eligible" && record.status === "running") {
+    return record as CancelRunResult;
+  }
+  return null;
 }
 
 function abortReason(signal: AbortSignal): Error {
@@ -293,6 +337,8 @@ export class AcpSessionManager {
   private readonly sessionIndexPath: string;
   private persistedSessions = new Map<string, PersistedSession>();
   private storeLoad: Promise<void> | null = null;
+  private readonly activeTurns = new Map<string, ActiveTurn>();
+  private nextTurnGeneration = 0;
 
   constructor(private readonly options: AcpSessionManagerOptions) {
     this.request = options.request ?? ((input, init) =>
@@ -330,11 +376,28 @@ export class AcpSessionManager {
     signal?: AbortSignal,
   ): Promise<PromptResponse> {
     throwIfAborted(signal);
-    await this.ensureStoreLoaded();
-    const response = await this.withSessionOwnerLock(
-      params.sessionId,
-      () => this.promptLocked(params, notify, signal),
-    );
+    if (this.activeTurns.has(params.sessionId)) {
+      throw new RequestError(-32001, `Session ${params.sessionId} already has an active prompt`);
+    }
+    const turn: ActiveTurn = {
+      generation: ++this.nextTurnGeneration,
+      runId: null,
+      cancelRequested: false,
+      cancelPost: null,
+      terminalStatus: null,
+      cancelError: null,
+    };
+    this.activeTurns.set(params.sessionId, turn);
+    let response: PromptResponse;
+    try {
+      await this.ensureStoreLoaded();
+      response = await this.withSessionOwnerLock(
+        params.sessionId,
+        () => this.promptLocked(params, notify, turn, signal),
+      );
+    } finally {
+      if (this.activeTurns.get(params.sessionId) === turn) this.activeTurns.delete(params.sessionId);
+    }
     await this.prunePersistedSessions(params.sessionId);
     return response;
   }
@@ -342,6 +405,7 @@ export class AcpSessionManager {
   private async promptLocked(
     params: PromptRequest,
     notify: NotifySessionUpdate,
+    turn: ActiveTurn,
     signal?: AbortSignal,
   ): Promise<PromptResponse> {
     const session = await this.resolveSessionAfterLock(params.sessionId);
@@ -355,17 +419,71 @@ export class AcpSessionManager {
       const message = promptText(params);
       if (session.runId === null) {
         session.runId = await this.startRun(message, signal);
+        turn.runId = session.runId;
         await this.persistSession(session);
       } else {
+        turn.runId = session.runId;
         await this.continueRun(session.runId, message, signal);
       }
-      return await this.pollUntilSettled(session, notify, signal);
+      if (turn.cancelRequested) await this.ensureCancelPosted(turn);
+      return await this.pollUntilSettled(session, notify, turn, signal);
     } finally {
       session.active = false;
       session.lastUsed = this.now();
       this.remember(session);
       await this.persistSession(session);
     }
+  }
+
+  /**
+   * ACP cancellation is a notification racing the active prompt. It deliberately avoids
+   * the prompt's long-held owner lock. Before admission completes, the intent is latched
+   * and posted as soon as the exact run id is durable.
+   */
+  async cancelSession(params: CancelNotification): Promise<void> {
+    const turn = this.activeTurns.get(params.sessionId);
+    if (!turn) return;
+    turn.cancelRequested = true;
+    if (turn.runId) await this.ensureCancelPosted(turn);
+  }
+
+  private async ensureCancelPosted(turn: ActiveTurn): Promise<void> {
+    if (!turn.runId || turn.cancelPost) return turn.cancelPost ?? Promise.resolve();
+    const runId = turn.runId;
+    turn.cancelPost = this.requestCancel(runId).then((result) => {
+      switch (result.outcome) {
+        case "accepted":
+        case "already_cancelling":
+          return;
+        case "already_cancelled":
+          turn.terminalStatus = "cancelled";
+          return;
+        case "not_active":
+          turn.terminalStatus = result.status;
+          return;
+        case "not_eligible":
+          turn.cancelError = new RequestError(-32001, `Worker run ${runId} is not eligible for cancellation`);
+      }
+    }).catch((error) => {
+      turn.cancelError = error instanceof RequestError
+        ? error
+        : new RequestError(-32001, `Worker cancellation failed: ${renderError(error)}`);
+      this.options.onDiagnostic?.(turn.cancelError.message);
+    });
+    await turn.cancelPost;
+  }
+
+  private async requestCancel(runId: string): Promise<CancelRunResult> {
+    const { response, body } = await this.request(
+      `${this.options.apiBaseUrl}/api/chat/${encodeURIComponent(runId)}/cancel`,
+      { method: "POST" },
+    );
+    const result = parseCancelRunResult(runId, response, body);
+    if (result) return result;
+    if (!response.ok) {
+      throw new RequestError(-32001, `Worker cancellation failed (${response.status}): ${renderError(body)}`);
+    }
+    throw new RequestError(-32001, "Worker cancellation returned an invalid response");
   }
 
   async loadSession(
@@ -704,12 +822,15 @@ export class AcpSessionManager {
   private async pollUntilSettled(
     session: SessionState,
     notify: NotifySessionUpdate,
+    turn: ActiveTurn,
     signal?: AbortSignal,
   ): Promise<PromptResponse> {
     const runId = session.runId!;
     let consecutiveFailures = 0;
     for (;;) {
       throwIfAborted(signal);
+      if (turn.cancelError) throw turn.cancelError;
+      if (turn.terminalStatus) return this.settleFromStatus(session, turn.terminalStatus);
       let response: Response;
       let body: unknown;
       try {
@@ -752,6 +873,8 @@ export class AcpSessionManager {
         session.continuable = false;
         return { stopReason: "cancelled" };
       }
+      if (turn.cancelError) throw turn.cancelError;
+      if (turn.terminalStatus) return this.settleFromStatus(session, turn.terminalStatus);
 
       // The raw stream-poll contract intentionally carries no run status. The lightweight
       // owner-gated status route is the second track, including zero-event boot failures.
@@ -788,21 +911,20 @@ export class AcpSessionManager {
       }
       consecutiveFailures = 0;
       const status = statusBody.status;
-      if (status === "yielded") return { stopReason: "end_turn" };
-      if (status === "cancelled") {
-        session.continuable = false;
-        return { stopReason: "cancelled" };
-      }
-      if (status === "done") {
-        session.continuable = false;
-        return { stopReason: "end_turn" };
-      }
-      if (status === "failed") {
-        session.continuable = false;
-        throw new RequestError(-32001, "Worker run failed: unknown failure");
-      }
+      if (status !== "running" && status !== "cancelling") return this.settleFromStatus(session, status);
       await this.persistSession(session);
       await this.wait(this.pollMs, signal);
     }
+  }
+
+  private settleFromStatus(
+    session: SessionState,
+    status: "yielded" | "cancelled" | "done" | "failed",
+  ): PromptResponse {
+    if (status === "yielded") return { stopReason: "end_turn" };
+    session.continuable = false;
+    if (status === "cancelled") return { stopReason: "cancelled" };
+    if (status === "done") return { stopReason: "end_turn" };
+    throw new RequestError(-32001, "Worker run failed: unknown failure");
   }
 }

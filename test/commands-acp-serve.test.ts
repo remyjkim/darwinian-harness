@@ -104,9 +104,10 @@ describe("drwn acp", () => {
     expect(typeof session.result.sessionId).toBe("string");
   });
 
-  test("serve drives prompt updates and settlement through the real session manager and HTTP client", async () => {
+  test("serve drives prompt updates and terminal cancellation through the real manager and HTTP client", async () => {
     const fixture = await scaffoldCliFixture();
     let streamPolls = 0;
+    let cancelPosts = 0;
     function b64(value: unknown): string {
       return Buffer.from(JSON.stringify(value)).toString("base64url");
     }
@@ -119,9 +120,11 @@ describe("drwn acp", () => {
     const originalFetch = globalThis.fetch;
     const originalToken = process.env.DRWN_TOKEN;
     const originalApiUrl = process.env.DRWN_STUDIO_API_URL;
+    const originalPollMs = process.env.DRWN_ACP_POLL_MS;
     try {
       process.env.DRWN_TOKEN = token;
       process.env.DRWN_STUDIO_API_URL = "https://api.command.test";
+      process.env.DRWN_ACP_POLL_MS = "250";
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         const request = input instanceof Request
           ? input
@@ -132,22 +135,40 @@ describe("drwn acp", () => {
           expect(await request.json()).toEqual({ message: "hello" });
           return Response.json({ runId: "run_command" });
         }
+        if (request.method === "POST" && url.pathname === "/api/chat/run_command/cancel") {
+          cancelPosts += 1;
+          return Response.json(
+            { runId: "run_command", outcome: "accepted", status: "cancelling" },
+            { status: 202 },
+          );
+        }
         if (request.method === "GET" && url.pathname === "/api/minds/harari/chat/run_command/stream-poll") {
           streamPolls += 1;
-          expect(url.searchParams.get("since")).toBe("0");
+          if (streamPolls === 1) {
+            expect(url.searchParams.get("since")).toBe("0");
+            return Response.json({
+              lastSeq: 1,
+              events: [{
+                seq: 1,
+                sourceId: "orchestrator",
+                event: { v: 1, seq: 1, ts: 1, type: "text.delta", text: "world" },
+              }],
+            });
+          }
+          expect(url.searchParams.get("since")).toBe("1");
           return Response.json({
-            lastSeq: 1,
+            lastSeq: 2,
             events: [{
-              seq: 1,
+              seq: 2,
               sourceId: "orchestrator",
-              event: { v: 1, seq: 1, ts: 1, type: "text.delta", text: "world" },
+              event: { v: 1, seq: 2, ts: 2, type: "agent.cancelled", reason: "owner_cancel" },
             }],
           });
         }
         if (request.method === "GET" && url.pathname === "/api/chat/run_command/status") {
           return Response.json({
-            status: "yielded",
-            runMetrics: { startedAt: 1, finishedAt: 2, totalTokens: 3 },
+            status: "cancelling",
+            runMetrics: { startedAt: 1, finishedAt: null, totalTokens: null },
           });
         }
         return Response.json({ error: `unexpected ${request.method} ${url.pathname}` }, { status: 404 });
@@ -209,18 +230,34 @@ describe("drwn acp", () => {
         1,
       );
       const sessionId = (sessionFrame.result as { sessionId: string }).sessionId;
-      await send({
+      stdin.write(`${JSON.stringify({
         jsonrpc: "2.0",
         id: 2,
         method: "session/prompt",
         params: { sessionId, prompt: [{ type: "text", text: "hello" }] },
-      }, 2);
+      })}\n`);
+      for (;;) {
+        const frame = JSON.parse(await readLine()) as Record<string, unknown>;
+        frames.push(frame);
+        if (frame.method === "session/update") break;
+      }
+      stdin.write(`${JSON.stringify({
+        jsonrpc: "2.0",
+        method: "session/cancel",
+        params: { sessionId },
+      })}\n`);
+      for (;;) {
+        const frame = JSON.parse(await readLine()) as Record<string, unknown>;
+        frames.push(frame);
+        if (frame.id === 2) break;
+      }
       stdin.end();
       const exitCode = await execution;
       expect(exitCode).toBe(0);
       expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
       expect(buffered.trim()).toBe("");
-      expect(streamPolls).toBe(1);
+      expect(streamPolls).toBe(2);
+      expect(cancelPosts).toBe(1);
       expect(frames).toContainEqual({
         jsonrpc: "2.0",
         method: "session/update",
@@ -229,13 +266,15 @@ describe("drwn acp", () => {
           update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "world" } },
         },
       });
-      expect(frames.find((frame) => frame.id === 2)?.result).toEqual({ stopReason: "end_turn" });
+      expect(frames.find((frame) => frame.id === 2)?.result).toEqual({ stopReason: "cancelled" });
     } finally {
       globalThis.fetch = originalFetch;
       if (originalToken === undefined) delete process.env.DRWN_TOKEN;
       else process.env.DRWN_TOKEN = originalToken;
       if (originalApiUrl === undefined) delete process.env.DRWN_STUDIO_API_URL;
       else process.env.DRWN_STUDIO_API_URL = originalApiUrl;
+      if (originalPollMs === undefined) delete process.env.DRWN_ACP_POLL_MS;
+      else process.env.DRWN_ACP_POLL_MS = originalPollMs;
     }
   });
 

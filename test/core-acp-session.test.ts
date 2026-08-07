@@ -481,6 +481,195 @@ describe("AcpSessionManager", () => {
     )).rejects.toThrow("terminal");
   });
 
+  test("latches cancel before start returns and posts it once after the run id is durable", async () => {
+    let startEntered!: () => void;
+    let releaseStart!: () => void;
+    const entered = new Promise<void>((resolve) => { startEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releaseStart = resolve; });
+    const calls: string[] = [];
+    const request: AcpSessionRequest = async (url, init) => {
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.endsWith("/api/minds/harari/chat") && init?.method === "POST") {
+        startEntered();
+        await release;
+        return json({ runId: "run_prestart_cancel" });
+      }
+      if (url.endsWith("/api/chat/run_prestart_cancel/cancel") && init?.method === "POST") {
+        return json({ runId: "run_prestart_cancel", outcome: "accepted", status: "cancelling" }, 202);
+      }
+      if (url.endsWith("/status")) return json(runStatus("cancelled"));
+      return json({ lastSeq: 1, events: [{
+        seq: 1,
+        sourceId: "orchestrator",
+        event: { v: 1, seq: 1, ts: 1, type: "agent.cancelled", reason: "owner_cancel" },
+      }] });
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_prestart_cancel",
+    });
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    const prompt = manager.prompt(
+      { sessionId: "sess_prestart_cancel", prompt: [{ type: "text", text: "hi" }] },
+      async () => {},
+    );
+    await entered;
+    await expect(manager.cancelSession({ sessionId: "sess_prestart_cancel" })).resolves.toBeUndefined();
+    expect(calls.some((call) => call.includes("/cancel"))).toBe(false);
+    releaseStart();
+    await expect(prompt).resolves.toEqual({ stopReason: "cancelled" });
+    expect(calls.filter((call) => call.endsWith("/api/chat/run_prestart_cancel/cancel"))).toHaveLength(1);
+  });
+
+  test("posts cancel without waiting for the prompt lock and keeps 202 acknowledgement nonterminal", async () => {
+    let firstPollEntered!: () => void;
+    let releaseFirstPoll!: () => void;
+    const entered = new Promise<void>((resolve) => { firstPollEntered = resolve; });
+    const release = new Promise<void>((resolve) => { releaseFirstPoll = resolve; });
+    let streamPolls = 0;
+    let cancelPosts = 0;
+    let statusPolls = 0;
+    const request: AcpSessionRequest = async (url, init) => {
+      if (url.endsWith("/api/minds/harari/chat") && init?.method === "POST") {
+        return json({ runId: "run_mid_cancel" });
+      }
+      if (url.endsWith("/api/chat/run_mid_cancel/cancel") && init?.method === "POST") {
+        cancelPosts += 1;
+        return json({ runId: "run_mid_cancel", outcome: "accepted", status: "cancelling" }, 202);
+      }
+      if (url.endsWith("/status")) {
+        statusPolls += 1;
+        return json(runStatus(statusPolls === 1 ? "cancelling" : "cancelled"));
+      }
+      streamPolls += 1;
+      if (streamPolls === 1) {
+        firstPollEntered();
+        await release;
+        return json({ lastSeq: 0, events: [] });
+      }
+      return json({ lastSeq: 1, events: [{
+        seq: 1,
+        sourceId: "orchestrator",
+        event: { v: 1, seq: 1, ts: 1, type: "agent.cancelled", reason: "owner_cancel" },
+      }] });
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_mid_cancel",
+    });
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    let settled = false;
+    const prompt = manager.prompt(
+      { sessionId: "sess_mid_cancel", prompt: [{ type: "text", text: "hi" }] },
+      async () => {},
+    ).finally(() => { settled = true; });
+    await entered;
+    await manager.cancelSession({ sessionId: "sess_mid_cancel" });
+    await manager.cancelSession({ sessionId: "sess_mid_cancel" });
+    expect(cancelPosts).toBe(1);
+    expect(settled).toBe(false);
+    releaseFirstPoll();
+    await expect(prompt).resolves.toEqual({ stopReason: "cancelled" });
+  });
+
+  const cancellationOutcomes = [
+    {
+      name: "200 already_cancelled",
+      httpStatus: 200,
+      body: { outcome: "already_cancelled", status: "cancelled" },
+      expected: "cancelled",
+    },
+    {
+      name: "409 not_active yielded",
+      httpStatus: 409,
+      body: { outcome: "not_active", status: "yielded" },
+      expected: "end_turn",
+    },
+    {
+      name: "409 not_active done",
+      httpStatus: 409,
+      body: { outcome: "not_active", status: "done" },
+      expected: "end_turn",
+    },
+    {
+      name: "409 not_active failed",
+      httpStatus: 409,
+      body: { outcome: "not_active", status: "failed" },
+      error: "Worker run failed",
+    },
+    {
+      name: "409 not_eligible",
+      httpStatus: 409,
+      body: { outcome: "not_eligible", status: "running" },
+      error: "not eligible for cancellation",
+    },
+    {
+      name: "401 authentication failure",
+      httpStatus: 401,
+      body: { error: "Unauthorized" },
+      error: "Worker cancellation failed (401)",
+    },
+    {
+      name: "404 owner mismatch",
+      httpStatus: 404,
+      body: { error: "Not Found" },
+      error: "Worker cancellation failed (404)",
+    },
+  ] as const;
+
+  for (const outcome of cancellationOutcomes) {
+    test(`maps cancellation outcome ${outcome.name} without coercion`, async () => {
+      let pollEntered!: () => void;
+      let releasePoll!: () => void;
+      const entered = new Promise<void>((resolve) => { pollEntered = resolve; });
+      const release = new Promise<void>((resolve) => { releasePoll = resolve; });
+      const request: AcpSessionRequest = async (url, init) => {
+        if (url.endsWith("/api/minds/harari/chat") && init?.method === "POST") {
+          return json({ runId: "run_cancel_matrix" });
+        }
+        if (url.endsWith("/api/chat/run_cancel_matrix/cancel") && init?.method === "POST") {
+          return json({ runId: "run_cancel_matrix", ...outcome.body }, outcome.httpStatus);
+        }
+        if (url.endsWith("/status")) return json(runStatus("running"));
+        pollEntered();
+        await release;
+        return json({ lastSeq: 0, events: [] });
+      };
+      const manager = new AcpSessionManager({
+        context: { agentsDir: "/fixture" },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        store: false,
+        request,
+        sleep: async () => {},
+        idFactory: () => "sess_cancel_matrix",
+      });
+      await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+      const prompt = manager.prompt(
+        { sessionId: "sess_cancel_matrix", prompt: [{ type: "text", text: "hi" }] },
+        async () => {},
+      );
+      await entered;
+      await manager.cancelSession({ sessionId: "sess_cancel_matrix" });
+      releasePoll();
+      if ("error" in outcome) {
+        await expect(prompt).rejects.toThrow(outcome.error);
+      } else {
+        await expect(prompt).resolves.toEqual({ stopReason: outcome.expected });
+      }
+    });
+  }
+
   test("rejects a cached active session load before snapshot or cursor requests", async () => {
     let releasePoll!: () => void;
     let pollEntered!: () => void;
