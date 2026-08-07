@@ -322,6 +322,16 @@ versioned artifacts rather than whole-Store archives. They preserve stable
 identity, receipts, provenance, compatibility, and consent boundaries. These
 project/remote flows do not consume machine intent or user-home state.
 
+`drwn worker materialize --payload <payload.json> --project-root <dir>` is the
+canonical consumer of the frozen V1 deploy payload: it validates the contract
+(exact `contractVersion`, digest-checked store bytes), seeds the store, stages
+the derived project config and lock with target-relative card paths, installs
+frozen from the lock, and projects with the write pipeline. Container boot is
+this one invocation. `--store-export <tar>` supplies external store bytes
+(digest-checked against the payload's declared sha256), and
+`--emit-project-tar` / `--emit-store-tar` emit the minimal project snapshot
+(config + lock only) and a store re-archive for the caller's boot contract.
+
 ## Testing Boundaries
 
 - unit: schema, graph/lock invariants, descriptor, consent, pure planning;
