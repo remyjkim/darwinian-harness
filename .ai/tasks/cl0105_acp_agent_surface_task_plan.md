@@ -190,7 +190,8 @@ implementation over the existing device flow, with the terminal interaction on s
    `failed` → error; cursor advance.
 5. Multi-turn `/message`; local and cross-process busy-session rejection; `session/load` from
    snapshot fixture and durable-index refresh on an in-memory miss.
-6. Reserved for Phase 4/I106 server cancellation; the current notification handler is a no-op.
+6. Phase 4 consumes I106's owner-gated cancellation route; 202 acknowledgements remain
+   nonterminal and only terminal event/status evidence resolves ACP as cancelled.
 7. `authenticate` over device flow (stub hub).
 8. Buzz profile suite (fake client, permanent).
 9. Phase-4/5 increments per their gates.
@@ -204,16 +205,17 @@ the `darwinian-worker-skills` submodule initialized (per the I176 handoff, unset
 ### Definition of green
 
 Typecheck 0 errors; full suite 0 fail with no unaccounted skips. The six Phase-0 skips plus
-the named credential gate in `test/e2e-acp-editor.test.ts` are expected when
-`DRWN_E2E_DEPLOY` is absent (seven total); every new non-live suite green; stdout-purity
-guard green; no mock substitutes for the credential-gated real-API test.
+the named deployed-Worker and Buzz-relay credential gates are expected when
+`DRWN_E2E_DEPLOY` and `DRWN_E2E_BUZZ` are absent (eight total); every new non-live suite
+green; stdout-purity guard green; no mock substitutes for either credential-gated real test.
 
 ### Non-goals & residual risk
 
-No local model, no MCP client/hosting, no tool execution, no governance claims (I107). The
-`./experimental/node` SDK export may shift under a minor bump — pinned exact, and the Phase 0
-spike test converts any silent breakage into a loud one. Raw-SSE migration (architecture
-§6.2) is explicitly out of scope until services expose it.
+No local model and no broad MCP hosting. Phase 5 adds only the two governed Buzz delivery
+tools and consumes I107; it does not create a governance bypass or general-purpose Buzz
+development surface. The `./experimental/node` SDK export may shift under a minor bump —
+pinned exact, and the Phase 0 spike test converts any silent breakage into a loud one.
+Raw-SSE migration (architecture §6.2) remains out of scope.
 
 ## Execution phases
 
@@ -275,7 +277,8 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   as failed; and drive a real `drwn acp serve` prompt/update/settlement wire test. The real-API two-turn
   restart gate now exists at
   `test/e2e-acp-editor.test.ts`; this implementation run verified its named skip with
-  `DRWN_E2E_DEPLOY` absent, not a live deployment. Phases 4–5 remain unimplemented.
+  `DRWN_E2E_DEPLOY` absent, not a live deployment. Phases 4–5 are now implemented and
+  evidenced below; their credential/deployment-gated live exits remain unclaimed.
 
 ### Phase 4 — Cancellation (I106 available)
 - Consume the exact owner-gated I106 route and result union. `202 accepted` and
@@ -297,6 +300,9 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   missing terminal stream event repaired by status, and no prompt-lock deadlock.
 - Exit: adapter tests prove the exact contract against the real session manager and command
   surface. Live server cancellation remains a credential/deployment-gated acceptance exit.
+- **Automated implementation status (2026-08-06): complete.** The session manager and real
+  stdio command exercise the complete I106 result/status contract. No local abort is reported
+  as remote cancellation.
 
 ### Phase 5 — Buzz profile and delivery (B-lean + rider)
 - `buzz-profile.ts`: Buzz detection by the verified
@@ -331,6 +337,10 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
   attribution split stated plainly).
 - Increment 8–9, `e2e-acp-buzz`. Exit: architecture acceptance criterion 1 — a Buzz mention
   produces the Worker's streamed answer in the right channel.
+- **Code implementation status (2026-08-06): complete.** The fake-Buzz compatibility suite,
+  bounded delivery rider, narrow MCP wrapper, secret command, governed Card, rollout record,
+  and real opt-in relay/channel/thread harness are present. Release, secret installation,
+  deployment, and credential-gated live relay execution remain separate gates.
 
 ### Phase 6 — Evidence and workflow close-out
 - Completion doc `tasks/cl0105_acp_agent_surface_completion.md`; PR with the mandatory
@@ -338,21 +348,21 @@ spike test converts any silent breakage into a loud one. Raw-SSE migration (arch
 
 ## Success criteria
 
-- [ ] All code-level architecture acceptance criteria demonstrated with evidence; literal
+- [x] All code-level architecture acceptance criteria demonstrated with evidence; literal
       Zed, deployed-worker, relay-delivery, secret-installation, and deployment exits are
       itemized honestly if the required environment is unavailable.
-- [ ] Full suite ≥ baseline, 0 fail; stdout-purity guard permanent.
-- [ ] Buzz-profile suite permanent and green against the recorded `0afeac8a7` handshake.
-- [ ] Buzz tools are governed as ordinary Card MCP with exact I107 selectors; no bypass,
+- [x] Full suite ≥ baseline, 0 fail; stdout-purity guard permanent.
+- [x] Buzz-profile suite permanent and green against the recorded `0afeac8a7` handshake.
+- [x] Buzz tools are governed as ordinary Card MCP with exact I107 selectors; no bypass,
       inferred declaration, or false live-inventory claim.
-- [ ] I106 consumed, not worked around — no fake-cancel shipped to Buzz.
+- [x] I106 consumed, not worked around — no fake-cancel shipped to Buzz.
 
 ## Risks
 
 | Risk | L | Mitigation |
 | --- | --- | --- |
 | `./experimental/node` adapter unstable | M | exact pin + Phase 0 spike; hand-rolled framing fallback is small |
-| I106 stalls in darwinian-services | M | Phases 0–3 ship editor value without it; Buzz stays gated |
+| I106 cancellation regresses in darwinian-services | L | Exact response/event/status matrix remains permanent; 202 can never settle ACP as cancelled |
 | Buzz interface drifts (pre-stable) | M | permanent fake-client suite pinned to `0afeac8a7`; re-record on upstream bumps |
 | stream-poll payload changes under I50 follow-ups | L | projection tolerates unknown types; `v` gate honored |
 | Model misroutes a send (wrong channel UUID from prose) | L | relay rejects non-member channels; the rider observes every send; `_meta` proposal upstream removes the prose dependency |
