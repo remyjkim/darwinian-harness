@@ -335,7 +335,9 @@ run and uploaded artifact:
    receipt/tarball;
 6. npm again confirms `1.2.0` is unpublished through the tri-state probe;
 7. the protected `darwinian-npm-publish` environment requires independent approval before
-   the minimal OIDC-capable job downloads and re-verifies the authorized artifact;
+   the minimal OIDC-capable job re-reads the current default-branch tip through GitHub,
+   requires it still to equal the dry-run/tag commit, then downloads and re-verifies the
+   authorized artifact;
 8. that job publishes the exact relative tarball with
    `npm publish ./<qualified-file>.tgz --access public`; it never republishes from or repacks
    the checkout;
