@@ -51,6 +51,18 @@ describe("projectStreamEntry", () => {
       ],
     },
     {
+      name: "error tool.result becomes a failed tool_call_update with rawOutput",
+      input: entry({ type: "tool.result", toolCallId: "t-denied", result: { isError: true, content: "denied" } }),
+      expected: [
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "t-denied",
+          status: "failed",
+          rawOutput: { isError: true, content: "denied" },
+        },
+      ],
+    },
+    {
       name: "step is dropped in v1 (usage rides a goose-private method, not ACP)",
       input: entry({ type: "step", finishReason: "stop", usage: { totalTokens: 10 } }),
       expected: [],

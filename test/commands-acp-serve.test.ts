@@ -2,14 +2,20 @@
 // ABOUTME: stdout purity (protocol frames only), clean exit on stdin EOF, and the acp group stub.
 
 import { describe, expect, test } from "bun:test";
+import { Cli } from "clipanion";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
+import { AcpServeCommand } from "../cli/commands/acp/serve";
+import type { AgentsContext } from "../cli/context";
 import { runAgentsCli, scaffoldCliFixture, envFor } from "./helpers";
 
 // ACP clients await each response before sending the next frame and keep stdin open for
 // the session's lifetime (locked by the sdk-spike EOF test), so this harness drives the
 // subprocess interactively rather than batching frames into a closed stdin.
-async function driveServe(fixtureEnv: Record<string, string>, requests: unknown[]) {
+type ServeRequest = unknown | ((frames: string[]) => unknown);
+
+async function driveServe(fixtureEnv: Record<string, string>, requests: ServeRequest[]) {
   const entrypoint = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
   const bunBin = Bun.which("bun") ?? process.execPath;
   const proc = Bun.spawn([bunBin, "run", entrypoint, "acp", "serve", "harari"], {
@@ -36,10 +42,19 @@ async function driveServe(fixtureEnv: Record<string, string>, requests: unknown[
     }
   }
   const frames: string[] = [];
-  for (const request of requests) {
+  for (const requestInput of requests) {
+    const request = typeof requestInput === "function" ? requestInput(frames) : requestInput;
     proc.stdin.write(`${JSON.stringify(request)}\n`);
     await proc.stdin.flush();
-    frames.push(await readFrame());
+    const requestId = request && typeof request === "object" && "id" in request
+      ? (request as { id?: unknown }).id
+      : undefined;
+    for (;;) {
+      const line = await readFrame();
+      frames.push(line);
+      const frame = JSON.parse(line) as { id?: unknown };
+      if (requestId === undefined || frame.id === requestId) break;
+    }
   }
   await proc.stdin.end();
   const exitCode = await proc.exited;
@@ -87,6 +102,141 @@ describe("drwn acp", () => {
     const session = JSON.parse(sessionLine);
     expect(session.id).toBe(1);
     expect(typeof session.result.sessionId).toBe("string");
+  });
+
+  test("serve drives prompt updates and settlement through the real session manager and HTTP client", async () => {
+    const fixture = await scaffoldCliFixture();
+    let streamPolls = 0;
+    function b64(value: unknown): string {
+      return Buffer.from(JSON.stringify(value)).toString("base64url");
+    }
+    const token = `${b64({ alg: "none" })}.${b64({
+      iss: "https://auth.darwinian.dev/api/auth",
+      aud: "https://api.darwinian.dev",
+      sub: "user_command",
+      exp: Math.floor(Date.now() / 1000) + 900,
+    })}.sig`;
+    const originalFetch = globalThis.fetch;
+    const originalToken = process.env.DRWN_TOKEN;
+    const originalApiUrl = process.env.DRWN_STUDIO_API_URL;
+    try {
+      process.env.DRWN_TOKEN = token;
+      process.env.DRWN_STUDIO_API_URL = "https://api.command.test";
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const request = input instanceof Request
+          ? input
+          : new Request(input instanceof URL ? input.toString() : input, init);
+        const url = new URL(request.url);
+        expect(request.headers.get("authorization")).toStartWith("Bearer ");
+        if (request.method === "POST" && url.pathname === "/api/minds/harari/chat") {
+          expect(await request.json()).toEqual({ message: "hello" });
+          return Response.json({ runId: "run_command" });
+        }
+        if (request.method === "GET" && url.pathname === "/api/minds/harari/chat/run_command/stream-poll") {
+          streamPolls += 1;
+          expect(url.searchParams.get("since")).toBe("0");
+          return Response.json({
+            lastSeq: 1,
+            events: [{
+              seq: 1,
+              sourceId: "orchestrator",
+              event: { v: 1, seq: 1, ts: 1, type: "text.delta", text: "world" },
+            }],
+          });
+        }
+        if (request.method === "GET" && url.pathname === "/api/chat/run_command/status") {
+          return Response.json({
+            status: "yielded",
+            runMetrics: { startedAt: 1, finishedAt: 2, totalTokens: 3 },
+          });
+        }
+        return Response.json({ error: `unexpected ${request.method} ${url.pathname}` }, { status: 404 });
+      }) as typeof fetch;
+
+      const stdin = new PassThrough();
+      const stdout = new PassThrough();
+      const stderr = new PassThrough();
+      const stderrChunks: Buffer[] = [];
+      stderr.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+      let buffered = "";
+      const queuedLines: string[] = [];
+      const waiters: Array<(line: string) => void> = [];
+      stdout.on("data", (chunk) => {
+        buffered += String(chunk);
+        for (;;) {
+          const newline = buffered.indexOf("\n");
+          if (newline < 0) break;
+          const line = buffered.slice(0, newline);
+          buffered = buffered.slice(newline + 1);
+          const waiter = waiters.shift();
+          if (waiter) waiter(line);
+          else queuedLines.push(line);
+        }
+      });
+      const readLine = () => queuedLines.length > 0
+        ? Promise.resolve(queuedLines.shift()!)
+        : new Promise<string>((resolve) => waiters.push(resolve));
+      const context: AgentsContext = {
+        repoRoot: fixture.repoRoot,
+        agentsDir: fixture.agentsDir,
+        homeDir: fixture.homeDir,
+        cwd: fixture.repoRoot,
+        projectConfigPath: null,
+        stdin,
+        stdout,
+        stderr,
+        env: {},
+        colorDepth: 1,
+      };
+      const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0" });
+      cli.register(AcpServeCommand);
+      const execution = cli.run(["acp", "serve", "harari"], context);
+      const frames: Record<string, unknown>[] = [];
+      async function send(request: Record<string, unknown>, responseId: number) {
+        stdin.write(`${JSON.stringify(request)}\n`);
+        for (;;) {
+          const frame = JSON.parse(await readLine()) as Record<string, unknown>;
+          frames.push(frame);
+          if (frame.id === responseId) return frame;
+        }
+      }
+      await send(
+        { jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: 1, clientCapabilities: {} } },
+        0,
+      );
+      const sessionFrame = await send(
+        { jsonrpc: "2.0", id: 1, method: "session/new", params: { cwd: "/tmp", mcpServers: [] } },
+        1,
+      );
+      const sessionId = (sessionFrame.result as { sessionId: string }).sessionId;
+      await send({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "session/prompt",
+        params: { sessionId, prompt: [{ type: "text", text: "hello" }] },
+      }, 2);
+      stdin.end();
+      const exitCode = await execution;
+      expect(exitCode).toBe(0);
+      expect(Buffer.concat(stderrChunks).toString("utf8")).toBe("");
+      expect(buffered.trim()).toBe("");
+      expect(streamPolls).toBe(1);
+      expect(frames).toContainEqual({
+        jsonrpc: "2.0",
+        method: "session/update",
+        params: {
+          sessionId: expect.any(String),
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "world" } },
+        },
+      });
+      expect(frames.find((frame) => frame.id === 2)?.result).toEqual({ stopReason: "end_turn" });
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalToken === undefined) delete process.env.DRWN_TOKEN;
+      else process.env.DRWN_TOKEN = originalToken;
+      if (originalApiUrl === undefined) delete process.env.DRWN_STUDIO_API_URL;
+      else process.env.DRWN_STUDIO_API_URL = originalApiUrl;
+    }
   });
 
   test("serve fails with slug guidance when no positional, env, or binding exists", async () => {

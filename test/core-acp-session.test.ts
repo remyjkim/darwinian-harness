@@ -18,13 +18,14 @@ function json(body: unknown, status = 200): { response: Response; body: unknown 
   };
 }
 
-function runStatus(status: "running" | "yielded" | "done" | "failed") {
+function runStatus(status: "running" | "cancelling" | "yielded" | "cancelled" | "done" | "failed") {
+  const active = status === "running" || status === "cancelling";
   return {
     status,
     runMetrics: {
       startedAt: 1_000,
-      finishedAt: status === "running" ? null : 2_000,
-      totalTokens: status === "running" ? null : 42,
+      finishedAt: active ? null : 2_000,
+      totalTokens: active ? null : 42,
     },
   };
 }
@@ -371,11 +372,15 @@ describe("AcpSessionManager", () => {
 
   test("loads snapshot history by local ACP id and primes the raw cursor before continuing", async () => {
     const calls: string[] = [];
+    let snapshotServed = false;
     const request: AcpSessionRequest = async (url, init) => {
       calls.push(`${init?.method ?? "GET"} ${url}`);
       if (url.endsWith("/api/minds/harari/chat")) return json({ runId: "run_loaded" });
       if (url.endsWith("/api/chat/run_loaded/snapshot")) {
+        snapshotServed = true;
         return json({
+          projectionVersion: 2,
+          streamCursor: 9,
           status: "yielded",
           title: "Prior conversation",
           items: [
@@ -389,11 +394,13 @@ describe("AcpSessionManager", () => {
       if (url.endsWith("/api/chat/run_loaded/message")) return json({ accepted: true });
       if (url.endsWith("/api/chat/run_loaded/status")) return json(runStatus("yielded"));
       if (url.endsWith("/stream-poll?since=0")) {
-        return json({ lastSeq: 9, events: [] });
+        if (snapshotServed) return json({ error: "v2 load must not poll from zero" }, 500);
+        return json({ lastSeq: 0, events: [] });
       }
       if (url.endsWith("/stream-poll?since=9")) {
-        return json({ lastSeq: 10, events: [
-          { seq: 10, sourceId: "orchestrator", event: { v: 1, seq: 10, ts: 10, type: "agent.completed" } },
+        return json({ lastSeq: 11, events: [
+          { seq: 10, sourceId: "orchestrator", event: { v: 1, seq: 10, ts: 10, type: "text.delta", text: "after snapshot" } },
+          { seq: 11, sourceId: "orchestrator", event: { v: 1, seq: 11, ts: 11, type: "agent.completed" } },
         ] });
       }
       return json({ error: `unexpected ${url}` }, 400);
@@ -429,9 +436,49 @@ describe("AcpSessionManager", () => {
 
     await manager.prompt(
       { sessionId: "sess_loaded", prompt: [{ type: "text", text: "continue" }] },
-      async () => {},
+      async (notification) => updates.push(notification),
     );
     expect(calls).toContain("GET https://api.example.test/api/minds/harari/chat/run_loaded/stream-poll?since=9");
+    expect(calls.filter((call) => call.endsWith("/stream-poll?since=0"))).toHaveLength(1);
+    expect(updates.at(-1)?.update).toEqual({
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "after snapshot" },
+    });
+  });
+
+  test("keeps cancelling live and settles cancelled only at authoritative terminal status", async () => {
+    const statuses = [runStatus("cancelling"), runStatus("cancelled")];
+    let streamPoll = 0;
+    const request: AcpSessionRequest = async (url, init) => {
+      if (init?.method === "POST") return json({ runId: "run_cancelled" });
+      if (url.endsWith("/status")) return json(statuses.shift());
+      streamPoll += 1;
+      return json(streamPoll === 1
+        ? { lastSeq: 0, events: [] }
+        : { lastSeq: 1, events: [{
+          seq: 1,
+          sourceId: "orchestrator",
+          event: { v: 1, seq: 1, ts: 1, type: "agent.cancelled", reason: "owner_cancel" },
+        }] });
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_cancelled",
+    });
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    await expect(manager.prompt(
+      { sessionId: "sess_cancelled", prompt: [{ type: "text", text: "hi" }] },
+      async () => {},
+    )).resolves.toEqual({ stopReason: "cancelled" });
+    await expect(manager.prompt(
+      { sessionId: "sess_cancelled", prompt: [{ type: "text", text: "again" }] },
+      async () => {},
+    )).rejects.toThrow("terminal");
   });
 
   test("rejects a cached active session load before snapshot or cursor requests", async () => {
@@ -515,6 +562,56 @@ describe("AcpSessionManager", () => {
     expect(calls).toEqual([
       "GET https://api.example.test/api/chat/run_loading/snapshot",
     ]);
+  });
+
+  test("rejects a cancelling snapshot and keeps a cancelled snapshot terminal", async () => {
+    for (const status of ["cancelling", "cancelled"] as const) {
+      const calls: string[] = [];
+      const request: AcpSessionRequest = async (url, init) => {
+        calls.push(`${init?.method ?? "GET"} ${url}`);
+        if (init?.method === "POST") return json({ runId: `run_${status}` });
+        if (url.endsWith("/status")) return json(runStatus("yielded"));
+        if (url.endsWith("/snapshot")) return json({
+          projectionVersion: 2,
+          streamCursor: 3,
+          status,
+          items: [],
+        });
+        return json({ lastSeq: 0, events: [] });
+      };
+      const manager = new AcpSessionManager({
+        context: { agentsDir: "/fixture" },
+        slug: "harari",
+        apiBaseUrl: "https://api.example.test",
+        store: false,
+        request,
+        sleep: async () => {},
+        idFactory: () => `sess_${status}`,
+      });
+      await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+      await manager.prompt(
+        { sessionId: `sess_${status}`, prompt: [{ type: "text", text: "first" }] },
+        async () => {},
+      );
+      calls.length = 0;
+
+      if (status === "cancelling") {
+        await expect(manager.loadSession(
+          { sessionId: "sess_cancelling", cwd: "/workspace", mcpServers: [] },
+          async () => {},
+        )).rejects.toMatchObject({ code: -32001 });
+      } else {
+        await expect(manager.loadSession(
+          { sessionId: "sess_cancelled", cwd: "/workspace", mcpServers: [] },
+          async () => {},
+        )).resolves.toEqual({});
+        await expect(manager.prompt(
+          { sessionId: "sess_cancelled", prompt: [{ type: "text", text: "again" }] },
+          async () => {},
+        )).rejects.toThrow("terminal");
+      }
+      expect(calls.some((call) => call.includes("stream-poll?since=0"))).toBe(false);
+    }
   });
 
   test("persists the local sessionId to runId mapping and reloads it after adapter restart", async () => {

@@ -52,8 +52,10 @@ interface StreamPollBody {
   events?: unknown;
 }
 
+export type AcpRunStatus = "running" | "cancelling" | "yielded" | "cancelled" | "done" | "failed";
+
 interface RunStatusBody {
-  status: "running" | "yielded" | "done" | "failed";
+  status: AcpRunStatus;
   runMetrics: {
     startedAt: number;
     finishedAt: number | null;
@@ -62,6 +64,8 @@ interface RunStatusBody {
 }
 
 interface ThreadSnapshotBody {
+  projectionVersion?: unknown;
+  streamCursor?: unknown;
   status?: unknown;
   items?: unknown;
 }
@@ -248,10 +252,18 @@ function serializeSessionIndexWrite<T>(path: string, operation: () => Promise<T>
   return current;
 }
 
+export function parseAcpRunStatus(value: unknown): AcpRunStatus | null {
+  return (["running", "cancelling", "yielded", "cancelled", "done", "failed"] as unknown[])
+      .includes(value)
+    ? value as AcpRunStatus
+    : null;
+}
+
 function parseRunStatus(value: unknown): RunStatusBody | null {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
-  if (!(["running", "yielded", "done", "failed"] as unknown[]).includes(record.status)) return null;
+  const status = parseAcpRunStatus(record.status);
+  if (!status) return null;
   if (!record.runMetrics || typeof record.runMetrics !== "object") return null;
   const metrics = record.runMetrics as Record<string, unknown>;
   if (
@@ -260,7 +272,7 @@ function parseRunStatus(value: unknown): RunStatusBody | null {
     !(metrics.totalTokens === null || typeof metrics.totalTokens === "number")
   ) return null;
   return {
-    status: record.status as RunStatusBody["status"],
+    status,
     runMetrics: {
       startedAt: metrics.startedAt,
       finishedAt: metrics.finishedAt,
@@ -395,16 +407,27 @@ export class AcpSessionManager {
       throw new RequestError(-32001, `Worker snapshot load failed (${response.status}): ${renderError(body)}`);
     }
     const snapshot = body as ThreadSnapshotBody;
-    const status = typeof snapshot.status === "string" ? snapshot.status : "yielded";
-    if (status === "running") {
-      throw new RequestError(-32001, `Session ${params.sessionId} is still running and cannot be loaded`);
+    const status = parseAcpRunStatus(snapshot.status);
+    if (!status) {
+      throw new RequestError(-32001, `Worker snapshot load returned an invalid status`);
+    }
+    if (status === "running" || status === "cancelling") {
+      throw new RequestError(-32001, `Session ${params.sessionId} is still ${status} and cannot be loaded`);
+    }
+    let cursor = 0;
+    const isV2Snapshot = snapshot.projectionVersion === 2;
+    if (isV2Snapshot) {
+      if (!Number.isSafeInteger(snapshot.streamCursor) || Number(snapshot.streamCursor) < 0) {
+        throw new RequestError(-32001, "Worker v2 snapshot load returned an invalid stream cursor");
+      }
+      cursor = Number(snapshot.streamCursor);
     }
     const session: SessionState = {
       sessionId: params.sessionId,
       runId,
-      cursor: 0,
+      cursor,
       active: false,
-      continuable: status !== "done" && status !== "failed",
+      continuable: status === "yielded",
       cwd: params.cwd,
       lastUsed: this.now(),
     };
@@ -414,21 +437,23 @@ export class AcpSessionManager {
       if (update) await notify({ sessionId: params.sessionId, update });
     }
 
-    // The snapshot contract has no raw-stream cursor. Read once from zero without replaying
-    // those raw events: the snapshot already supplied history, and lastSeq resumes future turns.
-    const cursorPoll = await this.request(
-      `${this.options.apiBaseUrl}/api/minds/${encodeURIComponent(this.options.slug)}/chat/${encodeURIComponent(runId)}/stream-poll?since=0`,
-      { signal },
-    );
-    if (!cursorPoll.response.ok) {
-      this.sessions.delete(params.sessionId);
-      throw new RequestError(
-        -32001,
-        `Worker stream cursor load failed (${cursorPoll.response.status}): ${renderError(cursorPoll.body)}`,
+    // Projection v2 returns the raw stream boundary atomically with the snapshot. Legacy
+    // snapshots have no cursor, so retain the zero-poll compatibility fallback.
+    if (!isV2Snapshot) {
+      const cursorPoll = await this.request(
+        `${this.options.apiBaseUrl}/api/minds/${encodeURIComponent(this.options.slug)}/chat/${encodeURIComponent(runId)}/stream-poll?since=0`,
+        { signal },
       );
+      if (!cursorPoll.response.ok) {
+        this.sessions.delete(params.sessionId);
+        throw new RequestError(
+          -32001,
+          `Worker stream cursor load failed (${cursorPoll.response.status}): ${renderError(cursorPoll.body)}`,
+        );
+      }
+      const lastSeq = (cursorPoll.body as StreamPollBody).lastSeq;
+      if (typeof lastSeq === "number") session.cursor = Math.max(0, lastSeq);
     }
-    const lastSeq = (cursorPoll.body as StreamPollBody).lastSeq;
-    if (typeof lastSeq === "number") session.cursor = Math.max(0, lastSeq);
     await this.persistSession(session);
     return {};
   }
@@ -712,13 +737,21 @@ export class AcpSessionManager {
       consecutiveFailures = 0;
       const poll = body as StreamPollBody;
       const entries = parseRawEntries(poll.events);
+      let observedCancellation = false;
       for (const entry of entries) {
+        if (entry.event.v === 1 && entry.event.type === "agent.cancelled") {
+          observedCancellation = true;
+        }
         for (const update of projectStreamEntry(entry.event)) {
           await notify({ sessionId: session.sessionId, update });
         }
         session.cursor = Math.max(session.cursor, entry.seq);
       }
       if (typeof poll.lastSeq === "number") session.cursor = Math.max(session.cursor, poll.lastSeq);
+      if (observedCancellation) {
+        session.continuable = false;
+        return { stopReason: "cancelled" };
+      }
 
       // The raw stream-poll contract intentionally carries no run status. The lightweight
       // owner-gated status route is the second track, including zero-event boot failures.
@@ -756,6 +789,10 @@ export class AcpSessionManager {
       consecutiveFailures = 0;
       const status = statusBody.status;
       if (status === "yielded") return { stopReason: "end_turn" };
+      if (status === "cancelled") {
+        session.continuable = false;
+        return { stopReason: "cancelled" };
+      }
       if (status === "done") {
         session.continuable = false;
         return { stopReason: "end_turn" };

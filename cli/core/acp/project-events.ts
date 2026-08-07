@@ -45,11 +45,14 @@ export function projectStreamEntry(entry: StreamEntry): SessionUpdate[] {
       ];
     case "tool.result":
       if (typeof entry.toolCallId !== "string") return [];
+      const result = entry.result && typeof entry.result === "object"
+        ? entry.result as Record<string, unknown>
+        : null;
       return [
         {
           sessionUpdate: "tool_call_update",
           toolCallId: entry.toolCallId,
-          status: "completed",
+          status: result?.isError === true ? "failed" : "completed",
           rawOutput: entry.result,
         },
       ];
