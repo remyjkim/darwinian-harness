@@ -1,6 +1,6 @@
 # I105 ACP and Buzz Worker surface — implementation completion evidence
 
-**Status:** Worker implementation passed G3 and merged; Services runtime pin is source-approved but staging-deployment gated
+**Status:** I105 source scope passed G3 and merged across Worker and Services; authorized staging runtime deployment passed
 
 **Evidence date:** 2026-08-06
 
@@ -14,10 +14,17 @@
 
 **Worker merge commit:** `6258f5c9cd5c2d8711201aaea837a23699461c26`
 
+**Worker knowledge merge commit:** `72eaf7ac70fa5118a9e60326b87b5ce1460d9cac`
+
 **Services runtime-image PR:** [#437](https://github.com/curation-labs/darwinian-services/pull/437) at `dab65c2fbfddbb7900cbd40f61f715cc56b959f9`
 
-**Release or deployment:** Not authorized and not performed; Services PR #437 remains
-unmerged because merge automatically deploys staging
+**Services merge commit:** `07703d32ea6c6cefb698c4d2ede20fbde3523c15`
+
+**Staging deployment:** [run 31153961667](https://github.com/curation-labs/darwinian-services/actions/runs/31153961667) — passed at `07703d32`
+
+**Release or deployment:** The PR #437 staging deployment was explicitly authorized and
+passed. No Darwinian release, secret installation, product enablement, live-channel proof,
+or production deployment was authorized or performed.
 
 ## Outcome
 
@@ -124,17 +131,27 @@ mind-runtime cloud, and engine-runtime cloud Dockerfiles. It uses HTTPS/TLS-rest
 `curl`, `sha256sum -c`, `dpkg-deb -x`, installs only `/usr/bin/buzz` as
 `/usr/local/bin/buzz`, and removes the downloaded/extracted temporary files.
 
-Source verification before G3:
+Source verification before merge:
 
 - Dockerfile pin tests: 6/6 passed.
 - Full engine-runtime Node suite: 31/31 passed.
 - `pnpm engine-runtime:prebuild`: passed.
 - GitHub `Validate studio-deployment`: passed, including validation-only linux/amd64 builds
   of both cloud runtime images with `push: false`.
-- PR head is one commit ahead and zero behind current Services `main`; PR is mergeable.
+- PR head was clean, mergeable, and exact-head source-reviewed PASS.
 
-No image was published or deployed by this issue lane. GitHub CI built both cloud images
-only for validation and explicitly set `push: false`.
+PR #437 merged as `07703d32` after the user explicitly authorized its automatic staging
+deployment. The exact-commit `Deploy Staging` run then passed:
+
+- runner, engine, gateway, and deploy-api deploy steps succeeded;
+- canonical deploy-api and signed inbound-provider smokes succeeded;
+- the staging manifest was written and `staging-ok` was marked;
+- live `https://deploy-staging-main.darwinian.dev/version` reported commit `07703d32`
+  and build time `2026-08-07T06:29:01Z`.
+
+This deploy proves that the staging runtime images contain pinned Buzz 0.5.5. It does not
+prove the unpublished I105 Darwinian CLI is in those images: the Dockerfiles still install
+the released `darwinian@1.1.0`, while the I105 Card requires `harness.minVersion: 1.2.0`.
 
 ## Worker verification
 
@@ -205,16 +222,19 @@ Completed:
 4. Worker PR #97 merged as `6258f5c9`; the reviewed head is its second parent and is reachable
    from Worker `main`.
 5. Services PR #437 passed exact-head source review and its validation-only image builds passed.
+6. User authorization for the automatic staging deployment was recorded on 2026-08-06.
+7. Services PR #437 merged as `07703d32`; staging run `31153961667` deployed the grouped
+   runtime lane, passed its smokes, wrote the manifest, and marked `staging-ok`.
+8. The Worker completion record was corrected after both source merges without claiming an
+   unpublished release or a live Buzz delivery.
 
-Still gated:
+I105 may now close as source-complete and Knowledge-captured. The following remain successor
+rollout gates rather than hidden completion claims:
 
-1. Services PR #437 cannot merge until staging deployment is explicitly authorized.
-2. I105 remains `In Review / G3 Passed` rather than being falsely marked Merged or
-   Knowledge-captured while that source PR is open.
-3. Release publication, secret installation, candidate deployment selection, live relay proof,
+1. Release publication, secret installation, candidate deployment selection, live relay proof,
    product enablement, and production rollout remain separate authorization/evidence gates.
-
-Services PR #437 is a separately gated merge despite being source-complete: this repository's
-`deploy-staging.yml` runs on every `main` push and classifies `studio-deployment/**` as an
-automatic staging deploy. Merging that PR therefore requires explicit staging-deployment
-authorization; a CI-skip marker will not be used to evade the boundary.
+2. Staging must be rebuilt with the future Darwinian release before ACP/Buzz can be called
+   operationally live; the successful run above currently pairs Buzz 0.5.5 with
+   `darwinian@1.1.0`.
+3. The credential-gated two-turn/restart, live cancellation, real Buzz channel/thread, and
+   literal editor smokes remain unexecuted.
