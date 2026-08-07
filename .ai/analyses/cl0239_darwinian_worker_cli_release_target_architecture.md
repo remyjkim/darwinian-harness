@@ -3,11 +3,12 @@
 
 # [I239] Darwinian Worker CLI 1.2.0 release and operational ACP/Buzz handoff — target architecture
 
-**Issue:** [I239] Darwinian Worker CLI 1.2.x release and operational ACP/Buzz handoff
+**Issue:** [I239] Darwinian Worker CLI 1.2.0 release and operational ACP/Buzz handoff
 **Date:** 2026-08-07
 **Status:** G1 proposal; no G2 plan, implementation, publication, Services mutation, staging action, candidate, secret, or live test is authorized by this document
 **Owner:** Remy K
-**Reviewer:** Minseung Lee
+**Reviewer:** Remy K (user-authorized G1 reviewer control)
+**Publication environment reviewer:** `leeminseung` (independent GitHub account with verified repository write access)
 **Repository:** `remyjkim/darwinian-worker`
 **Parent:** I232 cross-repository architecture program
 **Downstream:** separately numbered Services runtime-adoption child, then I238 controlled staging qualification
@@ -38,9 +39,10 @@ Buzz, or establish public multi-user/production readiness. It stops at the publi
 gate until explicit authorization, and after publication it emits evidence rather than
 performing downstream mutations.
 
-The target version is `1.2.0`, not an unspecified moving `1.2.x`. If `1.2.0` appears on npm
-or as a conflicting release before the candidate is published, the lane stops and records
-a new version decision; it never silently advances or reuses an existing version.
+The target version is exactly `1.2.0`, not a moving release-series label. If `1.2.0`
+appears on npm or as a conflicting release before the candidate is published, the lane
+stops and records a new version decision; it never silently advances or reuses an existing
+version.
 
 ## 2. Evidence baseline and explicit non-claims
 
@@ -57,6 +59,9 @@ a new version decision; it never silently advances or reuses an existing version
 | Current package/runtime version | `package.json=1.1.0`; `cli/core/version.ts=1.1.0` |
 | Governed Buzz Card floor | `harness.minVersion=1.2.0` |
 | Clean Worker baseline | isolated `bfbbffa5` worktree: typecheck passed; 1,998 tests passed, 8 opt-in/live tests skipped, 0 failed |
+| Live GitHub publication environment | shared `npm-publish`: `protection_rules=[]`; `can_admins_bypass=true`; `deployment_branch_policy=null` |
+| GitHub `main` protection | no branch-protection rule is configured |
+| npm provenance evidence | `darwinian@1.1.0` has SLSA provenance for `release.yml` at `ece98cb2`; this proves that historical publish, not the mutable current trusted-publisher configuration |
 
 ### 2.2 Artifact reproduction
 
@@ -200,9 +205,23 @@ issue and an independently reviewed Worker consumer change.
 
 ### 5.2 Exact declaration association
 
-The target Card is the active deployment Card when an active deployment exists, otherwise
-the latest deployment Card. The local active Worker root is associated only when the
-target `card_ref` exactly matches either:
+Declaration targeting and enforcement applicability are separate decisions:
+
+1. When `active_deployment_id` resolves to a deployment row, that active deployment Card
+   is the declaration target and enforcement is `unknown` because the API reports no
+   governance capability.
+2. When `active_deployment_id` is null and deployment history is non-empty, the latest
+   deployment Card is the declaration target, but enforcement is `not_applicable` because
+   no deployment is active.
+3. When `active_deployment_id` is null and history is empty, there is no declaration
+   target. Declaration is `unavailable` with `LOCAL_TARGET_UNAVAILABLE`, while enforcement
+   remains `not_applicable` with `NO_ACTIVE_DEPLOYMENT`.
+4. A non-null `active_deployment_id` absent from the returned history is a fail-closed
+   inconsistent response: declaration is unavailable rather than falling back to latest;
+   enforcement is `unknown` because an active alias was reported but capability was not.
+
+The local active Worker root is associated only when the selected target `card_ref`
+exactly matches either:
 
 - the root's locked `requested` ref; or
 - the canonical locked `${name}@${version}` ref.
@@ -210,7 +229,7 @@ target `card_ref` exactly matches either:
 On an exact match, the command reports zero-or-positive counts from the root Card
 manifest. If the local project is absent, malformed, has no target deployment, or names a
 different Card, declaration state is `unavailable` with the stable reason code. It never
-borrows counts from an unrelated active Card.
+borrows counts from an unrelated active Card and never emits a policy hash.
 
 ### 5.3 Human rendering
 
@@ -224,7 +243,17 @@ Governance:
   deployment enforcement: unknown — Deploy API does not report governance capability
 ```
 
-No-active-deployment example:
+No active alias, latest history exists:
+
+```text
+Governance:
+  declaration: local project lock @test/blueprint@1.0.0 (matches latest deployment; no active deployment)
+  tools.allow: 3
+  tools.deny: 1
+  deployment enforcement: not applicable — no active deployment
+```
+
+No active alias, empty history:
 
 ```text
 Governance:
@@ -260,28 +289,77 @@ workflow_dispatch from refs/heads/main
   -> package version is confirmed unpublished
   -> typecheck + full tests + bridge + release gate
   -> actual local tarball qualification
-  -> dry-run receipt bound to GITHUB_SHA
+  -> Dry run complete job succeeds while every publish/release job is skipped
+  -> immutable-per-run JSON artifact records workflow path, run ID/URL, version, exact
+     GITHUB_SHA, and packed-tar shasum/integrity
+  -> Actions upload/API metadata records the artifact digest
   -> no protected publish environment and no registry mutation
 ```
 
 `workflow_dispatch` is dry-run only for the CLI release. It rejects another selected ref
 and rejects `dry_run=false`; canonical publication remains the annotated-tag path already
-documented by the repository.
+documented by the repository. `dry_run_complete` uploads the JSON receipt with Actions
+artifact v4 and a fixed retention period; its contents are derived from workflow context
+and validated outputs, not dispatch strings. Publication has explicit `actions: read`,
+finds a successful `workflow_dispatch` run of `.github/workflows/release.yml` at the exact
+merged candidate SHA, requires the successful `Dry run complete` job and skipped
+publication/release jobs, downloads that run's receipt, verifies its artifact digest and
+schema, and compares version/SHA/tar identities to the tagged checkout. An absent or
+expired artifact fails closed and requires a new dry run before tagging. The run ID, URL,
+SHA, version, and Actions-reported artifact digest are recorded in I239 before publication
+authorization. A caller-provided SHA or unverified run URL is not a receipt.
 
 ### 6.3 Publication path
 
-After I239 G3, merge, successful dry run, and explicit publication authorization:
+After I239 G3, merge, successful dry run, publication-control readback, and explicit
+publication authorization:
 
-1. create annotated tag `v1.2.0` at the exact dry-run commit;
-2. push the tag;
-3. tag validation proves `v<package.version>`, the tag target is contained in current
-   `origin/main`, and npm confirms the version is unpublished;
-4. the protected `npm-publish` environment requires approval before OIDC publication;
-5. the same workflow run performs Ubuntu and macOS registry-artifact qualification;
-6. only then create/verify the GitHub release.
+1. create annotated tag `v1.2.0` at the exact dry-run commit and push no other release tag;
+2. validation requires `git cat-file -t refs/tags/v1.2.0` to equal `tag`;
+3. validation peels the tag with `git rev-parse refs/tags/v1.2.0^{}` and requires that
+   commit to equal the recorded successful dry-run `GITHUB_SHA`, the checked-out release
+   commit, and a commit contained in current `origin/main`;
+4. validation re-reads the dry-run run/jobs from GitHub Actions and rejects a missing,
+   failed, stale, differently versioned, or differently headed receipt;
+5. npm again confirms `1.2.0` is unpublished through the tri-state probe;
+6. the protected `darwinian-npm-publish` environment requires independent approval before
+   OIDC publication;
+7. the same workflow run performs Ubuntu and macOS registry-artifact qualification;
+8. only then create/verify the GitHub release.
 
 No path treats an existing npm version or GitHub release as successful qualification of
 new source.
+
+### 6.4 Publication control is an external fail-closed precondition
+
+The existing `npm-publish` environment is not protected and is shared by the CLI tag
+workflow and the command-bridge main-branch workflow. Applying a CLI-only tag policy to it
+would break bridge publication. I239 therefore selects a dedicated
+`darwinian-npm-publish` environment and leaves the bridge environment as a separate lane.
+
+Before any `v1.2.0` tag is created or pushed, an explicitly authorized administrator must
+configure and read back all of the following:
+
+- GitHub environment `darwinian-npm-publish` has required reviewer `leeminseung`,
+  `prevent_self_review=true`, `can_admins_bypass=false`, and a custom deployment tag policy
+  admitting exactly `v1.2.0`;
+- the CLI publish job references `darwinian-npm-publish`; no other CLI-release job receives
+  `id-token: write`;
+- the `darwinian` npm trusted publisher names owner `remyjkim`, repository
+  `darwinian-worker`, workflow `release.yml`, environment `darwinian-npm-publish`, and the
+  `npm publish` action only;
+- `darwinian` publishing access requires 2FA and disallows traditional tokens; and
+- GitHub and authenticated npm settings receipts are timestamped and attached to I239.
+
+The `remyjkim` release operator creates the tag or dispatches recovery; required reviewer
+`leeminseung` supplies the independent environment approval. Self-review prevention means
+the required reviewer cannot initiate and then approve the same protected job.
+
+The historical `1.1.0` provenance attestation is supporting evidence only. npm trusted
+publisher settings are mutable and must be read from authenticated package settings for
+this release. Missing access, an unverifiable field, or any mismatch stops before tagging.
+G1 acceptance defines this target state; it does not itself authorize or perform the
+external configuration mutation.
 
 ## 7. Contract C — packed and published artifact qualification
 
@@ -320,11 +398,29 @@ publication. Post-publication verification records:
 ### 7.3 Failure after publication
 
 npm publication is immutable for this workflow. If publish succeeds but a later smoke or
-GitHub-release step fails, re-running I239 as if the version were unpublished is forbidden.
-The lane enters release recovery: read back and compare npm provenance to the candidate,
-finish only missing read-only verification/release metadata under explicit authorization,
-or deprecate and roll forward with a new patch. It never overwrites, silently reuses, or
-blindly unpublishes the version.
+GitHub-release step fails, the ordinary workflow remains fail-closed because freshness is
+no longer true. Re-running I239 as if the version were unpublished is forbidden.
+
+Recovery uses a separately authorized `.github/workflows/release-recovery.yml`
+`workflow_dispatch` selected at ref `v1.2.0`. It accepts the failed canonical run ID and
+authorization receipt, then derives rather than trusts version, tag, and commit from the
+tagged source and canonical run. The workflow has no `id-token: write`, npm publish token,
+publish command, tag mutation, dist-tag mutation, or unpublish action. It enters the same
+independently reviewed `darwinian-npm-publish` environment, so recovery also pauses for
+approval.
+
+Before any recovery action it requires all of these identities to agree:
+
+- package/runtime version `1.2.0` and annotated tag `v1.2.0`;
+- peeled tag, recovery checkout, canonical publish run, and recorded dry-run commit;
+- npm `gitHead` and the candidate commit; and
+- npm shasum/integrity and the pre-publication packed-tar receipt from the canonical run.
+
+Only after exact comparison may recovery run the safe Ubuntu/macOS installed-artifact
+smokes or create/verify the missing GitHub Release metadata at the existing tag. It cannot
+publish. Any mismatch stops recovery, records containment evidence, and opens a separately
+authorized deprecation plus patch roll-forward decision; it never overwrites, silently
+reuses, retags, or blindly unpublishes `1.2.0`.
 
 ## 8. Contract D — one current version, separate compatibility floors
 
@@ -355,7 +451,10 @@ I239 updates these public surfaces as one contract:
 - Docusaurus Worker CLI reference covering status, materialize, Buzz tools, and secret set;
 - the manually enumerated Docusaurus sidebar;
 - `docs/release-process.md`, including main-only dry run, fail-closed freshness, exact
-  artifact smokes, publication authorization, provenance, and recovery;
+  artifact smokes, publication authorization, provenance, dedicated environment readback,
+  retirement of the `darwinian` maintainer-token fallback, and recovery;
+- `docs/maintainers/publishing.md`, removing local token publication as a supported
+  `darwinian` 1.2.0 path while keeping any independently gated bridge procedure explicit;
 - `CHANGELOG.md` with a dated 1.2.0 section and evidence-backed 1.0.0/1.1.0 history rather
   than leaving the first two stable releases invisible.
 
@@ -372,18 +471,22 @@ Buzz content, or claims that I238 has not proved.
 | Registry unavailable | `indeterminate`; fail closed |
 | Workflow selected from feature branch | reject before tests/publication |
 | Tag version or target mismatch | reject before protected environment |
+| Lightweight tag or stale/mismatched dry-run receipt | reject before protected environment |
 | Local Card differs from deployed Card | declaration unavailable; no borrowed counts |
 | Server exposes no governance capability | enforcement unknown, never inferred |
 | No active deployment | enforcement not applicable |
 | Required file/command missing from tar | fail candidate qualification |
 | Help smoke reaches auth, network, secret, or filesystem mutation | fail; help contract is unsafe |
 | npm published, later job failed | recovery/roll-forward; never overwrite or reuse |
+| GitHub environment or npm publisher setting missing/mismatched | stop before tag creation; configuration claims are not inferred from prior provenance |
+| Long-lived token can publish `darwinian` | stop; 1.2.0 uses the bound OIDC workflow only |
 | Secret or selector appears in output/evidence | fail and contain; do not merely redact after capture |
 | Main changes after freeze | re-inventory delta and re-run exact-head evidence |
 
-The OIDC publisher remains scoped to this repository, workflow, and protected environment.
-No long-lived npm token is introduced. Release evidence contains hashes, identifiers, and
-counts only—not credential values, selectors, prompts, replies, or user data.
+The target OIDC publisher is scoped to this repository, `release.yml`, the dedicated
+`darwinian-npm-publish` environment, and `npm publish`. Traditional token publication is
+disabled for `darwinian`. Release evidence contains hashes, identifiers, settings names,
+and counts only—not credential values, selectors, prompts, replies, or user data.
 
 ## 11. G1 test intent
 
@@ -391,14 +494,16 @@ G2 must expand these claims into explicit RED → GREEN increments and exact com
 
 | Contract | Required proof |
 |---|---|
-| Governance model parity | the same model produces human and JSON output for matched, zero-rule, missing-project, malformed-project, ref-mismatch, no-active, and active-without-capability cases |
+| Governance model parity | the same model produces human and JSON output for matched, zero-rule, missing-project, malformed-project, ref-mismatch, active-without-capability, no-active-with-history, no-active-empty-history, and inconsistent-active-ID cases |
 | No false association | unrelated local active Card never supplies counts for the remote deployment |
 | No secret/selectors | output contains counts/reasons only |
 | Freshness tri-state | injected probe tests published, confirmed 404, timeout/DNS/TLS/rate-limit/malformed outcomes; only 404 passes |
 | Dry-run freshness | workflow validation runs the real online check with `dry_run=true` |
-| Ref/tag binding | manual non-main ref, mismatched input, mismatched tag, and tag outside main all fail |
+| Ref/tag binding | manual non-main ref, mismatched input, lightweight tag, tag outside main, peeled-commit mismatch, missing dry-run job, and stale/different-SHA receipt all fail |
+| Publication controls | fixture/readback assertions require the dedicated environment name, independent reviewer, self-review prevention, disabled admin bypass, exact tag policy, exact npm trusted-publisher fields, and token prohibition |
 | Required members | removal of any one of the five paths fails artifact verification |
 | Installed artifact | actual packed tar installs in a clean prefix and all five safe smokes pass |
+| Recovery non-publication | recovery fixtures prove exact npm/tag/commit/tar identity, verification/metadata-only behavior, and structural absence of OIDC/token/publish/tag-mutation paths |
 | Source-vs-registry regression | a fixture representing old 1.1.0 bytes can pass version but fails required-command qualification |
 | Version identity | package/runtime parity; 1.2.0 candidate; 1.1.0 compatibility floor; emitted floors and Buzz Card floor preserved |
 | Documentation | Docusaurus build/link checks and source assertions cover every new command, governance semantics, release process, and changelog section |
@@ -416,28 +521,36 @@ I239 G3 may be requested only when:
    and compatibility floors remain deliberate;
 4. dry-run validation is main-only and confirms version freshness with fail-closed
    tri-state behavior;
-5. tag publication is bound to the reviewed main commit and protected environment;
+5. annotated-tag publication is bound to the successful exact-commit dry-run receipt and
+   independently reviewed dedicated environment;
 6. actual local and registry artifacts contain required files and pass all safe installed
    smokes;
 7. README, quick reference, Docusaurus, sidebar, release process, and changelog are
    coherent and build successfully;
 8. exact-head local and hosted evidence is green;
 9. the merged dry run succeeds without entering the publish environment;
-10. the lane stops for explicit publication authorization and records no downstream
+10. manual token publication is retired, external publication controls have an explicit
+    fail-closed readback contract, and post-publication recovery cannot publish;
+11. the lane stops for explicit publication authorization and records no downstream
     operational claim.
 
 ## 13. Gate-ordered sequence and handoff
 
-1. I232 records I239/I238 and the separate Services adoption seam in its G1 child graph.
+1. Consume the recorded I232 reconciliation that names I239/I238 and the separate Services
+   adoption seam; reopen the boundary only if that parent decision changes.
 2. I239 G1 reviews this document; no G2 or implementation is implied by submission.
 3. After G1 pass and Owner acknowledgment, author
    `.ai/tasks/cl0239_darwinian_worker_cli_release_task_plan.md`.
 4. After G2 pass, implement through TDD in a clean Worker worktree.
-5. Obtain exact-head G3, merge to `main`, and dispatch main-only `dry_run=true`.
-6. Stop for explicit publication authorization.
-7. Create/push the annotated tag, approve the protected environment, and verify the
-   immutable release.
-8. Hand the complete receipt to the Services runtime-adoption owner and I238; perform no
+5. Obtain exact-head G3, merge to `main`, dispatch main-only `dry_run=true`, and record the
+   exact Actions run/job receipt.
+6. Stop for explicit publication and external-configuration authorization.
+7. Configure/read back the dedicated GitHub environment, npm trusted publisher, and token
+   prohibition; stop on any mismatch.
+8. Create/push the annotated tag at the dry-run commit, obtain independent environment
+   approval, and verify the immutable release. Use the non-publishing recovery workflow
+   only after a separately authorized partial-publication failure.
+9. Hand the complete receipt to the Services runtime-adoption owner and I238; perform no
    downstream mutation from I239.
 
 Required I239 → I238 handoff:
@@ -458,6 +571,9 @@ Required I239 → I238 handoff:
 | Runtime package lookup breaks global installs | Low | installed-tar smoke exercises the actual layout before merge/publication |
 | Full artifact smoke lengthens validation | Low | one reusable verifier; correctness outweighs a small release-only cost |
 | Partial publish cannot be rerun idempotently | Medium | explicit recovery/roll-forward contract; never qualify unknown old bytes |
+| Shared environment policy couples CLI and bridge release refs | High | dedicated `darwinian-npm-publish` environment; bridge stays in its independent lane |
+| Mutable GitHub/npm configuration drifts after review | High | authenticated readback after authorization and before tag creation; stop on every mismatch |
+| Recovery entrypoint accidentally republishes | High | separate workflow with no OIDC/token/publish capability plus structural tests |
 | Routine or unrelated work enters main before freeze | Medium | exact-head delta inventory and explicit include/stop decision |
 | Documentation claims live success | Medium | source/release/adoption/staging vocabulary is normative and separately gated |
 
