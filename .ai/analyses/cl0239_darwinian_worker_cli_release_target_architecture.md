@@ -288,44 +288,60 @@ workflow_dispatch from refs/heads/main
   -> input version equals package.json
   -> package version is confirmed unpublished
   -> typecheck + full tests + bridge + release gate
-  -> actual local tarball qualification
+  -> create and qualify one actual local tarball
   -> Dry run complete job succeeds while every publish/release job is skipped
-  -> immutable-per-run JSON artifact records workflow path, run ID/URL, version, exact
-     GITHUB_SHA, and packed-tar shasum/integrity
-  -> Actions upload/API metadata records the artifact digest
+  -> one immutable-per-run Actions artifact uploads that exact .tgz plus a JSON receipt
+     recording workflow path, run ID/URL, version, exact GITHUB_SHA, tar filename, byte
+     length, SHA-256, npm shasum, and npm integrity
+  -> Actions API metadata records the artifact ID and digest over the uploaded bundle
   -> no protected publish environment and no registry mutation
 ```
 
 `workflow_dispatch` is dry-run only for the CLI release. It rejects another selected ref
 and rejects `dry_run=false`; canonical publication remains the annotated-tag path already
 documented by the repository. `dry_run_complete` uploads the JSON receipt with Actions
-artifact v4 and a fixed retention period; its contents are derived from workflow context
-and validated outputs, not dispatch strings. Publication has explicit `actions: read`,
-finds a successful `workflow_dispatch` run of `.github/workflows/release.yml` at the exact
-merged candidate SHA, requires the successful `Dry run complete` job and skipped
-publication/release jobs, downloads that run's receipt, verifies its artifact digest and
-schema, and compares version/SHA/tar identities to the tagged checkout. An absent or
-expired artifact fails closed and requires a new dry run before tagging. The run ID, URL,
-SHA, version, and Actions-reported artifact digest are recorded in I239 before publication
-authorization. A caller-provided SHA or unverified run URL is not a receipt.
+artifact v4 together with the already-qualified `.tgz` and a fixed retention period; its
+contents are derived from workflow context and validated outputs, not dispatch strings.
+The run ID, URL, SHA, version, artifact ID/digest, tar filename, byte length, SHA-256,
+shasum, and integrity are recorded in I239 before publication authorization. That exact
+run ID and artifact digest become authorization inputs and are embedded in the annotated
+tag message. Publication has explicit `actions: read`, queries that exact run rather than
+searching for any matching run, requires the successful `Dry run complete` job and skipped
+publication/release jobs, downloads the named artifact, verifies the Actions digest and
+receipt schema, and compares version/SHA/tar identities to the tag and checkout. An absent,
+expired, renamed, or differently digested artifact fails closed and requires a new dry run
+before tagging. A caller-provided SHA, a merely matching run, or an unverified run URL is
+not a receipt.
 
 ### 6.3 Publication path
 
-After I239 G3, merge, successful dry run, publication-control readback, and explicit
-publication authorization:
+After I239 G3, merge, a successful dry run on the current `origin/main` tip,
+publication-control readback, and explicit publication authorization naming the exact dry
+run and uploaded artifact:
 
-1. create annotated tag `v1.2.0` at the exact dry-run commit and push no other release tag;
-2. validation requires `git cat-file -t refs/tags/v1.2.0` to equal `tag`;
-3. validation peels the tag with `git rev-parse refs/tags/v1.2.0^{}` and requires that
+1. immediately before tag creation, re-fetch `origin/main` and require its tip to equal the
+   recorded dry-run `GITHUB_SHA`; any movement invalidates the freeze and requires a fresh
+   delta inventory and dry run;
+2. create annotated tag `v1.2.0` at that exact commit; its annotation records the authorized
+   dry-run run ID and Actions artifact ID/digest; push no other release tag;
+3. validation requires `git cat-file -t refs/tags/v1.2.0` to equal `tag`;
+4. validation peels the tag with `git rev-parse refs/tags/v1.2.0^{}` and requires that
    commit to equal the recorded successful dry-run `GITHUB_SHA`, the checked-out release
-   commit, and a commit contained in current `origin/main`;
-4. validation re-reads the dry-run run/jobs from GitHub Actions and rejects a missing,
-   failed, stale, differently versioned, or differently headed receipt;
-5. npm again confirms `1.2.0` is unpublished through the tri-state probe;
-6. the protected `darwinian-npm-publish` environment requires independent approval before
-   OIDC publication;
-7. the same workflow run performs Ubuntu and macOS registry-artifact qualification;
-8. only then create/verify the GitHub release.
+   commit, and the freshly fetched current `origin/main` tip; ancestor containment is not
+   sufficient;
+5. validation queries the exact run ID from the tag annotation, re-reads its jobs and exact
+   artifact metadata, downloads the artifact, and rejects a missing, failed, expired,
+   stale, differently versioned, differently headed, renamed, or differently digested
+   receipt/tarball;
+6. npm again confirms `1.2.0` is unpublished through the tri-state probe;
+7. the protected `darwinian-npm-publish` environment requires independent approval before
+   the minimal OIDC-capable job downloads and re-verifies the authorized artifact;
+8. that job publishes the exact relative tarball with
+   `npm publish ./<qualified-file>.tgz --access public`; it never republishes from or repacks
+   the checkout;
+9. post-publication npm shasum and integrity must equal the qualified tarball receipt before
+   Ubuntu and macOS registry-artifact qualification runs;
+10. only then create/verify the GitHub release.
 
 No path treats an existing npm version or GitHub release as successful qualification of
 new source.
@@ -387,7 +403,9 @@ CLI. Help/version smokes must not read secrets, contact Buzz, authenticate, or m
 project.
 
 The same commands run against `darwinian@1.2.0` from npm on Ubuntu and macOS after
-publication. Post-publication verification records:
+publication. The registry shasum/integrity must first equal the exact dry-run tarball
+receipt; a successful install is not a substitute for byte identity. Post-publication
+verification records:
 
 - npm version, `gitHead`, shasum, and integrity;
 - annotated tag and peeled commit;
@@ -414,7 +432,8 @@ Before any recovery action it requires all of these identities to agree:
 - package/runtime version `1.2.0` and annotated tag `v1.2.0`;
 - peeled tag, recovery checkout, canonical publish run, and recorded dry-run commit;
 - npm `gitHead` and the candidate commit; and
-- npm shasum/integrity and the pre-publication packed-tar receipt from the canonical run.
+- npm shasum/integrity and the exact uploaded dry-run tarball receipt from the canonical
+  run.
 
 Only after exact comparison may recovery run the safe Ubuntu/macOS installed-artifact
 smokes or create/verify the missing GitHub Release metadata at the existing tag. It cannot
@@ -468,6 +487,7 @@ Buzz content, or claims that I238 has not proved.
 | Threat/failure | Required behavior |
 |---|---|
 | Old npm bytes share the source version | fail before protected environment; never smoke them as candidate bytes |
+| Publish job would repack or select a merely matching dry run | fail before protected environment; publish only the exact authorized uploaded `.tgz` |
 | Registry unavailable | `indeterminate`; fail closed |
 | Workflow selected from feature branch | reject before tests/publication |
 | Tag version or target mismatch | reject before protected environment |
@@ -481,7 +501,7 @@ Buzz content, or claims that I238 has not proved.
 | GitHub environment or npm publisher setting missing/mismatched | stop before tag creation; configuration claims are not inferred from prior provenance |
 | Long-lived token can publish `darwinian` | stop; 1.2.0 uses the bound OIDC workflow only |
 | Secret or selector appears in output/evidence | fail and contain; do not merely redact after capture |
-| Main changes after freeze | re-inventory delta and re-run exact-head evidence |
+| Main changes after freeze | require current-main-tip equality; re-inventory delta and re-run exact-head dry-run evidence |
 
 The target OIDC publisher is scoped to this repository, `release.yml`, the dedicated
 `darwinian-npm-publish` environment, and `npm publish`. Traditional token publication is
@@ -499,7 +519,8 @@ G2 must expand these claims into explicit RED → GREEN increments and exact com
 | No secret/selectors | output contains counts/reasons only |
 | Freshness tri-state | injected probe tests published, confirmed 404, timeout/DNS/TLS/rate-limit/malformed outcomes; only 404 passes |
 | Dry-run freshness | workflow validation runs the real online check with `dry_run=true` |
-| Ref/tag binding | manual non-main ref, mismatched input, lightweight tag, tag outside main, peeled-commit mismatch, missing dry-run job, and stale/different-SHA receipt all fail |
+| Ref/tag binding | manual non-main ref, mismatched input, lightweight tag, peeled-commit mismatch, dry-run SHA not equal to current `origin/main` tip, missing exact run/job, and stale/different-SHA receipt all fail |
+| Exact published bytes | dry run uploads the qualified `.tgz` and receipt; tag binds the exact run/artifact ID/digest; publication downloads and re-verifies that artifact, publishes the relative tar path, and registry shasum/integrity must match |
 | Publication controls | fixture/readback assertions require the dedicated environment name, independent reviewer, self-review prevention, disabled admin bypass, exact tag policy, exact npm trusted-publisher fields, and token prohibition |
 | Required members | removal of any one of the five paths fails artifact verification |
 | Installed artifact | actual packed tar installs in a clean prefix and all five safe smokes pass |
@@ -511,7 +532,10 @@ G2 must expand these claims into explicit RED → GREEN increments and exact com
 
 ## 12. Acceptance criteria
 
-I239 G3 may be requested only when:
+### 12.1 G3 code-acceptance gate
+
+I239 G3 may be requested only when the reviewable source can prove, without merge,
+external configuration, tag creation, or registry mutation, that:
 
 1. the implementation matches the exact Worker-only boundary and no Services/I238
    mutation is present;
@@ -521,18 +545,40 @@ I239 G3 may be requested only when:
    and compatibility floors remain deliberate;
 4. dry-run validation is main-only and confirms version freshness with fail-closed
    tri-state behavior;
-5. annotated-tag publication is bound to the successful exact-commit dry-run receipt and
-   independently reviewed dedicated environment;
-6. actual local and registry artifacts contain required files and pass all safe installed
+5. workflow structure binds annotated-tag publication to the exact recorded dry-run run,
+   uploaded qualified tarball, current-main-tip equality, and independently reviewed
+   dedicated environment;
+6. the actual local candidate tarball contains required files and passes all safe installed
    smokes;
 7. README, quick reference, Docusaurus, sidebar, release process, and changelog are
    coherent and build successfully;
 8. exact-head local and hosted evidence is green;
-9. the merged dry run succeeds without entering the publish environment;
+9. workflow fixtures prove exact-tar download/publish, main-tip movement rejection,
+   registry digest equality, and non-publishing recovery;
 10. manual token publication is retired, external publication controls have an explicit
     fail-closed readback contract, and post-publication recovery cannot publish;
 11. the lane stops for explicit publication authorization and records no downstream
     operational claim.
+
+G3 does not require a merged-main dry run, configured external protection, an npm registry
+artifact, or a GitHub Release: all four can exist only after G3 pass/merge and their own
+authorities.
+
+### 12.2 Post-merge release-completion gate
+
+Knowledge capture and the immutable I239 handoff require all of the following after G3:
+
+1. the G3-approved commit is merged and is still the exact current `origin/main` tip;
+2. the main-only dry run succeeds and uploads one qualified `.tgz` plus receipt, with exact
+   run/artifact identities recorded before publication authorization;
+3. separately authorized GitHub/npm controls are configured and read back fail-closed;
+4. immediately before tag and publication, dry-run SHA, peeled tag, checkout, and current
+   `origin/main` tip are equal;
+5. the minimal OIDC job publishes the exact authorized tarball and npm shasum/integrity
+   match its receipt;
+6. Ubuntu/macOS registry smokes and GitHub Release verification pass; and
+7. the immutable release receipt is handed to the Services R2 and I238 owners without
+   performing either downstream mutation.
 
 ## 13. Gate-ordered sequence and handoff
 
@@ -542,20 +588,27 @@ I239 G3 may be requested only when:
 3. After G1 pass and Owner acknowledgment, author
    `.ai/tasks/cl0239_darwinian_worker_cli_release_task_plan.md`.
 4. After G2 pass, implement through TDD in a clean Worker worktree.
-5. Obtain exact-head G3, merge to `main`, dispatch main-only `dry_run=true`, and record the
-   exact Actions run/job receipt.
-6. Stop for explicit publication and external-configuration authorization.
-7. Configure/read back the dedicated GitHub environment, npm trusted publisher, and token
+5. Obtain exact-head G3 using §12.1 source evidence, then merge to `main`.
+6. Confirm the merged commit is the current `origin/main` tip, dispatch main-only
+   `dry_run=true`, and record the exact run plus uploaded tarball/artifact receipt.
+7. Stop for explicit publication and external-configuration authorization naming that
+   exact run/artifact.
+8. Configure/read back the dedicated GitHub environment, npm trusted publisher, and token
    prohibition; stop on any mismatch.
-8. Create/push the annotated tag at the dry-run commit, obtain independent environment
-   approval, and verify the immutable release. Use the non-publishing recovery workflow
-   only after a separately authorized partial-publication failure.
-9. Hand the complete receipt to the Services runtime-adoption owner and I238; perform no
-   downstream mutation from I239.
+9. Re-fetch `origin/main`; if it moved, invalidate the freeze and return to step 6. Otherwise
+   create/push the annotated tag carrying the exact run/artifact identity, obtain independent
+   environment approval, publish the exact qualified `.tgz`, and verify npm byte identity,
+   installed artifacts, and GitHub Release. Use the non-publishing recovery workflow only
+   after a separately authorized partial-publication failure.
+10. Complete §12.2, knowledge-capture the immutable receipt, and hand it to the Services
+    runtime-adoption owner and I238; perform no downstream mutation from I239.
 
 Required I239 → I238 handoff:
 
 - version, tag, release commit, npm `gitHead`, shasum, and integrity;
+- qualified dry-run tar filename/length/SHA-256/shasum/integrity, exact Actions run and
+  artifact ID/digest, and proof that tag/publication used those bytes at the unchanged main
+  tip;
 - installed ACP/materialize/Buzz/secret/governance qualification;
 - exact-head CI and merged dry-run evidence;
 - Buzz Card floor and canonical I107 selector-declaration evidence without selector
@@ -573,8 +626,9 @@ Required I239 → I238 handoff:
 | Partial publish cannot be rerun idempotently | Medium | explicit recovery/roll-forward contract; never qualify unknown old bytes |
 | Shared environment policy couples CLI and bridge release refs | High | dedicated `darwinian-npm-publish` environment; bridge stays in its independent lane |
 | Mutable GitHub/npm configuration drifts after review | High | authenticated readback after authorization and before tag creation; stop on every mismatch |
+| Dry-run tarball is re-created or an arbitrary matching run is selected | High | upload the qualified `.tgz`; bind exact run/artifact identity in authorization and tag; publish that relative tar path only |
 | Recovery entrypoint accidentally republishes | High | separate workflow with no OIDC/token/publish capability plus structural tests |
-| Routine or unrelated work enters main before freeze | Medium | exact-head delta inventory and explicit include/stop decision |
+| Routine or unrelated work enters main after dry-run freeze | Medium | dry-run/tag/checkout/current-main-tip equality; any movement forces delta inventory and a fresh dry run |
 | Documentation claims live success | Medium | source/release/adoption/staging vocabulary is normative and separately gated |
 
 No scope-changing question remains open for G1. G2 may select internal helper names and
