@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "workerSourceRevision": "eaca0f9b4119443c48ca543e8b340d6bae314503",
+  "cardSourcePath": "registry/cards/buzz-delivery-worker/card.json",
+  "cardMcpServerKey": "buzz-tools",
+  "authoredSelectors": [
+    "mcp:buzz-tools/buzz_messages_send",
+    "mcp:buzz-tools/buzz_messages_thread"
+  ],
+  "candidateDeploymentId": null
+}

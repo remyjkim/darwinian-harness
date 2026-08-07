@@ -240,7 +240,7 @@ filing separately; it is not a blocker.
 ## 7. Deep Comparison A vs B (2026-08-04 evidence pass)
 
 Requested by Remy before deciding. Every fact below was verified in source that day —
-`block/buzz` @ `0afeac8a7`, `darwinian-services` @ `ec7f9ff2` — and reprices both options
+`block/buzz` @ `0afeac8a7`, `darwinian-services` @ `04cb2db5` — and reprices both options
 substantially relative to §3.
 
 ### 7.1 What the evidence pass established
@@ -320,7 +320,14 @@ lifecycle (fact 6).
 
 ### 7.4 The delivery-verification rider (recommended under either option)
 
-The adapter watches the event stream for a send-tool `tool.call` during each Buzz-bound
+**2026-08-06 correction:** a `tool.call` is intent, not delivery. I107 deliberately emits a
+denied call followed by `tool.result.result.isError = true` without invoking the underlying
+client. The adapter must correlate the send call and result by `toolCallId` and count only a
+non-error result for the bare runtime tool name `buzz_messages_send` or
+`buzz_messages_thread`; governance uses the qualified selectors
+`mcp:buzz-tools/buzz_messages_send` and `mcp:buzz-tools/buzz_messages_thread`.
+
+The adapter watches the event stream for a successfully completed send or threaded reply during each Buzz-bound
 turn. If the run settles without one, it issues a single corrective continuation via
 `POST /api/chat/:runId/message` ("the answer was not delivered; use the messaging tool
 now"), then — still nothing — logs the undelivered text to stderr and errors the turn

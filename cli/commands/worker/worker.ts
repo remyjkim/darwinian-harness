@@ -13,6 +13,8 @@ const DETAILS = [
   "  drwn worker status <slug>",
   "  drwn worker deployments <slug>",
   "  drwn worker chat <slug> --message <text>",
+  "  drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var NAME]",
+  "  drwn worker buzz-tools",
   "  drwn worker rollback <slug>",
   "  drwn worker delete <slug> --force",
 ].join("\n");

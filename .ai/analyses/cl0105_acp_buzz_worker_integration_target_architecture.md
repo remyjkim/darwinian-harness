@@ -39,7 +39,7 @@ one `StreamEvent` vocabulary onto one protocol. Nothing here is architecturally 
 The two source guides (`128_acp_guide.md`, `128_2_buzz_acp_integration_guide.md`, committed
 beside this document) carry unresolvable citation tokens and a June 2026 cutoff. Their load-bearing
 claims were re-verified against primary sources on 2026-07-24. Three were wrong. Server-side
-claims were re-verified again on 2026-08-04 against `darwinian-services` `main` @ `ec7f9ff2`:
+claims were re-verified again on 2026-08-06 against `darwinian-services` `main` @ `04cb2db5`:
 every behavior held; line anchors stale since the I50 chat-proxy rewrite are corrected inline.
 Buzz-side claims were re-verified the same day against `block/buzz` `main` @ `0afeac8a7`; two
 refinements surfaced — the system-prompt branch is now three-way by agent identity, and only
@@ -104,11 +104,11 @@ with an append-only event log addressed by a monotonic cursor.
 | `session/new` | *(deferred)* | Allocate local state only. No `runId` exists until a prompt arrives, because the start call requires a `message`. |
 | first `session/prompt` | `POST /api/minds/:slug/chat` → `{runId}` | `chat-proxy.ts:353`, via the I50 invocation service — duplicate starts dedupe to the same `{runId}` or `409 invocation_pending`; response is `ChatStartResSchema` (`deploy-contracts.ts:216-218`). |
 | later `session/prompt` | `POST /api/chat/:runId/message` | `chat-proxy.ts:481`. |
-| `sessionId` | `runId` | Stable across turns, survives reload. |
-| `session/load` | `GET /api/chat/:runId/snapshot` | `chat-proxy.ts:445`. Roles, text, and tool chips only — no `args`/`result`/reasoning, but enough for `loadSession: true`. |
+| `sessionId` | local durable ID → `activeRunId` | **Superseding implementation decision (2026-08-05):** ACP identity remains the `sess_*` ID allocated before a run exists; a versioned local binding resolves the opaque Deploy API run. This avoids changing ACP identity after the first prompt and leaves a migration path for future `{taskId, activeRunId}` without pretending a Task ID is a run ID. |
+| `session/load` | `GET /api/chat/:runId/snapshot` | Roles, text, and tool chips only. A v2 snapshot supplies the atomic `streamCursor`; legacy snapshots use cursor-zero fallback. `running`/`cancelling` reject before replay, while `cancelled` is terminal and non-continuable. |
 | `session/update` | `GET /api/chat/:runId/stream-poll?since=` | Raw `StreamEntry` with real deltas. See §5. |
 | `stopReason: end_turn` | run status `yielded` | Not `done`. `done`/`failed` are terminal and cannot be continued (`coordinator-do.ts:1687-1729`). |
-| `stopReason: cancelled` | — | **No server support.** §6.1. |
+| `stopReason: cancelled` | terminal `agent.cancelled` or authoritative `cancelled` status | A `202 cancelling` acknowledgement is explicitly nonterminal. §6.1. |
 
 The event vocabulary maps almost one-to-one
 (`containerized-cli-harness/packages/stream-protocol/src/stream-events.ts`):
@@ -118,14 +118,19 @@ The event vocabulary maps almost one-to-one
 | `text.delta` | `agent_message_chunk` | yes |
 | `reasoning.delta` | `agent_thought_chunk` | yes |
 | `tool.call` (`toolCallId`, `toolName`, `args`) | `tool_call` | yes, resets idle clock |
-| `tool.result` (`toolCallId`, `result`) | `tool_call_update` | yes |
+| `tool.result` (`toolCallId`, `result`) | `tool_call_update` (`failed` when `result.isError === true`) | yes |
 | `step` (`finishReason`, `usage`) | `usage_update` | tolerated |
-| `agent.completed` | prompt result `end_turn` | — |
-| `agent.failed` | prompt result error | — |
+| `agent.completed` | no update; run status remains authoritative | — |
+| `agent.failed` | no update; run status remains authoritative | — |
+| `agent.cancelled` | lifecycle only; terminal cancelled settlement | — |
 
 `toolCallId` correlates `tool.call`→`tool.result` exactly as ACP correlates
 `tool_call`→`tool_call_update`. `WIRE.md` anticipates this: *"an adapter to/from that shape
 is a thin mapping at the edge."*
+
+The two agent events above are not run terminals: panel workers can complete or fail while
+the run continues, and the orchestrator can emit `agent.failed` before retrying the turn.
+Only the owner-gated run-status response settles or fails an ACP prompt.
 
 ## 5. Use `stream-poll`, Not SSE
 
@@ -153,21 +158,22 @@ and status helpers are reusable; its payload is not sufficient for ACP.
 
 These are the real cost of this project. None can be worked around adapter-side.
 
-### 6.1 Cancellation — blocking
+### 6.1 Cancellation — implemented by I106; exact consumer contract
 
-No cancel, abort, stop, or terminate route exists at any layer reachable over HTTP.
-Closing the SSE connection stops the bridge; **the run keeps executing in the Workflow**.
-Only an `AbortSignal` inside the container base can stop a turn, and nothing HTTP-reachable
-triggers it.
+I106 now provides owner-gated cancellation at `POST /api/chat/:runId/cancel`, durable
+`cancelling → cancelled` settlement, and one terminal
+`agent.cancelled {reason:"owner_cancel"}` event. Its `202` response is acknowledgement only,
+not terminal completion; the adapter keeps polling until the event or authoritative
+`cancelled` status. Typed `409 not_active` and `409 not_eligible` outcomes preserve the
+actual lifecycle instead of coercing it to cancellation.
 
-This blocks Buzz. Its idle timeout (default 900 s, `BUZZ_ACP_IDLE_TIMEOUT`) sends
+Buzz's idle timeout (default 900 s, `BUZZ_ACP_IDLE_TIMEOUT`) sends
 `session/cancel` and drains until the prompt resolves `cancelled`; its hard turn cap
 (default 7200 s) does not cancel at all — it declares the subprocess unrecoverable and
-respawns it (`pool.rs:2182-2184`, `:2263-2288`). Either way the server-side run keeps
-executing. Without a server cancel the adapter must either lie — resolve the prompt
-`cancelled` while the run continues to burn tokens — or hang until Buzz kills it. Both are
-unacceptable. **Required: `POST /api/chat/:runId/cancel`**, threading an abort into the
-container.
+respawns it (`pool.rs:2182-2184`, `:2263-2288`). The adapter therefore needs concurrent
+cancel intent: it cannot wait behind its own prompt owner lock, and a notification received
+before start returns a run ID must be posted as soon as that durable ID exists. Local EOF
+remains only local abort and cannot claim server settlement.
 
 Full gap analysis and proposed contract:
 [`cl0106`](./cl0106_run_cancellation_interface_request.md) — filed as **[I106]**.
@@ -180,10 +186,13 @@ public route over the existing internal `/coordinate-stream/sse`.
 ### 6.3 A general declarative tool policy — desired
 
 `POST /api/minds/:slug/chat` accepts `toolPolicy` and threads it into the run
-(`engine/src/worker.ts:373,431` → `chat-input.ts:71` → `coordinator.ts:430,455`), but it is
-**not a general tool allowlist**. Only the Pipedream shape
-`{version:1, allowedApps[], policyHash, routes[]}` is recognized; anything else is serialized
-into `runtimeConfig` and never enforced (`coordinator.ts:63-89`, consumed only at `:467`).
+(`engine/src/worker.ts:188-191` → `chat-input.ts:71` → `coordinator.ts:64-90`), but it is
+**not a general tool allowlist**. The routine shape
+`{version:1, allowedApps[], policyHash, routes[]}` gates at MCP-*server* granularity and
+Pipedream routing; any other shape reaches the container as `ROUTINE_TOOL_POLICY` and
+**fails closed** — all card servers suppressed, chat 409 (`routine-tool-policy.js`,
+corrected 2026-08-04 by the DS review of the remediation handoff). Interactive runs carry
+no policy at all, and no shape gates individual tool names.
 
 Required for governance parity: generalize the contract to an allow/deny surface the runtime
 honors for all tools, not only Pipedream routing. Detail in
@@ -202,10 +211,10 @@ Tools run inside a Cloudflare container. The ACP client cannot serve, gate, or a
 every remote tool call back through a local stdio process — a latency and availability
 disaster.
 
-Nor is there a declarative substitute today. `toolPolicy` looks like one but enforces only
-Pipedream routing (§6.3). Projecting Card `tools.allow`/`deny` into it now would produce a
-control that appears configured and does nothing — worse than no control, because it would
-be reported as governance in status output.
+Nor is there a declarative substitute today for interactive runs. `toolPolicy` enforces
+only for routines, at server granularity (§6.3). Projecting Card `tools.allow`/`deny` into
+it now would trip the container's fail-closed `invalid` mode and 409 the run — loud rather
+than silent, but equally unusable as a governance path until §6.3's generalization lands.
 
 The honest position: **Card tool governance has no enforcement path in the deployed runtime
 today.** The only real boundary is the set of MCP servers the Card ships, since the container
@@ -224,9 +233,10 @@ fail-closed (`src/consent/gate.ts:19-23`), which is wrong for a headless chat ag
 
 **Resolved 2026-08-04 — Option B-lean with a delivery-verification rider** (Remy): the
 container publishes via the `buzz` CLI — binary in the mind-runtime image, `BUZZ_*`
-per-Worker env secrets, a Card-carried stdio MCP wrapper exposing the send tools — and the
-adapter observes send `tool.call`s on the stream, issuing one corrective continuation when
-a Buzz-bound turn settles without one. The evidence pass and full pricing live in
+per-Worker env secrets, a Card-carried stdio MCP wrapper exposing only send/thread — and the
+adapter correlates a send or threaded-reply `tool.call` with its non-error `tool.result`, issuing one corrective
+continuation when a Buzz-bound turn settles without successful delivery. A denied I107 call
+emits a call plus failed result, so a call alone is never delivery evidence. The evidence pass and full pricing live in
 [`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md)
 §7, which governs; the summary below is the original framing, kept as the record.
 
@@ -305,7 +315,8 @@ export function projectStreamEntry(entry: StreamEntry): SessionUpdate[] {
                 title: entry.toolName, status: "in_progress", rawInput: entry.args }];
     case "tool.result":
       return [{ sessionUpdate: "tool_call_update", toolCallId: entry.toolCallId,
-                status: "completed", rawOutput: entry.result }];
+                status: entry.result?.isError === true ? "failed" : "completed",
+                rawOutput: entry.result }];
     default:
       return [];
   }
@@ -315,6 +326,19 @@ export function projectStreamEntry(entry: StreamEntry): SessionUpdate[] {
 L2 owns the cursor. Every `session/update` batch advances `since`, and reconnection replays
 from the last delivered `seq` — which is what makes duplicate delivery and lost
 acknowledgements non-issues.
+
+Concurrency is per local ACP identity. Prompt and load both hold the same owner-record lock
+whose filename is the SHA-256 of `sessionId`; a live peer process maps lock contention to ACP
+`-32001`. Once inside that lock, the durable record is re-read and made authoritative over any
+stale in-process cache. A cached active session or a snapshot still marked `running` is rejected
+before notifications and raw cursor priming.
+
+`maxSessions` bounds both the process-local LRU and, when inactivity can be proven, the durable
+index. Durable GC runs only after the current operation releases its session lock. It selects an
+oldest candidate, takes exactly that candidate's session lock, then re-reads and prunes under the
+index lock. A live or fail-closed candidate is skipped, allowing temporary soft overflow rather
+than deleting a peer-active mapping. The only nested order is session lock → session-index lock;
+no path holds two session locks, so there is no reverse-order cycle.
 
 ```ts
 // cli/core/acp/session.ts
@@ -354,11 +378,19 @@ answer from the deployed Worker.
 `/message`, cursor-based reconnect, `authenticate` over DAH device flow. Success: a channel
 conversation retains context across mentions and survives an adapter restart.
 
-**Phase 4 — cancellation.** Consumes §6.1. Success: `session/cancel` stops the run
-server-side and resolves the prompt `cancelled`. **Do not ship Buzz integration before this
-lands** — without it, Buzz's idle timeout silently orphans paid runs.
+The 2026-08-06 continuation audit tightens that phase: consume the v2 snapshot
+`streamCursor` atomically before replay; keep cursor-zero fallback only for legacy snapshots;
+recognize all six run statuses; reject `cancelling` load, keep `cancelled` non-continuable,
+and add a command-level prompt/update/settlement test rather than relying only on direct
+manager tests.
 
-**Phase 5 — delivery.** Consumes the §8 decision (B-lean + rider), plus tool policy projection.
+**Phase 4 — cancellation.** Consumes §6.1. `202 cancelling` keeps the prompt live; only the
+terminal event/status resolves it as `cancelled`. Success includes cancel-before-start,
+mid-stream, repeated-cancel, and no-deadlock proofs.
+
+**Phase 5 — delivery.** Consumes the §8 decision (B-lean + rider), plus I107 exact-selector
+Card MCP governance. The dedicated wrapper exposes only send/thread, invokes the pinned
+official `buzz` CLI without a shell, and never uses broad `buzz-dev-mcp`.
 
 ## 11. Testing
 
@@ -368,8 +400,9 @@ because the runtime is remote.
 - **Protocol**: exact serialized bytes. One JSON object per line, no embedded newlines,
   numeric and string ids, unknown methods answered `-32601` (Buzz hangs on silence),
   unknown `_meta` tolerated, stdout uncontaminated.
-- **Projection**: table-driven `StreamEntry` → `session/update`, including out-of-order
-  arrival, gaps in `seq`, and unknown event types.
+- **Projection**: table-driven per-entry `StreamEntry` → `session/update`, independent of
+  the numeric `seq` value and tolerant of gaps/unknown event types. It preserves arrival
+  order; the Deploy API wire contract, not the projector, supplies monotonic ordering.
 - **Lifecycle**: cancel before start, mid-stream, and during a tool call; terminal-run
   continuation rejected; snapshot reload.
 - **Buzz profile**: a fake Buzz client reproducing the real handshake — `protocolVersion: 2`,
@@ -382,7 +415,7 @@ because the runtime is remote.
 
 | Acceptance criterion (I105 row) | Evidence that proves it |
 | --- | --- |
-| Zed launches `drwn acp` and completes a multi-turn session that survives an adapter restart | Lifecycle suite: the in-process command harness (`Cli.run` + `CaptureStream` + `globalThis.fetch` stub, pattern at `test/commands-worker-chat.test.ts:49-102`) drives `initialize → session/new → session/prompt ×2`, then tears the command down and re-enters via `session/load` with the same `runId`, asserting context survives. |
+| Zed launches `drwn acp` and completes a multi-turn session that survives an adapter restart | Automated lifecycle evidence is split by boundary: `test/core-acp-session.test.ts` deterministically drives two prompts, durable persistence, and `session/load` through a fresh manager while preserving the same local `sessionId` → opaque `activeRunId` binding; credential-gated `test/e2e-acp-editor.test.ts` repeats first prompt → fresh manager/load → second prompt against the real Deploy API. `test/commands-acp-serve.test.ts` covers stdio handshake, framing, and stdout purity only. Neither automated suite launches Zed itself, so the literal Zed-launch acceptance remains a manual verification item. |
 | A Buzz mention produces a streamed answer from the deployed Worker in the correct channel | Credential-gated E2E (`test/e2e-acp-buzz.test.ts`, `skipIf` pattern per `test/e2e-mind-journey.test.ts:13-14`): real relay, real `buzz-acp`, real deployed Worker; asserts the reply lands in the configured channel. Never mocked. |
 | A permanent Buzz-profile compatibility suite passes against a fake client reproducing Buzz's real handshake | `test/core-acp-buzz-profile.test.ts`: fake Buzz client replaying the recorded handshake — `protocolVersion: 2`, goose `_meta`, no `fs`/`terminal` capability, auto-`allow_once`, `session/cancel`. Permanent suite because this interface is ahead of stable ACP. |
 | Buzz integration does not ship before [I106] lands | Phase gate plus a skipped suite: Phase 4's cancellation tests exist from day one but `skipIf` until `POST /api/chat/:runId/cancel` is live; the Buzz profile stays disabled until that suite runs unskipped. |

@@ -1,0 +1,29 @@
+{
+  "name": "@curation-labs/buzz-delivery-worker",
+  "version": "0.1.0",
+  "kind": "blueprint",
+  "description": "Reference Worker Blueprint for governed Buzz channel delivery.",
+  "tools": {
+    "allow": [
+      "mcp:buzz-tools/buzz_messages_send",
+      "mcp:buzz-tools/buzz_messages_thread"
+    ],
+    "deny": []
+  },
+  "servers": {
+    "buzz-tools": {
+      "description": "Narrow Buzz channel send and threaded-reply delivery tools.",
+      "transport": "stdio",
+      "command": "drwn",
+      "args": [
+        "worker",
+        "buzz-tools"
+      ],
+      "optional": false
+    }
+  },
+  "harness": {
+    "minVersion": "1.2.0"
+  },
+  "stability": "experimental"
+}
