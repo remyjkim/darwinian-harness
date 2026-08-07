@@ -54,6 +54,24 @@ describe("acp connection layer", () => {
     }]);
   });
 
+  test("reports initialize metadata through the client-profile seam", async () => {
+    const { hooks } = hooksWithLog();
+    const observed: unknown[] = [];
+    await client().connectWith(createAcpAgent(hooks, {
+      onInitialize: (params) => observed.push(params),
+    }), (ctx) =>
+      ctx.request("initialize", {
+        protocolVersion: 2,
+        clientCapabilities: { _meta: { goose: { customNotifications: true } } },
+        clientInfo: { name: "buzz-acp", version: "0.5.5" },
+      })
+    );
+
+    expect(observed).toEqual([expect.objectContaining({
+      clientInfo: { name: "buzz-acp", version: "0.5.5" },
+    })]);
+  });
+
   test("preserves a string JSON-RPC request id on the wire response", async () => {
     const { hooks } = hooksWithLog();
     const inbound = new TransformStream<Uint8Array, Uint8Array>();

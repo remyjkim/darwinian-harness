@@ -53,9 +53,10 @@
   still speaks the pre-rename mind vocabulary; worker↔mind is 1:1), and a Card-carried
   narrow stdio MCP wrapper exposing only `buzz_messages_send`/`buzz_messages_thread`. It
   invokes the `buzz` CLI without a shell and sends content over stdin. The adapter
-  correlates a send `tool.call` with its matching non-error `tool.result`; a call alone is
+  correlates a delivery (`buzz_messages_send` or `buzz_messages_thread`) `tool.call` with
+  its matching non-error `tool.result`; a call alone is
   not delivery evidence. It issues at most one corrective continuation via `/message` when
-  a Buzz-bound turn settles without a successful send. I107 governs these as ordinary Card
+  a Buzz-bound turn settles without a successful delivery. I107 governs these as ordinary Card
   MCP tools using exact selectors `mcp:buzz-tools/buzz_messages_send` and
   `mcp:buzz-tools/buzz_messages_thread`; no carve-out or inferred policy is permitted.
 

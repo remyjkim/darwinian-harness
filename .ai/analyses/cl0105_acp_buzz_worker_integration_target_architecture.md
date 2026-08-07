@@ -234,7 +234,7 @@ fail-closed (`src/consent/gate.ts:19-23`), which is wrong for a headless chat ag
 **Resolved 2026-08-04 — Option B-lean with a delivery-verification rider** (Remy): the
 container publishes via the `buzz` CLI — binary in the mind-runtime image, `BUZZ_*`
 per-Worker env secrets, a Card-carried stdio MCP wrapper exposing only send/thread — and the
-adapter correlates a send `tool.call` with its non-error `tool.result`, issuing one corrective
+adapter correlates a send or threaded-reply `tool.call` with its non-error `tool.result`, issuing one corrective
 continuation when a Buzz-bound turn settles without successful delivery. A denied I107 call
 emits a call plus failed result, so a call alone is never delivery evidence. The evidence pass and full pricing live in
 [`cl0105_buzz_tooling_delivery_decision_analysis`](./cl0105_buzz_tooling_delivery_decision_analysis.md)

@@ -31,6 +31,158 @@ function runStatus(status: "running" | "cancelling" | "yielded" | "cancelled" | 
 }
 
 describe("AcpSessionManager", () => {
+  test("lets Buzz settle after a correlated successful delivery without correction", async () => {
+    const calls: string[] = [];
+    const request: AcpSessionRequest = async (url, init) => {
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (url.endsWith("/api/minds/harari/chat")) return json({ runId: "run_buzz" });
+      if (url.includes("stream-poll")) return json({
+        lastSeq: 2,
+        events: [
+          { seq: 1, sourceId: "orchestrator", event: { v: 1, seq: 1, ts: 1, type: "tool.call", toolCallId: "buzz_1", toolName: "buzz_messages_send" } },
+          { seq: 2, sourceId: "orchestrator", event: { v: 1, seq: 2, ts: 2, type: "tool.result", toolCallId: "buzz_1", result: { isError: false } } },
+        ],
+      });
+      if (url.endsWith("/status")) return json(runStatus("yielded"));
+      throw new Error(`unexpected request ${url}`);
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_buzz",
+      isBuzzClient: () => true,
+    });
+
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    await expect(manager.prompt(
+      { sessionId: "sess_buzz", prompt: [{ type: "text", text: "send this" }] },
+      async () => {},
+    )).resolves.toEqual({ stopReason: "end_turn" });
+    expect(calls.filter((call) => call.includes("/message"))).toHaveLength(0);
+  });
+
+  test("gives Buzz one corrective continuation after a denied delivery and requires its success", async () => {
+    const continuationBodies: unknown[] = [];
+    let streamPoll = 0;
+    const request: AcpSessionRequest = async (url, init) => {
+      if (url.endsWith("/api/minds/harari/chat")) return json({ runId: "run_buzz_correct" });
+      if (url.endsWith("/message")) {
+        continuationBodies.push(JSON.parse(String(init?.body)));
+        return json({ accepted: true });
+      }
+      if (url.includes("stream-poll")) {
+        streamPoll += 1;
+        return streamPoll === 1
+          ? json({
+            lastSeq: 2,
+            events: [
+              { seq: 1, sourceId: "orchestrator", event: { v: 1, seq: 1, ts: 1, type: "tool.call", toolCallId: "denied", toolName: "buzz_messages_send" } },
+              { seq: 2, sourceId: "orchestrator", event: { v: 1, seq: 2, ts: 2, type: "tool.result", toolCallId: "denied", result: { isError: true } } },
+            ],
+          })
+          : json({
+            lastSeq: 4,
+            events: [
+              { seq: 3, sourceId: "orchestrator", event: { v: 1, seq: 3, ts: 3, type: "tool.call", toolCallId: "sent", toolName: "buzz_messages_thread" } },
+              { seq: 4, sourceId: "orchestrator", event: { v: 1, seq: 4, ts: 4, type: "tool.result", toolCallId: "sent", result: { isError: false } } },
+            ],
+          });
+      }
+      if (url.endsWith("/status")) return json(runStatus("yielded"));
+      throw new Error(`unexpected request ${url}`);
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_buzz_correct",
+      isBuzzClient: () => true,
+    });
+
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    await expect(manager.prompt(
+      { sessionId: "sess_buzz_correct", prompt: [{ type: "text", text: "send this" }] },
+      async () => {},
+    )).resolves.toEqual({ stopReason: "end_turn" });
+    expect(continuationBodies).toHaveLength(1);
+    expect(continuationBodies[0]).toEqual({
+      message: expect.stringContaining("Buzz delivery tool"),
+    });
+  });
+
+  test("fails visibly when Buzz settles twice without a successful delivery", async () => {
+    let continuations = 0;
+    const request: AcpSessionRequest = async (url) => {
+      if (url.endsWith("/api/minds/harari/chat")) return json({ runId: "run_buzz_missing" });
+      if (url.endsWith("/message")) {
+        continuations += 1;
+        return json({ accepted: true });
+      }
+      if (url.includes("stream-poll")) return json({ lastSeq: 0, events: [] });
+      if (url.endsWith("/status")) return json(runStatus("yielded"));
+      throw new Error(`unexpected request ${url}`);
+    };
+    const diagnostics: string[] = [];
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_buzz_missing",
+      isBuzzClient: () => true,
+      onDiagnostic: (message) => diagnostics.push(message),
+    });
+
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    await expect(manager.prompt(
+      { sessionId: "sess_buzz_missing", prompt: [{ type: "text", text: "send this" }] },
+      async () => {},
+    )).rejects.toThrow("Buzz delivery was not confirmed");
+    expect(continuations).toBe(1);
+    expect(diagnostics).toEqual([expect.stringContaining("Buzz delivery was not confirmed")]);
+    expect(diagnostics.join(" ")).not.toContain("send this");
+  });
+
+  test("does not impose the delivery rider on a non-Buzz ACP client", async () => {
+    let continuations = 0;
+    const request: AcpSessionRequest = async (url) => {
+      if (url.endsWith("/api/minds/harari/chat")) return json({ runId: "run_editor" });
+      if (url.endsWith("/message")) {
+        continuations += 1;
+        return json({ accepted: true });
+      }
+      if (url.includes("stream-poll")) return json({ lastSeq: 0, events: [] });
+      if (url.endsWith("/status")) return json(runStatus("yielded"));
+      throw new Error(`unexpected request ${url}`);
+    };
+    const manager = new AcpSessionManager({
+      context: { agentsDir: "/fixture" },
+      slug: "harari",
+      apiBaseUrl: "https://api.example.test",
+      store: false,
+      request,
+      sleep: async () => {},
+      idFactory: () => "sess_editor",
+      isBuzzClient: () => false,
+    });
+
+    await manager.newSession({ cwd: "/workspace", mcpServers: [] });
+    await expect(manager.prompt(
+      { sessionId: "sess_editor", prompt: [{ type: "text", text: "ordinary editor prompt" }] },
+      async () => {},
+    )).resolves.toEqual({ stopReason: "end_turn" });
+    expect(continuations).toBe(0);
+  });
+
   test("starts a run, unwraps raw stream entries, advances the cursor, and settles yielded", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const streamFrames = [

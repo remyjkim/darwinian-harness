@@ -35,6 +35,8 @@ export interface AcpAgentHooks {
 export interface AcpAgentOptions {
   /** CLI version reported in agentInfo; serve supplies the package.json version. */
   version?: string;
+  /** Receives the validated initialize request for client-profile selection. */
+  onInitialize?: (params: Record<string, unknown>) => void;
 }
 
 // Buzz requests protocolVersion 2 as a private feature flag; answering the stable 1 is
@@ -43,15 +45,18 @@ const NEGOTIATED_PROTOCOL_VERSION = 1;
 
 export function createAcpAgent(hooks: AcpAgentHooks, options?: AcpAgentOptions): AgentApp {
   return agent()
-    .onRequest("initialize", () => ({
-      protocolVersion: NEGOTIATED_PROTOCOL_VERSION,
-      agentCapabilities: {
-        loadSession: true,
-        promptCapabilities: { image: false, audio: false, embeddedContext: false },
-      },
-      authMethods: [DAH_DEVICE_AUTH_METHOD],
-      agentInfo: { name: "drwn-acp", version: options?.version ?? "0.0.0" },
-    }))
+    .onRequest("initialize", (ctx) => {
+      options?.onInitialize?.(ctx.params as unknown as Record<string, unknown>);
+      return {
+        protocolVersion: NEGOTIATED_PROTOCOL_VERSION,
+        agentCapabilities: {
+          loadSession: true,
+          promptCapabilities: { image: false, audio: false, embeddedContext: false },
+        },
+        authMethods: [DAH_DEVICE_AUTH_METHOD],
+        agentInfo: { name: "drwn-acp", version: options?.version ?? "0.0.0" },
+      };
+    })
     .onRequest("authenticate", (ctx) => hooks.authenticate(ctx.params, ctx.signal))
     .onRequest("session/new", (ctx) => hooks.newSession(ctx.params))
     .onRequest("session/load", (ctx) =>

@@ -23,6 +23,7 @@ import { writeAtomically } from "../fs";
 import { withOwnerLock } from "../owner-lock";
 import { fetchJsonWithWorkerAuth } from "../worker-http";
 import { renderError } from "../worker-run";
+import { BuzzDeliveryTracker } from "./buzz-profile";
 import { projectStreamEntry, type StreamEntry } from "./project-events";
 
 export type AcpSessionRequest = (
@@ -97,8 +98,12 @@ export interface AcpSessionManagerOptions {
   maxSessions?: number;
   now?: () => number;
   store?: boolean;
+  isBuzzClient?: () => boolean;
   onDiagnostic?: (message: string) => void;
 }
+
+export const BUZZ_DELIVERY_CORRECTION =
+  "The Buzz-bound turn settled without a confirmed Buzz delivery. Use one Buzz delivery tool now, and wait for its successful tool result before settling.";
 
 const DEFAULT_POLL_MS = 1_000;
 const DEFAULT_POLL_IDLE_MS = 5_000;
@@ -826,6 +831,8 @@ export class AcpSessionManager {
     signal?: AbortSignal,
   ): Promise<PromptResponse> {
     const runId = session.runId!;
+    let buzzDelivery = this.options.isBuzzClient?.() ? new BuzzDeliveryTracker() : null;
+    let buzzCorrectionIssued = false;
     let consecutiveFailures = 0;
     for (;;) {
       throwIfAborted(signal);
@@ -860,6 +867,7 @@ export class AcpSessionManager {
       const entries = parseRawEntries(poll.events);
       let observedCancellation = false;
       for (const entry of entries) {
+        buzzDelivery?.observe(entry.event);
         if (entry.event.v === 1 && entry.event.type === "agent.cancelled") {
           observedCancellation = true;
         }
@@ -911,7 +919,23 @@ export class AcpSessionManager {
       }
       consecutiveFailures = 0;
       const status = statusBody.status;
-      if (status !== "running" && status !== "cancelling") return this.settleFromStatus(session, status);
+      if (status !== "running" && status !== "cancelling") {
+        if (buzzDelivery && status !== "cancelled" && status !== "failed" && !buzzDelivery.delivered) {
+          if (!buzzCorrectionIssued && status === "yielded") {
+            buzzCorrectionIssued = true;
+            buzzDelivery = new BuzzDeliveryTracker();
+            await this.continueRun(runId, BUZZ_DELIVERY_CORRECTION, signal);
+            continue;
+          }
+          const error = new RequestError(
+            -32001,
+            "Buzz delivery was not confirmed after the bounded corrective continuation",
+          );
+          this.options.onDiagnostic?.(error.message);
+          throw error;
+        }
+        return this.settleFromStatus(session, status);
+      }
       await this.persistSession(session);
       await this.wait(this.pollMs, signal);
     }

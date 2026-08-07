@@ -323,10 +323,11 @@ lifecycle (fact 6).
 **2026-08-06 correction:** a `tool.call` is intent, not delivery. I107 deliberately emits a
 denied call followed by `tool.result.result.isError = true` without invoking the underlying
 client. The adapter must correlate the send call and result by `toolCallId` and count only a
-non-error result for the bare runtime tool name `buzz_messages_send`; governance uses the
-qualified selector `mcp:buzz-tools/buzz_messages_send`.
+non-error result for the bare runtime tool name `buzz_messages_send` or
+`buzz_messages_thread`; governance uses the qualified selectors
+`mcp:buzz-tools/buzz_messages_send` and `mcp:buzz-tools/buzz_messages_thread`.
 
-The adapter watches the event stream for a successfully completed send during each Buzz-bound
+The adapter watches the event stream for a successfully completed send or threaded reply during each Buzz-bound
 turn. If the run settles without one, it issues a single corrective continuation via
 `POST /api/chat/:runId/message` ("the answer was not delivered; use the messaging tool
 now"), then — still nothing — logs the undelivered text to stderr and errors the turn

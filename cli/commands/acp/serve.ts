@@ -6,6 +6,7 @@ import { Option } from "clipanion";
 import { ndJsonStream } from "@agentclientprotocol/sdk";
 import { BaseCommand } from "../base";
 import { authenticateDahDevice } from "../../core/acp/auth";
+import { createBuzzClientProfile } from "../../core/acp/buzz-profile";
 import { createAcpAgent } from "../../core/acp/connection";
 import { AcpSessionManager } from "../../core/acp/session";
 import { resolveAcpSlug } from "../../core/acp/worker-binding";
@@ -43,11 +44,13 @@ export class AcpServeCommand extends BaseCommand {
       return 1;
     }
     const { apiBaseUrl } = resolveWorkerConfig();
+    const clientProfile = createBuzzClientProfile();
     const sessions = new AcpSessionManager({
       context: this.context,
       slug,
       apiBaseUrl,
       env: process.env as Record<string, string | undefined>,
+      isBuzzClient: () => clientProfile.isBuzz(),
     });
     const app = createAcpAgent(
       {
@@ -66,7 +69,10 @@ export class AcpServeCommand extends BaseCommand {
         prompt: (params, notify, signal) => sessions.prompt(params, notify, signal),
         cancel: (params) => sessions.cancelSession(params),
       },
-      { version: this.cli.binaryVersion ?? "0.0.0" },
+      {
+        version: this.cli.binaryVersion ?? "0.0.0",
+        onInitialize: (params) => clientProfile.observeInitialize(params),
+      },
     );
     const output = Writable.toWeb(this.context.stdout) as WritableStream<Uint8Array>;
     const input = Readable.toWeb(this.context.stdin) as ReadableStream<Uint8Array>;
