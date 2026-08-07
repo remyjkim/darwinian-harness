@@ -1,6 +1,6 @@
 # I105 ACP and Buzz Worker surface — implementation completion evidence
 
-**Status:** Code implementation complete and locally verified; exact-head G3 review and merge pending
+**Status:** Worker implementation passed G3 and merged; Services runtime pin is source-approved but staging-deployment gated
 
 **Evidence date:** 2026-08-06
 
@@ -10,9 +10,14 @@
 
 **Worker PR:** [#97](https://github.com/remyjkim/darwinian-worker/pull/97)
 
+**Reviewed Worker head:** `144cab4e69b488889a882c100bc8b565c8e66fc3`
+
+**Worker merge commit:** `6258f5c9cd5c2d8711201aaea837a23699461c26`
+
 **Services runtime-image PR:** [#437](https://github.com/curation-labs/darwinian-services/pull/437) at `dab65c2fbfddbb7900cbd40f61f715cc56b959f9`
 
-**Release or deployment:** Not authorized and not performed
+**Release or deployment:** Not authorized and not performed; Services PR #437 remains
+unmerged because merge automatically deploys staging
 
 ## Outcome
 
@@ -133,7 +138,8 @@ only for validation and explicitly set `push: false`.
 
 ## Worker verification
 
-At production head `882010ddf9bc7619e7b0c524f7e04972b0044b47`:
+At reviewed Worker head `144cab4e69b488889a882c100bc8b565c8e66fc3`
+(production changes through `882010ddf9bc7619e7b0c524f7e04972b0044b47`, followed by completion evidence):
 
 | Gate | Result |
 |---|---|
@@ -187,16 +193,26 @@ completion:
 Until all applicable rollout gates pass, no live-delivery, deployment, secret-installation,
 or product-enablement claim is valid.
 
-## G3 and merge sequence
+## G3 and merge disposition
 
-1. Commit this exact-evidence record and push PR #97's reviewed head.
-2. Update PR #97's mandatory `Testing & CI evidence` section and wait for exact-head CI.
-3. Review Worker PR #97 and Services PR #437 at immutable heads, resolving every finding.
-4. Record the I105 G3 submission and self-review transactions under the user's explicit
-   Owner/Reviewer authorization.
-5. Merge source PRs only after their checks and exact-head reviews pass.
-6. Capture the merged implementation and this record, then close I105 as
-   Knowledge-captured without implying a release or deployment.
+Completed:
+
+1. Worker PR #97 carried the mandatory `Testing & CI evidence` section and passed all six
+   exact-head checks.
+2. The explicitly authorized owner-as-reviewer G3 review passed at `144cab4`; no Critical,
+   Important, or Minor implementation finding remained.
+3. The v0.4 G3 PASS and Owner acknowledgment were recorded as separate tracker transactions.
+4. Worker PR #97 merged as `6258f5c9`; the reviewed head is its second parent and is reachable
+   from Worker `main`.
+5. Services PR #437 passed exact-head source review and its validation-only image builds passed.
+
+Still gated:
+
+1. Services PR #437 cannot merge until staging deployment is explicitly authorized.
+2. I105 remains `In Review / G3 Passed` rather than being falsely marked Merged or
+   Knowledge-captured while that source PR is open.
+3. Release publication, secret installation, candidate deployment selection, live relay proof,
+   product enablement, and production rollout remain separate authorization/evidence gates.
 
 Services PR #437 is a separately gated merge despite being source-complete: this repository's
 `deploy-staging.yml` runs on every `main` push and classifies `studio-deployment/**` as an
