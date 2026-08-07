@@ -17,6 +17,10 @@ export class WorkerBuzzToolsCommand extends BaseCommand {
       invokes Buzz directly without a shell and sends message content on stdin.
       This command is intended for Card-declared runtime use.
     `,
+    examples: [[
+      "Serve the governed Buzz delivery tools",
+      "drwn worker buzz-tools",
+    ]],
   });
 
   async execute(): Promise<number> {
