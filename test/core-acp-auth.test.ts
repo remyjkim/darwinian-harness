@@ -2,29 +2,32 @@
 // ABOUTME: Verifies profile selection, user-action forwarding, credential persistence, and method validation.
 
 import { describe, expect, test } from "bun:test";
-import type { CliDahCredentialFile } from "../cli/core/auth/credentials";
+import type { CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
 import {
   authenticateDahDevice,
   DAH_DEVICE_AUTH_METHOD_ID,
   type AcpDeviceAuthOptions,
 } from "../cli/core/acp/auth";
 
-const credential: CliDahCredentialFile = {
-  version: 2,
+const credential: CliDahCredentialFileV3 = {
+  version: 3,
+  credentialId: "66666666-6666-4666-8666-666666666666",
+  generation: 1,
   issuer: "https://hub.example.test/api/auth",
   clientId: "drwn-cli",
   resource: "https://services.example.test",
-  accessToken: "access",
+  accessToken: "eyJhbGciOiJub25lIn0.eyJpc3MiOiJodHRwczovL2h1Yi5leGFtcGxlLnRlc3QvYXBpL2F1dGgiLCJhdWQiOiJodHRwczovL3NlcnZpY2VzLmV4YW1wbGUudGVzdCIsImlhdCI6MTc4NjA4MDAwMCwiZXhwIjoxNzg2MDgwOTAwLCJlbWFpbCI6InVzZXJAZXhhbXBsZS50ZXN0In0.sig",
   refreshToken: "refresh",
-  expiresAt: "2030-01-01T00:00:00.000Z",
-  user_email: "user@example.test",
-  saved_at: "2026-08-05T00:00:00.000Z",
+  issuedAt: "2026-08-07T00:00:00.000Z",
+  expiresAt: "2026-08-07T00:15:00.000Z",
+  savedAt: "2026-08-07T00:00:01.000Z",
+  userEmail: "user@example.test",
 };
 
 describe("ACP device authentication", () => {
   test("runs DAH device flow, forwards terminal instructions, and saves credentials", async () => {
     const actions: Array<{ verification_uri_complete: string; user_code: string }> = [];
-    const persisted: Array<{ path: string; value: CliDahCredentialFile }> = [];
+    const persisted: Array<{ path: string; value: CliDahCredentialFileV3 }> = [];
     const result = await authenticateDahDevice(
       { methodId: DAH_DEVICE_AUTH_METHOD_ID },
       {

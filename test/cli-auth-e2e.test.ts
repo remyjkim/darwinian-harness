@@ -1,4 +1,4 @@
-// ABOUTME: Subprocess E2E tests for drwn auth commands against a fake analyzer backend.
+// ABOUTME: Subprocess E2E tests for drwn auth commands against a fake Auth Hub backend.
 // ABOUTME: Exercises the real CLI entrypoint, process env, HTTP boundaries, and credential files.
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -31,11 +31,13 @@ function fakeJwt(
   options: { aud?: string; iss?: string } = {},
 ): string {
   const profile = drwnCliProfile({});
+  const iat = exp - 900;
   return `${b64({ alg: "none" })}.${b64({
     iss: options.iss ?? profile.issuer,
     aud: options.aud ?? profile.resource,
     sub: "user_123",
     email,
+    iat,
     exp,
   })}.sig`;
 }
@@ -153,13 +155,14 @@ describe("auth CLI E2E", () => {
     expect(JSON.parse(onDisk).algo).toBe("aes-256-gcm");
     const credentials = await readCredentials(credentialsPath);
     expect(credentials).toMatchObject({
-      version: 2,
+      version: 3,
+      generation: 1,
       issuer: `${apiUrl}/api/auth`,
       refreshToken: "refresh-token",
-      user_email: "cli-e2e@example.com",
+      userEmail: "cli-e2e@example.com",
     });
     expect(credentials && "version" in credentials ? credentials.accessToken : "").toContain(".");
-    expect(Date.parse(credentials!.saved_at)).not.toBeNaN();
+    expect(Date.parse(credentials!.savedAt)).not.toBeNaN();
 
     const whoami = await runAgentsCli(["whoami", "--json"], env);
     expect(whoami.exitCode).toBe(0);
@@ -251,16 +254,27 @@ describe("auth CLI E2E", () => {
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
     await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
     const profile = drwnCliProfile({ DRWN_DAH_HUB_URL: apiUrl });
+    const accessToken = fakeJwt("cli-e2e@example.com", undefined, {
+      iss: profile.issuer,
+      aud: profile.resource,
+    });
+    const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+      iat: number;
+      exp: number;
+    };
     await writeCredentials(credentialsPath, {
-      version: 2,
+      version: 3,
+      credentialId: "88888888-8888-4888-8888-888888888888",
+      generation: 1,
       issuer: profile.issuer,
       clientId: "drwn-cli",
       resource: profile.resource,
-      accessToken: fakeJwt(),
+      accessToken,
       refreshToken: "refresh-token",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "cli-e2e@example.com",
-      saved_at: "2026-06-03T00:00:00Z",
+      issuedAt: new Date(claims.iat * 1000).toISOString(),
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      savedAt: "2026-08-08T00:00:00.000Z",
+      userEmail: "cli-e2e@example.com",
     });
 
     const result = await runAgentsCli(["logout"], { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl });

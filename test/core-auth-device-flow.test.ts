@@ -1,107 +1,176 @@
-// ABOUTME: Verifies OAuth device polling behavior against the Better Auth contract.
-// ABOUTME: Keeps timing and error-code handling deterministic through dependency injection.
+// ABOUTME: Verifies the native DAH device flow and v3 credential creation.
+// ABOUTME: Proves the retired Analyzer-client overload is absent and timing/identity are injected.
 
 import { describe, expect, test } from "bun:test";
 import { runDeviceFlow } from "../cli/core/auth/device-flow";
-import type { AnalyzerClient, DeviceTokenPollResult } from "../cli/core/http/analyzer-client";
+import { drwnCliProfile } from "../cli/core/auth/profile";
 
-function makeClient(results: DeviceTokenPollResult[]): Pick<AnalyzerClient, "requestDeviceCode" | "pollDeviceToken"> {
-  return {
-    async requestDeviceCode() {
-      return {
-        device_code: "dev",
-        user_code: "ABCD",
-        verification_uri_complete: "https://app.test/device?user_code=ABCD",
-        expires_in: 600,
-        interval: 5,
-      };
-    },
-    async pollDeviceToken() {
-      const next = results.shift();
-      if (!next) throw new Error("unexpected poll");
-      return next;
-    },
-  };
+const IAT = 1_786_080_000;
+const EXP = IAT + 900;
+const UUID = "22222222-2222-4222-8222-222222222222";
+
+function b64(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-const success: DeviceTokenPollResult = {
-  kind: "success",
-  token: { access_token: "tok", token_type: "Bearer", expires_in: 604800 },
-};
+function fakeJwt(issuer: string, overrides: Record<string, unknown> = {}): string {
+  return `${b64({ alg: "none" })}.${b64({
+    iss: issuer,
+    aud: "https://api.darwinian.dev",
+    sub: "user_123",
+    email: "device@example.test",
+    iat: IAT,
+    exp: EXP,
+    ...overrides,
+  })}.sig`;
+}
+
+function nativeFetcher(options: { pending?: number; terminalError?: string } = {}): {
+  fetcher: typeof fetch;
+  requests: Array<{ url: string; method: string; body: string }>;
+} {
+  const requests: Array<{ url: string; method: string; body: string }> = [];
+  let polls = 0;
+  const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const parsed = new URL(url);
+    requests.push({ url, method: init?.method ?? "GET", body: String(init?.body ?? "") });
+    if (parsed.pathname === "/api/auth/device/code") {
+      return Response.json({
+        device_code: "device-code",
+        user_code: "ABCD",
+        verification_uri: "https://app.test/device",
+        verification_uri_complete: "https://app.test/device?user_code=ABCD",
+        expires_in: 600,
+        interval: 1,
+      });
+    }
+    if (parsed.pathname === "/api/auth/device/token") {
+      polls += 1;
+      if (options.terminalError) return Response.json({ error: options.terminalError }, { status: 400 });
+      if (polls <= (options.pending ?? 0)) {
+        return Response.json({ error: "authorization_pending" }, { status: 400 });
+      }
+      return Response.json({ access_token: "opaque-device-session" });
+    }
+    if (parsed.pathname === "/api/auth/oauth2/authorize") {
+      return Response.json({ code: "authorization-code" });
+    }
+    if (parsed.pathname === "/api/auth/oauth2/token") {
+      return Response.json({
+        access_token: fakeJwt("https://auth.darwinian.dev/api/auth"),
+        refresh_token: "refresh-token",
+        expires_in: 900,
+      });
+    }
+    throw new Error(`unexpected URL ${url}`);
+  }) as unknown as typeof fetch;
+  return { fetcher, requests };
+}
 
 describe("runDeviceFlow", () => {
-  test("returns a token after one poll and calls onUserAction", async () => {
-    const actions: unknown[] = [];
+  test("runs only the native DAH flow and creates an exact generation-1 v3 credential", async () => {
+    const profile = drwnCliProfile({});
+    const actions: Array<{ verification_uri_complete: string; user_code: string }> = [];
     const slept: number[] = [];
+    const { fetcher, requests } = nativeFetcher({ pending: 1 });
 
-    const token = await runDeviceFlow({
-      client: makeClient([success]),
-      clientId: "drwn-cli",
+    const credential = await runDeviceFlow({
+      profile,
+      fetcher,
       sleep: async (ms) => { slept.push(ms); },
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
       onUserAction: (info) => { actions.push(info); },
     });
 
-    expect(token.access_token).toBe("tok");
-    expect(slept).toEqual([5000]);
-    expect(actions).toHaveLength(1);
-  });
-
-  test("continues on authorization_pending", async () => {
-    const slept: number[] = [];
-    const token = await runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "authorization_pending" }, success]),
+    expect(credential).toEqual({
+      version: 3,
+      credentialId: UUID,
+      generation: 1,
+      issuer: profile.issuer,
       clientId: "drwn-cli",
-      sleep: async (ms) => { slept.push(ms); },
-      onUserAction: () => {},
+      resource: profile.resource,
+      accessToken: fakeJwt(profile.issuer),
+      refreshToken: "refresh-token",
+      issuedAt: new Date(IAT * 1000).toISOString(),
+      expiresAt: new Date(EXP * 1000).toISOString(),
+      savedAt: new Date((IAT + 1) * 1000).toISOString(),
+      userEmail: "device@example.test",
     });
-
-    expect(token.access_token).toBe("tok");
-    expect(slept).toEqual([5000, 5000]);
+    expect(actions).toEqual([{
+      verification_uri_complete: "https://app.test/device?user_code=ABCD",
+      user_code: "ABCD",
+    }]);
+    expect(slept).toEqual([1000, 1000]);
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/device/code",
+      "/api/auth/device/token",
+      "/api/auth/device/token",
+      "/api/auth/oauth2/authorize",
+      "/api/auth/oauth2/token",
+    ]);
   });
 
-  test("slow_down doubles interval", async () => {
-    const slept: number[] = [];
-    await runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "slow_down" }, success]),
-      clientId: "drwn-cli",
-      sleep: async (ms) => { slept.push(ms); },
-      onUserAction: () => {},
-    });
+  test("fails when the final JWT omits a signed iat or coherent expiry", async () => {
+    const profile = drwnCliProfile({});
+    for (const claims of [{ iat: undefined }, { exp: undefined }, { exp: IAT }]) {
+      const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        if (path === "/api/auth/device/code") {
+          return Response.json({
+            device_code: "device-code",
+            user_code: "ABCD",
+            verification_uri: "https://app.test/device",
+            expires_in: 600,
+            interval: 1,
+          });
+        }
+        if (path === "/api/auth/device/token") return Response.json({ access_token: "opaque" });
+        if (path === "/api/auth/oauth2/authorize") return Response.json({ code: "code" });
+        if (path === "/api/auth/oauth2/token") {
+          return Response.json({
+            access_token: fakeJwt(profile.issuer, claims),
+            refresh_token: "refresh",
+            expires_in: 900,
+          });
+        }
+        throw new Error(`unexpected ${String(input)} ${String(init?.method)}`);
+      }) as unknown as typeof fetch;
 
-    expect(slept).toEqual([5000, 10000]);
+      await expect(runDeviceFlow({
+        profile,
+        fetcher,
+        sleep: async () => {},
+        now: () => (IAT + 1) * 1000,
+        randomUUID: () => UUID,
+        onUserAction: () => {},
+      })).rejects.toThrow("DAH access token is missing coherent iat/exp claims.");
+    }
   });
 
-  test("hard auth errors throw user-facing messages", async () => {
+  test("preserves native device authorization terminal errors", async () => {
+    const profile = drwnCliProfile({});
+    const { fetcher } = nativeFetcher({ terminalError: "access_denied" });
     await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "expired_token" }]),
-      clientId: "drwn-cli",
+      profile,
+      fetcher,
       sleep: async () => {},
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
       onUserAction: () => {},
-    })).rejects.toThrow("Code expired. Run `drwn login` again.");
-
-    await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "access_denied" }]),
-      clientId: "drwn-cli",
-      sleep: async () => {},
-      onUserAction: () => {},
-    })).rejects.toThrow("Authorization denied in browser.");
-
-    await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "weird" }]),
-      clientId: "drwn-cli",
-      sleep: async () => {},
-      onUserAction: () => {},
-    })).rejects.toThrow("Authentication failed: weird");
+    })).rejects.toThrow("device_authorization_denied");
   });
 
-  test("local expiry throws timeout message", async () => {
-    let now = 0;
-    await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "authorization_pending" }]),
-      clientId: "drwn-cli",
-      sleep: async () => { now = 601_000; },
-      now: () => now,
-      onUserAction: () => {},
-    })).rejects.toThrow("Sign-in timed out after 600s. Try again.");
+  test("has no retired Analyzer-client overload", () => {
+    if (false) {
+      void runDeviceFlow({
+        // @ts-expect-error The legacy Analyzer client input is intentionally unsupported.
+        client: {},
+        clientId: "drwn-cli",
+        onUserAction: () => {},
+      });
+    }
+    expect(true).toBe(true);
   });
 });

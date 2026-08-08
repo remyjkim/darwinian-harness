@@ -41,15 +41,13 @@ export class LogoutCommand extends BaseCommand {
     }
 
     const deps = LogoutCommand.testDeps ?? {};
-    if ("version" in creds) {
-      // Server revoke is best-effort: local deletion stays authoritative (I65 Fix 1 / I49 TC-A6).
-      try {
-        await revokeToken(drwnCliProfile(deps.env ?? process.env), creds.refreshToken, deps.fetch ?? fetch);
-      } catch (error) {
-        this.context.stderr.write(
-          `Warning: remote token revoke failed (${error instanceof Error ? error.message : String(error)}); removing local credentials anyway.\n`,
-        );
-      }
+    // Server revoke is best-effort: local deletion stays authoritative (I65 Fix 1 / I49 TC-A6).
+    try {
+      await revokeToken(drwnCliProfile(deps.env ?? process.env), creds.refreshToken, deps.fetch ?? fetch);
+    } catch (error) {
+      this.context.stderr.write(
+        `Warning: remote token revoke failed (${error instanceof Error ? error.message : String(error)}); removing local credentials anyway.\n`,
+      );
     }
     await deleteCredentials(credentialsPath);
     this.context.stdout.write("Logged out. Credentials removed.\n");

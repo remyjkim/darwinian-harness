@@ -20,14 +20,44 @@ function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): string {
+function fakeJwt(
+  email = "x@y.z",
+  exp = Math.floor(Date.now() / 1000) + 900,
+  options: { issuer?: string; resource?: string } = {},
+): string {
+  const iat = exp - 900;
   return `${b64({ alg: "none" })}.${b64({
-    iss: "https://auth.darwinian.dev/api/auth",
-    aud: "https://api.darwinian.dev",
+    iss: options.issuer ?? "https://auth.darwinian.dev/api/auth",
+    aud: options.resource ?? "https://api.darwinian.dev",
     sub: "user_123",
     email,
+    iat,
     exp,
   })}.sig`;
+}
+
+function storedCredential(options: { issuer?: string; resource?: string } = {}) {
+  const issuer = options.issuer ?? "https://auth.darwinian.dev/api/auth";
+  const resource = options.resource ?? "https://api.darwinian.dev";
+  const accessToken = fakeJwt("x@y.z", undefined, { issuer, resource });
+  const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+    iat: number;
+    exp: number;
+  };
+  return {
+    version: 3 as const,
+    credentialId: "77777777-7777-4777-8777-777777777777",
+    generation: 1,
+    issuer,
+    clientId: "drwn-cli" as const,
+    resource,
+    accessToken,
+    refreshToken: "refresh-1",
+    issuedAt: new Date(claims.iat * 1000).toISOString(),
+    expiresAt: new Date(claims.exp * 1000).toISOString(),
+    savedAt: "2026-08-08T00:00:00.000Z",
+    userEmail: "x@y.z",
+  };
 }
 
 class CaptureStream extends Writable {
@@ -125,7 +155,7 @@ function deviceFlowFetch(): typeof fetch {
 }
 
 describe("auth commands", () => {
-  test("login reports missing analyzer apiUrl with config path and env var", async () => {
+  test("login does not require Analyzer transport configuration", async () => {
     LoginCommand.testDeps = {
       env: {},
       fetch: deviceFlowFetch(),
@@ -164,10 +194,11 @@ describe("auth commands", () => {
     expect(onDisk).not.toContain("opaque-device-session");
     expect(JSON.parse(onDisk).algo).toBe("aes-256-gcm");
     expect(await readCredentials(credentialsPath)).toMatchObject({
-      version: 2,
+      version: 3,
+      generation: 1,
       accessToken: fakeJwt(),
       refreshToken: "refresh-1",
-      user_email: "x@y.z",
+      userEmail: "x@y.z",
     });
   });
 
@@ -182,17 +213,7 @@ describe("auth commands", () => {
       }) as unknown as typeof fetch,
     };
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
-    await writeCredentials(credentialsPath, {
-      version: 2,
-      issuer: "https://auth.darwinian.dev/api/auth",
-      clientId: "drwn-cli",
-      resource: "https://api.darwinian.dev",
-      accessToken: fakeJwt(),
-      refreshToken: "refresh-1",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "x@y.z",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
+    await writeCredentials(credentialsPath, storedCredential());
 
     const result = await runAuthCommand(["logout"], { fixture });
 
@@ -209,17 +230,9 @@ describe("auth commands", () => {
       fetch: (async () => new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 })) as unknown as typeof fetch,
     };
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
-    await writeCredentials(credentialsPath, {
-      version: 2,
+    await writeCredentials(credentialsPath, storedCredential({
       issuer: "https://auth.darwiniantools.com/api/auth",
-      clientId: "drwn-cli",
-      resource: "https://api.darwinian.dev",
-      accessToken: fakeJwt(),
-      refreshToken: "refresh-1",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "x@y.z",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
+    }));
 
     const result = await runAuthCommand(["logout"], { fixture });
 
@@ -239,17 +252,9 @@ describe("auth commands", () => {
       }) as unknown as typeof fetch,
     };
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
-    await writeCredentials(credentialsPath, {
-      version: 2,
+    await writeCredentials(credentialsPath, storedCredential({
       issuer: "https://auth.darwiniantools.com/api/auth",
-      clientId: "drwn-cli",
-      resource: "https://api.darwinian.dev",
-      accessToken: fakeJwt(),
-      refreshToken: "refresh-1",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "x@y.z",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
+    }));
 
     const result = await runAuthCommand(["logout"], { fixture });
 

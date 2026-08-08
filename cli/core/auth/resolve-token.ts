@@ -2,11 +2,10 @@
 // ABOUTME: Env-provided tokens are validated before send and are never persisted.
 
 import { NotAuthenticatedError } from "../errors";
-import { readCredentials, writeCredentials, type CliDahCredentialFile } from "./credentials";
+import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "./credentials";
 import { refreshToken, credentialFromTokens } from "./device-flow";
 import { drwnCliProfile, type CliAuthProfile } from "./profile";
 import { assertJwtAudience, tokenExpiresWithin } from "./jwt";
-import { trimTrailingSlashes } from "../url";
 
 export interface ResolveTokenInput {
   credentialsPath: string;
@@ -18,15 +17,10 @@ export interface ResolveTokenInput {
 export interface ResolvedAuth {
   token: string;
   source?: "env" | "stored";
-  credential?: CliDahCredentialFile;
-  apiUrl?: string;
+  credential?: CliDahCredentialFileV3;
 }
 
 const REFRESH_SKEW_MS = 120_000;
-
-function analyzerApiUrl(env: Record<string, string | undefined>): string | undefined {
-  return env.DRWN_ANALYZER_URL ? trimTrailingSlashes(env.DRWN_ANALYZER_URL) : undefined;
-}
 
 export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAuth | null> {
   const profile = input.profile ?? drwnCliProfile(input.env);
@@ -36,25 +30,11 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
     return {
       token: envToken,
       source: "env",
-      apiUrl: analyzerApiUrl(input.env),
     };
   }
 
   const creds = await readCredentials(input.credentialsPath);
   if (!creds) return null;
-  if (!("version" in creds)) {
-    const apiUrl = input.env.DRWN_ANALYZER_URL
-      ? trimTrailingSlashes(input.env.DRWN_ANALYZER_URL)
-      : typeof creds.api_url === "string" && creds.api_url.length > 0
-        ? trimTrailingSlashes(creds.api_url)
-        : undefined;
-    if (!apiUrl) return null;
-    return {
-      token: creds.access_token,
-      source: "stored",
-      apiUrl,
-    };
-  }
   if (creds.resource !== profile.resource) {
     throw new NotAuthenticatedError(
       `Stored credentials target ${creds.resource}; run \`drwn login\` again for ${profile.resource}.`,
@@ -73,7 +53,7 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
 
   if (!tokenExpiresWithin(creds.expiresAt, REFRESH_SKEW_MS)) {
     assertJwtAudience(creds.accessToken, profile.resource, { issuer: creds.issuer, requireUnexpired: true });
-    return { token: creds.accessToken, source: "stored", credential: creds, apiUrl: analyzerApiUrl(input.env) };
+    return { token: creds.accessToken, source: "stored", credential: creds };
   }
 
   const refreshed = await refreshStoredCredential({
@@ -86,25 +66,28 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
     token: refreshed.accessToken,
     source: "stored",
     credential: refreshed,
-    apiUrl: analyzerApiUrl(input.env),
   };
 }
 
 export async function refreshStoredCredential(input: {
   credentialsPath: string;
-  credential?: CliDahCredentialFile;
+  credential?: CliDahCredentialFileV3;
   profile?: CliAuthProfile;
   fetcher?: typeof fetch;
-}): Promise<CliDahCredentialFile> {
+  now?: () => number;
+}): Promise<CliDahCredentialFileV3> {
   const current = input.credential ?? await readCredentials(input.credentialsPath);
   if (!current) throw new NotAuthenticatedError("Not authenticated. Run `drwn login` first.");
-  if (!("version" in current)) throw new NotAuthenticatedError("Legacy credentials found. Run `drwn login` again.");
   const profile = input.profile ?? drwnCliProfile();
   const tokens = await refreshToken(profile, current.refreshToken, input.fetcher ?? fetch);
-  const refreshed = {
-    ...credentialFromTokens(profile, tokens),
-    user_email: typeof tokens.claims.email === "string" ? tokens.claims.email : current.user_email,
-  };
+  const candidate = credentialFromTokens(profile, tokens, {
+    credentialId: current.credentialId,
+    generation: current.generation + 1,
+    now: input.now,
+  });
+  const refreshed = typeof tokens.claims.email === "string"
+    ? candidate
+    : { ...candidate, userEmail: current.userEmail };
   await writeCredentials(input.credentialsPath, refreshed);
   return refreshed;
 }

@@ -52,10 +52,10 @@ export class WhoamiCommand extends BaseCommand {
         return 1;
       }
       const claims = assertJwtAudience(auth.token, profile.resource, { requireUnexpired: true });
-      const email = typeof claims.email === "string" ? claims.email : auth.credential?.user_email ?? "";
+      const email = typeof claims.email === "string" ? claims.email : auth.credential?.userEmail ?? "";
       if (this.json) {
         const stored = auth.source === "env" ? null : await readCredentials(credentialsPath);
-        const expiresAt = stored && "version" in stored ? stored.expiresAt : undefined;
+        const expiresAt = stored?.expiresAt;
         this.context.stdout.write(
           JSON.stringify({
             email,

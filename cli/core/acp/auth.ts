@@ -13,7 +13,7 @@ import {
 } from "../auth/device-flow";
 import {
   writeCredentials,
-  type CliDahCredentialFile,
+  type CliDahCredentialFileV3,
 } from "../auth/credentials";
 import { drwnCliProfile } from "../auth/profile";
 import { resolveCredentialsPath } from "../paths";
@@ -32,10 +32,11 @@ export interface AcpDeviceAuthOptions {
   fetcher?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  randomUUID?: () => string;
   signal?: AbortSignal;
   onUserAction: RunDeviceFlowInput["onUserAction"];
-  runFlow?: (input: RunDeviceFlowInput) => Promise<CliDahCredentialFile>;
-  persist?: (path: string, credential: CliDahCredentialFile) => Promise<void>;
+  runFlow?: (input: RunDeviceFlowInput) => Promise<CliDahCredentialFileV3>;
+  persist?: (path: string, credential: CliDahCredentialFileV3) => Promise<void>;
 }
 
 function authAbortReason(signal: AbortSignal): Error {
@@ -98,6 +99,7 @@ export async function authenticateDahDevice(
     fetcher,
     sleep: (ms) => waitForAuth(ms, options.sleep, options.signal),
     now: options.now,
+    randomUUID: options.randomUUID,
     onUserAction: options.onUserAction,
   });
   throwIfAuthAborted(options.signal);

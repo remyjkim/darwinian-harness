@@ -3,9 +3,7 @@
 
 import type { CliAuthProfile } from "./profile";
 import { assertJwtAudience, type JwtClaims } from "./jwt";
-import type { CliDahCredentialFile } from "./credentials";
-import type { AnalyzerClient, DeviceTokenPollResult } from "../http/analyzer-client";
-import type { DeviceTokenResponse } from "../http/schemas";
+import { assertCredentialV3, type CliDahCredentialFileV3 } from "./credentials";
 
 const DEVICE_CODE_PATH = "/api/auth/device/code";
 const DEVICE_TOKEN_PATH = "/api/auth/device/token";
@@ -33,14 +31,7 @@ export interface RunDeviceFlowInput {
   fetcher?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
-  onUserAction: (info: { verification_uri_complete: string; user_code: string }) => void;
-}
-
-export interface LegacyRunDeviceFlowInput {
-  client: Pick<AnalyzerClient, "requestDeviceCode" | "pollDeviceToken">;
-  clientId: string;
-  sleep?: (ms: number) => Promise<void>;
-  now?: () => number;
+  randomUUID?: () => string;
   onUserAction: (info: { verification_uri_complete: string; user_code: string }) => void;
 }
 
@@ -57,6 +48,9 @@ function requireTokenFields(tokens: TokenBundle): asserts tokens is TokenBundle 
   }
   if (typeof tokens.expires_in !== "number") {
     throw new Error("DAH token response did not include expires_in.");
+  }
+  if (!Number.isInteger(tokens.expires_in) || tokens.expires_in <= 0) {
+    throw new Error("DAH token response included invalid expires_in.");
   }
 }
 
@@ -217,64 +211,37 @@ export async function revokeToken(
   if (!res.ok) throw new Error(`DAH refresh-token revoke failed (${res.status}).`);
 }
 
-export function credentialFromTokens(profile: CliAuthProfile, tokens: TokenBundle): CliDahCredentialFile {
+export function credentialFromTokens(
+  profile: CliAuthProfile,
+  tokens: TokenBundle,
+  epoch: { credentialId: string; generation: number; now?: () => number },
+): CliDahCredentialFileV3 {
   requireTokenFields(tokens);
+  if (!Number.isSafeInteger(tokens.claims.iat) ||
+    !Number.isSafeInteger(tokens.claims.exp) ||
+    (tokens.claims.exp as number) <= (tokens.claims.iat as number)) {
+    throw new Error("DAH access token is missing coherent iat/exp claims.");
+  }
   const userEmail = typeof tokens.claims.email === "string" ? tokens.claims.email : "";
-  return {
-    version: 2,
+  const credential: CliDahCredentialFileV3 = {
+    version: 3,
+    credentialId: epoch.credentialId,
+    generation: epoch.generation,
     issuer: profile.issuer,
     clientId: profile.clientId,
     resource: profile.resource,
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token,
-    expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    user_email: userEmail,
-    saved_at: new Date().toISOString(),
+    issuedAt: new Date((tokens.claims.iat as number) * 1000).toISOString(),
+    expiresAt: new Date((tokens.claims.exp as number) * 1000).toISOString(),
+    savedAt: new Date((epoch.now ?? Date.now)()).toISOString(),
+    userEmail,
   };
+  assertCredentialV3(credential);
+  return credential;
 }
 
-async function runLegacyDeviceFlow(input: LegacyRunDeviceFlowInput): Promise<DeviceTokenResponse> {
-  const sleep = input.sleep ?? defaultSleep;
-  const now = input.now ?? Date.now;
-  const code = await input.client.requestDeviceCode(input.clientId);
-
-  input.onUserAction({
-    verification_uri_complete: code.verification_uri_complete,
-    user_code: code.user_code,
-  });
-
-  const expiresAt = now() + code.expires_in * 1000;
-  let interval = code.interval;
-
-  while (true) {
-    await sleep(interval * 1000);
-    if (now() > expiresAt) {
-      throw new Error(`Sign-in timed out after ${code.expires_in}s. Try again.`);
-    }
-
-    const result: DeviceTokenPollResult = await input.client.pollDeviceToken(code.device_code, input.clientId);
-    if (result.kind === "success") return result.token;
-
-    switch (result.error) {
-      case "authorization_pending":
-        continue;
-      case "slow_down":
-        interval *= 2;
-        continue;
-      case "expired_token":
-        throw new Error("Code expired. Run `drwn login` again.");
-      case "access_denied":
-        throw new Error("Authorization denied in browser.");
-      default:
-        throw new Error(`Authentication failed: ${result.error}`);
-    }
-  }
-}
-
-export function runDeviceFlow(input: LegacyRunDeviceFlowInput): Promise<DeviceTokenResponse>;
-export function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCredentialFile>;
-export async function runDeviceFlow(input: RunDeviceFlowInput | LegacyRunDeviceFlowInput): Promise<CliDahCredentialFile | DeviceTokenResponse> {
-  if ("client" in input) return runLegacyDeviceFlow(input);
+export async function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCredentialFileV3> {
   const fetcher = input.fetcher ?? fetch;
   const sleep = input.sleep ?? defaultSleep;
   const now = input.now ?? Date.now;
@@ -285,5 +252,9 @@ export async function runDeviceFlow(input: RunDeviceFlowInput | LegacyRunDeviceF
   });
   const opaque = await pollDeviceToken(input.profile, fetcher, device, sleep, now);
   const tokens = await exchangeDeviceSession(input.profile, opaque, fetcher);
-  return credentialFromTokens(input.profile, tokens);
+  return credentialFromTokens(input.profile, tokens, {
+    credentialId: (input.randomUUID ?? (() => crypto.randomUUID()))(),
+    generation: 1,
+    now,
+  });
 }

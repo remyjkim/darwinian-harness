@@ -124,12 +124,14 @@ export class AnalyzeSessionsCommand extends BaseCommand {
         this.context.stderr.write("Not authenticated. Run `drwn login` first (or set DRWN_TOKEN + DRWN_ANALYZER_URL).\n");
         return 1;
       }
-      if (!auth.apiUrl) {
-        this.context.stderr.write("Set DRWN_ANALYZER_URL when using DAH credentials with analyzer uploads.\n");
+      if (!cfg.apiUrl) {
+        this.context.stderr.write(
+          `Set DRWN_ANALYZER_URL or configure analyzer.apiUrl in ${cfg.configPath} before uploading.\n`,
+        );
         return 1;
       }
 
-      const client = createAnalyzerClient(auth.apiUrl, deps.fetch ?? fetch);
+      const client = createAnalyzerClient(cfg.apiUrl, deps.fetch ?? fetch);
       if (!this.json) {
         this.context.stdout.write(`Uploading ${formatBytes(archiveInfo.size)}...\n`);
       }

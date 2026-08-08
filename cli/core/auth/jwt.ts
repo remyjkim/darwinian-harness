@@ -5,6 +5,7 @@ export interface JwtClaims {
   iss?: string;
   sub?: string;
   aud?: string | string[];
+  iat?: number;
   exp?: number;
   email?: string;
   [claim: string]: unknown;

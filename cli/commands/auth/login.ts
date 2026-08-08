@@ -14,6 +14,7 @@ type LoginDeps = {
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  randomUUID?: () => string;
   openBrowser?: (url: string) => void;
 };
 
@@ -74,6 +75,7 @@ export class LoginCommand extends BaseCommand {
         fetcher: deps.fetch ?? fetch,
         sleep: deps.sleep,
         now: deps.now,
+        randomUUID: deps.randomUUID,
         onUserAction: ({ verification_uri_complete }) => {
           const instructions = [
             "Log in to your Darwinian account:",
@@ -96,9 +98,9 @@ export class LoginCommand extends BaseCommand {
       const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
       await writeCredentials(credentialsPath, credential);
       if (this.json) {
-        this.context.stdout.write(JSON.stringify({ email: credential.user_email, expires_at: credential.expiresAt }) + "\n");
+        this.context.stdout.write(JSON.stringify({ email: credential.userEmail, expires_at: credential.expiresAt }) + "\n");
       } else {
-        this.context.stdout.write(`Signed in as ${credential.user_email || "unknown user"}\n`);
+        this.context.stdout.write(`Signed in as ${credential.userEmail || "unknown user"}\n`);
       }
       return 0;
     } catch (error) {

@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fetchWithWorkerAuth } from "../cli/core/worker-http";
-import { writeCredentials } from "../cli/core/auth/credentials";
+import { writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
 import { resolveCredentialsPath } from "../cli/core/paths";
 
 let tmp: string | null = null;
@@ -16,28 +16,37 @@ function b64(value: unknown): string {
 }
 
 function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): string {
+  const iat = exp - 900;
   return `${b64({ alg: "none" })}.${b64({
     iss: "https://auth.darwinian.dev/api/auth",
     aud: "https://api.darwinian.dev",
     sub: "user_123",
     email,
+    iat,
     exp,
   })}.sig`;
 }
 
-// A complete v2 credential record far enough from expiry that resolveToken returns it
+// A complete v3 credential record far enough from expiry that resolveToken returns it
 // without proactively refreshing (so the 401 is what triggers the refresh-once path).
-function storedV2Credential(overrides: Partial<{ accessToken: string; expiresAt: string }> = {}) {
+function storedV3Credential(accessToken = fakeJwt()): CliDahCredentialFileV3 {
+  const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+    iat: number;
+    exp: number;
+  };
   return {
-    version: 2 as const,
+    version: 3,
+    credentialId: "55555555-5555-4555-8555-555555555555",
+    generation: 1,
     issuer: "https://auth.darwinian.dev/api/auth",
-    clientId: "drwn-cli" as const,
+    clientId: "drwn-cli",
     resource: "https://api.darwinian.dev",
-    accessToken: overrides.accessToken ?? fakeJwt(),
+    accessToken,
     refreshToken: "refresh-1",
-    expiresAt: overrides.expiresAt ?? new Date(Date.now() + 900_000).toISOString(),
-    user_email: "x@y.z",
-    saved_at: "2026-06-03T00:00:00Z",
+    issuedAt: new Date(claims.iat * 1000).toISOString(),
+    expiresAt: new Date(claims.exp * 1000).toISOString(),
+    savedAt: "2026-08-08T00:00:00.000Z",
+    userEmail: "x@y.z",
   };
 }
 
@@ -55,7 +64,7 @@ describe("fetchWithWorkerAuth", () => {
   test("attaches a bearer from stored credentials and returns the first response when ok", async () => {
     const context = await freshContext();
     const token = fakeJwt();
-    await writeCredentials(resolveCredentialsPath(tmp!), storedV2Credential({ accessToken: token }));
+    await writeCredentials(resolveCredentialsPath(tmp!), storedV3Credential(token));
 
     const seen: { url: string; auth: string }[] = [];
     const fetcher = (async (url: string, init?: RequestInit) => {
@@ -72,7 +81,7 @@ describe("fetchWithWorkerAuth", () => {
     const context = await freshContext();
     const initialToken = fakeJwt("initial@example.com");
     const refreshedToken = fakeJwt("refreshed@example.com");
-    await writeCredentials(resolveCredentialsPath(tmp!), storedV2Credential({ accessToken: initialToken }));
+    await writeCredentials(resolveCredentialsPath(tmp!), storedV3Credential(initialToken));
 
     const bearersSent: string[] = [];
     let refreshHits = 0;
