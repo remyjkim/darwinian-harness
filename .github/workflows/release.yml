@@ -248,6 +248,7 @@ jobs:
             echo "Only the exact v1.2.0 tag is a release trigger." >&2
             exit 1
           fi
+          git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
           TAG_TYPE="$(git cat-file -t "refs/tags/$TAG")"
           if [ "$TAG_TYPE" != "tag" ]; then
             echo "The release tag must be annotated." >&2
