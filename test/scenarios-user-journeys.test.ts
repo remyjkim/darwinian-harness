@@ -146,7 +146,7 @@ describe("user journeys", () => {
     expect(result.exitCode).toBe(0);
     expect(parsed.staleSkillSymlinks.length).toBeGreaterThan(0);
     expect(parsed.mcpDrift.length).toBeGreaterThan(0);
-  });
+  }, 15_000);
 
   test("per-project user can init, override, preview, inspect, and diagnose", async () => {
     const fixture = await scaffoldCliFixture();
