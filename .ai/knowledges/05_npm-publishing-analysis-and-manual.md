@@ -42,7 +42,7 @@ careful. For `darwinian@1.2.0` and later:
 
 - package, runtime, generated build, source commit, dry-run run/attempt,
   artifact ID/digest, and tar identity are joined fail closed;
-- only the dedicated independently reviewed publication environment receives
+- only the dedicated policy-gated publication environment receives
   OIDC permission;
 - the protected job downloads and publishes the already-qualified tarball and
   never repacks source;

@@ -1,4 +1,4 @@
-# ABOUTME: G1 target architecture for I239, the independently gated Darwinian Worker CLI 1.2.0 release and immutable ACP/Buzz handoff.
+# ABOUTME: G1 target architecture for I239, the policy-gated Darwinian Worker CLI 1.2.0 release and immutable ACP/Buzz handoff.
 # ABOUTME: Defines truthful governance, fail-closed release identity, a credential-custody hard cut, sanitized auth receipts, and strict I236/Services/I238 boundaries.
 
 # [I239] Darwinian Worker CLI 1.2.0 release and operational ACP/Buzz handoff — target architecture
@@ -441,8 +441,14 @@ floor that no policy value can relax:
 
 Under the current policy the `remyjkim` release operator creates the tag and supplies the
 environment approval for the same protected job. The receipt therefore truthfully proves a
-single-operator, self-approved control, and no longer asserts an independent second-person
-control that is not in force.
+single-operator, self-approved control, and no longer asserts a second-person control that
+is not in force.
+
+`preventSelfReview` is compared for exact equality rather than treated as monotonically
+safe. A stricter observed setting is a mismatch, not an upgrade: with a single declared
+reviewer who is also the release initiator, `prevent_self_review=true` would deadlock
+publication rather than harden it. Divergence in either direction means the environment and
+the repository disagree, which is exactly what this receipt exists to detect.
 
 The historical `1.1.0` provenance attestation is supporting evidence only. npm trusted
 publisher settings are mutable and must be read from authenticated package settings for
@@ -857,7 +863,7 @@ external configuration, tag creation, or registry mutation, that:
 7. dry-run validation is main-only and confirms version freshness with fail-closed
    tri-state behavior;
 8. workflow structure binds annotated-tag publication to the exact recorded dry-run run,
-   uploaded qualified tarball, current-main-tip equality, and independently reviewed
+   uploaded qualified tarball, current-main-tip equality, and policy-gated
    dedicated environment;
 9. the actual local candidate tarball contains required files and passes all safe installed
    smokes;

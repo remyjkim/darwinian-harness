@@ -1,4 +1,4 @@
-# ABOUTME: G2 implementation plan for I239's Worker CLI 1.2.0 credential hard cut and independently gated release.
+# ABOUTME: G2 implementation plan for I239's Worker CLI 1.2.0 credential hard cut and policy-gated release.
 # ABOUTME: Converts the fresh G1 contracts into ordered RED-GREEN slices, immutable evidence, and explicit downstream stops.
 
 # [I239] Darwinian Worker CLI 1.2.0 release and operational ACP/Buzz handoff — Implementation Plan (GATE 2)
@@ -666,7 +666,7 @@ Any unexpected failure invokes `systematic-debugging`. Do not broaden scope or w
 4. Stop. Obtain explicit authorization naming that exact run/artifact and separately authorizing GitHub/npm control configuration/readback and publication.
 5. Configure/read back `darwinian-npm-publish` and npm package settings; validate sanitized evidence. Any mismatch stops before tagging.
 6. Re-fetch `origin/main`. If it moved, inventory the delta and run a new dry run; never reuse the old artifact.
-7. Create/push only the annotated `v1.2.0` tag carrying the authorized run/artifact identity. The workflow revalidates, waits for independent environment approval, publishes the exact tarball, and verifies registry bytes/smokes/Release metadata.
+7. Create/push only the annotated `v1.2.0` tag carrying the authorized run/artifact identity. The workflow revalidates, waits for policy-conformant environment approval, publishes the exact tarball, and verifies registry bytes/smokes/Release metadata.
 8. If npm publication succeeded and a later step failed, stop for separately authorized recovery or patch roll-forward. Never reuse 1.2.0 and never unpublish as an automatic response.
 9. Create the I239 completion/immutable release receipt only after the full post-merge gate passes. Hand the released package/build/auth-schema capability receipt to I236, Services R2, and I238; perform none of their live operations.
 10. I236 must mint a fresh v3 credential after its canonical cut and bind its authorized live receipts to the I239 release tuple. I238 still requires the separate Buzz child-environment receipt, lease, candidate, operation authorities, and its own live receipts.

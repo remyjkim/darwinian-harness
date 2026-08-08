@@ -4,11 +4,14 @@
 export interface PublicationApprovalPolicyV1 {
   schema: "darwinian.worker.publication-approval-policy";
   schemaVersion: 1;
-  githubEnvironment: string;
+  githubEnvironment: "darwinian-npm-publish";
   requiredReviewers: string[];
   preventSelfReview: boolean;
   canAdminsBypass: false;
 }
+
+/** GitHub login grammar: alphanumerics and single interior hyphens, up to 39 characters. */
+const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 
 export interface GitHubPublicationControlsV1 {
   schema: "darwinian.worker.github-publication-controls";
@@ -108,14 +111,14 @@ function assertApprovalPolicy(value: unknown): asserts value is PublicationAppro
   if (value.canAdminsBypass !== false) fail();
   const reviewers = value.requiredReviewers;
   if (!Array.isArray(reviewers) || reviewers.length === 0) fail();
-  if (!reviewers.every((reviewer) => typeof reviewer === "string" && reviewer.length > 0)) fail();
+  if (!reviewers.every((reviewer) => typeof reviewer === "string" && GITHUB_LOGIN.test(reviewer))) fail();
   if (new Set(reviewers).size !== reviewers.length) fail();
 }
 
 function sameReviewers(observed: unknown, declared: readonly string[]): boolean {
   if (!Array.isArray(observed) || observed.length !== declared.length) return false;
   if (!observed.every((reviewer) => typeof reviewer === "string")) return false;
-  return [...(observed as string[])].sort().join("\0") === [...declared].sort().join("\0");
+  return JSON.stringify([...(observed as string[])].sort()) === JSON.stringify([...declared].sort());
 }
 
 function assertGitHubReceipt(
@@ -141,7 +144,7 @@ function assertGitHubReceipt(
     environment.name !== policy.githubEnvironment ||
     !sameReviewers(environment.requiredReviewers, policy.requiredReviewers) ||
     environment.preventSelfReview !== policy.preventSelfReview ||
-    environment.canAdminsBypass !== false ||
+    environment.canAdminsBypass !== policy.canAdminsBypass ||
     environment.customDeploymentPolicies !== true ||
     !Array.isArray(environment.deploymentPolicies) ||
     environment.deploymentPolicies.length !== 1
@@ -179,7 +182,7 @@ export function validatePublicationControls(input: {
   now: string;
 }): {
   repository: "remyjkim/darwinian-worker";
-  environment: string;
+  environment: "darwinian-npm-publish";
   approval: { requiredReviewers: string[]; preventSelfReview: boolean };
   package: "darwinian";
   versionTag: "v1.2.0";

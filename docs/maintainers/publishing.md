@@ -16,6 +16,11 @@ The external preconditions must be freshly read back before the tag is created:
 - required reviewers and self-review exactly as declared in
   `scripts/release/release-policy.json`, admin bypass disabled, and one exact
   `v1.2.0` tag policy;
+- the environment-scoped variables `DARWINIAN_GITHUB_PUBLICATION_CONTROLS_JSON`
+  and `DARWINIAN_NPM_PUBLICATION_CONTROLS_JSON` rewritten from that same
+  readback. The protected job re-reads them and rejects any receipt observed
+  more than 15 minutes earlier, so write them immediately before approving
+  rather than before tagging;
 - npm trusted publisher bound to owner `remyjkim`, repository
   `darwinian-worker`, workflow `release.yml`, environment
   `darwinian-npm-publish`, and action `npm publish`; and
@@ -38,7 +43,7 @@ checks and must exactly match the existing annotated tag and source commit.
 
 If publication has already succeeded and a later step fails, use
 `.github/workflows/release-recovery.yml` with the exact failed run ID and an
-independently approved closed-schema recovery receipt. Recovery has no OIDC,
+policy-approved closed-schema recovery receipt. Recovery has no OIDC,
 token, publish, repack, retag, dist-tag, or unpublish path. It may verify npm
 bytes, run installed smokes, and create or verify missing GitHub Release
 metadata at the existing tag only.

@@ -2,6 +2,10 @@
 // ABOUTME: Keeps external configuration as a fail-closed precondition rather than inferred release state.
 
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   validatePublicationControls,
   type GitHubPublicationControlsV1,
@@ -117,17 +121,83 @@ describe("publication control receipts", () => {
     ["duplicate reviewer", (declared: PublicationApprovalPolicyV1) => { declared.requiredReviewers = ["remyjkim", "remyjkim"]; }],
     ["admin bypass permitted", (declared: PublicationApprovalPolicyV1) => { declared.canAdminsBypass = true as never; }],
     ["non-boolean self review", (declared: PublicationApprovalPolicyV1) => { declared.preventSelfReview = "false" as never; }],
-    ["environment unbound from OIDC publisher", (declared: PublicationApprovalPolicyV1) => { declared.githubEnvironment = "npm-publish"; }],
+    ["environment unbound from OIDC publisher", (declared: PublicationApprovalPolicyV1) => { declared.githubEnvironment = "npm-publish" as never; }],
     ["wrong schema", (declared: PublicationApprovalPolicyV1) => { declared.schema = "other" as never; }],
     ["wrong schema version", (declared: PublicationApprovalPolicyV1) => { declared.schemaVersion = 2 as never; }],
   ])("rejects an approval policy that breaches the fixed floor: %s", (_label, mutate) => {
+    // Model the real threat: one operator edits the policy AND refreshes both readback
+    // receipts to agree with it. Only the floor itself can reject that, so the receipts
+    // must mirror the whole declared policy rather than just the reviewer list.
     const declared = policy();
     mutate(declared);
     const receipt = githubReceipt();
+    receipt.environment.name = declared.githubEnvironment;
     receipt.environment.requiredReviewers = Array.isArray(declared.requiredReviewers)
       ? [...(declared.requiredReviewers as string[])]
-      : [];
-    expect(() => accepts(receipt, npmReceipt(), declared)).toThrow();
+      : (declared.requiredReviewers as never);
+    receipt.environment.preventSelfReview = declared.preventSelfReview;
+    receipt.environment.canAdminsBypass = declared.canAdminsBypass;
+    const npm = npmReceipt();
+    npm.trustedPublisher.environment = declared.githubEnvironment;
+    expect(() => accepts(receipt, npm, declared)).toThrow();
+  });
+
+  test("compares reviewer lists without regard to order", () => {
+    const declared = policy();
+    declared.requiredReviewers = ["remyjkim", "leeminseung"];
+    const receipt = githubReceipt();
+    receipt.environment.requiredReviewers = ["leeminseung", "remyjkim"];
+    expect(accepts(receipt, npmReceipt(), declared).approval.requiredReviewers)
+      .toEqual(["remyjkim", "leeminseung"]);
+  });
+
+  test("the checked-in release policy is loadable and satisfies the fixed floor", async () => {
+    const declared = JSON.parse(
+      await readFile(new URL("../scripts/release/release-policy.json", import.meta.url), "utf8"),
+    ) as PublicationApprovalPolicyV1;
+    const receipt = githubReceipt();
+    receipt.environment.name = declared.githubEnvironment;
+    receipt.environment.requiredReviewers = [...declared.requiredReviewers];
+    receipt.environment.preventSelfReview = declared.preventSelfReview;
+    const npm = npmReceipt();
+    npm.trustedPublisher.environment = declared.githubEnvironment;
+    expect(accepts(receipt, npm, declared)).toEqual({
+      repository: "remyjkim/darwinian-worker",
+      environment: "darwinian-npm-publish",
+      approval: {
+        requiredReviewers: declared.requiredReviewers,
+        preventSelfReview: declared.preventSelfReview,
+      },
+      package: "darwinian",
+      versionTag: "v1.2.0",
+    });
+  });
+
+  test("the release CLI resolves the checked-in policy from any working directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "i239-controls-"));
+    try {
+      const github = join(dir, "github.json");
+      const npm = join(dir, "npm.json");
+      const declared = JSON.parse(
+        await readFile(new URL("../scripts/release/release-policy.json", import.meta.url), "utf8"),
+      ) as PublicationApprovalPolicyV1;
+      const githubValue = githubReceipt();
+      githubValue.observedAt = new Date().toISOString();
+      githubValue.environment.requiredReviewers = [...declared.requiredReviewers];
+      githubValue.environment.preventSelfReview = declared.preventSelfReview;
+      const npmValue = npmReceipt();
+      npmValue.observedAt = githubValue.observedAt;
+      await writeFile(github, JSON.stringify(githubValue));
+      await writeFile(npm, JSON.stringify(npmValue));
+
+      const cli = fileURLToPath(new URL("../scripts/release-cli.ts", import.meta.url));
+      const proc = Bun.spawn(["bun", cli, "verify-controls", github, npm], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+      const stdout = await new Response(proc.stdout).text();
+      expect(await proc.exited).toBe(0);
+      expect(JSON.parse(stdout)).toMatchObject({ environment: "darwinian-npm-publish" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   test("rejects an approval policy carrying unknown fields", () => {

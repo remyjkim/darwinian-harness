@@ -1,4 +1,4 @@
-// ABOUTME: Proves release recovery is exact-tag, independently approved, and structurally unable to publish.
+// ABOUTME: Proves release recovery is exact-tag, policy-gated, and structurally unable to publish.
 // ABOUTME: Allows only registry/artifact verification, installed smokes, and missing GitHub Release repair.
 
 import { describe, expect, test } from "bun:test";
@@ -28,7 +28,7 @@ describe("Worker release recovery workflow", () => {
     expect(workflow).toContain("--require-git-head");
   });
 
-  test("has independent approval but no publication, token, OIDC, repack, or tag-mutation capability", () => {
+  test("has policy-gated approval but no publication, token, OIDC, repack, or tag-mutation capability", () => {
     expect(workflow).toContain("name: darwinian-npm-publish");
     expect(workflow).not.toContain("id-token: write");
     expect(workflow).not.toContain("NODE_AUTH_TOKEN");
