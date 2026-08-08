@@ -193,13 +193,46 @@ function verifyDocsPresence() {
     ".ai/knowledges/03_npm-skill-bundles-guide.md",
     ".ai/knowledges/04_homebrew-release-checklist.md",
     ".ai/knowledges/05_npm-publishing-analysis-and-manual.md",
+    "docs/release-process.md",
+    "docs/maintainers/publishing.md",
+    "docs-docusaurus/docs/reference/cli/acp.md",
+    "docs-docusaurus/docs/reference/cli/worker.md",
+    "docs-docusaurus/docs/reference/cli/refresh.md",
   ];
   const missing = requiredFiles.filter((file) => !existsSync(join(repoRoot, file)));
+  const requiredTokens: Array<[string, string[]]> = [
+    ["README.md", ["drwn acp serve <slug>", "drwn refresh --json", "Foundry/Analyzer-linked"]],
+    ["docs/cli-quickref.md", ["payload v3", "envelope v2", "CAPABILITY_NOT_REPORTED", "HTTP 202"]],
+    ["docs-docusaurus/docs/reference/cli/acp.md", ["terminal cancellation", "I236/I238"]],
+    ["docs-docusaurus/docs/reference/cli/worker.md", ["LOCAL_CARD_REF_MISMATCH", "NO_ACTIVE_DEPLOYMENT"]],
+    ["docs-docusaurus/docs/reference/cli/refresh.md", ["CREDENTIAL_SCHEMA_UNSUPPORTED", "never persisted"]],
+    ["docs/release-process.md", ["dry-run run ID and attempt", "artifact ID and digest", "release-recovery.yml"]],
+    ["docs/maintainers/publishing.md", ["No local token fallback", "darwinian-npm-publish"]],
+    ["CHANGELOG.md", ["## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
+  ];
+  const drift: string[] = [];
+  for (const [file, tokens] of requiredTokens) {
+    if (!existsSync(join(repoRoot, file))) continue;
+    const content = readFileSync(join(repoRoot, file), "utf8");
+    for (const token of tokens) {
+      if (!content.includes(token)) drift.push(`${file} is missing ${token}`);
+    }
+  }
+  const publishingPath = join(repoRoot, "docs/maintainers/publishing.md");
+  if (existsSync(publishingPath)) {
+    const cliSection = readFileSync(publishingPath, "utf8").split("## Publishing `drwn-command-bridge`")[0] ?? "";
+    for (const retired of ["NPM_ORG_TOKEN", "TMP_NPMRC", "--userconfig"]) {
+      if (cliSection.includes(retired)) drift.push(`darwinian CLI docs retain ${retired} token fallback`);
+    }
+  }
 
   return {
     name: "documentation presence",
-    ok: missing.length === 0,
-    details: missing.length > 0 ? `Missing: ${missing.join(", ")}` : undefined,
+    ok: missing.length === 0 && drift.length === 0,
+    details: [
+      ...(missing.length > 0 ? [`Missing: ${missing.join(", ")}`] : []),
+      ...drift,
+    ].join("; ") || undefined,
   } satisfies CheckResult;
 }
 

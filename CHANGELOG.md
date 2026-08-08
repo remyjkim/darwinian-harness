@@ -34,6 +34,90 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registry default for the cursor target is now off — enable it explicitly
   via machine policy or a project override to keep projecting.
 
+## [1.2.0] - 2026-08-07
+
+### Added
+
+- Packaged ACP support through `drwn acp serve`, including DAH device auth,
+  persisted session loading, two-track cancellation, run-status polling, and
+  bounded Buzz-client delivery correction. HTTP 202 acknowledges a cancellation
+  request; only a cancelled event/status is terminal evidence.
+- Deployed-Worker operations for V1-payload-to-V2-project materialization,
+  governed Buzz delivery tools over MCP stdio, and stdin-only per-Worker secret
+  configuration.
+- Sanitized `darwinian.worker.auth-operation` receipts for login, explicit
+  forced refresh, ordinary logout, and confirmed-revoke qualification logout.
+  Receipts bind packaged Worker version/source, scoped custody identity, and a
+  closed remote/local outcome without retaining tokens, email, paths, key
+  references, device codes, response bodies, or secret values.
+- One shared Worker governance status model for human and JSON output. It binds
+  declarations to the exact selected local Card, preserves zero allow/deny
+  counts, and reports deployment enforcement as unknown when the API supplies
+  no capability evidence.
+- Fail-closed release qualification: tri-state npm freshness, generated build
+  identity, required package members, exact tar byte identities, eight isolated
+  installed smokes, closed dry-run/tag/run/artifact provenance, fresh external
+  control receipts, exact-tar OIDC publication, registry-byte equality, macOS
+  smoke, and exact GitHub Release metadata.
+- A separately approved, non-publishing recovery workflow that can verify
+  already-published bytes and repair missing GitHub Release metadata, but cannot
+  publish, repack, retag, change dist-tags, or unpublish.
+
+### Changed
+
+- Stored DAH custody is a hard cut to exact credential payload v3 inside scoped
+  encrypted envelope v2. Legacy payloads, legacy envelopes, and Analyzer-hosted
+  credential methods are not migrated or dual-read; users re-run `drwn login`.
+- `drwn refresh` always refreshes stored custody and advances its generation only
+  after persistence. `DRWN_TOKEN` remains non-persistent and is never refreshed.
+- Ordinary logout prioritizes local containment; qualification logout requires
+  confirmed remote refresh-token revoke before local deletion.
+- The package/runtime candidate identity is `1.2.0`; the first-supported Worker
+  compatibility floor remains `1.1.0`, while project and semantic Mind floors
+  remain `0.8.0` and `0.9.0`.
+
+### Qualification boundary
+
+- This source release does not claim live I238 qualification. It records only
+  packaged capability and release controls, not I236 environment readiness,
+  Services adoption, deployed governance enforcement, Buzz delivery, or
+  production traffic. Those require their own immutable operational evidence.
+
+## [1.1.0] - 2026-08-05
+
+### Added
+
+- Path-addressed Card source authoring and publishing, including explicit source
+  inputs, configured catalog checkouts, authoring preferences, trust-aware
+  updates, and legacy-source inventory guidance.
+- Machine Blueprint V2: one selected immutable Worker closure, scoped consent,
+  ownership-safe projection, explicit root selection, recommended machine
+  defaults, and changed-type drift handling.
+- OpenCode project projection and diagnostics for managed `skills.paths`, with
+  measured disclosure of the remaining cross-scope dedup race.
+
+### Changed
+
+- Established `1.1.0` as the first supported deployed-Worker compatibility
+  floor. This registry artifact predates the ACP serve, Worker materialize, Buzz
+  tools, Worker secret, and release-provenance surfaces delivered in 1.2.0.
+- Release validation received bounded external probes and a longer validation
+  timeout; these changes did not qualify later source under the same version.
+
+## [1.0.0] - 2026-08-03
+
+### Changed
+
+- Established the first stable CLI identity over the existing 0.10.1 Worker
+  materialization and instruction-projection feature line.
+- Fresh `drwn login` uses `https://auth.darwinian.dev` by default, and stored
+  credentials from the retired Auth Hub are rejected instead of silently reused.
+
+### Qualification boundary
+
+- The 1.0.0 tag did not contain the later ACP/Buzz operational commands or the
+  1.2.0 exact-artifact release qualification pipeline.
+
 ## [0.10.1] - 2026-07-29
 
 ### Fixed

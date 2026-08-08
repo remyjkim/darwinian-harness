@@ -1,152 +1,80 @@
 # Publishing
 
-This document is the maintainer-facing manual for publishing `darwinian` to npm.
+This is the maintainer boundary for npm publication. The `darwinian` CLI and
+`drwn-command-bridge` are separate packages with separate authorization paths.
 
-It focuses on the verified working workflow. The deeper investigation notes remain in `.ai/knowledges/05_npm-publishing-analysis-and-manual.md`.
+## Publishing `darwinian`
 
-## Why This Exists
+Publish `darwinian@1.2.0` only through `.github/workflows/release.yml`, following
+`docs/release-process.md`. Manual dispatch is qualification-only. The exact
+annotated tag joins one successful main-only dry run to one immutable uploaded
+tarball; only the protected `Publish to npm` job receives OIDC.
 
-Local npm configuration can interfere with publishing.
+The external preconditions must be freshly read back before the tag is created:
 
-In particular:
+- dedicated environment `darwinian-npm-publish`;
+- sole required reviewer `leeminseung`, self-review prevented, admin bypass
+  disabled, and one exact `v1.2.0` tag policy;
+- npm trusted publisher bound to owner `remyjkim`, repository
+  `darwinian-worker`, workflow `release.yml`, environment
+  `darwinian-npm-publish`, and action `npm publish`; and
+- npm access `require_2fa_disallow_tokens`.
 
-- `~/.npmrc` may already contain an auth token
-- `npm whoami` can succeed without proving publish-time behavior
-- `npm publish --dry-run` validates packaging, but not the full final auth path
+The workflow repeats those normalized control checks after approval, confirms
+`1.2.0` is still unpublished, downloads the authorized artifact by exact ID,
+verifies the archive digest before extraction, requalifies its receipt/build/tar
+identity, and publishes that relative tar path. It never repacks the checkout.
 
-To avoid machine-state drift, use an explicit temporary npm config for manual publishes.
+No local token fallback is supported for the `darwinian` CLI. Do not use ambient
+`.npmrc`, a maintainer token, a copied one-time password, or a local publish
+command when GitHub Actions is unavailable. Stop and restore the reviewed
+trusted-publishing path instead. This avoids qualifying one artifact while
+publishing different local bytes.
 
-## Preflight
+After publication, require npm shasum/integrity equality before installed smokes
+on Ubuntu and macOS. A GitHub Release is created or verified only after those
+checks and must exactly match the existing annotated tag and source commit.
 
-From the repo root:
-
-```bash
-cd /path/to/darwinian-worker
-```
-
-Check package-name state:
-
-```bash
-npm view darwinian name version repository --json
-```
-
-Expected before the first `darwinian` publish:
-
-- `E404 Not Found`
-
-Expected after the first publish:
-
-- package metadata for this project
-
-Run the release gate:
-
-```bash
-bun run verify:release --json
-```
-
-Expected result:
-
-- all checks `ok: true`
-- no warnings
-
-## Manual Publish
-
-Load the token:
-
-```bash
-set -a
-source .env
-set +a
-```
-
-Create an isolated npm config:
-
-```bash
-TMP_NPMRC="$(mktemp)"
-chmod 600 "$TMP_NPMRC"
-
-cat > "$TMP_NPMRC" <<EOF
-registry=https://registry.npmjs.org/
-//registry.npmjs.org/:_authToken=${NPM_ORG_TOKEN}
-EOF
-```
-
-Verify auth:
-
-```bash
-npm whoami --userconfig="$TMP_NPMRC"
-```
-
-Publish:
-
-```bash
-npm publish --access public --userconfig="$TMP_NPMRC"
-```
-
-Clean up:
-
-```bash
-rm -f "$TMP_NPMRC"
-```
-
-## Safer Full Sequence
-
-```bash
-cd /path/to/darwinian-worker
-
-set -a
-source .env
-set +a
-
-TMP_NPMRC="$(mktemp)"
-chmod 600 "$TMP_NPMRC"
-
-cat > "$TMP_NPMRC" <<EOF
-registry=https://registry.npmjs.org/
-//registry.npmjs.org/:_authToken=${NPM_ORG_TOKEN}
-EOF
-
-npm whoami --userconfig="$TMP_NPMRC"
-bun test
-bun run typecheck
-bun run verify:release --json
-npm pack --dry-run --json
-npm publish --access public --userconfig="$TMP_NPMRC"
-
-rm -f "$TMP_NPMRC"
-```
-
-## Notes
-
-- Do not rely on ambient `~/.npmrc` state for publishing.
-- Keep the package boundary explicit through `package.json.files`.
-- Publish from committed repo state, not from a half-edited worktree.
-- Earlier published names (`beginning-agents`, `beginning-harness`) are deprecated; mark them as such on npm now that `darwinian` is installable.
-- If future CI publishing is added, prefer trusted publishing over long-lived tokens.
-
-## Trusted Publishing
-
-The `darwinian` and `drwn-command-bridge` npm packages use separate GitHub
-Actions trusted-publisher bindings. Each binding names its exact workflow,
-`remyjkim/darwinian-worker`, and the `npm-publish` environment. Publish jobs
-must retain `id-token: write` and an npm CLI version that supports OIDC.
-
-No `NPM_TOKEN` secret is required for the normal GitHub Actions path. The token
-procedure above remains an emergency local fallback only.
+If publication has already succeeded and a later step fails, use
+`.github/workflows/release-recovery.yml` with the exact failed run ID and an
+independently approved closed-schema recovery receipt. Recovery has no OIDC,
+token, publish, repack, retag, dist-tag, or unpublish path. It may verify npm
+bytes, run installed smokes, and create or verify missing GitHub Release
+metadata at the existing tag only.
 
 ## Publishing `drwn-command-bridge`
 
-Prefer the manually dispatched `Command Bridge Release` workflow. It uses the
-protected `npm-publish` environment, validates the requested version against
-`drwn-command-bridge/package.json`, re-runs the bridge verification suite, and
-confirms the published version is visible in the registry.
+The bridge uses `.github/workflows/release-command-bridge.yml` and the separate
+protected `npm-publish` environment. Prefer that trusted-publisher workflow: it
+validates the requested version, runs `bun run verify`, refuses an existing
+version, publishes from the bridge directory, and confirms registry visibility.
 
-For the local fallback, follow the same temporary-config procedure above from
-`drwn-command-bridge/` after running `bun run verify`. Replace the package-name
-preflight with:
+The bridge retains an independently gated local emergency procedure because its
+release policy is separate from the CLI. Use it only after bridge-specific
+authorization, native-client evidence, and confirmation that the intended
+version is absent.
+
+From `drwn-command-bridge/`, load the bridge-only token into the environment,
+then isolate npm configuration from ambient machine state:
 
 ```bash
-npm view drwn-command-bridge@<version> version
+TMP_NPMRC="$(mktemp)"
+chmod 600 "$TMP_NPMRC"
+
+cat > "$TMP_NPMRC" <<EOF
+registry=https://registry.npmjs.org/
+//registry.npmjs.org/:_authToken=${NPM_BRIDGE_TOKEN}
+EOF
+
+npm whoami --userconfig="$TMP_NPMRC"
+bun install --frozen-lockfile
+bun run verify
+npm view drwn-command-bridge@<version> version --userconfig="$TMP_NPMRC"
+npm publish --access public --userconfig="$TMP_NPMRC"
+
+rm -f "$TMP_NPMRC"
 ```
 
-An `E404` is required before publishing a new version.
+An exact `E404` is required before publishing a new bridge version. Ensure the
+temporary config is mode 0600, delete it after the attempt, and never reuse its
+credential for the `darwinian` CLI.
