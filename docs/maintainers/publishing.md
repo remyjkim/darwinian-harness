@@ -58,8 +58,14 @@ From `drwn-command-bridge/`, load the bridge-only token into the environment,
 then isolate npm configuration from ambient machine state:
 
 ```bash
+set -euo pipefail
+: "${NPM_BRIDGE_TOKEN:?Load the authorized bridge-only token first}"
+
 TMP_NPMRC="$(mktemp)"
-chmod 600 "$TMP_NPMRC"
+REGISTRY_STDOUT="$(mktemp)"
+REGISTRY_STDERR="$(mktemp)"
+chmod 600 "$TMP_NPMRC" "$REGISTRY_STDOUT" "$REGISTRY_STDERR"
+trap 'rm -f "$TMP_NPMRC" "$REGISTRY_STDOUT" "$REGISTRY_STDERR"; unset NPM_BRIDGE_TOKEN' EXIT
 
 cat > "$TMP_NPMRC" <<EOF
 registry=https://registry.npmjs.org/
@@ -69,12 +75,27 @@ EOF
 npm whoami --userconfig="$TMP_NPMRC"
 bun install --frozen-lockfile
 bun run verify
-npm view drwn-command-bridge@<version> version --userconfig="$TMP_NPMRC"
-npm publish --access public --userconfig="$TMP_NPMRC"
 
-rm -f "$TMP_NPMRC"
+set +e
+npm view drwn-command-bridge@<version> version --json --prefer-online \
+  --userconfig="$TMP_NPMRC" >"$REGISTRY_STDOUT" 2>"$REGISTRY_STDERR"
+REGISTRY_EXIT=$?
+set -e
+
+if [ "$REGISTRY_EXIT" -eq 0 ]; then
+  echo "Requested bridge version already exists." >&2
+  exit 1
+fi
+if ! jq -e '.error.code == "E404"' "$REGISTRY_STDOUT" >/dev/null 2>&1 && \
+   ! jq -e '.error.code == "E404"' "$REGISTRY_STDERR" >/dev/null 2>&1; then
+  echo "Registry result was indeterminate; publication refused." >&2
+  exit 1
+fi
+
+npm publish --access public --userconfig="$TMP_NPMRC"
 ```
 
-An exact `E404` is required before publishing a new bridge version. Ensure the
-temporary config is mode 0600, delete it after the attempt, and never reuse its
-credential for the `darwinian` CLI.
+Only a structured exact-version `E404` advances. A timeout, DNS/TLS/auth/rate
+limit/5xx failure, malformed output, or unexpected successful value stops. The
+trap deletes the temporary files and unsets the bridge credential after any
+outcome. Never reuse that credential for the `darwinian` CLI.

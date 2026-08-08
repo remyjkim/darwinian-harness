@@ -202,6 +202,7 @@ describe("documentation readiness", () => {
       projectGuide,
       bundleGuide,
       brewGuide,
+      publishingHistory,
       knowledgeReadme,
       maintainerReadme,
       publishingGuide,
@@ -214,6 +215,7 @@ describe("documentation readiness", () => {
       readFile(new URL("../.ai/knowledges/02_per-project-config-guide.md", import.meta.url), "utf8"),
       readFile(new URL("../.ai/knowledges/03_npm-skill-bundles-guide.md", import.meta.url), "utf8"),
       readFile(new URL("../.ai/knowledges/04_homebrew-release-checklist.md", import.meta.url), "utf8"),
+      readFile(new URL("../.ai/knowledges/05_npm-publishing-analysis-and-manual.md", import.meta.url), "utf8"),
       readFile(new URL("../.ai/knowledges/README.md", import.meta.url), "utf8"),
       readFile(new URL("../docs/maintainers/README.md", import.meta.url), "utf8"),
       readFile(new URL("../docs/maintainers/publishing.md", import.meta.url), "utf8"),
@@ -261,7 +263,25 @@ describe("documentation readiness", () => {
     expect(brewGuide).toContain("Homebrew");
     expect(brewGuide).toContain("tagged release");
     expect(brewGuide).toContain("drwn");
-    expect(brewGuide).toContain("darwinian-minds");
+    expect(brewGuide).toContain("current npm package: `darwinian`");
+    expect(brewGuide).not.toContain("`dminds`");
+    expect(publishingHistory).toContain("Historical incident record");
+    expect(publishingHistory).toContain("superseded");
+    for (const retired of ["NPM_ORG_TOKEN", "NPM_TOKEN repository secret", "manual flow below remains valid"]) {
+      expect(publishingHistory).not.toContain(retired);
+    }
+    expect(knowledgeReadme).toContain("historical npm incident record");
+    expect(maintainerReadme).toContain("exact-artifact OIDC");
+    expect(maintainerReadme).toContain("docs-cicd.md");
+    expect(maintainerReadme).toContain("skills-repo-submodule.md");
+    expect(bundleGuide).toContain("`darwinian` remains the single first-party harness package");
+    expect(bundleGuide).not.toContain("`darwinian-minds` remains a single first-party harness package");
+    const bridgePublishing = publishingGuide.split("## Publishing `drwn-command-bridge`")[1]!;
+    expect(bridgePublishing).toContain("set -euo pipefail");
+    expect(bridgePublishing).toContain("--prefer-online");
+    expect(bridgePublishing).toContain('.error.code == "E404"');
+    expect(bridgePublishing).toContain("Registry result was indeterminate");
+    expect(bridgePublishing).toContain("unset NPM_BRIDGE_TOKEN");
 
     // Slim README: brand identity, pitch, install, first run, doc pointers,
     // contributing. Deep content (Disciplines, Safety model, "What it

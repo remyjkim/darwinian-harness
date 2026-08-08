@@ -8,18 +8,21 @@ This checklist is future-facing. Homebrew distribution is not implemented yet, b
 ## Naming
 
 - package name finalization
-- current package name: `darwinian-minds`
-- finalize the public package/repository name
-- current CLI binary names: `drwn` (primary) and `dminds` (alias) — both map to the same entrypoint
+- current npm package: `darwinian`
+- current CLI binary: `drwn`; there is no secondary binary alias
+- finalize the future formula and tap names without changing the npm identity
 - ensure there is no naming collision with existing formulae or packages
 
 ## Release Artifact
 
-- create a tagged release
+- consume only a completed, annotated tagged release whose npm bytes have
+  passed the exact-artifact I239 verification sequence
 - define the canonical source tarball/archive format
 - source tarball expectations
 - ensure the archive contains the expected runnable CLI entrypoint
 - confirm release asset stability and checksums
+- do not use the 14-day release-candidate Actions artifact as a durable
+  Homebrew source
 
 ## Installation Strategy
 
@@ -51,7 +54,7 @@ This checklist is future-facing. Homebrew distribution is not implemented yet, b
 
 post-install smoke tests:
 
-After a future Homebrew install, verify:
+After a future Homebrew install, verify in an isolated disposable home/project:
 
 - `drwn --help`
 - `drwn status --json`
@@ -74,8 +77,9 @@ After a future Homebrew install, verify:
 
 ## Publish-Adjacent Requirements
 
-- package metadata finalized
-- package metadata currently uses `darwinian-minds`
+- npm package metadata is finalized as `darwinian`
+- the candidate version has completed the exact-tar OIDC publication and
+  registry-byte verification path in `docs/release-process.md`
 - repository metadata finalized
 - license finalized
 - docs updated to include Homebrew usage once implementation exists

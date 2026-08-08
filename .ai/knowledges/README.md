@@ -20,7 +20,7 @@ This directory holds internal operator and maintainer knowledge that is more spe
 ## Distribution And Release Docs
 
 - [04_homebrew-release-checklist.md](./04_homebrew-release-checklist.md): future-facing Homebrew readiness checklist
-- [05_npm-publishing-analysis-and-manual.md](./05_npm-publishing-analysis-and-manual.md): npm publish failure analysis and the verified manual publish workflow
+- [05_npm-publishing-analysis-and-manual.md](./05_npm-publishing-analysis-and-manual.md): historical npm incident record and the I239 supersession of local CLI token publishing
 
 ## Integrations
 
@@ -29,7 +29,7 @@ This directory holds internal operator and maintainer knowledge that is more spe
 
 ## Concepts
 
-- [08_harness_engineering_resources.md](./08_harness_engineering_resources.md): origin and current framing of "harness engineering" as the practice darwinian-minds is built around
+- [08_harness_engineering_resources.md](./08_harness_engineering_resources.md): origin and current framing of "harness engineering" as the practice Darwinian Worker is built around
 
 ## Manual Validation
 

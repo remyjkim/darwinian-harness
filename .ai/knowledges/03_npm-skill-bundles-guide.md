@@ -5,7 +5,8 @@
 
 ## Purpose
 
-This document explains the implemented package-backed skill bundle model in `darwinian-minds`.
+This document explains the implemented package-backed skill bundle model in the
+Darwinian Worker source tree.
 
 Use it for:
 
@@ -306,7 +307,7 @@ That means:
 
 - the repo is still the default first-party source
 - bundles are additive extension sources
-- `darwinian-minds` remains a single first-party harness package
+- `darwinian` remains the single first-party harness package
 
 This is intentional. The project is not splitting first-party skills into separate packages by default.
 
@@ -326,7 +327,7 @@ The safest first debug steps are:
 ```bash
 drwn machine skill list --json
 drwn machine skill show --package <package-name> --json
-drwn machine skill list --json
+drwn doctor --json
 ```
 
 ## Non-Goals
