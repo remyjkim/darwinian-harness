@@ -126,7 +126,12 @@ async function runAuthCommand(
     env: {},
     colorDepth: 1,
   };
-  const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0" });
+  const cli = new Cli({
+    binaryName: "drwn",
+    binaryLabel: "drwn",
+    binaryVersion: "0.0.0",
+    enableColors: false,
+  });
   cli.register(LoginCommand);
   cli.register(LogoutCommand);
   cli.register(RefreshCommand);
