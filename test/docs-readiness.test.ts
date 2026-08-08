@@ -24,6 +24,7 @@ describe("documentation readiness", () => {
       refresh,
       logout,
       analyze,
+      whoami,
       sidebars,
       releaseProcess,
       publishing,
@@ -37,6 +38,7 @@ describe("documentation readiness", () => {
       readFile(new URL("../docs-docusaurus/docs/reference/cli/refresh.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/logout.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/analyze.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/whoami.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/sidebars.ts", import.meta.url), "utf8"),
       readFile(new URL("../docs/release-process.md", import.meta.url), "utf8"),
       readFile(new URL("../docs/maintainers/publishing.md", import.meta.url), "utf8"),
@@ -83,6 +85,10 @@ describe("documentation readiness", () => {
     ]) expect(workerDocs).toContain(token);
     expect(analyze).toContain("Foundry");
     expect(analyze).toContain("DRWN_ANALYZER_URL");
+    expect(whoami).toContain("DAH identity");
+    expect(whoami).toContain("DRWN_TOKEN");
+    expect(whoami).not.toContain("Analyzer");
+    expect(whoami).not.toContain("DRWN_ANALYZER_URL");
     expect(sidebars).toContain("reference/cli/acp");
     expect(sidebars).toContain("reference/cli/worker");
     expect(sidebars).toContain("reference/cli/refresh");
