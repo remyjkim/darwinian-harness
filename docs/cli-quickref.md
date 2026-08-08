@@ -294,7 +294,11 @@ Worker Blueprint authoring and remote operations:
 - `drwn worker publish [name] [--from <source-path>]`
 - `drwn worker deploy <rootRef> --name <slug>`
 - `drwn worker list`
-- `drwn worker status <slug>`
+- `drwn worker status <slug> --json`
+- `drwn worker materialize --payload <payload.json> --project-root <path> [--store-export <tar>] [--emit-store-tar <tar>] [--emit-project-tar <tar>] [--json]`
+- `drwn worker buzz-tools`
+- `drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var <NAME>]` (secret bytes come from stdin)
+- `drwn acp serve <slug>` (the slug may instead come from `DRWN_ACP_SLUG` or one unambiguous local binding)
 
 Cards compose capabilities into one Blueprint. Installed Worker roots are
 alternatives; `drwn use` selects at most one root for project projection.
@@ -397,9 +401,10 @@ Machine inventory commands:
 
 Auth commands:
 
-- `drwn login [--no-browser] [--json]`
+- `drwn login [--json]`
+- `drwn refresh [--json]`
 - `drwn whoami [--json]`
-- `drwn logout [--json]`
+- `drwn logout [--json] [--require-remote-revoke]`
 
 Machine state inspection and inventory maintenance:
 
@@ -455,8 +460,21 @@ drwn search skill --help
 drwn extensions setup beads --help
 drwn machine skill install --help
 drwn login --help
+drwn refresh --help
+drwn logout --help
+drwn acp serve --help
+drwn worker materialize --help
+drwn worker buzz-tools --help
+drwn worker secret set --help
 drwn analyze sessions --help
 ```
+
+`drwn --version` plus the seven login/refresh/logout/ACP/Worker help invocations
+above are the eight safe installed-package release smokes. `analyze sessions`
+help remains documented but is not one of the release smokes. The safe set does
+not authenticate, contact Buzz, read credential bytes, use the keychain, or
+mutate a project. Running the commands without `--help` is operational and is
+not part of artifact qualification.
 
 ## How write works
 
@@ -571,7 +589,10 @@ Missing source roots like `~/.claude/projects/` or `~/.codex/sessions/` are skip
 
 ## How auth works
 
-Analyzer-backed commands use `drwn login`, `drwn whoami`, and `drwn logout`.
+DAH-backed commands use `drwn login`, `drwn refresh`, `drwn whoami`, and
+`drwn logout`. `drwn analyze sessions` retains its explicit Foundry/Analyzer
+transport; authentication custody is no longer implemented by Analyzer client
+methods.
 
 The analyzer API URL is intentionally not packaged as a default. Configure it with `DRWN_ANALYZER_URL` or in user config:
 
@@ -580,7 +601,7 @@ The analyzer API URL is intentionally not packaged as a default. Configure it wi
   "version": 1,
   "analyzer": {
     "apiUrl": "http://localhost:8787",
-    "webBaseUrl": "https://darwinian-harness-services.pages.dev"
+    "webBaseUrl": "https://foundry.example.com"
   },
   "optional": {}
 }
@@ -589,12 +610,81 @@ The analyzer API URL is intentionally not packaged as a default. Configure it wi
 Authenticate:
 
 ```bash
-DRWN_ANALYZER_URL=http://localhost:8787 drwn login
+drwn login
+drwn refresh --json
 drwn whoami
 drwn logout
+drwn logout --json --require-remote-revoke
 ```
 
-Credentials are stored at `~/.agents/drwn/credentials.json` with owner-only permissions. For automation, `DRWN_TOKEN` plus `DRWN_ANALYZER_URL` bypasses the credentials file for commands that only need bearer auth.
+The only supported stored format is an exact DAH credential payload v3 inside
+an encrypted, credential-scope-bound envelope v2 at
+`~/.agents/drwn/credentials.json`. Older payloads, older envelopes, malformed
+records, and JWT/profile mismatches are not migrated or dual-read. They fail
+closed with `CREDENTIAL_SCHEMA_UNSUPPORTED` or a stable scoped diagnostic; run
+`drwn login` again to replace unsupported custody deliberately. Missing custody
+is distinct and reports `CREDENTIAL_ABSENT` where a stored credential is
+required.
+
+The encryption key is held by the platform keychain and is bound to the
+canonical credential-file scope. `drwn refresh` always performs a remote refresh
+of the stored v3 credential, preserves its credential ID, and increments its
+generation only after the refreshed payload is persisted. `DRWN_TOKEN` is a
+validated bearer override for headless commands: it is never refreshed and
+never persisted. It does not satisfy `drwn refresh`'s stored-custody contract.
+
+With `--json`, login, forced refresh, and logout emit one sanitized
+`darwinian.worker.auth-operation` receipt. The closed allowlist includes Worker
+version/source identity, a domain-separated qualification namespace digest,
+credential ID and generation, public issuer/client/resource, canonical times,
+and the operation's remote/local outcome. Receipts do not include the access
+token, refresh token, email, credential path, key reference, secret values,
+device code, browser query URL, or response bodies. A development build can
+emit a structurally valid receipt but marks it non-qualifying.
+
+Ordinary `drwn logout` attempts refresh-token revocation and then contains local
+custody even when the remote result is rejected or indeterminate. It does not
+claim already-issued access tokens are invalidated. Qualification uses
+`drwn logout --json --require-remote-revoke`: local deletion occurs only after a
+confirmed 2xx revoke, and both the remote confirmation and local deletion must
+succeed.
+
+## How ACP and deployed Worker operations work
+
+`drwn acp serve <slug>` speaks ACP JSON-RPC/NDJSON on stdio. Stdout is protocol
+only; diagnostics and DAH device-flow instructions go to stderr. When no slug is
+passed, resolution uses `DRWN_ACP_SLUG` and then one unambiguous deployed binding.
+The command bridges ACP sessions to the selected deployed Worker; it does not
+replace the Foundry-linked `drwn analyze sessions` upload path.
+
+Cancellation is two-track. HTTP 202 from the Worker cancel endpoint means only
+that cancellation was accepted or was already in progress. It is not terminal
+cancellation evidence. ACP continues polling until it observes an
+`agent.cancelled` event or the run-status endpoint reports `cancelled` (or
+another terminal state).
+
+`drwn worker materialize --payload ...` validates the V1 deploy payload and
+store digest, stages a V2 project, performs a frozen install, and projects it.
+It is a mutating operator command. `drwn worker buzz-tools` exposes only the two
+governed Buzz message tools over MCP stdio. `drwn worker secret set` accepts
+secret bytes only on non-interactive stdin and never accepts or renders them as
+an argument.
+
+`drwn worker status <slug> --json` constructs one governance model for human and
+JSON output. Declaration evidence comes only from an exact matching local
+project lock and reports real `tools.allow`/`tools.deny` counts, including zero.
+Unavailable declaration reasons are `LOCAL_PROJECT_UNAVAILABLE`,
+`LOCAL_TARGET_UNAVAILABLE`, and `LOCAL_CARD_REF_MISMATCH`. Declaration does not
+prove deployment enforcement. For an active deployment the Deploy API currently
+does not report that capability, so enforcement is `unknown` with
+`CAPABILITY_NOT_REPORTED`; with no active deployment it is `not_applicable` with
+`NO_ACTIVE_DEPLOYMENT`. The CLI never substitutes another Card's rules or prints
+an `enforced`/`not enforced` guess.
+
+These commands establish local source capability only until a particular
+artifact and environment are qualified. I236/I238 own separate staging and live
+evidence; Worker source availability is not Services adoption or operational
+success.
 
 ## How analyze works
 
