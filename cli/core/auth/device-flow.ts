@@ -3,14 +3,26 @@
 
 import type { CliAuthProfile } from "./profile";
 import { assertJwtAudience, type JwtClaims } from "./jwt";
-import type { CliDahCredentialFile } from "./credentials";
-import type { AnalyzerClient, DeviceTokenPollResult } from "../http/analyzer-client";
-import type { DeviceTokenResponse } from "../http/schemas";
+import { assertCredentialV3, type CliDahCredentialFileV3 } from "./credentials";
 
 const DEVICE_CODE_PATH = "/api/auth/device/code";
 const DEVICE_TOKEN_PATH = "/api/auth/device/token";
 const AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
 const TOKEN_PATH = "/api/auth/oauth2/token";
+const MAX_FUTURE_IAT_SKEW_MS = 60_000;
+const MAX_DEVICE_FLOW_SECONDS = 3_600;
+const MAX_DEVICE_POLL_INTERVAL_SECONDS = 60;
+
+export class AuthRemoteOperationError extends Error {
+  constructor(
+    public readonly reason: "AUTH_REMOTE_REJECTED" | "AUTH_REMOTE_INDETERMINATE" | "AUTH_RESPONSE_INVALID",
+    public readonly result: "rejected" | "indeterminate",
+    public readonly httpClass: "2xx" | "3xx" | "4xx" | "5xx" | "network_error",
+  ) {
+    super(reason);
+    this.name = "AuthRemoteOperationError";
+  }
+}
 
 export interface TokenBundle {
   access_token: string;
@@ -18,6 +30,15 @@ export interface TokenBundle {
   expires_in?: number;
   claims: JwtClaims;
 }
+
+export type RevokeTokenResult =
+  | { result: "confirmed"; httpClass: "2xx"; reason: null }
+  | { result: "rejected"; httpClass: "4xx"; reason: "AUTH_REMOTE_REJECTED" }
+  | {
+      result: "indeterminate";
+      httpClass: "3xx" | "5xx" | "network_error";
+      reason: "AUTH_REMOTE_INDETERMINATE";
+    };
 
 interface DeviceAuthorization {
   device_code: string;
@@ -33,14 +54,7 @@ export interface RunDeviceFlowInput {
   fetcher?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
-  onUserAction: (info: { verification_uri_complete: string; user_code: string }) => void;
-}
-
-export interface LegacyRunDeviceFlowInput {
-  client: Pick<AnalyzerClient, "requestDeviceCode" | "pollDeviceToken">;
-  clientId: string;
-  sleep?: (ms: number) => Promise<void>;
-  now?: () => number;
+  randomUUID?: () => string;
   onUserAction: (info: { verification_uri_complete: string; user_code: string }) => void;
 }
 
@@ -58,14 +72,25 @@ function requireTokenFields(tokens: TokenBundle): asserts tokens is TokenBundle 
   if (typeof tokens.expires_in !== "number") {
     throw new Error("DAH token response did not include expires_in.");
   }
+  if (!Number.isInteger(tokens.expires_in) || tokens.expires_in <= 0) {
+    throw new Error("DAH token response included invalid expires_in.");
+  }
 }
 
-async function postJson(fetcher: typeof fetch, url: string, body: Record<string, string>): Promise<Record<string, unknown>> {
+async function postJson(
+  fetcher: typeof fetch,
+  url: string,
+  body: Record<string, string>,
+  options: { allowErrorStatus?: boolean } = {},
+): Promise<Record<string, unknown>> {
   const res = await fetcher(url, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(body),
   });
+  if (!res.ok && !options.allowErrorStatus) {
+    throw new Error(`DAH device request failed (${res.status}).`);
+  }
   return (await res.json()) as Record<string, unknown>;
 }
 
@@ -75,6 +100,7 @@ async function postForm(fetcher: typeof fetch, url: string, body: Record<string,
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: new URLSearchParams(body).toString(),
   });
+  if (!res.ok) throw new Error(`DAH token request failed (${res.status}).`);
   return (await res.json()) as Record<string, unknown>;
 }
 
@@ -83,8 +109,30 @@ async function startDeviceFlow(profile: CliAuthProfile, fetcher: typeof fetch): 
     client_id: profile.clientId,
     scope: profile.scope,
   });
-  if (typeof body.device_code !== "string" || typeof body.user_code !== "string") {
-    throw new Error("DAH device authorization response missing device_code/user_code.");
+  const isVerificationUrl = (value: unknown): value is string => {
+    if (typeof value !== "string") return false;
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+        parsed.username === "" && parsed.password === "" && parsed.href === value;
+    } catch {
+      return false;
+    }
+  };
+  if (
+    typeof body.device_code !== "string" || body.device_code.length === 0 ||
+    typeof body.user_code !== "string" || body.user_code.length === 0 ||
+    !isVerificationUrl(body.verification_uri) ||
+    (body.verification_uri_complete !== undefined && !isVerificationUrl(body.verification_uri_complete)) ||
+    !Number.isSafeInteger(body.expires_in) ||
+    (body.expires_in as number) <= 0 ||
+    (body.expires_in as number) > MAX_DEVICE_FLOW_SECONDS ||
+    (body.interval !== undefined &&
+      (!Number.isSafeInteger(body.interval) ||
+        (body.interval as number) <= 0 ||
+        (body.interval as number) > MAX_DEVICE_POLL_INTERVAL_SECONDS))
+  ) {
+    throw new Error("DAH device authorization response is invalid.");
   }
   return body as unknown as DeviceAuthorization;
 }
@@ -101,11 +149,16 @@ async function pollDeviceToken(
   while (true) {
     await sleep(intervalMs);
     if (now() > expiresAt) throw new Error("device_code_expired");
-    const body = await postJson(fetcher, new URL(DEVICE_TOKEN_PATH, profile.hubOrigin).href, {
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-      client_id: profile.clientId,
-      device_code: device.device_code,
-    });
+    const body = await postJson(
+      fetcher,
+      new URL(DEVICE_TOKEN_PATH, profile.hubOrigin).href,
+      {
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: profile.clientId,
+        device_code: device.device_code,
+      },
+      { allowErrorStatus: true },
+    );
     if (typeof body.access_token === "string") return body.access_token;
     switch (body.error) {
       case "authorization_pending":
@@ -167,6 +220,7 @@ export async function exchangeDeviceSession(
     method: "GET",
     headers: { authorization: `Bearer ${deviceSessionBearer}`, accept: "application/json" },
   });
+  if (!authorize.ok) throw new Error(`DAH authorize request failed (${authorize.status}).`);
   const authorizeBody = (await authorize.json()) as Record<string, unknown>;
   const code = typeof authorizeBody.code === "string"
     ? authorizeBody.code
@@ -191,90 +245,116 @@ export async function refreshToken(
   refreshTokenValue: string,
   fetcher: typeof fetch = fetch,
 ): Promise<TokenBundle> {
-  const tokenBody = await postForm(fetcher, new URL(TOKEN_PATH, profile.hubOrigin).href, {
-    grant_type: "refresh_token",
-    client_id: profile.clientId,
-    refresh_token: refreshTokenValue,
-    resource: profile.resource,
-  });
-  return tokenBundleFromResponse(tokenBody, profile);
+  if (refreshTokenValue.length === 0) {
+    throw new AuthRemoteOperationError("AUTH_RESPONSE_INVALID", "rejected", "2xx");
+  }
+  let response: Response;
+  try {
+    response = await fetcher(new URL(TOKEN_PATH, profile.hubOrigin).href, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: profile.clientId,
+        refresh_token: refreshTokenValue,
+        resource: profile.resource,
+      }).toString(),
+      redirect: "manual",
+    });
+  } catch {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_INDETERMINATE", "indeterminate", "network_error");
+  }
+
+  if (response.status >= 300 && response.status < 400) {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_INDETERMINATE", "indeterminate", "3xx");
+  }
+  if (response.status >= 400 && response.status < 500) {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_REJECTED", "rejected", "4xx");
+  }
+  if (response.status >= 500) {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_INDETERMINATE", "indeterminate", "5xx");
+  }
+
+  let tokenBody: Record<string, unknown>;
+  try {
+    tokenBody = (await response.json()) as Record<string, unknown>;
+    return tokenBundleFromResponse(tokenBody, profile);
+  } catch (error) {
+    if (error instanceof AuthRemoteOperationError) throw error;
+    throw new AuthRemoteOperationError("AUTH_RESPONSE_INVALID", "rejected", "2xx");
+  }
 }
 
 export async function revokeToken(
   profile: CliAuthProfile,
   token: string,
   fetcher: typeof fetch = fetch,
-): Promise<void> {
-  const res = await fetcher(new URL("/api/auth/oauth2/revoke", profile.hubOrigin).href, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-    body: new URLSearchParams({
-      token,
-      client_id: profile.clientId,
-      token_type_hint: "refresh_token",
-    }).toString(),
-  });
-  if (!res.ok) throw new Error(`DAH refresh-token revoke failed (${res.status}).`);
+): Promise<RevokeTokenResult> {
+  let response: Response;
+  try {
+    response = await fetcher(new URL("/api/auth/oauth2/revoke", profile.hubOrigin).href, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({
+        token,
+        client_id: profile.clientId,
+        token_type_hint: "refresh_token",
+      }).toString(),
+      redirect: "manual",
+    });
+  } catch {
+    return { result: "indeterminate", httpClass: "network_error", reason: "AUTH_REMOTE_INDETERMINATE" };
+  }
+
+  if (response.status >= 200 && response.status < 300) {
+    return { result: "confirmed", httpClass: "2xx", reason: null };
+  }
+  if (response.status >= 300 && response.status < 400) {
+    return { result: "indeterminate", httpClass: "3xx", reason: "AUTH_REMOTE_INDETERMINATE" };
+  }
+  if (response.status >= 400 && response.status < 500) {
+    return { result: "rejected", httpClass: "4xx", reason: "AUTH_REMOTE_REJECTED" };
+  }
+  return { result: "indeterminate", httpClass: "5xx", reason: "AUTH_REMOTE_INDETERMINATE" };
 }
 
-export function credentialFromTokens(profile: CliAuthProfile, tokens: TokenBundle): CliDahCredentialFile {
+export function credentialFromTokens(
+  profile: CliAuthProfile,
+  tokens: TokenBundle,
+  epoch: { credentialId: string; generation: number; now?: () => number },
+): CliDahCredentialFileV3 {
   requireTokenFields(tokens);
+  if (!Number.isSafeInteger(tokens.claims.iat) ||
+    !Number.isSafeInteger(tokens.claims.exp) ||
+    (tokens.claims.exp as number) <= (tokens.claims.iat as number)) {
+    throw new Error("DAH access token is missing coherent iat/exp claims.");
+  }
+  const nowMillis = (epoch.now ?? Date.now)();
+  const issuedAtMillis = (tokens.claims.iat as number) * 1000;
+  const expiresAtMillis = (tokens.claims.exp as number) * 1000;
+  if (issuedAtMillis > nowMillis + MAX_FUTURE_IAT_SKEW_MS || expiresAtMillis <= nowMillis) {
+    throw new Error("DAH access token timing is outside the accepted clock window.");
+  }
   const userEmail = typeof tokens.claims.email === "string" ? tokens.claims.email : "";
-  return {
-    version: 2,
+  const credential: CliDahCredentialFileV3 = {
+    version: 3,
+    credentialId: epoch.credentialId,
+    generation: epoch.generation,
     issuer: profile.issuer,
     clientId: profile.clientId,
     resource: profile.resource,
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token,
-    expiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    user_email: userEmail,
-    saved_at: new Date().toISOString(),
+    issuedAt: new Date(issuedAtMillis).toISOString(),
+    expiresAt: new Date(expiresAtMillis).toISOString(),
+    savedAt: new Date(nowMillis).toISOString(),
+    userEmail,
   };
+  assertCredentialV3(credential);
+  return credential;
 }
 
-async function runLegacyDeviceFlow(input: LegacyRunDeviceFlowInput): Promise<DeviceTokenResponse> {
-  const sleep = input.sleep ?? defaultSleep;
-  const now = input.now ?? Date.now;
-  const code = await input.client.requestDeviceCode(input.clientId);
-
-  input.onUserAction({
-    verification_uri_complete: code.verification_uri_complete,
-    user_code: code.user_code,
-  });
-
-  const expiresAt = now() + code.expires_in * 1000;
-  let interval = code.interval;
-
-  while (true) {
-    await sleep(interval * 1000);
-    if (now() > expiresAt) {
-      throw new Error(`Sign-in timed out after ${code.expires_in}s. Try again.`);
-    }
-
-    const result: DeviceTokenPollResult = await input.client.pollDeviceToken(code.device_code, input.clientId);
-    if (result.kind === "success") return result.token;
-
-    switch (result.error) {
-      case "authorization_pending":
-        continue;
-      case "slow_down":
-        interval *= 2;
-        continue;
-      case "expired_token":
-        throw new Error("Code expired. Run `drwn login` again.");
-      case "access_denied":
-        throw new Error("Authorization denied in browser.");
-      default:
-        throw new Error(`Authentication failed: ${result.error}`);
-    }
-  }
-}
-
-export function runDeviceFlow(input: LegacyRunDeviceFlowInput): Promise<DeviceTokenResponse>;
-export function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCredentialFile>;
-export async function runDeviceFlow(input: RunDeviceFlowInput | LegacyRunDeviceFlowInput): Promise<CliDahCredentialFile | DeviceTokenResponse> {
-  if ("client" in input) return runLegacyDeviceFlow(input);
+export async function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCredentialFileV3> {
   const fetcher = input.fetcher ?? fetch;
   const sleep = input.sleep ?? defaultSleep;
   const now = input.now ?? Date.now;
@@ -285,5 +365,9 @@ export async function runDeviceFlow(input: RunDeviceFlowInput | LegacyRunDeviceF
   });
   const opaque = await pollDeviceToken(input.profile, fetcher, device, sleep, now);
   const tokens = await exchangeDeviceSession(input.profile, opaque, fetcher);
-  return credentialFromTokens(input.profile, tokens);
+  return credentialFromTokens(input.profile, tokens, {
+    credentialId: (input.randomUUID ?? (() => crypto.randomUUID()))(),
+    generation: 1,
+    now,
+  });
 }

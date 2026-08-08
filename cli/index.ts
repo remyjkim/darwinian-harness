@@ -3,14 +3,13 @@
 // ABOUTME: All command registration starts here; reusable logic lives outside the command layer.
 
 import { Builtins, Cli } from "clipanion";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { DRWN_VERSION } from "./core/version";
 import { AddMcpCommand } from "./commands/add/mcp";
 import { AddSkillCommand } from "./commands/add/skill";
 import { AnalyzeSessionsCommand } from "./commands/analyze/sessions";
 import { LoginCommand } from "./commands/auth/login";
 import { LogoutCommand } from "./commands/auth/logout";
+import { RefreshCommand } from "./commands/auth/refresh";
 import { WhoamiCommand } from "./commands/auth/whoami";
 import { CardAuditCommand } from "./commands/card/audit";
 import { CardCatalogPublishCommand } from "./commands/card/catalog-publish";
@@ -145,14 +144,10 @@ import { WriteCommand } from "./commands/write";
 import { ExportSessionsCommand } from "./commands/export/sessions";
 import { ConfigGetCommand, ConfigSetCommand } from "./commands/config";
 
-const packageJson = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf8"),
-) as { version?: string };
-
 const cli = new Cli({
   binaryLabel: "drwn",
   binaryName: "drwn",
-  binaryVersion: packageJson.version ?? "0.0.0",
+  binaryVersion: DRWN_VERSION,
 });
 
 cli.register(MachineSkillListCommand);
@@ -283,6 +278,7 @@ cli.register(ProjectsUpdateCommand);
 cli.register(ProjectsPruneCommand);
 cli.register(LoginCommand);
 cli.register(LogoutCommand);
+cli.register(RefreshCommand);
 cli.register(WhoamiCommand);
 cli.register(HookCardUsageCommand);
 cli.register(HookSkillMarkerCommand);

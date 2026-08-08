@@ -4,7 +4,9 @@ sidebar_position: 18
 
 # Analyze
 
-`drwn analyze sessions` uploads a session-log archive to the configured analyzer backend and prints where to watch the job.
+`drwn analyze sessions` is the retained Foundry/Analyzer-linked feature for
+uploading a session-log archive and printing where to watch the job. It is not
+implemented by the ACP serving path, and the auth hard cut did not remove it.
 
 Preview without auth or network:
 
@@ -44,16 +46,21 @@ drwn analyze sessions --wait --json
 
 ## Configuration
 
-`drwn analyze sessions` requires auth from either `drwn login` or `DRWN_TOKEN` plus `DRWN_ANALYZER_URL`.
+`drwn analyze sessions` requires DAH auth from either `drwn login` or a validated,
+non-persistent `DRWN_TOKEN`, plus an explicit `DRWN_ANALYZER_URL` transport.
 
-The analyzer API URL comes from credentials, `DRWN_ANALYZER_URL`, or `analyzer.apiUrl`. The optional frontend URL comes from `DRWN_ANALYZER_WEB_URL` or `analyzer.webBaseUrl` and is used to compose `/processing/<jobId>` and `/report/<reportId>` URLs.
+The analyzer API URL comes from `DRWN_ANALYZER_URL` or `analyzer.apiUrl` in
+project/user configuration. The optional frontend URL comes from
+`DRWN_ANALYZER_WEB_URL` or `analyzer.webBaseUrl` and is used to compose
+`/processing/<jobId>` and `/report/<reportId>` URLs. DAH credentials do not
+carry or select the Foundry transport.
 
 ```json
 {
   "version": 1,
   "analyzer": {
     "apiUrl": "http://localhost:8787",
-    "webBaseUrl": "https://harness.darwiniantools.com",
+    "webBaseUrl": "https://foundry.example.com",
     "maxArchiveBytes": 104857600
   },
   "optional": {}
@@ -70,6 +77,11 @@ The command resolves input in this order:
 4. If no archive exists, a new inline `.tar.gz` is built and uploaded.
 
 `--dry-run` is non-mutating: it validates an existing archive when selected, or reports that an inline export would be built without creating it.
+
+Source availability and an installed-package help smoke do not prove the
+configured Foundry service is reachable or that an upload completed. That live
+evidence is recorded by the owning operational issue, not inferred from the
+Worker release.
 
 ## Related
 

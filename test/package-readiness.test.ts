@@ -91,6 +91,7 @@ describe("package readiness", () => {
     expect(workflow).toContain("bun run typecheck");
     expect(workflow).toContain("bun test");
     expect(workflow).toContain("bun run verify:release");
+    expect(workflow).toContain("DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'");
     expect(workflow).not.toContain("paths:");
     expect(workflow).not.toContain("paths-ignore:");
   });
@@ -129,34 +130,26 @@ describe("package readiness", () => {
     expect(releaseWorkflow).toContain("bun run verify:bridge");
   });
 
-  test("release workflow gates npm publish and keeps dry runs outside the protected environment", () => {
+  test("release workflow makes manual qualification main-only and non-publishing", () => {
     const workflow = readFileSync(join(process.cwd(), ".github", "workflows", "release.yml"), "utf8");
+    const manualJobs = workflow.slice(
+      workflow.indexOf("  validate:"),
+      workflow.indexOf("  validate_tag:"),
+    );
 
     expect(workflow).toContain("name: CLI Release");
-    expect(workflow).toContain("tags:");
-    expect(workflow).toContain("- 'v*'");
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("dry_run:");
-    expect(workflow).toContain("name: npm-publish");
-    expect(workflow).toContain("id-token: write");
-    expect(workflow).toContain("npm install --global npm@11.16.0");
+    expect(workflow).toContain("refs/heads/main");
+    expect(workflow).toContain("bun scripts/release-cli.ts assert-unpublished");
+    expect(workflow).toContain("name: Dry run complete");
+    expect(workflow).toContain("actions/upload-artifact@v4");
+    expect(workflow).toContain("darwinian-worker-release-candidate");
     expect(workflow).not.toContain("secrets.NPM_TOKEN");
     expect(workflow).not.toContain("NODE_AUTH_TOKEN");
-    expect(workflow).toContain("if: ${{ github.event_name == 'push' || inputs.dry_run == false }}");
-    expect(workflow).toContain("name: Dry run complete");
-    expect(workflow).toContain("if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}");
-    expect(workflow).toContain("for attempt in $(seq 1 12); do");
-    expect(workflow).toContain("id: publication");
-    expect(workflow).toContain("already_published=true");
-    expect(workflow).toContain("steps.publication.outputs.already_published != 'true'");
-    expect(workflow).toContain("--cache \"$RUNNER_TEMP/npm-release-probe\"");
-    expect(workflow).toContain("npm install -g \"darwinian@$VERSION\" \\");
-    expect(workflow).toContain("--cache \"$RUNNER_TEMP/npm-smoke-$attempt\"");
-    expect(workflow).toContain("did not propagate to npm within two minutes");
-    expect(workflow).toContain("runs-on: macos-latest");
-    expect(workflow).toContain("gh release view \"$TAG\"");
-    expect(workflow).toContain("gh release create \"$TAG\"");
-    expect(workflow).toContain("--generate-notes");
+    expect(manualJobs).not.toContain("id-token: write");
+    expect(manualJobs).not.toContain("npm publish");
+    expect(workflow).not.toContain("already_published");
   });
 
   test("command bridge release uses the protected npm publishing environment", () => {
@@ -198,6 +191,11 @@ describe("package readiness", () => {
     expect(paths).not.toContain("sync-mcp.ts");
     expect(paths).toContain("cli/commands/write.ts");
     expect(paths).toContain("cli/commands/mcp/write.ts");
+    expect(paths).toContain("cli/commands/acp/serve.ts");
+    expect(paths).toContain("cli/commands/worker/materialize.ts");
+    expect(paths).toContain("cli/commands/worker/buzz-tools.ts");
+    expect(paths).toContain("cli/commands/worker/secret-set.ts");
+    expect(paths).toContain("registry/cards/buzz-delivery-worker/card.json");
     expect(paths).not.toContain("cli/commands/apply.ts");
     expect(paths).not.toContain("cli/commands/mcp/apply.ts");
     expect(paths).not.toContain("cli/commands/sync.ts");

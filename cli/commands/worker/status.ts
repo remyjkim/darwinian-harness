@@ -1,16 +1,16 @@
 // ABOUTME: Implements drwn worker status for a worker.
 // ABOUTME: Shows latest and active deployment state, including first-deploy progress.
 
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
-import { loadCardLock } from "../../core/card-lock";
-import { loadProjectConfig } from "../../core/project";
 import { resolveWorkerConfig } from "../../core/worker-config";
 import { describeWorkerError } from "../../core/worker-error";
 import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
 import { renderJson } from "../../core/output";
+import {
+  renderWorkerGovernanceStatus,
+  resolveWorkerGovernanceStatus,
+} from "../../core/worker-governance-status";
 import type { DeploymentsResponse, WorkerSummary } from "./types";
 import { displayModel, displayValue } from "./types";
 
@@ -36,35 +36,6 @@ export class WorkerStatusCommand extends BaseCommand {
   json = Option.Boolean("--json", false, {
     description: "Emit machine-readable JSON.",
   });
-
-  /**
-   * Declared-vs-enforced governance (I220): report the local active root's declared
-   * tools rules with the literal truth that the deployed runtime enforces none of them.
-   * Display-only — local project problems must never break deployment status.
-   */
-  private async renderGovernance(): Promise<void> {
-    try {
-      const cwd = process.cwd();
-      const configPath = join(cwd, ".agents", "drwn", "config.json");
-      if (!existsSync(configPath)) return;
-      const config = await loadProjectConfig(configPath);
-      if (!config.activeWorker) return;
-      const lock = await loadCardLock(cwd);
-      const tools = lock?.cards.find((card) => card.name === config.activeWorker)?.manifest.tools;
-      const allow = tools?.allow?.length ?? 0;
-      const deny = tools?.deny?.length ?? 0;
-      if (allow === 0 && deny === 0) return;
-      this.context.stdout.write("Governance (deployed):\n");
-      if (allow > 0) {
-        this.context.stdout.write(`  tools.allow: ${allow}   declared — not enforced by the deployed runtime\n`);
-      }
-      if (deny > 0) {
-        this.context.stdout.write(`  tools.deny: ${deny}   declared — not enforced by the deployed runtime\n`);
-      }
-    } catch {
-      return;
-    }
-  }
 
   async execute(): Promise<number> {
     const { apiBaseUrl } = resolveWorkerConfig();
@@ -109,7 +80,14 @@ export class WorkerStatusCommand extends BaseCommand {
     const latestDeployment = history.deployments[0] ?? null;
     const activeDeployment =
       history.deployments.find((deployment) => deployment.id === history.active_deployment_id) ?? null;
-    const result = { worker, active_deployment_id: history.active_deployment_id, latestDeployment, activeDeployment };
+    const governance = await resolveWorkerGovernanceStatus(history, this.context.cwd ?? process.cwd());
+    const result = {
+      worker,
+      active_deployment_id: history.active_deployment_id,
+      latestDeployment,
+      activeDeployment,
+      governance,
+    };
     if (this.json) {
       this.context.stdout.write(renderJson(result));
       return 0;
@@ -126,7 +104,7 @@ export class WorkerStatusCommand extends BaseCommand {
       if (latestDeployment.error) this.context.stdout.write(`Latest error: ${latestDeployment.error}\n`);
     }
     this.context.stdout.write(`Active deployment: ${activeDeployment?.id ?? "-"}\n`);
-    await this.renderGovernance();
+    this.context.stdout.write(renderWorkerGovernanceStatus(governance));
     if (activeDeployment) {
       this.context.stdout.write(`Active status: ${activeDeployment.status}\n`);
       this.context.stdout.write(`Active card: ${activeDeployment.card_ref}\n`);

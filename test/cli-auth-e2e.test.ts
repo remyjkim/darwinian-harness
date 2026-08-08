@@ -1,4 +1,4 @@
-// ABOUTME: Subprocess E2E tests for drwn auth commands against a fake analyzer backend.
+// ABOUTME: Subprocess E2E tests for drwn auth commands against a fake Auth Hub backend.
 // ABOUTME: Exercises the real CLI entrypoint, process env, HTTP boundaries, and credential files.
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -6,6 +6,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { readCredentials, writeCredentials } from "../cli/core/auth/credentials";
 import { drwnCliProfile } from "../cli/core/auth/profile";
+import { parseAuthOperationReceipt } from "../cli/core/auth/receipt";
 import { resolveCredentialsPath } from "../cli/core/paths";
 import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
@@ -31,11 +32,13 @@ function fakeJwt(
   options: { aud?: string; iss?: string } = {},
 ): string {
   const profile = drwnCliProfile({});
+  const iat = exp - 900;
   return `${b64({ alg: "none" })}.${b64({
     iss: options.iss ?? profile.issuer,
     aud: options.aud ?? profile.resource,
     sub: "user_123",
     email,
+    iat,
     exp,
   })}.sig`;
 }
@@ -68,6 +71,7 @@ function startAuthServer(options: { pendingPolls?: number } = {}) {
         return Response.json({
           device_code: "device-code",
           user_code: "ABCD-EFGH",
+          verification_uri: new URL("/device", request.url).toString(),
           verification_uri_complete: new URL("/device?user_code=ABCD-EFGH", request.url).toString(),
           expires_in: 600,
           interval: 1,
@@ -137,7 +141,20 @@ describe("auth CLI E2E", () => {
     expect(login.stderr).toContain("/device?user_code=ABCD-EFGH");
     expect(login.stderr).toContain("Waiting for browser sign-in...");
     expect(login.stderr).not.toContain("Code: ABCD-EFGH");
-    expect(JSON.parse(login.stdout)).toMatchObject({ email: "cli-e2e@example.com" });
+    const loginReceipt = parseAuthOperationReceipt(JSON.parse(login.stdout));
+    expect(loginReceipt).toMatchObject({
+      worker: { sourceCommit: "0".repeat(40) },
+      credential: { generation: 1, issuer: `${apiUrl}/api/auth` },
+      action: "login",
+      mode: "ordinary",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "token_exchange", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(login.stdout).not.toContain("cli-e2e@example.com");
+    expect(login.stdout.trim().split("\n")).toHaveLength(1);
     expect(state.deviceCodeRequests).toEqual([{ client_id: "drwn-cli", scope: "openid email offline_access" }]);
     expect(state.tokenRequests).toHaveLength(2);
     expect(state.tokenRequests.at(-1)).toMatchObject({
@@ -153,13 +170,14 @@ describe("auth CLI E2E", () => {
     expect(JSON.parse(onDisk).algo).toBe("aes-256-gcm");
     const credentials = await readCredentials(credentialsPath);
     expect(credentials).toMatchObject({
-      version: 2,
+      version: 3,
+      generation: 1,
       issuer: `${apiUrl}/api/auth`,
       refreshToken: "refresh-token",
-      user_email: "cli-e2e@example.com",
+      userEmail: "cli-e2e@example.com",
     });
     expect(credentials && "version" in credentials ? credentials.accessToken : "").toContain(".");
-    expect(Date.parse(credentials!.saved_at)).not.toBeNaN();
+    expect(Date.parse(credentials!.savedAt)).not.toBeNaN();
 
     const whoami = await runAgentsCli(["whoami", "--json"], env);
     expect(whoami.exitCode).toBe(0);
@@ -173,6 +191,24 @@ describe("auth CLI E2E", () => {
     });
     expect(state.authorizeAuthHeaders).toEqual(["Bearer device-session-token"]);
     expect(state.sessionAuthHeaders).toEqual([]);
+
+    const refresh = await runAgentsCli(["refresh", "--json"], env);
+    expect(refresh.exitCode).toBe(0);
+    const refreshReceipt = parseAuthOperationReceipt(JSON.parse(refresh.stdout));
+    expect(refreshReceipt).toMatchObject({
+      worker: { sourceCommit: "0".repeat(40) },
+      credential: { generation: 2, issuer: `${apiUrl}/api/auth` },
+      action: "refresh",
+      mode: "ordinary",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(refresh.stdout).not.toContain("cli-e2e@example.com");
+    expect(state.oauthTokenRequests).toHaveLength(2);
+    expect(state.oauthTokenRequests[1]).toContain("grant_type=refresh_token");
 
     const logout = await runAgentsCli(["logout"], { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl });
     expect(logout.exitCode).toBe(0);
@@ -193,21 +229,26 @@ describe("auth CLI E2E", () => {
 
     const valid = await runAgentsCli(["whoami", "--json"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("env-e2e@example.com"),
+      DRWN_TOKEN: fakeJwt("env-e2e@example.com", Math.floor(Date.now() / 1000) + 900, {
+        iss: `${apiUrl}/api/auth`,
+      }),
       DRWN_DAH_HUB_URL: apiUrl,
     });
 
     expect(valid.exitCode).toBe(0);
     expect(JSON.parse(valid.stdout)).toMatchObject({
       email: "env-e2e@example.com",
-      issuer: "https://auth.darwinian.dev/api/auth",
+      issuer: `${apiUrl}/api/auth`,
       source: "env",
     });
     expect(await Bun.file(resolveCredentialsPath(fixture.agentsDir)).exists()).toBe(false);
 
     const wrongAudience = await runAgentsCli(["whoami"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("bad@example.com", Math.floor(Date.now() / 1000) + 900, { aud: "https://wrong.example" }),
+      DRWN_TOKEN: fakeJwt("bad@example.com", Math.floor(Date.now() / 1000) + 900, {
+        aud: "https://wrong.example",
+        iss: `${apiUrl}/api/auth`,
+      }),
       DRWN_DAH_HUB_URL: apiUrl,
     });
     expect(wrongAudience.exitCode).toBe(1);
@@ -215,7 +256,9 @@ describe("auth CLI E2E", () => {
 
     const expired = await runAgentsCli(["whoami"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("expired@example.com", Math.floor(Date.now() / 1000) - 60),
+      DRWN_TOKEN: fakeJwt("expired@example.com", Math.floor(Date.now() / 1000) - 60, {
+        iss: `${apiUrl}/api/auth`,
+      }),
       DRWN_DAH_HUB_URL: apiUrl,
     });
     expect(expired.exitCode).toBe(1);
@@ -240,7 +283,7 @@ describe("auth CLI E2E", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("DAH device authorization response missing device_code/user_code.");
+    expect(result.stderr).toContain("DAH device request failed (500).");
     expect(await Bun.file(resolveCredentialsPath(fixture.agentsDir)).exists()).toBe(false);
   });
 
@@ -251,22 +294,87 @@ describe("auth CLI E2E", () => {
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
     await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
     const profile = drwnCliProfile({ DRWN_DAH_HUB_URL: apiUrl });
+    const accessToken = fakeJwt("cli-e2e@example.com", undefined, {
+      iss: profile.issuer,
+      aud: profile.resource,
+    });
+    const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+      iat: number;
+      exp: number;
+    };
     await writeCredentials(credentialsPath, {
-      version: 2,
+      version: 3,
+      credentialId: "88888888-8888-4888-8888-888888888888",
+      generation: 1,
       issuer: profile.issuer,
       clientId: "drwn-cli",
       resource: profile.resource,
-      accessToken: fakeJwt(),
+      accessToken,
       refreshToken: "refresh-token",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "cli-e2e@example.com",
-      saved_at: "2026-06-03T00:00:00Z",
+      issuedAt: new Date(claims.iat * 1000).toISOString(),
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      savedAt: "2026-08-08T00:00:00.000Z",
+      userEmail: "cli-e2e@example.com",
     });
 
     const result = await runAgentsCli(["logout"], { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Logged out. Credentials removed.");
+    expect(await Bun.file(credentialsPath).exists()).toBe(false);
+  });
+
+  test("strict logout emits ordered non-qualifying source receipt after confirmed revoke and deletion", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const { apiUrl, state } = startAuthServer();
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
+    const profile = drwnCliProfile({ DRWN_DAH_HUB_URL: apiUrl });
+    const accessToken = fakeJwt("cli-e2e@example.com", undefined, {
+      iss: profile.issuer,
+      aud: profile.resource,
+    });
+    const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+      iat: number;
+      exp: number;
+    };
+    await writeCredentials(credentialsPath, {
+      version: 3,
+      credentialId: "99999999-9999-4999-8999-999999999999",
+      generation: 2,
+      issuer: profile.issuer,
+      clientId: "drwn-cli",
+      resource: profile.resource,
+      accessToken,
+      refreshToken: "strict-refresh-token",
+      issuedAt: new Date(claims.iat * 1000).toISOString(),
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      savedAt: "2026-08-08T00:00:00.000Z",
+      userEmail: "cli-e2e@example.com",
+    });
+
+    const result = await runAgentsCli(
+      ["logout", "--json", "--require-remote-revoke"],
+      { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl },
+    );
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(0);
+    expect(receipt).toMatchObject({
+      worker: { sourceCommit: "0".repeat(40) },
+      credential: { credentialId: "99999999-9999-4999-8999-999999999999", generation: 2 },
+      action: "logout",
+      mode: "require_remote_revoke",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "revoke", result: "confirmed", httpClass: "2xx" },
+      local: { action: "delete", result: "confirmed", afterConfirmedRemoteRevoke: true },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(result.stdout).not.toContain("strict-refresh-token");
+    expect(result.stdout).not.toContain("cli-e2e@example.com");
+    expect(state.revokeRequests).toContain("token=strict-refresh-token&client_id=drwn-cli&token_type_hint=refresh_token");
     expect(await Bun.file(credentialsPath).exists()).toBe(false);
   });
 });

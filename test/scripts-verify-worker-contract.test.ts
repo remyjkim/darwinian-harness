@@ -42,15 +42,26 @@ describe("Worker contract release gate", () => {
     expect(result.details).toContain("prototype migration adapter");
   });
 
-  test("requires the 1.1.0 hard-cut release identity", () => {
+  test("requires exact 1.2.0 package identity derived by the runtime while preserving the 1.1.0 hard-cut floor", () => {
     const result = verifyWorkerContract(repoRoot, {
       "package.json": JSON.stringify({ version: "0.9.0" }),
       "cli/core/version.ts": 'export const DRWN_VERSION = "0.9.0";\n',
     });
 
     expect(result.ok).toBe(false);
-    expect(result.details).toContain("package version must be 1.1.0");
-    expect(result.details).toContain("runtime version must be 1.1.0");
+    expect(result.details).toContain("package version must be 1.2.0");
+    expect(result.details).toContain("runtime version must derive from adjacent package metadata");
+    expect(result.details).toContain("package version must be at least the 1.1.0 Worker hard-cut floor");
+  });
+
+  test("requires the governed Buzz Card to keep its independent 1.2.0 harness floor", () => {
+    const buzz = readFileSync(join(repoRoot, "registry/cards/buzz-delivery-worker/card.json"), "utf8");
+    const result = verifyWorkerContract(repoRoot, {
+      "registry/cards/buzz-delivery-worker/card.json": buzz.replace('"minVersion": "1.2.0"', '"minVersion": "1.1.0"'),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.details).toContain("Buzz delivery Card harness.minVersion must be 1.2.0");
   });
 
   test("release JSON includes the Worker contract gate", async () => {

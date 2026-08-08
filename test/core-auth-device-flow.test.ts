@@ -1,107 +1,415 @@
-// ABOUTME: Verifies OAuth device polling behavior against the Better Auth contract.
-// ABOUTME: Keeps timing and error-code handling deterministic through dependency injection.
+// ABOUTME: Verifies the native DAH device flow and v3 credential creation.
+// ABOUTME: Proves the retired Analyzer-client overload is absent and timing/identity are injected.
 
 import { describe, expect, test } from "bun:test";
-import { runDeviceFlow } from "../cli/core/auth/device-flow";
-import type { AnalyzerClient, DeviceTokenPollResult } from "../cli/core/http/analyzer-client";
+import {
+  AuthRemoteOperationError,
+  refreshToken,
+  revokeToken,
+  runDeviceFlow,
+  type RevokeTokenResult,
+} from "../cli/core/auth/device-flow";
+import { drwnCliProfile } from "../cli/core/auth/profile";
 
-function makeClient(results: DeviceTokenPollResult[]): Pick<AnalyzerClient, "requestDeviceCode" | "pollDeviceToken"> {
-  return {
-    async requestDeviceCode() {
-      return {
-        device_code: "dev",
-        user_code: "ABCD",
-        verification_uri_complete: "https://app.test/device?user_code=ABCD",
-        expires_in: 600,
-        interval: 5,
-      };
-    },
-    async pollDeviceToken() {
-      const next = results.shift();
-      if (!next) throw new Error("unexpected poll");
-      return next;
-    },
-  };
+const IAT = 1_786_080_000;
+const EXP = IAT + 900;
+const UUID = "22222222-2222-4222-8222-222222222222";
+
+function b64(value: unknown): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-const success: DeviceTokenPollResult = {
-  kind: "success",
-  token: { access_token: "tok", token_type: "Bearer", expires_in: 604800 },
-};
+function fakeJwt(issuer: string, overrides: Record<string, unknown> = {}): string {
+  return `${b64({ alg: "none" })}.${b64({
+    iss: issuer,
+    aud: "https://api.darwinian.dev",
+    sub: "user_123",
+    email: "device@example.test",
+    iat: IAT,
+    exp: EXP,
+    ...overrides,
+  })}.sig`;
+}
+
+function nativeFetcher(options: { pending?: number; terminalError?: string } = {}): {
+  fetcher: typeof fetch;
+  requests: Array<{ url: string; method: string; body: string }>;
+} {
+  const requests: Array<{ url: string; method: string; body: string }> = [];
+  let polls = 0;
+  const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const parsed = new URL(url);
+    requests.push({ url, method: init?.method ?? "GET", body: String(init?.body ?? "") });
+    if (parsed.pathname === "/api/auth/device/code") {
+      return Response.json({
+        device_code: "device-code",
+        user_code: "ABCD",
+        verification_uri: "https://app.test/device",
+        verification_uri_complete: "https://app.test/device?user_code=ABCD",
+        expires_in: 600,
+        interval: 1,
+      });
+    }
+    if (parsed.pathname === "/api/auth/device/token") {
+      polls += 1;
+      if (options.terminalError) return Response.json({ error: options.terminalError }, { status: 400 });
+      if (polls <= (options.pending ?? 0)) {
+        return Response.json({ error: "authorization_pending" }, { status: 400 });
+      }
+      return Response.json({ access_token: "opaque-device-session" });
+    }
+    if (parsed.pathname === "/api/auth/oauth2/authorize") {
+      return Response.json({ code: "authorization-code" });
+    }
+    if (parsed.pathname === "/api/auth/oauth2/token") {
+      return Response.json({
+        access_token: fakeJwt("https://auth.darwinian.dev/api/auth"),
+        refresh_token: "refresh-token",
+        expires_in: 900,
+      });
+    }
+    throw new Error(`unexpected URL ${url}`);
+  }) as unknown as typeof fetch;
+  return { fetcher, requests };
+}
 
 describe("runDeviceFlow", () => {
-  test("returns a token after one poll and calls onUserAction", async () => {
-    const actions: unknown[] = [];
+  test("runs only the native DAH flow and creates an exact generation-1 v3 credential", async () => {
+    const profile = drwnCliProfile({});
+    const actions: Array<{ verification_uri_complete: string; user_code: string }> = [];
     const slept: number[] = [];
+    const { fetcher, requests } = nativeFetcher({ pending: 1 });
 
-    const token = await runDeviceFlow({
-      client: makeClient([success]),
-      clientId: "drwn-cli",
+    const credential = await runDeviceFlow({
+      profile,
+      fetcher,
       sleep: async (ms) => { slept.push(ms); },
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
       onUserAction: (info) => { actions.push(info); },
     });
 
-    expect(token.access_token).toBe("tok");
-    expect(slept).toEqual([5000]);
-    expect(actions).toHaveLength(1);
+    expect(credential).toEqual({
+      version: 3,
+      credentialId: UUID,
+      generation: 1,
+      issuer: profile.issuer,
+      clientId: "drwn-cli",
+      resource: profile.resource,
+      accessToken: fakeJwt(profile.issuer),
+      refreshToken: "refresh-token",
+      issuedAt: new Date(IAT * 1000).toISOString(),
+      expiresAt: new Date(EXP * 1000).toISOString(),
+      savedAt: new Date((IAT + 1) * 1000).toISOString(),
+      userEmail: "device@example.test",
+    });
+    expect(actions).toEqual([{
+      verification_uri_complete: "https://app.test/device?user_code=ABCD",
+      user_code: "ABCD",
+    }]);
+    expect(slept).toEqual([1000, 1000]);
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/device/code",
+      "/api/auth/device/token",
+      "/api/auth/device/token",
+      "/api/auth/oauth2/authorize",
+      "/api/auth/oauth2/token",
+    ]);
   });
 
-  test("continues on authorization_pending", async () => {
-    const slept: number[] = [];
-    const token = await runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "authorization_pending" }, success]),
-      clientId: "drwn-cli",
-      sleep: async (ms) => { slept.push(ms); },
+  test("fails when the final JWT omits a signed iat or coherent expiry", async () => {
+    const profile = drwnCliProfile({});
+    for (const claims of [{ iat: undefined }, { exp: undefined }, { exp: IAT }]) {
+      const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        if (path === "/api/auth/device/code") {
+          return Response.json({
+            device_code: "device-code",
+            user_code: "ABCD",
+            verification_uri: "https://app.test/device",
+            expires_in: 600,
+            interval: 1,
+          });
+        }
+        if (path === "/api/auth/device/token") return Response.json({ access_token: "opaque" });
+        if (path === "/api/auth/oauth2/authorize") return Response.json({ code: "code" });
+        if (path === "/api/auth/oauth2/token") {
+          return Response.json({
+            access_token: fakeJwt(profile.issuer, claims),
+            refresh_token: "refresh",
+            expires_in: 900,
+          });
+        }
+        throw new Error(`unexpected ${String(input)} ${String(init?.method)}`);
+      }) as unknown as typeof fetch;
+
+      await expect(runDeviceFlow({
+        profile,
+        fetcher,
+        sleep: async () => {},
+        now: () => (IAT + 1) * 1000,
+        randomUUID: () => UUID,
+        onUserAction: () => {},
+      })).rejects.toThrow("DAH access token is missing coherent iat/exp claims.");
+    }
+  });
+
+  test("accepts only bounded future iat clock skew for a newly issued token", async () => {
+    const profile = drwnCliProfile({});
+    const fetcherForIat = (iat: number) => (async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/api/auth/device/code") {
+        return Response.json({
+          device_code: "device-code",
+          user_code: "ABCD",
+          verification_uri: "https://app.test/device",
+          expires_in: 600,
+          interval: 1,
+        });
+      }
+      if (path === "/api/auth/device/token") return Response.json({ access_token: "opaque" });
+      if (path === "/api/auth/oauth2/authorize") return Response.json({ code: "code" });
+      if (path === "/api/auth/oauth2/token") {
+        return Response.json({
+          access_token: fakeJwt(profile.issuer, { iat, exp: iat + 900 }),
+          refresh_token: "refresh",
+          expires_in: 900,
+        });
+      }
+      throw new Error(`unexpected ${String(input)}`);
+    }) as unknown as typeof fetch;
+    const run = (iat: number) => runDeviceFlow({
+      profile,
+      fetcher: fetcherForIat(iat),
+      sleep: async () => {},
+      now: () => IAT * 1000,
+      randomUUID: () => UUID,
       onUserAction: () => {},
     });
 
-    expect(token.access_token).toBe("tok");
-    expect(slept).toEqual([5000, 5000]);
-  });
-
-  test("slow_down doubles interval", async () => {
-    const slept: number[] = [];
-    await runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "slow_down" }, success]),
-      clientId: "drwn-cli",
-      sleep: async (ms) => { slept.push(ms); },
-      onUserAction: () => {},
+    await expect(run(IAT + 60)).resolves.toMatchObject({
+      issuedAt: new Date((IAT + 60) * 1000).toISOString(),
     });
-
-    expect(slept).toEqual([5000, 10000]);
+    await expect(run(IAT + 61)).rejects.toThrow("outside the accepted clock window");
   });
 
-  test("hard auth errors throw user-facing messages", async () => {
+  test("preserves native device authorization terminal errors", async () => {
+    const profile = drwnCliProfile({});
+    const { fetcher } = nativeFetcher({ terminalError: "access_denied" });
     await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "expired_token" }]),
-      clientId: "drwn-cli",
+      profile,
+      fetcher,
       sleep: async () => {},
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
       onUserAction: () => {},
-    })).rejects.toThrow("Code expired. Run `drwn login` again.");
-
-    await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "access_denied" }]),
-      clientId: "drwn-cli",
-      sleep: async () => {},
-      onUserAction: () => {},
-    })).rejects.toThrow("Authorization denied in browser.");
-
-    await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "weird" }]),
-      clientId: "drwn-cli",
-      sleep: async () => {},
-      onUserAction: () => {},
-    })).rejects.toThrow("Authentication failed: weird");
+    })).rejects.toThrow("device_authorization_denied");
   });
 
-  test("local expiry throws timeout message", async () => {
-    let now = 0;
-    await expect(runDeviceFlow({
-      client: makeClient([{ kind: "error", error: "authorization_pending" }]),
-      clientId: "drwn-cli",
-      sleep: async () => { now = 601_000; },
-      now: () => now,
-      onUserAction: () => {},
-    })).rejects.toThrow("Sign-in timed out after 600s. Try again.");
+  test("rejects malformed device authorization bounds and verification URLs before polling", async () => {
+    const profile = drwnCliProfile({});
+    const valid = {
+      device_code: "device-code",
+      user_code: "ABCD",
+      verification_uri: "https://app.test/device",
+      verification_uri_complete: "https://app.test/device?user_code=ABCD",
+      expires_in: 600,
+      interval: 1,
+    };
+    const invalid = [
+      { ...valid, expires_in: 0 },
+      { ...valid, expires_in: 1.5 },
+      { ...valid, expires_in: 3601 },
+      { ...valid, interval: 0 },
+      { ...valid, interval: 61 },
+      { ...valid, verification_uri: "not-a-url" },
+      { ...valid, verification_uri_complete: "javascript:alert(1)" },
+    ];
+
+    for (const body of invalid) {
+      let polls = 0;
+      let actions = 0;
+      await expect(runDeviceFlow({
+        profile,
+        fetcher: (async (input: string | URL | Request) => {
+          if (new URL(String(input)).pathname === "/api/auth/device/code") return Response.json(body);
+          polls += 1;
+          return Response.json({ access_token: "must-not-poll" });
+        }) as unknown as typeof fetch,
+        sleep: async () => { polls += 1; },
+        now: () => IAT * 1000,
+        randomUUID: () => UUID,
+        onUserAction: () => { actions += 1; },
+      })).rejects.toThrow("DAH device authorization response is invalid");
+      expect(polls).toBe(0);
+      expect(actions).toBe(0);
+    }
+  });
+
+  test("has no retired Analyzer-client overload", () => {
+    if (false) {
+      void runDeviceFlow({
+        // @ts-expect-error The legacy Analyzer client input is intentionally unsupported.
+        client: {},
+        clientId: "drwn-cli",
+        onUserAction: () => {},
+      });
+    }
+    expect(true).toBe(true);
+  });
+});
+
+describe("refreshToken remote classification", () => {
+  test("returns a validated token bundle only from a successful response", async () => {
+    const profile = drwnCliProfile({});
+    const accessToken = fakeJwt(profile.issuer);
+
+    const result = await refreshToken(
+      profile,
+      "refresh-token",
+      (async () => Response.json({
+        access_token: accessToken,
+        refresh_token: "refresh-token-2",
+        expires_in: 900,
+      })) as unknown as typeof fetch,
+    );
+
+    expect(result).toMatchObject({ access_token: accessToken, refresh_token: "refresh-token-2" });
+  });
+
+  test("classifies redirect, rejection, server, network, and invalid success without retaining bodies", async () => {
+    const profile = drwnCliProfile({});
+    const sentinel = "SENTINEL_REFRESH_RESPONSE_BODY_239";
+    const scenarios: Array<{
+      name: string;
+      fetcher: typeof fetch;
+      reason: string;
+      result: string;
+      httpClass: string;
+    }> = [
+      {
+        name: "redirect",
+        fetcher: (async () => new Response(null, { status: 302, headers: { location: "https://elsewhere.test" } })) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_INDETERMINATE",
+        result: "indeterminate",
+        httpClass: "3xx",
+      },
+      {
+        name: "rejection",
+        fetcher: (async () => new Response(sentinel, { status: 400 })) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_REJECTED",
+        result: "rejected",
+        httpClass: "4xx",
+      },
+      {
+        name: "server",
+        fetcher: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_INDETERMINATE",
+        result: "indeterminate",
+        httpClass: "5xx",
+      },
+      {
+        name: "network",
+        fetcher: (async () => { throw new TypeError(sentinel); }) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_INDETERMINATE",
+        result: "indeterminate",
+        httpClass: "network_error",
+      },
+      {
+        name: "malformed success",
+        fetcher: (async () => new Response(sentinel, { status: 200 })) as unknown as typeof fetch,
+        reason: "AUTH_RESPONSE_INVALID",
+        result: "rejected",
+        httpClass: "2xx",
+      },
+      {
+        name: "wrong issuer",
+        fetcher: (async () => Response.json({
+          access_token: fakeJwt("https://wrong-issuer.test/api/auth"),
+          refresh_token: "refresh-token-2",
+          expires_in: 900,
+          response_body: sentinel,
+        })) as unknown as typeof fetch,
+        reason: "AUTH_RESPONSE_INVALID",
+        result: "rejected",
+        httpClass: "2xx",
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      try {
+        await refreshToken(profile, "refresh-token", scenario.fetcher);
+        throw new Error(`${scenario.name} unexpectedly succeeded`);
+      } catch (error) {
+        expect(error, scenario.name).toBeInstanceOf(AuthRemoteOperationError);
+        expect(error).toMatchObject({
+          reason: scenario.reason,
+          result: scenario.result,
+          httpClass: scenario.httpClass,
+        });
+        expect(String(error)).not.toContain(sentinel);
+        expect(JSON.stringify(error)).not.toContain(sentinel);
+      }
+    }
+  });
+
+  test("rejects a missing refresh token before any request", async () => {
+    const profile = drwnCliProfile({});
+    let requests = 0;
+
+    await expect(refreshToken(
+      profile,
+      "",
+      (async () => {
+        requests += 1;
+        return Response.json({});
+      }) as unknown as typeof fetch,
+    )).rejects.toMatchObject({ reason: "AUTH_RESPONSE_INVALID", result: "rejected", httpClass: "2xx" });
+    expect(requests).toBe(0);
+  });
+});
+
+describe("revokeToken remote classification", () => {
+  test("classifies confirmed, redirect, rejection, server, and network results without retaining bodies", async () => {
+    const profile = drwnCliProfile({});
+    const sentinel = "SENTINEL_REVOKE_RESPONSE_BODY_239";
+    const scenarios: Array<{
+      name: string;
+      fetcher: typeof fetch;
+      expected: RevokeTokenResult;
+    }> = [
+      {
+        name: "confirmed",
+        fetcher: (async () => new Response(null, { status: 204 })) as unknown as typeof fetch,
+        expected: { result: "confirmed", httpClass: "2xx", reason: null },
+      },
+      {
+        name: "redirect",
+        fetcher: (async () => new Response(null, { status: 302, headers: { location: "https://elsewhere.test" } })) as unknown as typeof fetch,
+        expected: { result: "indeterminate", httpClass: "3xx", reason: "AUTH_REMOTE_INDETERMINATE" },
+      },
+      {
+        name: "rejection",
+        fetcher: (async () => new Response(sentinel, { status: 400 })) as unknown as typeof fetch,
+        expected: { result: "rejected", httpClass: "4xx", reason: "AUTH_REMOTE_REJECTED" },
+      },
+      {
+        name: "server",
+        fetcher: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+        expected: { result: "indeterminate", httpClass: "5xx", reason: "AUTH_REMOTE_INDETERMINATE" },
+      },
+      {
+        name: "network",
+        fetcher: (async () => { throw new TypeError(sentinel); }) as unknown as typeof fetch,
+        expected: { result: "indeterminate", httpClass: "network_error", reason: "AUTH_REMOTE_INDETERMINATE" },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const result = await revokeToken(profile, "refresh-token", scenario.fetcher);
+      expect(result, scenario.name).toEqual(scenario.expected);
+      expect(JSON.stringify(result)).not.toContain(sentinel);
+    }
   });
 });

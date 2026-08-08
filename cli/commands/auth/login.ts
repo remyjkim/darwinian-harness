@@ -4,9 +4,12 @@
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { openBrowser as defaultOpenBrowser } from "../../core/auth/browser";
+import { deriveCredentialScope } from "../../core/auth/credential-scope";
 import { runDeviceFlow } from "../../core/auth/device-flow";
 import { writeCredentials } from "../../core/auth/credentials";
 import { drwnCliProfile } from "../../core/auth/profile";
+import { createAuthOperationReceipt, serializeAuthOperationReceipt } from "../../core/auth/receipt";
+import { loadBuildIdentity } from "../../core/build-identity";
 import { resolveCredentialsPath } from "../../core/paths";
 
 type LoginDeps = {
@@ -14,8 +17,28 @@ type LoginDeps = {
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  randomUUID?: () => string;
   openBrowser?: (url: string) => void;
+  loadBuildIdentity?: typeof loadBuildIdentity;
+  deriveCredentialScope?: typeof deriveCredentialScope;
+  writeCredentials?: typeof writeCredentials;
 };
+
+function jsonLoginFailureDiagnostic(error: unknown): string {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === "BUILD_IDENTITY_INVALID" || code === "AUTH_RECEIPT_INVALID") return code;
+  }
+  if (error instanceof TypeError) return "AUTH_REMOTE_INDETERMINATE";
+  const message = error instanceof Error ? error.message : "";
+  const status = message.match(/\(([0-9]{3})\)/)?.[1];
+  if (status?.startsWith("4")) return "AUTH_REMOTE_REJECTED";
+  if (status?.startsWith("3") || status?.startsWith("5")) return "AUTH_REMOTE_INDETERMINATE";
+  if (/device_authorization_denied|device_code_expired|access_denied|expired_token/.test(message)) {
+    return "AUTH_REMOTE_REJECTED";
+  }
+  return "AUTH_RESPONSE_INVALID";
+}
 
 function openOnEnter(stdin: NodeJS.ReadableStream, open: () => void): (() => void) | undefined {
   const input = stdin as NodeJS.ReadableStream & { isTTY?: boolean };
@@ -69,11 +92,13 @@ export class LoginCommand extends BaseCommand {
     let cancelOpenOnEnter: (() => void) | undefined;
 
     try {
+      const buildIdentity = await (deps.loadBuildIdentity ?? loadBuildIdentity)();
       const credential = await runDeviceFlow({
         profile,
         fetcher: deps.fetch ?? fetch,
         sleep: deps.sleep,
         now: deps.now,
+        randomUUID: deps.randomUUID,
         onUserAction: ({ verification_uri_complete }) => {
           const instructions = [
             "Log in to your Darwinian account:",
@@ -94,16 +119,61 @@ export class LoginCommand extends BaseCommand {
       });
       cancelOpenOnEnter?.();
       const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
-      await writeCredentials(credentialsPath, credential);
+      const credentialScope = await (deps.deriveCredentialScope ?? deriveCredentialScope)(credentialsPath);
+      const actionAtMillis = Math.max(
+        (deps.now ?? Date.now)(),
+        Date.parse(credential.issuedAt),
+      );
+      const actionAt = new Date(actionAtMillis).toISOString();
+      try {
+        await (deps.writeCredentials ?? writeCredentials)(credentialsPath, credential);
+      } catch {
+        if (this.json) {
+          const receipt = createAuthOperationReceipt({
+            buildIdentity,
+            qualificationNamespaceDigest: credentialScope.qualificationNamespaceDigest,
+            credential,
+            actionAt,
+            operation: {
+              action: "login",
+              mode: "ordinary",
+              outcome: "failed",
+              remote: { action: "token_exchange", result: "confirmed", httpClass: "2xx" },
+              local: { action: "write", result: "failed", afterConfirmedRemoteRevoke: false },
+              reason: "CREDENTIAL_WRITE_FAILED",
+            },
+          });
+          this.context.stdout.write(serializeAuthOperationReceipt(receipt));
+        }
+        this.context.stderr.write("CREDENTIAL_WRITE_FAILED\n");
+        return 1;
+      }
       if (this.json) {
-        this.context.stdout.write(JSON.stringify({ email: credential.user_email, expires_at: credential.expiresAt }) + "\n");
+        const receipt = createAuthOperationReceipt({
+          buildIdentity,
+          qualificationNamespaceDigest: credentialScope.qualificationNamespaceDigest,
+          credential,
+          actionAt,
+          operation: {
+            action: "login",
+            mode: "ordinary",
+            outcome: "succeeded",
+            remote: { action: "token_exchange", result: "confirmed", httpClass: "2xx" },
+            local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+            reason: null,
+          },
+        });
+        this.context.stdout.write(serializeAuthOperationReceipt(receipt));
       } else {
-        this.context.stdout.write(`Signed in as ${credential.user_email || "unknown user"}\n`);
+        this.context.stdout.write(`Signed in as ${credential.userEmail || "unknown user"}\n`);
       }
       return 0;
     } catch (error) {
       cancelOpenOnEnter?.();
-      this.context.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      const diagnostic = this.json
+        ? jsonLoginFailureDiagnostic(error)
+        : error instanceof Error ? error.message : String(error);
+      this.context.stderr.write(`${diagnostic}\n`);
       return 1;
     }
   }

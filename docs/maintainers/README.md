@@ -12,8 +12,9 @@ Use it for:
 
 ## Current Docs
 
-- [publishing.md](./publishing.md): manual npm publishing workflow, token-isolation strategy, and lessons from the first release path
-- package-backed skill bundles are implemented in the main repo and should be documented here as the operational model stabilizes
+- [publishing.md](./publishing.md): exact-artifact OIDC publishing for the CLI and the separately governed bridge-only fallback
+- [docs-cicd.md](./docs-cicd.md): documentation preview and deployment workflow
+- [skills-repo-submodule.md](./skills-repo-submodule.md): maintenance of the pinned shared-skills submodule
 
 ## Scope Guidelines
 

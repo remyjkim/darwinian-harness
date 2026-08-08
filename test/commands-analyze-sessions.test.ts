@@ -21,11 +21,13 @@ function b64(value: unknown): string {
 
 function fakeJwt(email = "x@y.z", exp = Math.floor(Date.now() / 1000) + 900): string {
   const profile = drwnCliProfile({});
+  const iat = exp - 900;
   return `${b64({ alg: "none" })}.${b64({
     iss: profile.issuer,
     aud: profile.resource,
     sub: "user_123",
     email,
+    iat,
     exp,
   })}.sig`;
 }
@@ -53,16 +55,24 @@ async function runAnalyze(args: string[], options?: { withCredentials?: boolean 
   tempRoots.push(fixture.root);
   if (options?.withCredentials !== false) {
     const profile = drwnCliProfile({});
+    const accessToken = fakeJwt();
+    const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+      iat: number;
+      exp: number;
+    };
     await writeCredentials(resolveCredentialsPath(fixture.agentsDir), {
-      version: 2,
+      version: 3,
+      credentialId: "44444444-4444-4444-8444-444444444444",
+      generation: 1,
       issuer: profile.issuer,
       clientId: "drwn-cli",
       resource: profile.resource,
-      accessToken: fakeJwt(),
+      accessToken,
       refreshToken: "refresh-1",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "x@y.z",
-      saved_at: "2026-06-03T00:00:00Z",
+      issuedAt: new Date(claims.iat * 1000).toISOString(),
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      savedAt: "2026-08-08T00:00:00.000Z",
+      userEmail: "x@y.z",
     });
   }
 
@@ -148,6 +158,37 @@ describe("drwn analyze sessions", () => {
 
     expect(rerun.exitCode).toBe(0);
     expect(uploadCalled).toBe(true);
+  });
+
+  test("uses a non-persistent DAH token with the explicitly configured Analyzer transport", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const archive = join(fixture.root, "env-token.tar.gz");
+    await writeArchive(archive);
+    const token = fakeJwt("foundry@example.test");
+    const requests: Array<{ url: string; authorization: string }> = [];
+    AnalyzeSessionsCommand.testDeps = {
+      env: {
+        DRWN_TOKEN: token,
+        DRWN_ANALYZER_URL: "https://foundry.example.test/",
+      },
+      fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          authorization: new Headers(init?.headers).get("authorization") ?? "",
+        });
+        return Response.json({ jobId: "job_foundry", status: "queued" }, { status: 201 });
+      }) as unknown as typeof fetch,
+    };
+
+    const result = await runAnalyzeWithFixture(fixture, ["--archive", archive]);
+
+    expect(result.exitCode).toBe(0);
+    expect(requests).toEqual([{
+      url: "https://foundry.example.test/api/analyze",
+      authorization: `Bearer ${token}`,
+    }]);
+    expect(await Bun.file(resolveCredentialsPath(fixture.agentsDir)).exists()).toBe(false);
   });
 
   test("--archive validation failure exits before upload", async () => {

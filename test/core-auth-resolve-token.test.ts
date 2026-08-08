@@ -1,32 +1,72 @@
-// ABOUTME: Verifies bearer-token resolution precedence for authenticated CLI commands.
-// ABOUTME: Keeps CI env-var auth isolated from persisted local credentials.
+// ABOUTME: Verifies bearer-token resolution from non-persistent env auth or strict v3 custody.
+// ABOUTME: Proves stored transport aliases are gone and refresh preserves the v3 credential epoch.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeCredentials } from "../cli/core/auth/credentials";
-import { resolveToken } from "../cli/core/auth/resolve-token";
+import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
+import { drwnCliProfile } from "../cli/core/auth/profile";
+import {
+  refreshStoredCredential,
+  refreshStoredCredentialTransaction,
+  resolveToken,
+} from "../cli/core/auth/resolve-token";
 
 let tmp: string | null = null;
+
+const ISSUER = "https://auth.darwinian.dev/api/auth";
+const RESOURCE = "https://api.darwinian.dev";
+const ID = "33333333-3333-4333-8333-333333333333";
 
 function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-function fakeJwt(
-  email = "x@y.z",
-  exp = Math.floor(Date.now() / 1000) + 900,
-  audience = "https://api.darwinian.dev",
-  issuer = "https://auth.darwinian.dev/api/auth",
-): string {
+function jwtWithClaims(claims: Record<string, unknown>): string {
+  return `${b64({ alg: "none" })}.${b64(claims)}.sig`;
+}
+
+function fakeJwt(options: {
+  email?: string;
+  iat?: number;
+  exp?: number;
+  audience?: string;
+  issuer?: string;
+} = {}): string {
+  const iat = options.iat ?? Math.floor(Date.now() / 1000) - 1;
+  const exp = options.exp ?? iat + 900;
   return `${b64({ alg: "none" })}.${b64({
-    iss: issuer,
-    aud: audience,
+    iss: options.issuer ?? ISSUER,
+    aud: options.audience ?? RESOURCE,
     sub: "user_123",
-    email,
+    email: options.email ?? "x@y.z",
+    iat,
     exp,
   })}.sig`;
+}
+
+function storedCredential(overrides: Partial<CliDahCredentialFileV3> = {}): CliDahCredentialFileV3 {
+  const accessToken = overrides.accessToken ?? fakeJwt();
+  const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+    iat: number;
+    exp: number;
+  };
+  return {
+    version: 3,
+    credentialId: ID,
+    generation: 1,
+    issuer: ISSUER,
+    clientId: "drwn-cli",
+    resource: RESOURCE,
+    accessToken,
+    refreshToken: "refresh-1",
+    issuedAt: new Date(claims.iat * 1000).toISOString(),
+    expiresAt: new Date(claims.exp * 1000).toISOString(),
+    savedAt: "2026-08-08T00:00:00.000Z",
+    userEmail: "x@y.z",
+    ...overrides,
+  };
 }
 
 afterEach(async () => {
@@ -35,145 +75,304 @@ afterEach(async () => {
 });
 
 describe("resolveToken", () => {
-  test("returns env-var token when DRWN_TOKEN + DRWN_ANALYZER_URL set", async () => {
-    const result = await resolveToken({
-      credentialsPath: "/no/such/path",
-      env: { DRWN_TOKEN: fakeJwt(), DRWN_ANALYZER_URL: "https://api.test" },
-    });
-    expect(result).toMatchObject({ source: "env", apiUrl: "https://api.test" });
-  });
-
-  test("returns env token without requiring analyzer URL", async () => {
-    const result = await resolveToken({
-      credentialsPath: "/no/such/path",
-      env: { DRWN_TOKEN: fakeJwt() },
-    });
-    expect(result).toMatchObject({ source: "env" });
-  });
-
-  test("returns stored credential when env vars absent", async () => {
+  test("returns validated DRWN_TOKEN without reading or writing an invalid stored credential", async () => {
     tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
     const credentialsPath = join(tmp, "credentials.json");
-    await writeCredentials(credentialsPath, {
-      version: 2,
-      issuer: "https://auth.darwinian.dev/api/auth",
-      clientId: "drwn-cli",
-      resource: "https://api.darwinian.dev",
-      accessToken: fakeJwt(),
-      refreshToken: "refresh-1",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "x@y.z",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
-    const result = await resolveToken({ credentialsPath, env: {} });
-    expect(result).toMatchObject({ source: "stored" });
-  });
-
-  test("returns stored legacy credential api_url when env vars are absent", async () => {
-    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
-    const credentialsPath = join(tmp, "credentials.json");
-    await writeCredentials(credentialsPath, {
-      api_url: "https://legacy-api.test",
-      access_token: fakeJwt(),
-      user_email: "legacy@y.z",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
-    const result = await resolveToken({ credentialsPath, env: {} });
-    expect(result).toMatchObject({
-      source: "stored",
-      token: fakeJwt(),
-      apiUrl: "https://legacy-api.test",
-    });
-  });
-
-  test("env DRWN_ANALYZER_URL overrides stored legacy credential api_url", async () => {
-    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
-    const credentialsPath = join(tmp, "credentials.json");
-    await writeCredentials(credentialsPath, {
-      api_url: "https://legacy-api.test",
-      access_token: fakeJwt(),
-      user_email: "legacy@y.z",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
-    const result = await resolveToken({ credentialsPath, env: { DRWN_ANALYZER_URL: "https://env-api.test" } });
-    expect(result).toMatchObject({ apiUrl: "https://env-api.test" });
-  });
-
-  test("returns null when no env vars and no credentials", async () => {
-    const result = await resolveToken({ credentialsPath: "/no/such/path", env: {} });
-    expect(result).toBeNull();
-  });
-
-  test("asks for a fresh login when stored credentials target another resource", async () => {
-    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
-    const credentialsPath = join(tmp, "credentials.json");
-    await writeCredentials(credentialsPath, {
-      version: 2,
-      issuer: "https://auth.darwinian.dev/api/auth",
-      clientId: "drwn-cli",
-      resource: "https://api-staging-main.darwinian.dev",
-      accessToken: fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev"),
-      refreshToken: "refresh-staging",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "staging@example.com",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
-
-    await expect(resolveToken({ credentialsPath, env: {} }))
-      .rejects.toThrow("Stored credentials target https://api-staging-main.darwinian.dev; run `drwn login` again for https://api.darwinian.dev.");
-  });
-
-  test("asks for a fresh login when stored credentials came from the retired hub", async () => {
-    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
-    const credentialsPath = join(tmp, "credentials.json");
-    const retiredIssuer = "https://auth.darwiniantools.com/api/auth";
-    await writeCredentials(credentialsPath, {
-      version: 2,
-      issuer: retiredIssuer,
-      clientId: "drwn-cli",
-      resource: "https://api.darwinian.dev",
-      accessToken: fakeJwt("legacy@example.com", undefined, undefined, retiredIssuer),
-      refreshToken: "refresh-legacy",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "legacy@example.com",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
-
-    await expect(resolveToken({ credentialsPath, env: {} })).rejects.toThrow(
-      "Stored credentials were issued by https://auth.darwiniantools.com/api/auth; run `drwn login` again for https://auth.darwinian.dev/api/auth.",
-    );
-  });
-
-  test("uses a non-production credential when the explicit resource override matches", async () => {
-    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
-    const credentialsPath = join(tmp, "credentials.json");
-    const stagingToken = fakeJwt("staging@example.com", undefined, "https://api-staging-main.darwinian.dev");
-    await writeCredentials(credentialsPath, {
-      version: 2,
-      issuer: "https://auth.darwinian.dev/api/auth",
-      clientId: "drwn-cli",
-      resource: "https://api-staging-main.darwinian.dev",
-      accessToken: stagingToken,
-      refreshToken: "refresh-staging",
-      expiresAt: new Date(Date.now() + 900_000).toISOString(),
-      user_email: "staging@example.com",
-      saved_at: "2026-06-03T00:00:00Z",
-    });
+    await Bun.write(credentialsPath, "invalid-envelope");
+    const before = await Bun.file(credentialsPath).text();
+    const token = fakeJwt({ email: "env@example.test" });
 
     const result = await resolveToken({
       credentialsPath,
-      env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+      env: { DRWN_TOKEN: token, DRWN_ANALYZER_URL: "https://must-not-enter-auth-result.test" },
     });
 
-    expect(result).toMatchObject({ token: stagingToken, source: "stored" });
+    expect(result).toEqual({ token, source: "env" });
+    expect(await Bun.file(credentialsPath).text()).toBe(before);
+  });
+
+  test("requires DRWN_TOKEN to carry the configured issuer and a safe future expiry", async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const base = { iss: ISSUER, aud: RESOURCE, exp: nowSeconds + 900 };
+    const invalidClaims = [
+      { ...base, exp: undefined },
+      { ...base, exp: String(nowSeconds + 900) },
+      { ...base, exp: Number.MAX_SAFE_INTEGER + 1 },
+      { ...base, exp: nowSeconds },
+      { ...base, iss: "https://wrong-issuer.test/api/auth" },
+    ];
+
+    for (const claims of invalidClaims) {
+      await expect(resolveToken({
+        credentialsPath: "/no/such/path",
+        env: { DRWN_TOKEN: jwtWithClaims(claims) },
+      })).rejects.toThrow();
+    }
+    const token = jwtWithClaims(base);
+    await expect(resolveToken({
+      credentialsPath: "/no/such/path",
+      env: { DRWN_TOKEN: token },
+    })).resolves.toEqual({ token, source: "env" });
+  });
+
+  test("returns a non-expiring-soon v3 stored bearer without transport configuration", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const credential = storedCredential();
+    await writeCredentials(credentialsPath, credential);
+
+    const result = await resolveToken({
+      credentialsPath,
+      env: { DRWN_ANALYZER_URL: "https://analyzer.test" },
+    });
+
+    expect(result).toEqual({ token: credential.accessToken, source: "stored", credential });
+    expect("apiUrl" in result!).toBe(false);
+  });
+
+  test("returns null only when neither env nor stored credentials exist", async () => {
+    expect(await resolveToken({ credentialsPath: "/no/such/path", env: {} })).toBeNull();
+  });
+
+  test("fails a stored public-profile mismatch before token use", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const staging = "https://api-staging-main.darwinian.dev";
+    await writeCredentials(credentialsPath, storedCredential({
+      resource: staging,
+      accessToken: fakeJwt({ audience: staging }),
+    }));
+
+    await expect(resolveToken({ credentialsPath, env: {} })).rejects.toThrow(
+      `Stored credentials target ${staging}; run \`drwn login\` again for ${RESOURCE}.`,
+    );
+  });
+
+  test("accepts a stored non-production profile only when the explicit profile override matches", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const staging = "https://api-staging-main.darwinian.dev";
+    const accessToken = fakeJwt({ audience: staging });
+    await writeCredentials(credentialsPath, storedCredential({ resource: staging, accessToken }));
+
+    const result = await resolveToken({
+      credentialsPath,
+      env: { DRWN_DAH_RESOURCE: staging },
+    });
+
+    expect(result).toMatchObject({ token: accessToken, source: "stored" });
+  });
+
+  test("refreshes an expiring v3 credential while preserving ID and advancing generation once", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const expiringToken = fakeJwt({ exp: Math.floor(Date.now() / 1000) + 30 });
+    await writeCredentials(credentialsPath, storedCredential({ accessToken: expiringToken }));
+    const refreshedToken = fakeJwt({ email: "fresh@example.test" });
+
+    const result = await resolveToken({
+      credentialsPath,
+      env: {},
+      fetcher: (async () => Response.json({
+        access_token: refreshedToken,
+        refresh_token: "refresh-2",
+        expires_in: 900,
+      })) as unknown as typeof fetch,
+    });
+
+    expect(result?.credential).toMatchObject({
+      version: 3,
+      credentialId: ID,
+      generation: 2,
+      accessToken: refreshedToken,
+      refreshToken: "refresh-2",
+      userEmail: "fresh@example.test",
+    });
+    expect(result?.credential).toBeDefined();
+    expect(await readCredentials(credentialsPath)).toEqual(result!.credential!);
+  });
+
+  test("the shared refresh transaction always refreshes a fresh credential and advances only after persistence", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const refreshedToken = fakeJwt({ email: "forced@example.test" });
+    let refreshRequests = 0;
+    const writes: number[] = [];
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({}),
+      fetcher: (async () => {
+        refreshRequests += 1;
+        return Response.json({
+          access_token: refreshedToken,
+          refresh_token: "refresh-2",
+          expires_in: 900,
+        });
+      }) as unknown as typeof fetch,
+      writeCredential: async (path, credential) => {
+        writes.push(credential.generation);
+        await writeCredentials(path, credential);
+      },
+    });
+
+    expect(refreshRequests).toBe(1);
+    expect(writes).toEqual([2]);
+    expect(result).toMatchObject({
+      outcome: "succeeded",
+      credential: { credentialId: ID, generation: 2, accessToken: refreshedToken },
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: null,
+    });
+    if (result.outcome !== "succeeded") throw new Error("refresh transaction unexpectedly failed");
+    expect(await readCredentials(credentialsPath)).toEqual(result.credential);
+  });
+
+  test("profile mismatch is a safely identified no-request/no-write failure", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    let requests = 0;
+    let writes = 0;
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({ DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" }),
+      fetcher: (async () => {
+        requests += 1;
+        return Response.json({});
+      }) as unknown as typeof fetch,
+      writeCredential: async () => { writes += 1; },
+    });
+
+    expect(requests).toBe(0);
+    expect(writes).toBe(0);
+    expect(result).toEqual({
+      outcome: "failed",
+      credential: {
+        credentialId: current.credentialId,
+        generation: current.generation,
+        issuer: current.issuer,
+        clientId: current.clientId,
+        resource: current.resource,
+        issuedAt: current.issuedAt,
+        expiresAt: current.expiresAt,
+      },
+      remote: { action: "refresh", result: "not_applicable", httpClass: "not_applicable" },
+      local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
+      reason: "CREDENTIAL_PROFILE_MISMATCH",
+    });
+    expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("a write failure after confirmed exchange retains the local epoch and reports no false advancement", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const refreshedToken = fakeJwt({ email: "rotated@example.test" });
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({}),
+      fetcher: (async () => Response.json({
+        access_token: refreshedToken,
+        refresh_token: "rotated-refresh-token",
+        expires_in: 900,
+      })) as unknown as typeof fetch,
+      writeCredential: async () => { throw new Error("SENTINEL_WRITE_FAILURE_239"); },
+    });
+
+    expect(result).toEqual({
+      outcome: "failed",
+      credential: {
+        credentialId: current.credentialId,
+        generation: current.generation,
+        issuer: current.issuer,
+        clientId: current.clientId,
+        resource: current.resource,
+        issuedAt: current.issuedAt,
+        expiresAt: current.expiresAt,
+      },
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "failed", afterConfirmedRemoteRevoke: false },
+      reason: "CREDENTIAL_WRITE_FAILED",
+    });
+    expect(JSON.stringify(result)).not.toContain("rotated-refresh-token");
+    expect(JSON.stringify(result)).not.toContain(current.refreshToken);
+    expect(JSON.stringify(result)).not.toContain(current.accessToken);
+    expect(JSON.stringify(result)).not.toContain("SENTINEL_WRITE_FAILURE_239");
+    expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("remote failures retain the local epoch and expose only sanitized classification", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const sentinel = "SENTINEL_REMOTE_REFRESH_BODY_239";
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({}),
+      fetcher: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+    });
+
+    expect(result).toEqual({
+      outcome: "failed",
+      credential: {
+        credentialId: current.credentialId,
+        generation: current.generation,
+        issuer: current.issuer,
+        clientId: current.clientId,
+        resource: current.resource,
+        issuedAt: current.issuedAt,
+        expiresAt: current.expiresAt,
+      },
+      remote: { action: "refresh", result: "indeterminate", httpClass: "5xx" },
+      local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
+      reason: "AUTH_REMOTE_INDETERMINATE",
+    });
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(JSON.stringify(result)).not.toContain(current.refreshToken);
+    expect(JSON.stringify(result)).not.toContain(current.accessToken);
+    expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("automatic refresh errors retain classification but no credential secrets", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+
+    try {
+      await refreshStoredCredential({
+        credentialsPath,
+        credential: current,
+        profile: drwnCliProfile({}),
+        fetcher: (async () => new Response("SENTINEL_REMOTE_BODY_239", { status: 503 })) as unknown as typeof fetch,
+      });
+      throw new Error("refresh unexpectedly succeeded");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "AUTH_REMOTE_INDETERMINATE" });
+      expect(JSON.stringify(error)).not.toContain(current.refreshToken);
+      expect(JSON.stringify(error)).not.toContain(current.accessToken);
+      expect(JSON.stringify(error)).not.toContain("SENTINEL_REMOTE_BODY_239");
+    }
   });
 
   test("does not honor the retired IMINDS_TOKEN name", async () => {
-    const result = await resolveToken({
+    expect(await resolveToken({
       credentialsPath: "/no/such/path",
       env: { IMINDS_TOKEN: fakeJwt() },
-    });
-
-    expect(result).toBeNull();
+    })).toBeNull();
   });
 });

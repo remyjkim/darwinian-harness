@@ -42,6 +42,33 @@ Worker roots but selects at most one; `drwn write` projects only the selected
 root closure plus explicit project overlays. Project declarations do not inherit
 the machine Worker.
 
+The installed CLI also exposes the operational ACP, deployed-Worker, and DAH
+authentication surfaces:
+
+```bash
+drwn acp serve <slug>
+drwn worker status <slug> --json
+drwn worker materialize --payload payload.json --project-root /srv/worker
+drwn worker buzz-tools
+printf '%s' "$WORKER_SECRET" | drwn worker secret set <slug> <name>
+drwn login --json
+drwn refresh --json
+drwn logout --json --require-remote-revoke
+drwn analyze sessions --dry-run
+```
+
+`drwn analyze sessions` remains the Foundry/Analyzer-linked session-upload
+feature; it is separate from ACP serving. `drwn --version` and seven documented
+auth/ACP/Worker `--help` commands form the eight safe installed-package release
+smokes. Actual login, logout, refresh, ACP serving, materialization, Buzz
+delivery, secret mutation, and analysis upload are operational actions, not
+release smokes.
+
+`worker status` reports local governance declarations separately from deployed
+enforcement. Until the Deploy API supplies authoritative capability evidence,
+an active deployment's enforcement state is `unknown`, never inferred from the
+local Card.
+
 Machine intent uses the V2 namespaced contract and the same immutable closure
 model:
 

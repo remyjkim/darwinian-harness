@@ -14,6 +14,112 @@ async function readDocsTree(relativeRoot: string) {
 }
 
 describe("documentation readiness", () => {
+  test("I239 publishes the auth, ACP, Worker, and exact release boundaries without claiming live qualification", async () => {
+    const [
+      readme,
+      quickref,
+      acp,
+      worker,
+      login,
+      refresh,
+      logout,
+      analyze,
+      whoami,
+      sidebars,
+      releaseProcess,
+      publishing,
+      changelog,
+    ] = await Promise.all([
+      readFile(new URL("../README.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs/cli-quickref.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/acp.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/worker.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/login.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/refresh.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/logout.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/analyze.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/whoami.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/sidebars.ts", import.meta.url), "utf8"),
+      readFile(new URL("../docs/release-process.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs/maintainers/publishing.md", import.meta.url), "utf8"),
+      readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8"),
+    ]);
+
+    const commandOverview = `${readme}\n${quickref}`;
+    for (const command of [
+      "drwn acp serve <slug>",
+      "drwn worker status <slug> --json",
+      "drwn worker materialize --payload",
+      "drwn worker buzz-tools",
+      "drwn worker secret set",
+      "drwn login --json",
+      "drwn refresh --json",
+      "drwn logout --json --require-remote-revoke",
+      "drwn analyze sessions",
+    ]) expect(commandOverview).toContain(command);
+
+    const authDocs = `${quickref}\n${login}\n${refresh}\n${logout}`;
+    for (const token of [
+      "payload v3",
+      "envelope v2",
+      "CREDENTIAL_SCHEMA_UNSUPPORTED",
+      "DRWN_TOKEN",
+      "never persisted",
+      "sanitized",
+      "require-remote-revoke",
+    ]) expect(authDocs).toContain(token);
+    for (const forbidden of ["access token", "refresh token", "email", "credential path", "key reference"]) {
+      expect(authDocs).toContain(forbidden);
+    }
+
+    const workerDocs = `${quickref}\n${acp}\n${worker}`;
+    for (const token of [
+      "LOCAL_PROJECT_UNAVAILABLE",
+      "LOCAL_TARGET_UNAVAILABLE",
+      "LOCAL_CARD_REF_MISMATCH",
+      "CAPABILITY_NOT_REPORTED",
+      "NO_ACTIVE_DEPLOYMENT",
+      "HTTP 202",
+      "terminal cancellation",
+      "zero",
+    ]) expect(workerDocs).toContain(token);
+    expect(analyze).toContain("Foundry");
+    expect(analyze).toContain("DRWN_ANALYZER_URL");
+    expect(whoami).toContain("DAH identity");
+    expect(whoami).toContain("DRWN_TOKEN");
+    expect(whoami).not.toContain("Analyzer");
+    expect(whoami).not.toContain("DRWN_ANALYZER_URL");
+    expect(sidebars).toContain("reference/cli/acp");
+    expect(sidebars).toContain("reference/cli/worker");
+    expect(sidebars).toContain("reference/cli/refresh");
+
+    for (const token of [
+      "darwinian-npm-publish",
+      "dry_run: true",
+      "build identity",
+      "dry-run run ID and attempt",
+      "artifact ID and digest",
+      "annotated `v1.2.0` tag",
+      "exact tarball",
+      "release-recovery.yml",
+      "source availability",
+      "installed qualification",
+      "I236",
+      "I238",
+      "Services adoption",
+    ]) expect(releaseProcess).toContain(token);
+    const cliPublishing = publishing.split("## Publishing `drwn-command-bridge`")[0]!;
+    expect(cliPublishing).not.toContain("NPM_ORG_TOKEN");
+    expect(cliPublishing).not.toContain("TMP_NPMRC");
+    expect(cliPublishing).not.toContain("--userconfig");
+    expect(cliPublishing).toContain("No local token fallback");
+
+    expect(changelog).toContain("## [1.2.0] - 2026-08-07");
+    expect(changelog).toContain("## [1.1.0] - 2026-08-05");
+    expect(changelog).toContain("## [1.0.0] - 2026-08-03");
+    expect(changelog).toContain("does not claim live I238 qualification");
+  });
+
   test("I176 and I177 completion handoffs reconcile the approved plans with delivered state", async () => {
     const [i176, i177] = await Promise.all([
       readFile(new URL("../.ai/tasks/cl0176_completion_card_source_path_reform.md", import.meta.url), "utf8"),
@@ -102,6 +208,7 @@ describe("documentation readiness", () => {
       projectGuide,
       bundleGuide,
       brewGuide,
+      publishingHistory,
       knowledgeReadme,
       maintainerReadme,
       publishingGuide,
@@ -114,6 +221,7 @@ describe("documentation readiness", () => {
       readFile(new URL("../.ai/knowledges/02_per-project-config-guide.md", import.meta.url), "utf8"),
       readFile(new URL("../.ai/knowledges/03_npm-skill-bundles-guide.md", import.meta.url), "utf8"),
       readFile(new URL("../.ai/knowledges/04_homebrew-release-checklist.md", import.meta.url), "utf8"),
+      readFile(new URL("../.ai/knowledges/05_npm-publishing-analysis-and-manual.md", import.meta.url), "utf8"),
       readFile(new URL("../.ai/knowledges/README.md", import.meta.url), "utf8"),
       readFile(new URL("../docs/maintainers/README.md", import.meta.url), "utf8"),
       readFile(new URL("../docs/maintainers/publishing.md", import.meta.url), "utf8"),
@@ -161,7 +269,25 @@ describe("documentation readiness", () => {
     expect(brewGuide).toContain("Homebrew");
     expect(brewGuide).toContain("tagged release");
     expect(brewGuide).toContain("drwn");
-    expect(brewGuide).toContain("darwinian-minds");
+    expect(brewGuide).toContain("current npm package: `darwinian`");
+    expect(brewGuide).not.toContain("`dminds`");
+    expect(publishingHistory).toContain("Historical incident record");
+    expect(publishingHistory).toContain("superseded");
+    for (const retired of ["NPM_ORG_TOKEN", "NPM_TOKEN repository secret", "manual flow below remains valid"]) {
+      expect(publishingHistory).not.toContain(retired);
+    }
+    expect(knowledgeReadme).toContain("historical npm incident record");
+    expect(maintainerReadme).toContain("exact-artifact OIDC");
+    expect(maintainerReadme).toContain("docs-cicd.md");
+    expect(maintainerReadme).toContain("skills-repo-submodule.md");
+    expect(bundleGuide).toContain("`darwinian` remains the single first-party harness package");
+    expect(bundleGuide).not.toContain("`darwinian-minds` remains a single first-party harness package");
+    const bridgePublishing = publishingGuide.split("## Publishing `drwn-command-bridge`")[1]!;
+    expect(bridgePublishing).toContain("set -euo pipefail");
+    expect(bridgePublishing).toContain("--prefer-online");
+    expect(bridgePublishing).toContain('.error.code == "E404"');
+    expect(bridgePublishing).toContain("Registry result was indeterminate");
+    expect(bridgePublishing).toContain("unset NPM_BRIDGE_TOKEN");
 
     // Slim README: brand identity, pitch, install, first run, doc pointers,
     // contributing. Deep content (Disciplines, Safety model, "What it

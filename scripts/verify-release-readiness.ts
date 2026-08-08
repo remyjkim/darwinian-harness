@@ -74,6 +74,11 @@ async function verifyPackageContents() {
     "cli/index.ts",
     "cli/commands/write.ts",
     "cli/commands/mcp/write.ts",
+    "cli/commands/acp/serve.ts",
+    "cli/commands/worker/materialize.ts",
+    "cli/commands/worker/buzz-tools.ts",
+    "cli/commands/worker/secret-set.ts",
+    "registry/cards/buzz-delivery-worker/card.json",
     "registry/config.json",
     "registry/mcp-servers.json",
     "skills/shared/frontend-design/SKILL.md",
@@ -188,17 +193,75 @@ function verifyDocsPresence() {
     ".ai/knowledges/03_npm-skill-bundles-guide.md",
     ".ai/knowledges/04_homebrew-release-checklist.md",
     ".ai/knowledges/05_npm-publishing-analysis-and-manual.md",
+    "docs/release-process.md",
+    "docs/maintainers/publishing.md",
+    "docs-docusaurus/docs/reference/cli/acp.md",
+    "docs-docusaurus/docs/reference/cli/worker.md",
+    "docs-docusaurus/docs/reference/cli/refresh.md",
   ];
   const missing = requiredFiles.filter((file) => !existsSync(join(repoRoot, file)));
+  const requiredTokens: Array<[string, string[]]> = [
+    ["README.md", ["drwn acp serve <slug>", "drwn refresh --json", "Foundry/Analyzer-linked"]],
+    ["docs/cli-quickref.md", ["payload v3", "envelope v2", "CAPABILITY_NOT_REPORTED", "HTTP 202"]],
+    ["docs-docusaurus/docs/reference/cli/acp.md", ["terminal cancellation", "I236/I238"]],
+    ["docs-docusaurus/docs/reference/cli/worker.md", ["LOCAL_CARD_REF_MISMATCH", "NO_ACTIVE_DEPLOYMENT"]],
+    ["docs-docusaurus/docs/reference/cli/refresh.md", ["CREDENTIAL_SCHEMA_UNSUPPORTED", "never persisted"]],
+    ["docs/release-process.md", ["dry-run run ID and attempt", "artifact ID and digest", "release-recovery.yml"]],
+    ["docs/maintainers/publishing.md", ["No local token fallback", "darwinian-npm-publish"]],
+    ["CHANGELOG.md", ["## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
+  ];
+  const drift: string[] = [];
+  for (const [file, tokens] of requiredTokens) {
+    if (!existsSync(join(repoRoot, file))) continue;
+    const content = readFileSync(join(repoRoot, file), "utf8");
+    for (const token of tokens) {
+      if (!content.includes(token)) drift.push(`${file} is missing ${token}`);
+    }
+  }
+  const publishingPath = join(repoRoot, "docs/maintainers/publishing.md");
+  if (existsSync(publishingPath)) {
+    const cliSection = readFileSync(publishingPath, "utf8").split("## Publishing `drwn-command-bridge`")[0] ?? "";
+    for (const retired of ["NPM_ORG_TOKEN", "TMP_NPMRC", "--userconfig"]) {
+      if (cliSection.includes(retired)) drift.push(`darwinian CLI docs retain ${retired} token fallback`);
+    }
+  }
 
   return {
     name: "documentation presence",
-    ok: missing.length === 0,
-    details: missing.length > 0 ? `Missing: ${missing.join(", ")}` : undefined,
+    ok: missing.length === 0 && drift.length === 0,
+    details: [
+      ...(missing.length > 0 ? [`Missing: ${missing.join(", ")}`] : []),
+      ...drift,
+    ].join("; ") || undefined,
   } satisfies CheckResult;
 }
 
 type SourceOverrides = Record<string, string>;
+
+const TARGET_RELEASE_VERSION = "1.2.0";
+const FIRST_SUPPORTED_WORKER_VERSION = "1.1.0";
+
+function runtimeVersionFromSource(
+  runtimeSource: string,
+  packageVersion: string | undefined,
+  issues: string[],
+): string | undefined {
+  const derivesFromAdjacentPackage =
+    runtimeSource.includes("readRuntimeVersion") &&
+    runtimeSource.includes('new URL("../../package.json", import.meta.url)');
+  if (derivesFromAdjacentPackage) return packageVersion;
+  issues.push("runtime version must derive from adjacent package metadata");
+  return runtimeSource.match(/DRWN_VERSION = "([^"]+)"/)?.[1];
+}
+
+function isAtLeast(version: string | undefined, floor: string): boolean {
+  if (!version) return false;
+  try {
+    return gte(version, floor);
+  } catch {
+    return false;
+  }
+}
 
 export function verifyRecommendedMachineWorkerContract(
   root = repoRoot,
@@ -864,9 +927,11 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
   } catch {
     issues.push("package.json must be valid JSON");
   }
-  const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
-  if (packageVersion !== "1.1.0") issues.push("package version must be 1.1.0");
-  if (runtimeVersion !== "1.1.0") issues.push("runtime version must be 1.1.0");
+  const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), packageVersion, issues);
+  if (packageVersion !== TARGET_RELEASE_VERSION) issues.push(`package version must be ${TARGET_RELEASE_VERSION}`);
+  if (!isAtLeast(packageVersion, FIRST_SUPPORTED_WORKER_VERSION)) {
+    issues.push(`package version must be at least the ${FIRST_SUPPORTED_WORKER_VERSION} Worker hard-cut floor`);
+  }
   if (runtimeVersion !== packageVersion) issues.push("runtime version must match package version");
 
   return {
@@ -1059,12 +1124,23 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
   }
 
   const pkg = JSON.parse(source("package.json")) as { version?: string };
-  const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
-  // I177 advances the package/runtime line to 1.1.0 while preserving the V1 project
-  // Worker data contract and its older compatibility floor.
-  if (pkg.version !== "1.1.0") issues.push("package version must be 1.1.0");
+  const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), pkg.version, issues);
+  if (pkg.version !== TARGET_RELEASE_VERSION) issues.push(`package version must be ${TARGET_RELEASE_VERSION}`);
+  if (!isAtLeast(pkg.version, FIRST_SUPPORTED_WORKER_VERSION)) {
+    issues.push(`package version must be at least the ${FIRST_SUPPORTED_WORKER_VERSION} Worker hard-cut floor`);
+  }
   if (runtimeVersion !== pkg.version) issues.push("runtime version must match package version");
-  if (runtimeVersion !== "1.1.0") issues.push("runtime version must be 1.1.0");
+
+  try {
+    const buzz = JSON.parse(source("registry/cards/buzz-delivery-worker/card.json")) as {
+      harness?: { minVersion?: string };
+    };
+    if (buzz.harness?.minVersion !== TARGET_RELEASE_VERSION) {
+      issues.push(`Buzz delivery Card harness.minVersion must be ${TARGET_RELEASE_VERSION}`);
+    }
+  } catch {
+    issues.push("Buzz delivery Card metadata must be valid JSON");
+  }
 
   return {
     name: "project Worker contract",
@@ -1097,7 +1173,7 @@ export function verifySemanticMindContract(root = repoRoot, overrides: SourceOve
   } catch {
     issues.push("package.json must be valid JSON");
   }
-  const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
+  const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), packageVersion, issues);
   if (!packageVersion || !gte(packageVersion, "0.9.0")) {
     issues.push("package version must be at least 0.9.0");
   }
