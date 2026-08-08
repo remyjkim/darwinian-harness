@@ -53,9 +53,16 @@ readback, and publication. A successful dry run is not publication authority.
 Before creating a tag, an authorized administrator must configure and read back
 fresh, normalized evidence for both external control planes:
 
-- GitHub environment `darwinian-npm-publish` has the sole independent reviewer
-  `leeminseung`, prevents self-review, disallows admin bypass, enables custom
-  deployment policies, and admits only tag `v1.2.0`.
+- GitHub environment `darwinian-npm-publish` matches the declared approval
+  policy in `scripts/release/release-policy.json` for required reviewers and
+  self-review, disallows admin bypass, enables custom deployment policies, and
+  admits only tag `v1.2.0`. Under the current policy the tag is created by
+  `remyjkim` and the deployment is approved by the distinct `mind001-cl`
+  credential with self-review prevented, so the `remyjkim` token alone cannot
+  both authorize and publish. Both identities belong to the same maintainer, so
+  this is credential separation, not independent human review. Changing it is a
+  reviewed edit to the policy file, never an undeclared change to GitHub
+  settings.
 - npm trusted publishing binds package `darwinian` to
   `remyjkim/darwinian-worker`, workflow `release.yml`, environment
   `darwinian-npm-publish`, and action `npm publish` only.
@@ -102,7 +109,7 @@ merely similar run.
 ### 5. Approve exact-tar OIDC publication
 
 Only `Publish to npm` enters `darwinian-npm-publish` and receives
-`id-token: write`. After independent approval it repeats the default-branch,
+`id-token: write`. After policy-conformant approval it repeats the default-branch,
 control-readback, registry-freshness, archive-digest, receipt, build, and tar
 checks. It then publishes the downloaded exact tarball; it does not repack the
 checkout:
@@ -142,7 +149,7 @@ authorization, or production traffic proof.
 
 If npm publication succeeds but a later registry smoke or GitHub Release step
 fails, the ordinary workflow cannot be rerun because `1.2.0` now exists. Use
-`.github/workflows/release-recovery.yml` only after a new independent approval.
+`.github/workflows/release-recovery.yml` only after a new policy-conformant approval.
 
 Dispatch `CLI Release Recovery` with ref `v1.2.0`, the exact failed canonical
 release run ID, and this closed authorization JSON (with the real canonical
@@ -159,7 +166,7 @@ timestamp and run ID):
 }
 ```
 
-Recovery enters `darwinian-npm-publish` for independent approval but has no
+Recovery enters `darwinian-npm-publish` for policy-conformant approval but has no
 OIDC, npm token, publish, repack, tag mutation/push, dist-tag, or unpublish
 capability. It requires the existing tag, failed canonical run, dry-run
 authorization, unexpired artifact, receipt, npm `gitHead`, and registry tar bytes

@@ -148,7 +148,7 @@ describe("Worker annotated-tag publication workflow", () => {
     expect(validation).not.toMatch(/^\s+environment:/m);
   });
 
-  test("grants OIDC only to the independently protected exact-artifact publish job", () => {
+  test("grants OIDC only to the separately protected exact-artifact publish job", () => {
     const publish = job("publish", "smoke_macos");
     expect(workflow.match(/id-token: write/g)).toHaveLength(1);
     expect(publish).toContain("name: Publish to npm");

@@ -108,7 +108,15 @@ describe("documentation readiness", () => {
       "I238",
       "Services adoption",
     ]) expect(releaseProcess).toContain(token);
+    // The approver identity is declared in scripts/release/release-policy.json, so the
+    // release docs must not reassert a second-person control the receipt no longer proves.
+    for (const stale of ["independent approval", "independently approved", "independently reviewed"]) {
+      expect(releaseProcess).not.toContain(stale);
+    }
+    expect(releaseProcess).toContain("scripts/release/release-policy.json");
     const cliPublishing = publishing.split("## Publishing `drwn-command-bridge`")[0]!;
+    expect(cliPublishing).not.toContain("independently approved");
+    expect(cliPublishing).toContain("DARWINIAN_GITHUB_PUBLICATION_CONTROLS_JSON");
     expect(cliPublishing).not.toContain("NPM_ORG_TOKEN");
     expect(cliPublishing).not.toContain("TMP_NPMRC");
     expect(cliPublishing).not.toContain("--userconfig");

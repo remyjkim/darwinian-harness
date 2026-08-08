@@ -1,4 +1,4 @@
-# ABOUTME: G2 implementation plan for I239's Worker CLI 1.2.0 credential hard cut and independently gated release.
+# ABOUTME: G2 implementation plan for I239's Worker CLI 1.2.0 credential hard cut and policy-gated release.
 # ABOUTME: Converts the fresh G1 contracts into ordered RED-GREEN slices, immutable evidence, and explicit downstream stops.
 
 # [I239] Darwinian Worker CLI 1.2.0 release and operational ACP/Buzz handoff — Implementation Plan (GATE 2)
@@ -568,12 +568,13 @@ Any unexpected failure invokes `systematic-debugging`. Do not broaden scope or w
 5. RED/GREEN: require only the minimal protected job to use environment `darwinian-npm-publish` and `id-token: write`. After approval it repeats default-branch, freshness, control, identity, and tar validation and runs `npm publish ./<qualified>.tgz --access public` without checkout repack.
 6. RED/GREEN: after propagation, require npm version, `gitHead` where reported, shasum, and integrity to match before Ubuntu/macOS installed smokes and exact GitHub Release create-or-verify. Existing mismatched metadata fails.
 7. RED/GREEN control evidence:
-   - GitHub environment has independent reviewer `leeminseung`, `prevent_self_review=true`, `can_admins_bypass=false`, custom policies enabled, one exact tag policy `v1.2.0`, and no branch policy;
+   - GitHub environment matches the checked-in approval policy `scripts/release/release-policy.json` for `requiredReviewers` and `preventSelfReview`, and always has `can_admins_bypass=false`, custom policies enabled, one exact tag policy `v1.2.0`, and no branch policy;
+   - the approval policy itself is validated: a non-empty named reviewer list, boolean self-review setting, `canAdminsBypass=false`, and environment `darwinian-npm-publish`, so no policy value can remove the approval click, enable admin bypass, or break the npm OIDC environment binding;
    - normalized authenticated npm Settings evidence names package `darwinian`, GitHub owner/repo/workflow/environment, allowed action exactly `npm publish`, and `require_2fa_disallow_tokens`;
    - any absent, stale, unverifiable, or secret-bearing field fails.
 8. RED recovery workflow: exact annotated tag and failed canonical publish run/authorization receipt are required; every identity is derived/read back.
 9. RED: structurally prohibit recovery OIDC, `NODE_AUTH_TOKEN`, `NPM_TOKEN`, publish, repack, tag mutation/push, dist-tag, and unpublish paths.
-10. GREEN: recovery may verify existing npm/tag/commit/tar identity, run registry smokes, and create/verify missing GitHub Release metadata at the existing tag only. It enters the protected environment for independent approval without publish authority.
+10. GREEN: recovery may verify existing npm/tag/commit/tar identity, run registry smokes, and create/verify missing GitHub Release metadata at the existing tag only. It enters the protected environment for policy-conformant approval without publish authority.
 11. Run all workflow/provenance/control tests, release readiness, typecheck, and full suite. Do not tag, publish, configure controls, or dispatch recovery.
 
 **Commit seams:**
@@ -665,7 +666,7 @@ Any unexpected failure invokes `systematic-debugging`. Do not broaden scope or w
 4. Stop. Obtain explicit authorization naming that exact run/artifact and separately authorizing GitHub/npm control configuration/readback and publication.
 5. Configure/read back `darwinian-npm-publish` and npm package settings; validate sanitized evidence. Any mismatch stops before tagging.
 6. Re-fetch `origin/main`. If it moved, inventory the delta and run a new dry run; never reuse the old artifact.
-7. Create/push only the annotated `v1.2.0` tag carrying the authorized run/artifact identity. The workflow revalidates, waits for independent environment approval, publishes the exact tarball, and verifies registry bytes/smokes/Release metadata.
+7. Create/push only the annotated `v1.2.0` tag carrying the authorized run/artifact identity. The workflow revalidates, waits for policy-conformant environment approval, publishes the exact tarball, and verifies registry bytes/smokes/Release metadata.
 8. If npm publication succeeded and a later step failed, stop for separately authorized recovery or patch roll-forward. Never reuse 1.2.0 and never unpublish as an automatic response.
 9. Create the I239 completion/immutable release receipt only after the full post-merge gate passes. Hand the released package/build/auth-schema capability receipt to I236, Services R2, and I238; perform none of their live operations.
 10. I236 must mint a fresh v3 credential after its canonical cut and bind its authorized live receipts to the I239 release tuple. I238 still requires the separate Buzz child-environment receipt, lease, candidate, operation authorities, and its own live receipts.
