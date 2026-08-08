@@ -191,6 +191,24 @@ describe("auth CLI E2E", () => {
     expect(state.authorizeAuthHeaders).toEqual(["Bearer device-session-token"]);
     expect(state.sessionAuthHeaders).toEqual([]);
 
+    const refresh = await runAgentsCli(["refresh", "--json"], env);
+    expect(refresh.exitCode).toBe(0);
+    const refreshReceipt = parseAuthOperationReceipt(JSON.parse(refresh.stdout));
+    expect(refreshReceipt).toMatchObject({
+      worker: { sourceCommit: "0".repeat(40) },
+      credential: { generation: 2, issuer: `${apiUrl}/api/auth` },
+      action: "refresh",
+      mode: "ordinary",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(refresh.stdout).not.toContain("cli-e2e@example.com");
+    expect(state.oauthTokenRequests).toHaveLength(2);
+    expect(state.oauthTokenRequests[1]).toContain("grant_type=refresh_token");
+
     const logout = await runAgentsCli(["logout"], { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl });
     expect(logout.exitCode).toBe(0);
     expect(logout.stdout).toContain("Logged out. Credentials removed.");

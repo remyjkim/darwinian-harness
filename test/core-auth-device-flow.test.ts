@@ -2,7 +2,7 @@
 // ABOUTME: Proves the retired Analyzer-client overload is absent and timing/identity are injected.
 
 import { describe, expect, test } from "bun:test";
-import { runDeviceFlow } from "../cli/core/auth/device-flow";
+import { AuthRemoteOperationError, refreshToken, runDeviceFlow } from "../cli/core/auth/device-flow";
 import { drwnCliProfile } from "../cli/core/auth/profile";
 
 const IAT = 1_786_080_000;
@@ -172,5 +172,115 @@ describe("runDeviceFlow", () => {
       });
     }
     expect(true).toBe(true);
+  });
+});
+
+describe("refreshToken remote classification", () => {
+  test("returns a validated token bundle only from a successful response", async () => {
+    const profile = drwnCliProfile({});
+    const accessToken = fakeJwt(profile.issuer);
+
+    const result = await refreshToken(
+      profile,
+      "refresh-token",
+      (async () => Response.json({
+        access_token: accessToken,
+        refresh_token: "refresh-token-2",
+        expires_in: 900,
+      })) as unknown as typeof fetch,
+    );
+
+    expect(result).toMatchObject({ access_token: accessToken, refresh_token: "refresh-token-2" });
+  });
+
+  test("classifies redirect, rejection, server, network, and invalid success without retaining bodies", async () => {
+    const profile = drwnCliProfile({});
+    const sentinel = "SENTINEL_REFRESH_RESPONSE_BODY_239";
+    const scenarios: Array<{
+      name: string;
+      fetcher: typeof fetch;
+      reason: string;
+      result: string;
+      httpClass: string;
+    }> = [
+      {
+        name: "redirect",
+        fetcher: (async () => new Response(null, { status: 302, headers: { location: "https://elsewhere.test" } })) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_INDETERMINATE",
+        result: "indeterminate",
+        httpClass: "3xx",
+      },
+      {
+        name: "rejection",
+        fetcher: (async () => new Response(sentinel, { status: 400 })) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_REJECTED",
+        result: "rejected",
+        httpClass: "4xx",
+      },
+      {
+        name: "server",
+        fetcher: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_INDETERMINATE",
+        result: "indeterminate",
+        httpClass: "5xx",
+      },
+      {
+        name: "network",
+        fetcher: (async () => { throw new TypeError(sentinel); }) as unknown as typeof fetch,
+        reason: "AUTH_REMOTE_INDETERMINATE",
+        result: "indeterminate",
+        httpClass: "network_error",
+      },
+      {
+        name: "malformed success",
+        fetcher: (async () => new Response(sentinel, { status: 200 })) as unknown as typeof fetch,
+        reason: "AUTH_RESPONSE_INVALID",
+        result: "rejected",
+        httpClass: "2xx",
+      },
+      {
+        name: "wrong issuer",
+        fetcher: (async () => Response.json({
+          access_token: fakeJwt("https://wrong-issuer.test/api/auth"),
+          refresh_token: "refresh-token-2",
+          expires_in: 900,
+          response_body: sentinel,
+        })) as unknown as typeof fetch,
+        reason: "AUTH_RESPONSE_INVALID",
+        result: "rejected",
+        httpClass: "2xx",
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      try {
+        await refreshToken(profile, "refresh-token", scenario.fetcher);
+        throw new Error(`${scenario.name} unexpectedly succeeded`);
+      } catch (error) {
+        expect(error, scenario.name).toBeInstanceOf(AuthRemoteOperationError);
+        expect(error).toMatchObject({
+          reason: scenario.reason,
+          result: scenario.result,
+          httpClass: scenario.httpClass,
+        });
+        expect(String(error)).not.toContain(sentinel);
+        expect(JSON.stringify(error)).not.toContain(sentinel);
+      }
+    }
+  });
+
+  test("rejects a missing refresh token before any request", async () => {
+    const profile = drwnCliProfile({});
+    let requests = 0;
+
+    await expect(refreshToken(
+      profile,
+      "",
+      (async () => {
+        requests += 1;
+        return Response.json({});
+      }) as unknown as typeof fetch,
+    )).rejects.toMatchObject({ reason: "AUTH_RESPONSE_INVALID", result: "rejected", httpClass: "2xx" });
+    expect(requests).toBe(0);
   });
 });

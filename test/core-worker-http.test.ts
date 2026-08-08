@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fetchWithWorkerAuth } from "../cli/core/worker-http";
-import { writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
+import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
 import { resolveCredentialsPath } from "../cli/core/paths";
 
 let tmp: string | null = null;
@@ -104,6 +104,12 @@ describe("fetchWithWorkerAuth", () => {
     expect(refreshHits).toBe(1);
     // Two Deploy API attempts: the stale token, then the refreshed token.
     expect(bearersSent).toEqual([`Bearer ${initialToken}`, `Bearer ${refreshedToken}`]);
+    expect(await readCredentials(resolveCredentialsPath(tmp!))).toMatchObject({
+      credentialId: "55555555-5555-4555-8555-555555555555",
+      generation: 2,
+      accessToken: refreshedToken,
+      refreshToken: "refresh-2",
+    });
   });
 
   test("does not retry on 401 when the token came from env (short-circuit)", async () => {

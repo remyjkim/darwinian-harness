@@ -8,6 +8,7 @@ import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { LoginCommand } from "../cli/commands/auth/login";
 import { LogoutCommand } from "../cli/commands/auth/logout";
+import { RefreshCommand } from "../cli/commands/auth/refresh";
 import { WhoamiCommand } from "../cli/commands/auth/whoami";
 import type { AgentsContext } from "../cli/context";
 import { readCredentials, writeCredentials } from "../cli/core/auth/credentials";
@@ -78,6 +79,7 @@ class CaptureStream extends Writable {
 afterEach(async () => {
   LoginCommand.testDeps = undefined;
   LogoutCommand.testDeps = undefined;
+  RefreshCommand.testDeps = undefined;
   WhoamiCommand.testDeps = undefined;
   await cleanupTempRoots(tempRoots);
 });
@@ -116,6 +118,7 @@ async function runAuthCommand(
   const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0" });
   cli.register(LoginCommand);
   cli.register(LogoutCommand);
+  cli.register(RefreshCommand);
   cli.register(WhoamiCommand);
   const exitCode = await cli.run(args, context);
   return { fixture, stdout: stdout.text(), stderr: stderr.text(), exitCode };
@@ -379,6 +382,184 @@ describe("auth commands", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toEndWith("AUTH_RESPONSE_INVALID\n");
     expect(result.stderr).not.toContain(sentinel);
+  });
+
+  test("refresh help is side-effect-free and documents explicit forced refresh", async () => {
+    let effects = 0;
+    RefreshCommand.testDeps = {
+      fetch: (async () => {
+        effects += 1;
+        throw new Error("must not fetch for help");
+      }) as unknown as typeof fetch,
+      readCredentials: async () => {
+        effects += 1;
+        throw new Error("must not read credentials for help");
+      },
+    };
+
+    const result = await runAuthCommand(["refresh", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/^Details$/m);
+    expect(result.stdout).toMatch(/^Examples$/m);
+    expect(result.stdout).toContain("always performs");
+    expect(result.stdout).toContain("--json");
+    expect(effects).toBe(0);
+  });
+
+  test("refresh --json always refreshes a fresh credential and emits the persisted generation", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const refreshedToken = fakeJwt("forced@example.test");
+    const requestBodies: string[] = [];
+    RefreshCommand.testDeps = {
+      env: {},
+      fetch: (async (_url: string, init?: RequestInit) => {
+        requestBodies.push(String(init?.body ?? ""));
+        return Response.json({
+          access_token: refreshedToken,
+          refresh_token: "refresh-2",
+          expires_in: 900,
+        });
+      }) as typeof fetch,
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+    };
+
+    const result = await runAuthCommand(["refresh", "--json"], { fixture });
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(0);
+    expect(requestBodies).toHaveLength(1);
+    expect(requestBodies[0]).toContain("grant_type=refresh_token");
+    expect(receipt).toMatchObject({
+      worker: { version: "1.2.0", sourceCommit: "0".repeat(40) },
+      credential: { credentialId: current.credentialId, generation: 2 },
+      action: "refresh",
+      mode: "ordinary",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(await readCredentials(credentialsPath)).toMatchObject({
+      credentialId: current.credentialId,
+      generation: 2,
+      accessToken: refreshedToken,
+      refreshToken: "refresh-2",
+    });
+  });
+
+  test("refresh --json reports profile mismatch without a request or write", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    let requests = 0;
+    RefreshCommand.testDeps = {
+      env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+      fetch: (async () => {
+        requests += 1;
+        return Response.json({});
+      }) as unknown as typeof fetch,
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+    };
+
+    const result = await runAuthCommand(["refresh", "--json"], { fixture });
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(1);
+    expect(requests).toBe(0);
+    expect(receipt).toMatchObject({
+      credential: { credentialId: current.credentialId, generation: 1 },
+      outcome: "failed",
+      qualificationEligible: false,
+      remote: { action: "refresh", result: "not_applicable", httpClass: "not_applicable" },
+      local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
+      reason: "CREDENTIAL_PROFILE_MISMATCH",
+    });
+    expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("refresh --json reports write failure without advancing retained generation or leaking error text", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const sentinel = "SENTINEL_REFRESH_WRITE_FAILURE_239";
+    RefreshCommand.testDeps = {
+      env: {},
+      fetch: (async () => Response.json({
+        access_token: fakeJwt("rotated@example.test"),
+        refresh_token: "rotated-refresh-token",
+        expires_in: 900,
+      })) as unknown as typeof fetch,
+      writeCredentials: async () => { throw new Error(sentinel); },
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+    };
+
+    const result = await runAuthCommand(["refresh", "--json"], { fixture });
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(1);
+    expect(receipt).toMatchObject({
+      credential: { credentialId: current.credentialId, generation: 1 },
+      outcome: "failed",
+      qualificationEligible: false,
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "failed", afterConfirmedRemoteRevoke: false },
+      reason: "CREDENTIAL_WRITE_FAILED",
+    });
+    expect(result.stderr).toContain("CREDENTIAL_WRITE_FAILED");
+    expect(result.stderr).toContain("run `drwn login` again");
+    expect(result.stdout).not.toContain("rotated-refresh-token");
+    expect(result.stderr).not.toContain(sentinel);
+    expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("refresh ignores DRWN_TOKEN and fails absent stored custody without output or request", async () => {
+    let requests = 0;
+    RefreshCommand.testDeps = {
+      env: { DRWN_TOKEN: fakeJwt("env-only@example.test") },
+      fetch: (async () => {
+        requests += 1;
+        return Response.json({});
+      }) as unknown as typeof fetch,
+    };
+
+    const result = await runAuthCommand(["refresh", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("CREDENTIAL_ABSENT\n");
+    expect(requests).toBe(0);
+    expect(await Bun.file(resolveCredentialsPath(result.fixture.agentsDir)).exists()).toBe(false);
   });
 
   test("logout removes credentials and best-effort signs out", async () => {

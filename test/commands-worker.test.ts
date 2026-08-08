@@ -156,6 +156,7 @@ describe("worker command routing", () => {
       "drwn worker rollback",
       "drwn worker delete",
       "drwn login",
+      "drwn refresh",
       "drwn whoami",
       "drwn logout",
       "drwn card list",

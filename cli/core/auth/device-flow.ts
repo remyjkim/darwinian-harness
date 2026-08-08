@@ -10,6 +10,17 @@ const DEVICE_TOKEN_PATH = "/api/auth/device/token";
 const AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
 const TOKEN_PATH = "/api/auth/oauth2/token";
 
+export class AuthRemoteOperationError extends Error {
+  constructor(
+    public readonly reason: "AUTH_REMOTE_REJECTED" | "AUTH_REMOTE_INDETERMINATE" | "AUTH_RESPONSE_INVALID",
+    public readonly result: "rejected" | "indeterminate",
+    public readonly httpClass: "2xx" | "3xx" | "4xx" | "5xx" | "network_error",
+  ) {
+    super(reason);
+    this.name = "AuthRemoteOperationError";
+  }
+}
+
 export interface TokenBundle {
   access_token: string;
   refresh_token?: string;
@@ -200,13 +211,44 @@ export async function refreshToken(
   refreshTokenValue: string,
   fetcher: typeof fetch = fetch,
 ): Promise<TokenBundle> {
-  const tokenBody = await postForm(fetcher, new URL(TOKEN_PATH, profile.hubOrigin).href, {
-    grant_type: "refresh_token",
-    client_id: profile.clientId,
-    refresh_token: refreshTokenValue,
-    resource: profile.resource,
-  });
-  return tokenBundleFromResponse(tokenBody, profile);
+  if (refreshTokenValue.length === 0) {
+    throw new AuthRemoteOperationError("AUTH_RESPONSE_INVALID", "rejected", "2xx");
+  }
+  let response: Response;
+  try {
+    response = await fetcher(new URL(TOKEN_PATH, profile.hubOrigin).href, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: profile.clientId,
+        refresh_token: refreshTokenValue,
+        resource: profile.resource,
+      }).toString(),
+      redirect: "manual",
+    });
+  } catch {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_INDETERMINATE", "indeterminate", "network_error");
+  }
+
+  if (response.status >= 300 && response.status < 400) {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_INDETERMINATE", "indeterminate", "3xx");
+  }
+  if (response.status >= 400 && response.status < 500) {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_REJECTED", "rejected", "4xx");
+  }
+  if (response.status >= 500) {
+    throw new AuthRemoteOperationError("AUTH_REMOTE_INDETERMINATE", "indeterminate", "5xx");
+  }
+
+  let tokenBody: Record<string, unknown>;
+  try {
+    tokenBody = (await response.json()) as Record<string, unknown>;
+    return tokenBundleFromResponse(tokenBody, profile);
+  } catch (error) {
+    if (error instanceof AuthRemoteOperationError) throw error;
+    throw new AuthRemoteOperationError("AUTH_RESPONSE_INVALID", "rejected", "2xx");
+  }
 }
 
 export async function revokeToken(

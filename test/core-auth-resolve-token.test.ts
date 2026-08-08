@@ -6,7 +6,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
-import { resolveToken } from "../cli/core/auth/resolve-token";
+import { drwnCliProfile } from "../cli/core/auth/profile";
+import { refreshStoredCredentialTransaction, resolveToken } from "../cli/core/auth/resolve-token";
 
 let tmp: string | null = null;
 
@@ -157,6 +158,132 @@ describe("resolveToken", () => {
     });
     expect(result?.credential).toBeDefined();
     expect(await readCredentials(credentialsPath)).toEqual(result!.credential!);
+  });
+
+  test("the shared refresh transaction always refreshes a fresh credential and advances only after persistence", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const refreshedToken = fakeJwt({ email: "forced@example.test" });
+    let refreshRequests = 0;
+    const writes: number[] = [];
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({}),
+      fetcher: (async () => {
+        refreshRequests += 1;
+        return Response.json({
+          access_token: refreshedToken,
+          refresh_token: "refresh-2",
+          expires_in: 900,
+        });
+      }) as unknown as typeof fetch,
+      writeCredential: async (path, credential) => {
+        writes.push(credential.generation);
+        await writeCredentials(path, credential);
+      },
+    });
+
+    expect(refreshRequests).toBe(1);
+    expect(writes).toEqual([2]);
+    expect(result).toMatchObject({
+      outcome: "succeeded",
+      credential: { credentialId: ID, generation: 2, accessToken: refreshedToken },
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: null,
+    });
+    expect(await readCredentials(credentialsPath)).toEqual(result.credential);
+  });
+
+  test("profile mismatch is a safely identified no-request/no-write failure", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    let requests = 0;
+    let writes = 0;
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({ DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" }),
+      fetcher: (async () => {
+        requests += 1;
+        return Response.json({});
+      }) as unknown as typeof fetch,
+      writeCredential: async () => { writes += 1; },
+    });
+
+    expect(requests).toBe(0);
+    expect(writes).toBe(0);
+    expect(result).toEqual({
+      outcome: "failed",
+      credential: current,
+      remote: { action: "refresh", result: "not_applicable", httpClass: "not_applicable" },
+      local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
+      reason: "CREDENTIAL_PROFILE_MISMATCH",
+    });
+    expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("a write failure after confirmed exchange retains the local epoch and reports no false advancement", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const refreshedToken = fakeJwt({ email: "rotated@example.test" });
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({}),
+      fetcher: (async () => Response.json({
+        access_token: refreshedToken,
+        refresh_token: "rotated-refresh-token",
+        expires_in: 900,
+      })) as unknown as typeof fetch,
+      writeCredential: async () => { throw new Error("SENTINEL_WRITE_FAILURE_239"); },
+    });
+
+    expect(result).toEqual({
+      outcome: "failed",
+      credential: current,
+      remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "failed", afterConfirmedRemoteRevoke: false },
+      reason: "CREDENTIAL_WRITE_FAILED",
+    });
+    expect(JSON.stringify(result)).not.toContain("rotated-refresh-token");
+    expect(JSON.stringify(result)).not.toContain("SENTINEL_WRITE_FAILURE_239");
+    expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("remote failures retain the local epoch and expose only sanitized classification", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const sentinel = "SENTINEL_REMOTE_REFRESH_BODY_239";
+
+    const result = await refreshStoredCredentialTransaction({
+      credentialsPath,
+      credential: current,
+      profile: drwnCliProfile({}),
+      fetcher: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+    });
+
+    expect(result).toEqual({
+      outcome: "failed",
+      credential: current,
+      remote: { action: "refresh", result: "indeterminate", httpClass: "5xx" },
+      local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
+      reason: "AUTH_REMOTE_INDETERMINATE",
+    });
+    expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(await readCredentials(credentialsPath)).toEqual(current);
   });
 
   test("does not honor the retired IMINDS_TOKEN name", async () => {
