@@ -200,6 +200,31 @@ function verifyDocsPresence() {
 
 type SourceOverrides = Record<string, string>;
 
+const TARGET_RELEASE_VERSION = "1.2.0";
+const FIRST_SUPPORTED_WORKER_VERSION = "1.1.0";
+
+function runtimeVersionFromSource(
+  runtimeSource: string,
+  packageVersion: string | undefined,
+  issues: string[],
+): string | undefined {
+  const derivesFromAdjacentPackage =
+    runtimeSource.includes("readRuntimeVersion") &&
+    runtimeSource.includes('new URL("../../package.json", import.meta.url)');
+  if (derivesFromAdjacentPackage) return packageVersion;
+  issues.push("runtime version must derive from adjacent package metadata");
+  return runtimeSource.match(/DRWN_VERSION = "([^"]+)"/)?.[1];
+}
+
+function isAtLeast(version: string | undefined, floor: string): boolean {
+  if (!version) return false;
+  try {
+    return gte(version, floor);
+  } catch {
+    return false;
+  }
+}
+
 export function verifyRecommendedMachineWorkerContract(
   root = repoRoot,
   overrides: SourceOverrides = {},
@@ -864,9 +889,11 @@ export function verifyMachineContract(root = repoRoot, overrides: SourceOverride
   } catch {
     issues.push("package.json must be valid JSON");
   }
-  const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
-  if (packageVersion !== "1.1.0") issues.push("package version must be 1.1.0");
-  if (runtimeVersion !== "1.1.0") issues.push("runtime version must be 1.1.0");
+  const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), packageVersion, issues);
+  if (packageVersion !== TARGET_RELEASE_VERSION) issues.push(`package version must be ${TARGET_RELEASE_VERSION}`);
+  if (!isAtLeast(packageVersion, FIRST_SUPPORTED_WORKER_VERSION)) {
+    issues.push(`package version must be at least the ${FIRST_SUPPORTED_WORKER_VERSION} Worker hard-cut floor`);
+  }
   if (runtimeVersion !== packageVersion) issues.push("runtime version must match package version");
 
   return {
@@ -1059,12 +1086,23 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
   }
 
   const pkg = JSON.parse(source("package.json")) as { version?: string };
-  const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
-  // I177 advances the package/runtime line to 1.1.0 while preserving the V1 project
-  // Worker data contract and its older compatibility floor.
-  if (pkg.version !== "1.1.0") issues.push("package version must be 1.1.0");
+  const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), pkg.version, issues);
+  if (pkg.version !== TARGET_RELEASE_VERSION) issues.push(`package version must be ${TARGET_RELEASE_VERSION}`);
+  if (!isAtLeast(pkg.version, FIRST_SUPPORTED_WORKER_VERSION)) {
+    issues.push(`package version must be at least the ${FIRST_SUPPORTED_WORKER_VERSION} Worker hard-cut floor`);
+  }
   if (runtimeVersion !== pkg.version) issues.push("runtime version must match package version");
-  if (runtimeVersion !== "1.1.0") issues.push("runtime version must be 1.1.0");
+
+  try {
+    const buzz = JSON.parse(source("registry/cards/buzz-delivery-worker/card.json")) as {
+      harness?: { minVersion?: string };
+    };
+    if (buzz.harness?.minVersion !== TARGET_RELEASE_VERSION) {
+      issues.push(`Buzz delivery Card harness.minVersion must be ${TARGET_RELEASE_VERSION}`);
+    }
+  } catch {
+    issues.push("Buzz delivery Card metadata must be valid JSON");
+  }
 
   return {
     name: "project Worker contract",
@@ -1097,7 +1135,7 @@ export function verifySemanticMindContract(root = repoRoot, overrides: SourceOve
   } catch {
     issues.push("package.json must be valid JSON");
   }
-  const runtimeVersion = source("cli/core/version.ts").match(/DRWN_VERSION = "([^"]+)"/)?.[1];
+  const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), packageVersion, issues);
   if (!packageVersion || !gte(packageVersion, "0.9.0")) {
     issues.push("package version must be at least 0.9.0");
   }

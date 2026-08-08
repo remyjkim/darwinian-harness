@@ -3,9 +3,7 @@
 // ABOUTME: All command registration starts here; reusable logic lives outside the command layer.
 
 import { Builtins, Cli } from "clipanion";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { DRWN_VERSION } from "./core/version";
 import { AddMcpCommand } from "./commands/add/mcp";
 import { AddSkillCommand } from "./commands/add/skill";
 import { AnalyzeSessionsCommand } from "./commands/analyze/sessions";
@@ -146,14 +144,10 @@ import { WriteCommand } from "./commands/write";
 import { ExportSessionsCommand } from "./commands/export/sessions";
 import { ConfigGetCommand, ConfigSetCommand } from "./commands/config";
 
-const packageJson = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../package.json"), "utf8"),
-) as { version?: string };
-
 const cli = new Cli({
   binaryLabel: "drwn",
   binaryName: "drwn",
-  binaryVersion: packageJson.version ?? "0.0.0",
+  binaryVersion: DRWN_VERSION,
 });
 
 cli.register(MachineSkillListCommand);
