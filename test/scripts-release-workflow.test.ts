@@ -6,6 +6,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const workflow = readFileSync(join(import.meta.dir, "..", ".github", "workflows", "release.yml"), "utf8");
+const ciWorkflow = readFileSync(join(import.meta.dir, "..", ".github", "workflows", "ci.yml"), "utf8");
+const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as {
+  scripts: Record<string, string>;
+};
 
 function job(id: string, next?: string): string {
   const start = workflow.indexOf(`  ${id}:`);
@@ -14,6 +18,39 @@ function job(id: string, next?: string): string {
 }
 
 describe("Worker release dry-run workflow", () => {
+  test("source CI and release qualification consume one canonical bounded full-suite gate", () => {
+    const ciValidation = ciWorkflow.slice(
+      ciWorkflow.indexOf("  validate:"),
+      ciWorkflow.indexOf("  command-bridge:"),
+    );
+    const releaseValidation = job("validate", "dry_run_complete");
+
+    expect(pkg.scripts["test:gate"]).toBe("bun test --timeout 30000 ./test/");
+    expect(ciValidation.match(/run: bun run test:gate/g)).toHaveLength(1);
+    expect(releaseValidation.match(/run: bun run test:gate/g)).toHaveLength(1);
+    expect(ciValidation).not.toContain("run: bun test --timeout 30000 ./test/");
+    expect(releaseValidation).not.toMatch(/run: bun run test\s*(?:\n|$)/);
+    expect(releaseValidation).toContain(
+      "      - name: Release-readiness gate\n" +
+        "        env:\n" +
+        "          QUALITY_GATE_TEST_MODE: '1'\n" +
+        "        run: bun run verify:release",
+    );
+  });
+
+  test("test-bearing validators share a sixty-minute outer bound", () => {
+    const ciValidation = ciWorkflow.slice(
+      ciWorkflow.indexOf("  validate:"),
+      ciWorkflow.indexOf("  command-bridge:"),
+    );
+    const releaseValidation = job("validate", "dry_run_complete");
+    const artifactQualification = job("dry_run_complete", "validate_tag");
+
+    expect(ciValidation).toContain("timeout-minutes: 60");
+    expect(releaseValidation).toContain("timeout-minutes: 60");
+    expect(artifactQualification).toContain("timeout-minutes: 20");
+  });
+
   test("manual dispatch is explicitly main-only, dry-run-only, version-bound, and fresh-main-bound", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("version:");

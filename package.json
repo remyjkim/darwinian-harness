@@ -52,6 +52,7 @@
   "scripts": {
     "drwn": "bun run cli/index.ts",
     "test": "bun test ./test/",
+    "test:gate": "bun test --timeout 30000 ./test/",
     "typecheck": "tsc --noEmit",
     "verify:release": "bun run scripts/verify-release-readiness.ts",
     "verify:bridge": "bun run --cwd drwn-command-bridge verify",

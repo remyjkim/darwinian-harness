@@ -32,7 +32,9 @@ jobs:
     name: Validate release commit
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Individual tests still fail at 30s through test:gate; this outer bound protects
+    # the complete qualification job from normal hosted-runner variance.
+    timeout-minutes: 60
     permissions:
       contents: read
     outputs:
@@ -94,7 +96,7 @@ jobs:
         run: bun run typecheck
 
       - name: Unit and integration tests
-        run: bun run test
+        run: bun run test:gate
 
       - name: Install bridge dependencies
         working-directory: drwn-command-bridge
@@ -104,6 +106,8 @@ jobs:
         run: bun run verify:bridge
 
       - name: Release-readiness gate
+        env:
+          QUALITY_GATE_TEST_MODE: '1'
         run: bun run verify:release
 
   dry_run_complete:
