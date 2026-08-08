@@ -21,15 +21,19 @@ class FakeKeychainBackend implements KeychainBackend {
   key: Buffer | null = null;
   available = true;
   failDelete = false;
+  failLoad = false;
   loadCalls = 0;
+  storeCalls = 0;
   async isAvailable(): Promise<boolean> {
     return this.available;
   }
   async loadKey(): Promise<Buffer | null> {
     this.loadCalls += 1;
+    if (this.failLoad) throw new Error("CREDENTIAL_INTEGRITY");
     return this.key;
   }
   async storeKey(key: Buffer): Promise<void> {
+    this.storeCalls += 1;
     this.key = key;
   }
   async deleteKey(): Promise<void> {
@@ -84,6 +88,16 @@ describe("secret store", () => {
   test("should throw NoKeychainError when no keychain is available", async () => {
     backend.available = false;
     await expect(encryptToDisk(path, "x", backend)).rejects.toBeInstanceOf(NoKeychainError);
+  });
+
+  test("fails closed without storing a replacement key after an indeterminate lookup", async () => {
+    backend.failLoad = true;
+
+    await expect(encryptToDisk(path, "x", backend)).rejects.toThrow("CREDENTIAL_INTEGRITY");
+
+    expect(backend.loadCalls).toBe(1);
+    expect(backend.storeCalls).toBe(0);
+    expect(existsSync(path)).toBe(false);
   });
 
   test("should throw CredentialIntegrityError when the ciphertext is tampered", async () => {

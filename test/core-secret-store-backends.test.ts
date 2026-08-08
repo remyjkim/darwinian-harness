@@ -3,12 +3,13 @@
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import * as processModule from "../cli/core/process";
 import {
   DpapiBackend,
+  CredentialIntegrityError,
   FileKeychainBackend,
   MacKeychainBackend,
   SecretToolBackend,
@@ -127,6 +128,20 @@ describe("macOS security backend argv", () => {
     }
   });
 
+  test("loadKey fails closed on a non-absence security result without retaining stderr", async () => {
+    const spy = mockRunProcess({ exitCode: 1, stderr: "SENTINEL_MAC_LOOKUP_239" });
+    try {
+      await expect(new MacKeychainBackend("acct").loadKey()).rejects.toBeInstanceOf(CredentialIntegrityError);
+      try {
+        await new MacKeychainBackend("acct").loadKey();
+      } catch (error) {
+        expect(JSON.stringify(error)).not.toContain("SENTINEL_MAC_LOOKUP_239");
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("deleteKey fails closed on an unconfirmed security result without retaining stderr", async () => {
     const spy = mockRunProcess({ exitCode: 1, stderr: "SENTINEL_MAC_DELETE_239" });
     try {
@@ -158,12 +173,31 @@ describe("linux secret-tool backend", () => {
     }
   });
 
-  test("loadKey returns null when secret-tool is unavailable (exit 127)", async () => {
-    const spy = mockRunProcess({ exitCode: 127 });
+  test("loadKey returns null only for a confirmed empty secret-tool lookup", async () => {
+    const spy = mockRunProcess({ exitCode: 1 });
     try {
       expect(await new SecretToolBackend("acct", "label").loadKey()).toBeNull();
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  test("loadKey fails closed when secret-tool is unavailable or reports a lookup error", async () => {
+    for (const result of [
+      { exitCode: 127, stderr: "not found on PATH" },
+      { exitCode: 1, stderr: "SENTINEL_LINUX_LOOKUP_239" },
+    ]) {
+      const spy = mockRunProcess(result);
+      try {
+        await expect(new SecretToolBackend("acct", "label").loadKey()).rejects.toBeInstanceOf(CredentialIntegrityError);
+        try {
+          await new SecretToolBackend("acct", "label").loadKey();
+        } catch (error) {
+          expect(JSON.stringify(error)).not.toContain(result.stderr);
+        }
+      } finally {
+        spy.mockRestore();
+      }
     }
   });
 
@@ -204,6 +238,29 @@ describe("real macOS keychain round-trip", () => {
 });
 
 describe("real Windows DPAPI backend", () => {
+  test("fails closed when an existing protected key cannot be unprotected", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "drwn-dpapi-failure-"));
+    const savedPath = process.env.PATH;
+    const keyPath = join(dir, "credentials.json.key");
+    writeFileSync(join(dir, "pwsh"), "fixture");
+    writeFileSync(keyPath, "protected-key");
+    process.env.PATH = dir;
+    const spy = mockRunProcess({ exitCode: 1, stderr: "SENTINEL_DPAPI_LOOKUP_239" });
+    try {
+      await expect(new DpapiBackend(keyPath).loadKey()).rejects.toBeInstanceOf(CredentialIntegrityError);
+      try {
+        await new DpapiBackend(keyPath).loadKey();
+      } catch (error) {
+        expect(JSON.stringify(error)).not.toContain("SENTINEL_DPAPI_LOOKUP_239");
+      }
+    } finally {
+      spy.mockRestore();
+      if (savedPath === undefined) delete process.env.PATH;
+      else process.env.PATH = savedPath;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test.skipIf(process.platform !== "win32" || process.env.DRWN_RUN_REAL_KEYCHAIN_TESTS !== "1")(
     "stores, loads, and deletes a key via real DPAPI when explicitly enabled",
     async () => {

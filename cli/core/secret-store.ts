@@ -70,6 +70,14 @@ function isCanonicalBase64(value: unknown, expectedBytes?: number): value is str
   return expectedBytes === undefined || bytes.length === expectedBytes;
 }
 
+function decodeScopedKey(value: string): Buffer {
+  const key = Buffer.from(value, "base64");
+  if (key.length !== KEY_BYTES || key.toString("base64") !== value) {
+    throw new CredentialIntegrityError("Stored credentials key material is invalid.");
+  }
+  return key;
+}
+
 function isEnvelope(value: unknown): value is CredentialEnvelopeV2 {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
@@ -216,7 +224,8 @@ export class FileKeychainBackend implements KeychainBackend {
   async loadKey(): Promise<Buffer | null> {
     try {
       const text = (await fs.readFile(this.keyPath, "utf8")).trim();
-      return text ? Buffer.from(text, "base64") : null;
+      if (!text) throw new CredentialIntegrityError("Stored credentials key material is empty.");
+      return decodeScopedKey(text);
     } catch (error) {
       if (isErrorCode(error, "ENOENT")) return null;
       throw error;
@@ -242,9 +251,11 @@ export class MacKeychainBackend implements KeychainBackend {
   }
   async loadKey(): Promise<Buffer | null> {
     const result = await runProcess(["security", "find-generic-password", "-a", this.account, "-s", this.service, "-w"]);
-    if (result.exitCode !== 0) return null; // 44 == not found
+    if (result.exitCode === 44) return null;
+    if (result.exitCode !== 0) throw new CredentialIntegrityError("Scoped key lookup failed.");
     const value = result.stdout.trim();
-    return value ? Buffer.from(value, "base64") : null;
+    if (!value) throw new CredentialIntegrityError("Stored credentials key material is empty.");
+    return decodeScopedKey(value);
   }
   async storeKey(key: Buffer): Promise<void> {
     const result = await runProcess([
@@ -273,9 +284,11 @@ export class SecretToolBackend implements KeychainBackend {
   }
   async loadKey(): Promise<Buffer | null> {
     const result = await runProcess(["secret-tool", "lookup", "service", this.service, "account", this.account]);
-    if (result.exitCode !== 0) return null;
+    if (result.exitCode === 1 && result.stderr.trim() === "") return null;
+    if (result.exitCode !== 0) throw new CredentialIntegrityError("Scoped key lookup failed.");
     const value = result.stdout.trim();
-    return value ? Buffer.from(value, "base64") : null;
+    if (!value) throw new CredentialIntegrityError("Stored credentials key material is empty.");
+    return decodeScopedKey(value);
   }
   async storeKey(key: Buffer): Promise<void> {
     const result = await runProcess(
@@ -311,15 +324,16 @@ export class DpapiBackend implements KeychainBackend {
   async loadKey(): Promise<Buffer | null> {
     if (!existsSync(this.keyPath)) return null;
     const exe = powershellExe();
-    if (!exe) return null;
+    if (!exe) throw new CredentialIntegrityError("Scoped key unprotect backend is unavailable.");
     const script =
       `$b=[IO.File]::ReadAllBytes(${psLiteral(this.keyPath)});` +
       `$u=[Security.Cryptography.ProtectedData]::Unprotect($b,$null,'CurrentUser');` +
       `[Console]::Out.Write([Convert]::ToBase64String($u))`;
     const result = await runProcess([exe, "-NoProfile", "-NonInteractive", "-Command", script]);
-    if (result.exitCode !== 0) return null;
+    if (result.exitCode !== 0) throw new CredentialIntegrityError("Scoped key unprotect failed.");
     const value = result.stdout.trim();
-    return value ? Buffer.from(value, "base64") : null;
+    if (!value) throw new CredentialIntegrityError("Stored credentials key material is empty.");
+    return decodeScopedKey(value);
   }
   async storeKey(key: Buffer): Promise<void> {
     const exe = powershellExe();
