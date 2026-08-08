@@ -29,8 +29,12 @@ export type RefreshFailureReason =
   | "AUTH_RESPONSE_INVALID"
   | "CREDENTIAL_WRITE_FAILED";
 
+export type RefreshCredentialEvidence = Pick<
+  CliDahCredentialFileV3,
+  "credentialId" | "generation" | "issuer" | "clientId" | "resource" | "issuedAt" | "expiresAt"
+>;
+
 export type RefreshTransactionResult = {
-  credential: CliDahCredentialFileV3;
   remote: {
     action: "refresh";
     result: "not_applicable" | "confirmed" | "rejected" | "indeterminate";
@@ -42,8 +46,8 @@ export type RefreshTransactionResult = {
     afterConfirmedRemoteRevoke: false;
   };
 } & (
-  | { outcome: "succeeded"; reason: null }
-  | { outcome: "failed"; reason: RefreshFailureReason }
+  | { outcome: "succeeded"; credential: CliDahCredentialFileV3; reason: null }
+  | { outcome: "failed"; credential: RefreshCredentialEvidence; reason: RefreshFailureReason }
 );
 
 export class CredentialAbsentError extends Error {
@@ -63,6 +67,18 @@ export class RefreshCredentialError extends Error {
     this.name = "RefreshCredentialError";
     this.code = result.reason;
   }
+}
+
+function credentialEvidence(credential: CliDahCredentialFileV3): RefreshCredentialEvidence {
+  return {
+    credentialId: credential.credentialId,
+    generation: credential.generation,
+    issuer: credential.issuer,
+    clientId: credential.clientId,
+    resource: credential.resource,
+    issuedAt: credential.issuedAt,
+    expiresAt: credential.expiresAt,
+  };
 }
 
 export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAuth | null> {
@@ -143,7 +159,7 @@ export async function refreshStoredCredentialTransaction(input: {
   ) {
     return {
       outcome: "failed",
-      credential: current,
+      credential: credentialEvidence(current),
       remote: { action: "refresh", result: "not_applicable", httpClass: "not_applicable" },
       local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
       reason: "CREDENTIAL_PROFILE_MISMATCH",
@@ -159,7 +175,7 @@ export async function refreshStoredCredentialTransaction(input: {
       : new AuthRemoteOperationError("AUTH_RESPONSE_INVALID", "rejected", "2xx");
     return {
       outcome: "failed",
-      credential: current,
+      credential: credentialEvidence(current),
       remote: { action: "refresh", result: classified.result, httpClass: classified.httpClass },
       local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
       reason: classified.reason,
@@ -180,7 +196,7 @@ export async function refreshStoredCredentialTransaction(input: {
   } catch {
     return {
       outcome: "failed",
-      credential: current,
+      credential: credentialEvidence(current),
       remote: { action: "refresh", result: "rejected", httpClass: "2xx" },
       local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
       reason: "AUTH_RESPONSE_INVALID",
@@ -194,7 +210,7 @@ export async function refreshStoredCredentialTransaction(input: {
   } catch {
     return {
       outcome: "failed",
-      credential: current,
+      credential: credentialEvidence(current),
       remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
       local: { action: "write", result: "failed", afterConfirmedRemoteRevoke: false },
       reason: "CREDENTIAL_WRITE_FAILED",

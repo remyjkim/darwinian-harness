@@ -7,7 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
 import { drwnCliProfile } from "../cli/core/auth/profile";
-import { refreshStoredCredentialTransaction, resolveToken } from "../cli/core/auth/resolve-token";
+import {
+  refreshStoredCredential,
+  refreshStoredCredentialTransaction,
+  resolveToken,
+} from "../cli/core/auth/resolve-token";
 
 let tmp: string | null = null;
 
@@ -196,6 +200,7 @@ describe("resolveToken", () => {
       local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
       reason: null,
     });
+    if (result.outcome !== "succeeded") throw new Error("refresh transaction unexpectedly failed");
     expect(await readCredentials(credentialsPath)).toEqual(result.credential);
   });
 
@@ -222,7 +227,15 @@ describe("resolveToken", () => {
     expect(writes).toBe(0);
     expect(result).toEqual({
       outcome: "failed",
-      credential: current,
+      credential: {
+        credentialId: current.credentialId,
+        generation: current.generation,
+        issuer: current.issuer,
+        clientId: current.clientId,
+        resource: current.resource,
+        issuedAt: current.issuedAt,
+        expiresAt: current.expiresAt,
+      },
       remote: { action: "refresh", result: "not_applicable", httpClass: "not_applicable" },
       local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
       reason: "CREDENTIAL_PROFILE_MISMATCH",
@@ -251,12 +264,22 @@ describe("resolveToken", () => {
 
     expect(result).toEqual({
       outcome: "failed",
-      credential: current,
+      credential: {
+        credentialId: current.credentialId,
+        generation: current.generation,
+        issuer: current.issuer,
+        clientId: current.clientId,
+        resource: current.resource,
+        issuedAt: current.issuedAt,
+        expiresAt: current.expiresAt,
+      },
       remote: { action: "refresh", result: "confirmed", httpClass: "2xx" },
       local: { action: "write", result: "failed", afterConfirmedRemoteRevoke: false },
       reason: "CREDENTIAL_WRITE_FAILED",
     });
     expect(JSON.stringify(result)).not.toContain("rotated-refresh-token");
+    expect(JSON.stringify(result)).not.toContain(current.refreshToken);
+    expect(JSON.stringify(result)).not.toContain(current.accessToken);
     expect(JSON.stringify(result)).not.toContain("SENTINEL_WRITE_FAILURE_239");
     expect(await readCredentials(credentialsPath)).toEqual(current);
   });
@@ -277,13 +300,45 @@ describe("resolveToken", () => {
 
     expect(result).toEqual({
       outcome: "failed",
-      credential: current,
+      credential: {
+        credentialId: current.credentialId,
+        generation: current.generation,
+        issuer: current.issuer,
+        clientId: current.clientId,
+        resource: current.resource,
+        issuedAt: current.issuedAt,
+        expiresAt: current.expiresAt,
+      },
       remote: { action: "refresh", result: "indeterminate", httpClass: "5xx" },
       local: { action: "write", result: "not_performed", afterConfirmedRemoteRevoke: false },
       reason: "AUTH_REMOTE_INDETERMINATE",
     });
     expect(JSON.stringify(result)).not.toContain(sentinel);
+    expect(JSON.stringify(result)).not.toContain(current.refreshToken);
+    expect(JSON.stringify(result)).not.toContain(current.accessToken);
     expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("automatic refresh errors retain classification but no credential secrets", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
+    const credentialsPath = join(tmp, "credentials.json");
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+
+    try {
+      await refreshStoredCredential({
+        credentialsPath,
+        credential: current,
+        profile: drwnCliProfile({}),
+        fetcher: (async () => new Response("SENTINEL_REMOTE_BODY_239", { status: 503 })) as unknown as typeof fetch,
+      });
+      throw new Error("refresh unexpectedly succeeded");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "AUTH_REMOTE_INDETERMINATE" });
+      expect(JSON.stringify(error)).not.toContain(current.refreshToken);
+      expect(JSON.stringify(error)).not.toContain(current.accessToken);
+      expect(JSON.stringify(error)).not.toContain("SENTINEL_REMOTE_BODY_239");
+    }
   });
 
   test("does not honor the retired IMINDS_TOKEN name", async () => {
