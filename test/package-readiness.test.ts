@@ -132,6 +132,10 @@ describe("package readiness", () => {
 
   test("release workflow makes manual qualification main-only and non-publishing", () => {
     const workflow = readFileSync(join(process.cwd(), ".github", "workflows", "release.yml"), "utf8");
+    const manualJobs = workflow.slice(
+      workflow.indexOf("  validate:"),
+      workflow.indexOf("  validate_tag:"),
+    );
 
     expect(workflow).toContain("name: CLI Release");
     expect(workflow).toContain("workflow_dispatch:");
@@ -143,8 +147,8 @@ describe("package readiness", () => {
     expect(workflow).toContain("darwinian-worker-release-candidate");
     expect(workflow).not.toContain("secrets.NPM_TOKEN");
     expect(workflow).not.toContain("NODE_AUTH_TOKEN");
-    expect(workflow).not.toContain("id-token: write");
-    expect(workflow).not.toContain("npm publish");
+    expect(manualJobs).not.toContain("id-token: write");
+    expect(manualJobs).not.toContain("npm publish");
     expect(workflow).not.toContain("already_published");
   });
 

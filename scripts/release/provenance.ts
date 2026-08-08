@@ -252,6 +252,35 @@ export function parseReleaseTagAuthorization(message: string): ReleaseTagAuthori
   };
 }
 
+export interface ReleaseRecoveryAuthorizationV1 {
+  schema: "darwinian.worker.release-recovery-authorization";
+  schemaVersion: 1;
+  authorizedAt: string;
+  tag: "v1.2.0";
+  failedRunId: number;
+  action: "verify_and_repair_metadata";
+}
+
+export function parseRecoveryAuthorizationReceipt(text: string): ReleaseRecoveryAuthorizationV1 {
+  rejectDuplicateJsonKeys(text);
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    fail();
+  }
+  if (!isObject(value) || !hasExactKeys(value, ["schema", "schemaVersion", "authorizedAt", "tag", "failedRunId", "action"])) fail();
+  if (
+    value.schema !== "darwinian.worker.release-recovery-authorization" ||
+    value.schemaVersion !== 1 ||
+    !isCanonicalTimestamp(value.authorizedAt) ||
+    value.tag !== "v1.2.0" ||
+    !isPositiveInteger(value.failedRunId) ||
+    value.action !== "verify_and_repair_metadata"
+  ) fail();
+  return value as unknown as ReleaseRecoveryAuthorizationV1;
+}
+
 interface ProvenanceInput {
   receiptText: string;
   tagAnnotation: string;
@@ -268,7 +297,7 @@ interface ProvenanceInput {
     conclusion: string;
   };
   jobs: Array<{ name: string; conclusion: string }>;
-  artifacts: Array<{ id: number; name: string; digest: string; expired: boolean }>;
+  artifacts: Array<{ id: number; name: string; digest: string; expired: boolean; runId: number }>;
   artifact: QualifiedPackedArtifact;
 }
 
@@ -277,7 +306,7 @@ function oneJob(jobs: ProvenanceInput["jobs"], name: string, conclusion: string)
   if (matches.length !== 1 || matches[0]?.conclusion !== conclusion) fail();
 }
 
-export function verifyReleaseProvenance(input: ProvenanceInput): {
+function verifyReleaseProvenanceWithPolicy(input: ProvenanceInput, requireCurrentMain: boolean): {
   version: "1.2.0";
   sourceCommit: string;
   runId: number;
@@ -290,12 +319,13 @@ export function verifyReleaseProvenance(input: ProvenanceInput): {
   for (const commit of [
     input.tag.peeledCommit,
     input.checkoutCommit,
-    input.originMainCommit,
     input.run.headSha,
     input.artifact.sourceCommit,
   ]) {
     if (!FULL_SHA.test(commit) || commit !== receipt.workflow.sourceCommit) fail();
   }
+  if (!FULL_SHA.test(input.originMainCommit) ||
+    requireCurrentMain && input.originMainCommit !== receipt.workflow.sourceCommit) fail();
   if (authorization.version !== receipt.package.version ||
     authorization.dryRunRunId !== receipt.workflow.runId ||
     authorization.dryRunRunAttempt !== receipt.workflow.runAttempt) fail();
@@ -320,6 +350,7 @@ export function verifyReleaseProvenance(input: ProvenanceInput): {
     artifactMetadata.expired ||
     artifactMetadata.name !== RELEASE_ARTIFACT_NAME ||
     artifactMetadata.id !== authorization.artifactId ||
+    artifactMetadata.runId !== receipt.workflow.runId ||
     artifactMetadata.digest !== authorization.artifactDigest ||
     !ARTIFACT_DIGEST.test(artifactMetadata.digest)
   ) fail();
@@ -340,4 +371,12 @@ export function verifyReleaseProvenance(input: ProvenanceInput): {
     artifactId: artifactMetadata.id,
     artifactDigest: artifactMetadata.digest,
   };
+}
+
+export function verifyReleaseProvenance(input: ProvenanceInput) {
+  return verifyReleaseProvenanceWithPolicy(input, true);
+}
+
+export function verifyRecoveryReleaseProvenance(input: ProvenanceInput) {
+  return verifyReleaseProvenanceWithPolicy(input, false);
 }

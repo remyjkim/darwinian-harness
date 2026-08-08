@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import * as tar from "tar";
 import {
   parsePackagedBuildIdentity,
@@ -227,6 +227,116 @@ export async function qualifyPackedArtifact(
     integrity,
     members,
   };
+}
+
+async function listNpmTarMembers(artifactPath: string): Promise<string[]> {
+  const paths: string[] = [];
+  try {
+    await tar.t({
+      file: artifactPath,
+      onentry: (entry) => {
+        if (entry.type !== "File" && entry.type !== "OldFile") return;
+        if (!entry.path.startsWith("package/")) throw new ReleaseArtifactError("tar member escapes the package root");
+        paths.push(entry.path.slice("package/".length));
+      },
+    });
+  } catch (error) {
+    if (error instanceof ReleaseArtifactError) throw error;
+    throw new ReleaseArtifactError("tar member inventory cannot be read");
+  }
+  return paths;
+}
+
+export interface ReceivedArtifactExpectation {
+  packageName: string;
+  version: string;
+  sourceCommit: string;
+  filename: string;
+  byteLength: number;
+  sha1: string;
+  sha256: string;
+  integrity: string;
+}
+
+export async function requalifyReceivedArtifact(input: {
+  artifactPath: string;
+  expected: ReceivedArtifactExpectation;
+}): Promise<QualifiedPackedArtifact> {
+  if (basename(input.artifactPath) !== input.expected.filename) {
+    throw new ReleaseArtifactError("received artifact filename does not match its receipt");
+  }
+  const members = await listNpmTarMembers(input.artifactPath);
+  const packResultJson = JSON.stringify([{
+    name: input.expected.packageName,
+    version: input.expected.version,
+    filename: input.expected.filename,
+    size: input.expected.byteLength,
+    shasum: input.expected.sha1,
+    integrity: input.expected.integrity,
+    files: members.map((path) => ({ path })),
+  }]);
+  const qualified = await qualifyPackedArtifact({
+    packDirectory: dirname(input.artifactPath),
+    packResultJson,
+    expectedPackageName: input.expected.packageName,
+    expectedVersion: input.expected.version,
+    checkoutCommit: input.expected.sourceCommit,
+  });
+  if (qualified.sha256 !== input.expected.sha256) {
+    throw new ReleaseArtifactError("received artifact SHA-256 does not match its receipt");
+  }
+  return qualified;
+}
+
+export interface PublishedRegistryExpectation {
+  version: string;
+  sourceCommit: string;
+  sha1: string;
+  integrity: string;
+}
+
+export function verifyPublishedRegistryIdentity(
+  metadata: unknown,
+  expected: PublishedRegistryExpectation,
+  options: { requireGitHead?: boolean } = {},
+): PublishedRegistryExpectation & { gitHead: string | null } {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
+    throw new ReleaseArtifactError("registry metadata is malformed");
+  }
+  const record = metadata as Record<string, unknown>;
+  const allowedKeys = record.gitHead === undefined
+    ? ["dist", "version"]
+    : ["dist", "gitHead", "version"];
+  if (Object.keys(record).sort().join("\0") !== allowedKeys.sort().join("\0")) {
+    throw new ReleaseArtifactError("registry metadata has an unsupported shape");
+  }
+  if (typeof record.dist !== "object" || record.dist === null || Array.isArray(record.dist)) {
+    throw new ReleaseArtifactError("registry distribution metadata is malformed");
+  }
+  const distribution = record.dist as Record<string, unknown>;
+  if (Object.keys(distribution).sort().join("\0") !== ["integrity", "shasum"].sort().join("\0")) {
+    throw new ReleaseArtifactError("registry distribution metadata has an unsupported shape");
+  }
+  const gitHead = record.gitHead === undefined ? null : record.gitHead;
+  if (
+    record.version !== expected.version ||
+    distribution.shasum !== expected.sha1 ||
+    distribution.integrity !== expected.integrity ||
+    typeof expected.sourceCommit !== "string" || !FULL_LOWERCASE_GIT_SHA.test(expected.sourceCommit) ||
+    typeof expected.sha1 !== "string" || !/^[a-f0-9]{40}$/.test(expected.sha1) ||
+    typeof gitHead !== "string" && gitHead !== null ||
+    typeof gitHead === "string" && (!FULL_LOWERCASE_GIT_SHA.test(gitHead) || gitHead !== expected.sourceCommit) ||
+    options.requireGitHead === true && gitHead === null
+  ) {
+    throw new ReleaseArtifactError("registry identity does not match the qualified artifact");
+  }
+  const integrityBytes = typeof expected.integrity === "string" && expected.integrity.startsWith("sha512-")
+    ? Buffer.from(expected.integrity.slice("sha512-".length), "base64")
+    : Buffer.alloc(0);
+  if (integrityBytes.length !== 64 || `sha512-${integrityBytes.toString("base64")}` !== expected.integrity) {
+    throw new ReleaseArtifactError("qualified registry integrity is invalid");
+  }
+  return { ...expected, gitHead };
 }
 
 export interface ReleaseCommandResult {

@@ -8,12 +8,18 @@ import { join } from "node:path";
 import { readRuntimeVersion } from "../cli/core/version";
 import {
   qualifyPackedArtifact,
+  requalifyReceivedArtifact,
   runInstalledArtifactSmokes,
+  verifyPublishedRegistryIdentity,
   type QualifiedPackedArtifact,
 } from "./release/artifact-contract";
 import { validatePublicationControls } from "./release/publication-controls";
 import {
   createReleaseCandidateReceipt,
+  parseReleaseCandidateReceipt,
+  parseRecoveryAuthorizationReceipt,
+  parseReleaseTagAuthorization,
+  verifyRecoveryReleaseProvenance,
   verifyReleaseProvenance,
 } from "./release/provenance";
 import { probeRegistryVersion } from "./release/registry-probe";
@@ -71,6 +77,24 @@ export async function runReleaseCli(args: string[]): Promise<string> {
     });
     return `${JSON.stringify(result)}\n`;
   }
+  if (command === "requalify-artifact") {
+    if (args.length !== 3) throw new Error();
+    const receipt = parseReleaseCandidateReceipt(await readFile(requiredArg(args, 2), "utf8"));
+    const result = await requalifyReceivedArtifact({
+      artifactPath: requiredArg(args, 1),
+      expected: {
+        packageName: receipt.package.name,
+        version: receipt.package.version,
+        sourceCommit: receipt.build.sourceCommit,
+        filename: receipt.tar.filename,
+        byteLength: receipt.tar.byteLength,
+        sha1: receipt.tar.sha1,
+        sha256: receipt.tar.sha256,
+        integrity: receipt.tar.integrity,
+      },
+    });
+    return `${JSON.stringify(result)}\n`;
+  }
   if (command === "create-receipt") {
     if (args.length !== 2) throw new Error();
     const artifact = JSON.parse(await readFile(requiredArg(args, 1), "utf8")) as QualifiedPackedArtifact;
@@ -93,10 +117,38 @@ export async function runReleaseCli(args: string[]): Promise<string> {
     });
     return `${JSON.stringify(result)}\n`;
   }
+  if (command === "verify-registry") {
+    if (args.length !== 3 && args.length !== 4) throw new Error();
+    const artifact = JSON.parse(await readFile(requiredArg(args, 2), "utf8")) as QualifiedPackedArtifact;
+    const result = verifyPublishedRegistryIdentity(
+      JSON.parse(await readFile(requiredArg(args, 1), "utf8")),
+      {
+        version: artifact.version,
+        sourceCommit: artifact.sourceCommit,
+        sha1: artifact.sha1,
+        integrity: artifact.integrity,
+      },
+      { requireGitHead: args[3] === "--require-git-head" },
+    );
+    return `${JSON.stringify(result)}\n`;
+  }
+  if (command === "parse-tag-authorization") {
+    if (args.length !== 2) throw new Error();
+    return `${JSON.stringify(parseReleaseTagAuthorization(await readFile(requiredArg(args, 1), "utf8")))}\n`;
+  }
+  if (command === "parse-recovery-authorization") {
+    if (args.length !== 2) throw new Error();
+    return `${JSON.stringify(parseRecoveryAuthorizationReceipt(await readFile(requiredArg(args, 1), "utf8")))}\n`;
+  }
   if (command === "verify-provenance") {
     if (args.length !== 2) throw new Error();
     const input = JSON.parse(await readFile(requiredArg(args, 1), "utf8"));
     return `${JSON.stringify(verifyReleaseProvenance(input))}\n`;
+  }
+  if (command === "verify-recovery-provenance") {
+    if (args.length !== 2) throw new Error();
+    const input = JSON.parse(await readFile(requiredArg(args, 1), "utf8"));
+    return `${JSON.stringify(verifyRecoveryReleaseProvenance(input))}\n`;
   }
   throw new Error();
 }

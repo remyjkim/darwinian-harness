@@ -6,12 +6,15 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as tar from "tar";
 import {
   REQUIRED_RELEASE_MEMBERS,
   SAFE_INSTALLED_SMOKES,
   qualifyPackageMembers,
   qualifyPackedArtifact,
+  requalifyReceivedArtifact,
   runInstalledArtifactSmokes,
+  verifyPublishedRegistryIdentity,
   type ReleaseCommandRunner,
 } from "../scripts/release/artifact-contract";
 
@@ -82,6 +85,41 @@ describe("release package member qualification", () => {
 });
 
 describe("packed artifact measurement", () => {
+  test("requalifies a downloaded tar from measured receipt fields without trusting original pack output", async () => {
+    const root = await tempRoot();
+    const packageRoot = join(root, "package");
+    for (const member of REQUIRED_RELEASE_MEMBERS) {
+      const path = join(packageRoot, member);
+      await mkdir(join(path, ".."), { recursive: true });
+      await writeFile(path, member === "cli/generated/build-identity.json"
+        ? JSON.stringify({
+          schema: "darwinian.worker.build-identity",
+          schemaVersion: 1,
+          version: "1.2.0",
+          sourceCommit: SOURCE_COMMIT,
+        })
+        : "fixture\n");
+    }
+    const artifactPath = join(root, "darwinian-1.2.0.tgz");
+    await tar.c({ gzip: true, file: artifactPath, cwd: root }, ["package"]);
+    const bytes = Buffer.from(await Bun.file(artifactPath).arrayBuffer());
+    const result = await requalifyReceivedArtifact({
+      artifactPath,
+      expected: {
+        packageName: "darwinian",
+        version: "1.2.0",
+        sourceCommit: SOURCE_COMMIT,
+        filename: "darwinian-1.2.0.tgz",
+        byteLength: bytes.length,
+        sha1: createHash("sha1").update(bytes).digest("hex"),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
+      },
+    });
+    expect([...result.members].sort()).toEqual([...REQUIRED_RELEASE_MEMBERS].sort());
+    expect(result.sourceCommit).toBe(SOURCE_COMMIT);
+  });
+
   test("parses one actual pack result and binds byte identities to checkout and build identity", async () => {
     const root = await tempRoot();
     const bytes = Buffer.from("qualified tar bytes");
@@ -228,5 +266,42 @@ describe("installed artifact smokes", () => {
       run: runner,
       resolveInstalledBin: async (prefix) => join(await realpath(prefix), "lib", "node_modules", "darwinian", "cli", "index.ts"),
     })).rejects.toThrow("mutated quarantined state");
+  });
+});
+
+describe("published registry byte identity", () => {
+  const expected = {
+    version: "1.2.0",
+    sourceCommit: SOURCE_COMMIT,
+    sha1: "c".repeat(40),
+    integrity: `sha512-${Buffer.alloc(64, 1).toString("base64")}`,
+  };
+
+  test("requires version and registry byte identity and validates gitHead wherever reported", () => {
+    expect(verifyPublishedRegistryIdentity({
+      version: "1.2.0",
+      gitHead: SOURCE_COMMIT,
+      dist: { shasum: expected.sha1, integrity: expected.integrity },
+    }, expected)).toEqual({ ...expected, gitHead: SOURCE_COMMIT });
+    expect(verifyPublishedRegistryIdentity({
+      version: "1.2.0",
+      dist: { shasum: expected.sha1, integrity: expected.integrity },
+    }, expected)).toEqual({ ...expected, gitHead: null });
+  });
+
+  test("fails on mismatches, malformed metadata, and absent gitHead when recovery requires it", () => {
+    for (const metadata of [
+      { version: "1.2.1", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: expected.integrity } },
+      { version: "1.2.0", gitHead: "b".repeat(40), dist: { shasum: expected.sha1, integrity: expected.integrity } },
+      { version: "1.2.0", gitHead: SOURCE_COMMIT, dist: { shasum: "d".repeat(40), integrity: expected.integrity } },
+      { version: "1.2.0", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: "bad" } },
+      { version: "1.2.0", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: expected.integrity }, extra: true },
+    ]) {
+      expect(() => verifyPublishedRegistryIdentity(metadata, expected)).toThrow();
+    }
+    expect(() => verifyPublishedRegistryIdentity({
+      version: "1.2.0",
+      dist: { shasum: expected.sha1, integrity: expected.integrity },
+    }, expected, { requireGitHead: true })).toThrow();
   });
 });

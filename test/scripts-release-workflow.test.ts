@@ -7,6 +7,12 @@ import { join } from "node:path";
 
 const workflow = readFileSync(join(import.meta.dir, "..", ".github", "workflows", "release.yml"), "utf8");
 
+function job(id: string, next?: string): string {
+  const start = workflow.indexOf(`  ${id}:`);
+  const end = next ? workflow.indexOf(`  ${next}:`, start + 1) : workflow.length;
+  return start === -1 ? "" : workflow.slice(start, end === -1 ? undefined : end);
+}
+
 describe("Worker release dry-run workflow", () => {
   test("manual dispatch is explicitly main-only, dry-run-only, version-bound, and fresh-main-bound", () => {
     expect(workflow).toContain("workflow_dispatch:");
@@ -36,30 +42,32 @@ describe("Worker release dry-run workflow", () => {
   });
 
   test("dry run has read-only authority and no environment, OIDC, token, tag, release, or publish path", () => {
+    const dryRunJobs = `${job("validate", "dry_run_complete")}\n${job("dry_run_complete", "validate_tag")}`;
     expect(workflow).toContain("permissions:\n  contents: read");
-    expect(workflow).not.toContain("id-token: write");
-    expect(workflow).not.toMatch(/^\s+environment:/m);
-    expect(workflow).not.toContain("NODE_AUTH_TOKEN");
-    expect(workflow).not.toContain("NPM_TOKEN");
-    expect(workflow).not.toContain("npm publish");
-    expect(workflow).not.toContain("gh release");
-    expect(workflow).not.toMatch(/git (?:tag|push)/);
-    expect(workflow).not.toContain("contents: write");
+    expect(dryRunJobs).not.toContain("id-token: write");
+    expect(dryRunJobs).not.toMatch(/^\s+environment:/m);
+    expect(dryRunJobs).not.toContain("NODE_AUTH_TOKEN");
+    expect(dryRunJobs).not.toContain("NPM_TOKEN");
+    expect(dryRunJobs).not.toContain("npm publish");
+    expect(dryRunJobs).not.toContain("gh release");
+    expect(dryRunJobs).not.toMatch(/git (?:tag|push)/);
+    expect(dryRunJobs).not.toContain("contents: write");
   });
 
   test("qualifies one checked-out artifact through the complete source and installed contract", () => {
+    const dryRun = job("dry_run_complete", "validate_tag");
     expect(workflow).toContain("bun run typecheck");
     expect(workflow).toContain("bun run test");
     expect(workflow).toContain("bun run verify:bridge");
     expect(workflow).toContain("bun run verify:release");
     expect(workflow).toContain("bun scripts/release/build-identity.ts");
-    expect(workflow.match(/npm pack /g)).toHaveLength(1);
-    expect(workflow.match(/release-cli\.ts qualify-artifact/g)).toHaveLength(1);
-    expect(workflow.match(/release-cli\.ts smoke-artifact/g)).toHaveLength(1);
-    expect(workflow.match(/release-cli\.ts create-receipt/g)).toHaveLength(1);
-    expect(workflow.indexOf("build-identity.ts")).toBeLessThan(workflow.indexOf("npm pack "));
-    expect(workflow.indexOf("qualify-artifact")).toBeLessThan(workflow.indexOf("smoke-artifact"));
-    expect(workflow.indexOf("smoke-artifact")).toBeLessThan(workflow.indexOf("create-receipt"));
+    expect(dryRun.match(/npm pack /g)).toHaveLength(1);
+    expect(dryRun.match(/release-cli\.ts qualify-artifact/g)).toHaveLength(1);
+    expect(dryRun.match(/release-cli\.ts smoke-artifact/g)).toHaveLength(1);
+    expect(dryRun.match(/release-cli\.ts create-receipt/g)).toHaveLength(1);
+    expect(dryRun.indexOf("build-identity.ts")).toBeLessThan(dryRun.indexOf("npm pack "));
+    expect(dryRun.indexOf("qualify-artifact")).toBeLessThan(dryRun.indexOf("smoke-artifact"));
+    expect(dryRun.indexOf("smoke-artifact")).toBeLessThan(dryRun.indexOf("create-receipt"));
   });
 
   test("uploads exactly the tar and pre-upload receipt once under immutable artifact settings", () => {
@@ -74,5 +82,59 @@ describe("Worker release dry-run workflow", () => {
     expect(workflow).toContain("steps.upload.outputs.artifact-url");
     expect(workflow).toContain("steps.upload.outputs.artifact-digest");
     expect(workflow.indexOf("create-receipt")).toBeLessThan(workflow.indexOf("actions/upload-artifact@v4"));
+  });
+});
+
+describe("Worker annotated-tag publication workflow", () => {
+  test("accepts only the exact v1.2.0 annotated tag and validates its bound run and artifact before protection", () => {
+    const validation = job("validate_tag", "publish");
+    expect(workflow).toContain("push:\n    tags:\n      - 'v1.2.0'");
+    expect(validation).toContain("name: Validate authorized tag");
+    expect(validation).toContain("actions: read");
+    expect(validation).toContain('git cat-file -t "refs/tags/$TAG"');
+    expect(validation).toContain('git rev-parse "refs/tags/$TAG^{}"');
+    expect(validation).toContain("release-cli.ts parse-tag-authorization");
+    expect(validation).toContain("actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs");
+    expect(validation).toContain("actions/runs/$RUN_ID/artifacts");
+    expect(validation).toContain("actions/artifacts/$ARTIFACT_ID/zip");
+    expect(validation.indexOf("sha256sum")).toBeLessThan(validation.indexOf("unzip"));
+    expect(validation).toContain("release-cli.ts requalify-artifact");
+    expect(validation).toContain("release-cli.ts verify-provenance");
+    expect(validation).toContain("git fetch --no-tags origin main");
+    expect(validation).not.toContain("id-token: write");
+    expect(validation).not.toMatch(/^\s+environment:/m);
+  });
+
+  test("grants OIDC only to the independently protected exact-artifact publish job", () => {
+    const publish = job("publish", "smoke_macos");
+    expect(workflow.match(/id-token: write/g)).toHaveLength(1);
+    expect(publish).toContain("name: Publish to npm");
+    expect(publish).toContain("name: darwinian-npm-publish");
+    expect(publish).toContain("id-token: write");
+    expect(publish).toContain("bun scripts/release-cli.ts verify-controls");
+    expect(publish).toContain("bun scripts/release-cli.ts assert-unpublished");
+    expect(publish).toContain("actions/artifacts/${{ needs.validate_tag.outputs.artifact_id }}/zip");
+    expect(publish).toContain("bun scripts/release-cli.ts requalify-artifact");
+    expect(publish).toContain('npm publish "./candidate/darwinian-1.2.0.tgz" --access public');
+    expect(publish).not.toContain("npm pack --ignore-scripts");
+    expect(publish).toContain('npm pack "darwinian@1.2.0"');
+    expect(publish).not.toContain("NODE_AUTH_TOKEN");
+    expect(publish).not.toContain("NPM_TOKEN");
+  });
+
+  test("requires registry identity before Ubuntu/macOS installed smokes and exact GitHub Release verification", () => {
+    const publish = job("publish", "smoke_macos");
+    const macos = job("smoke_macos", "github_release");
+    const release = job("github_release");
+    expect(publish).toContain("release-cli.ts verify-registry");
+    expect(publish.indexOf("verify-registry")).toBeLessThan(publish.indexOf("smoke-artifact"));
+    expect(macos).toContain("runs-on: macos-latest");
+    expect(macos).toContain("release-cli.ts verify-registry");
+    expect(macos).toContain("release-cli.ts smoke-artifact");
+    expect(release).toContain("contents: write");
+    expect(release).toContain("gh release view");
+    expect(release).toContain("gh release create");
+    expect(release).toContain("--verify-tag");
+    expect(workflow).not.toContain("already_published");
   });
 });

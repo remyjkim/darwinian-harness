@@ -6,7 +6,9 @@ import {
   RELEASE_ARTIFACT_NAME,
   createReleaseCandidateReceipt,
   parseReleaseCandidateReceipt,
+  parseRecoveryAuthorizationReceipt,
   parseReleaseTagAuthorization,
+  verifyRecoveryReleaseProvenance,
   verifyReleaseProvenance,
   type ReleaseCandidateReceiptV1,
 } from "../scripts/release/provenance";
@@ -84,7 +86,7 @@ function validInput() {
       { name: "Smoke install (macos)", conclusion: "skipped" },
       { name: "GitHub Release", conclusion: "skipped" },
     ],
-    artifacts: [{ id: 456, name: RELEASE_ARTIFACT_NAME, digest: DIGEST, expired: false }],
+    artifacts: [{ id: 456, name: RELEASE_ARTIFACT_NAME, digest: DIGEST, expired: false, runId: 123 }],
     artifact: {
       packageName: "darwinian",
       version: "1.2.0",
@@ -166,10 +168,49 @@ describe("annotated tag authorization parser", () => {
   });
 });
 
+describe("release recovery authorization parser", () => {
+  const receipt = {
+    schema: "darwinian.worker.release-recovery-authorization",
+    schemaVersion: 1,
+    authorizedAt: "2026-08-08T00:00:00.000Z",
+    tag: "v1.2.0",
+    failedRunId: 789,
+    action: "verify_and_repair_metadata",
+  } as const;
+
+  test("accepts only the exact non-publishing recovery authority", () => {
+    expect(parseRecoveryAuthorizationReceipt(JSON.stringify(receipt))).toEqual(receipt);
+    for (const invalid of [
+      { ...receipt, extra: true },
+      { ...receipt, tag: "v1.2.1" },
+      { ...receipt, failedRunId: 0 },
+      { ...receipt, action: "publish" },
+      { ...receipt, authorizedAt: "2026-08-08" },
+    ]) {
+      expect(() => parseRecoveryAuthorizationReceipt(JSON.stringify(invalid))).toThrow();
+    }
+  });
+});
+
 describe("exact release provenance join", () => {
   test("accepts one immutable dry-run/tag/run/artifact/tar tuple", () => {
     const result = verifyReleaseProvenance(validInput());
     expect(result).toEqual({ version: "1.2.0", sourceCommit: COMMIT, runId: 123, artifactId: 456, artifactDigest: DIGEST });
+  });
+
+  test("recovery observes but does not fabricate equality with a later origin/main", () => {
+    const input = validInput();
+    input.originMainCommit = "e".repeat(40);
+    expect(verifyRecoveryReleaseProvenance(input)).toEqual({
+      version: "1.2.0",
+      sourceCommit: COMMIT,
+      runId: 123,
+      artifactId: 456,
+      artifactDigest: DIGEST,
+    });
+    expect(() => verifyReleaseProvenance(input)).toThrow();
+    input.originMainCommit = "not-a-commit";
+    expect(() => verifyRecoveryReleaseProvenance(input)).toThrow();
   });
 
   test.each([
@@ -190,6 +231,7 @@ describe("exact release provenance join", () => {
     ["renamed artifact", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.name = "renamed"; }],
     ["multiple artifacts", (input: ReturnType<typeof validInput>) => { input.artifacts.push({ ...input.artifacts[0]!, id: 457 }); }],
     ["artifact id mismatch", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.id = 457; }],
+    ["artifact run mismatch", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.runId = 124; }],
     ["artifact digest mismatch", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.digest = `sha256:${"f".repeat(64)}`; }],
     ["tar filename mismatch", (input: ReturnType<typeof validInput>) => { input.artifact.filename = "other.tgz"; }],
     ["tar digest mismatch", (input: ReturnType<typeof validInput>) => { input.artifact.sha256 = "f".repeat(64); }],
