@@ -91,6 +91,7 @@ describe("package readiness", () => {
     expect(workflow).toContain("bun run typecheck");
     expect(workflow).toContain("bun test");
     expect(workflow).toContain("bun run verify:release");
+    expect(workflow).toContain("DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'");
     expect(workflow).not.toContain("paths:");
     expect(workflow).not.toContain("paths-ignore:");
   });

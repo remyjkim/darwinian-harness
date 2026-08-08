@@ -118,6 +118,8 @@ jobs:
       # non-blocking. When the keyring comes up cleanly it provides real secret-tool coverage.
       - name: Exercise the real secret-tool backend under an unlocked keyring
         continue-on-error: true
+        env:
+          DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'
         run: |
           dbus-run-session -- bash -c '
             rm -rf "$HOME/.local/share/keyrings"

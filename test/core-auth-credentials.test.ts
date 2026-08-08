@@ -1,10 +1,11 @@
 // ABOUTME: Verifies drwn analyzer credential storage semantics.
-// ABOUTME: Protects atomic writes, owner-only permissions, and tolerant reads.
+// ABOUTME: Protects atomic writes, owner-only permissions, and fail-closed envelope reads.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CredentialSchemaUnsupportedError } from "../cli/core/secret-store";
 import {
   deleteCredentials,
   readCredentials,
@@ -64,11 +65,11 @@ describe("credentials", () => {
     expect(await readCredentials("/no/such/path.json")).toBeNull();
   });
 
-  test("readCredentials returns null when malformed", async () => {
+  test("readCredentials rejects a malformed encrypted envelope", async () => {
     tmp = await mkdtemp(join(tmpdir(), "drwn-cred-"));
     const path = join(tmp, "credentials.json");
     await Bun.write(path, "{ not json");
-    expect(await readCredentials(path)).toBeNull();
+    await expect(readCredentials(path)).rejects.toBeInstanceOf(CredentialSchemaUnsupportedError);
   });
 
   test("deleteCredentials is a no-op when missing", async () => {

@@ -3,13 +3,14 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, win32 } from "node:path";
+import { deriveCredentialScope, type CredentialScopeV1 } from "./auth/credential-scope";
 import { runProcess } from "./process";
 
 const ALGO = "aes-256-gcm";
-const KEY_REF = "drwn-credentials";
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
+const TAG_BYTES = 16;
 
 export class NoKeychainError extends Error {
   readonly code = "NO_KEYCHAIN";
@@ -27,6 +28,22 @@ export class CredentialIntegrityError extends Error {
   }
 }
 
+export class CredentialSchemaUnsupportedError extends Error {
+  readonly code = "CREDENTIAL_SCHEMA_UNSUPPORTED";
+  constructor(message = "Stored credentials use an unsupported schema. Run `drwn login` again.") {
+    super(message);
+    this.name = "CredentialSchemaUnsupportedError";
+  }
+}
+
+export class CredentialScopeMismatchError extends Error {
+  readonly code = "CREDENTIAL_SCOPE_MISMATCH";
+  constructor(message = "Stored credentials belong to another credential scope. Run `drwn login` again.") {
+    super(message);
+    this.name = "CredentialScopeMismatchError";
+  }
+}
+
 export interface KeychainBackend {
   isAvailable(): Promise<boolean>;
   loadKey(): Promise<Buffer | null>;
@@ -34,24 +51,39 @@ export interface KeychainBackend {
   deleteKey(): Promise<void>;
 }
 
-interface Envelope {
-  v: 1;
+export interface CredentialEnvelopeV2 {
+  v: 2;
   algo: typeof ALGO;
+  scopeDigest: string;
   keyRef: string;
   nonce: string;
   ciphertext: string;
   tag: string;
 }
 
-function isEnvelope(value: unknown): value is Envelope {
+const ENVELOPE_KEYS = ["algo", "ciphertext", "keyRef", "nonce", "scopeDigest", "tag", "v"] as const;
+
+function isCanonicalBase64(value: unknown, expectedBytes?: number): value is string {
+  if (typeof value !== "string" || value.length === 0) return false;
+  const bytes = Buffer.from(value, "base64");
+  if (bytes.toString("base64") !== value) return false;
+  return expectedBytes === undefined || bytes.length === expectedBytes;
+}
+
+function isEnvelope(value: unknown): value is CredentialEnvelopeV2 {
   if (typeof value !== "object" || value === null) return false;
   const record = value as Record<string, unknown>;
+  if (Object.keys(record).sort().join("\0") !== [...ENVELOPE_KEYS].sort().join("\0")) return false;
   return (
-    record.v === 1 &&
+    record.v === 2 &&
     record.algo === ALGO &&
-    typeof record.nonce === "string" &&
-    typeof record.ciphertext === "string" &&
-    typeof record.tag === "string"
+    typeof record.scopeDigest === "string" &&
+    /^[0-9a-f]{64}$/.test(record.scopeDigest) &&
+    typeof record.keyRef === "string" &&
+    /^drwn-credentials-v2:[0-9a-f]{64}$/.test(record.keyRef) &&
+    isCanonicalBase64(record.nonce, NONCE_BYTES) &&
+    isCanonicalBase64(record.ciphertext) &&
+    isCanonicalBase64(record.tag, TAG_BYTES)
   );
 }
 
@@ -97,7 +129,8 @@ async function writeRestricted(path: string, content: string): Promise<void> {
 }
 
 export async function encryptToDisk(path: string, plaintext: string, backend?: KeychainBackend): Promise<void> {
-  const keychain = backend ?? defaultBackend(path);
+  const scope = await deriveCredentialScope(path);
+  const keychain = backend ?? defaultBackend(scope);
   if (!(await keychain.isAvailable())) {
     throw new NoKeychainError();
   }
@@ -110,21 +143,23 @@ export async function encryptToDisk(path: string, plaintext: string, backend?: K
   const cipher = createCipheriv(ALGO, key, nonce);
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
-  const envelope: Envelope = {
-    v: 1,
+  const envelope: CredentialEnvelopeV2 = {
+    v: 2,
     algo: ALGO,
-    keyRef: KEY_REF,
+    scopeDigest: scope.scopeDigest,
+    keyRef: scope.keyRef,
     nonce: nonce.toString("base64"),
     ciphertext: ciphertext.toString("base64"),
     tag: tag.toString("base64"),
   };
-  await writeRestricted(path, `${JSON.stringify(envelope, null, 2)}\n`);
+  await writeRestricted(scope.credentialsPath, `${JSON.stringify(envelope, null, 2)}\n`);
 }
 
 export async function decryptFromDisk(path: string, backend?: KeychainBackend): Promise<string | null> {
+  const scope = await deriveCredentialScope(path);
   let raw: string;
   try {
-    raw = await fs.readFile(path, "utf8");
+    raw = await fs.readFile(scope.credentialsPath, "utf8");
   } catch (error) {
     if (isErrorCode(error, "ENOENT")) return null;
     throw error;
@@ -133,15 +168,18 @@ export async function decryptFromDisk(path: string, backend?: KeychainBackend): 
   try {
     envelope = JSON.parse(raw);
   } catch {
-    return null;
+    throw new CredentialSchemaUnsupportedError();
   }
   if (!isEnvelope(envelope)) {
-    return null;
+    throw new CredentialSchemaUnsupportedError();
   }
-  const keychain = backend ?? defaultBackend(path);
+  if (envelope.scopeDigest !== scope.scopeDigest || envelope.keyRef !== scope.keyRef) {
+    throw new CredentialScopeMismatchError();
+  }
+  const keychain = backend ?? defaultBackend(scope);
   const key = await keychain.loadKey();
   if (!key) {
-    return null;
+    throw new CredentialIntegrityError("Stored credentials are present but their scoped key is unavailable.");
   }
   try {
     const decipher = createDecipheriv(ALGO, key, Buffer.from(envelope.nonce, "base64"));
@@ -157,12 +195,13 @@ export async function decryptFromDisk(path: string, backend?: KeychainBackend): 
 }
 
 export async function clear(path: string, backend?: KeychainBackend): Promise<void> {
+  const scope = await deriveCredentialScope(path);
   try {
-    await fs.unlink(path);
+    await fs.unlink(scope.credentialsPath);
   } catch (error) {
     if (!isErrorCode(error, "ENOENT")) throw error;
   }
-  const keychain = backend ?? defaultBackend(path);
+  const keychain = backend ?? defaultBackend(scope);
   await keychain.deleteKey();
 }
 
@@ -197,7 +236,7 @@ export class FileKeychainBackend implements KeychainBackend {
 
 /** macOS Keychain via the `security` CLI. */
 export class MacKeychainBackend implements KeychainBackend {
-  constructor(private readonly service = "drwn", private readonly account = KEY_REF) {}
+  constructor(private readonly account: string, private readonly service = "drwn") {}
   async isAvailable(): Promise<boolean> {
     return isExecutableOnPath("security");
   }
@@ -222,7 +261,11 @@ export class MacKeychainBackend implements KeychainBackend {
 
 /** Linux Secret Service via `secret-tool`. */
 export class SecretToolBackend implements KeychainBackend {
-  constructor(private readonly service = "drwn", private readonly account = KEY_REF) {}
+  constructor(
+    private readonly account: string,
+    private readonly label: string,
+    private readonly service = "drwn",
+  ) {}
   async isAvailable(): Promise<boolean> {
     if (!isExecutableOnPath("secret-tool")) return false;
     return Boolean(process.env.DBUS_SESSION_BUS_ADDRESS);
@@ -235,7 +278,7 @@ export class SecretToolBackend implements KeychainBackend {
   }
   async storeKey(key: Buffer): Promise<void> {
     const result = await runProcess(
-      ["secret-tool", "store", "--label=drwn credentials key", "service", this.service, "account", this.account],
+      ["secret-tool", "store", `--label=${this.label}`, "service", this.service, "account", this.account],
       { stdin: key.toString("base64") },
     );
     if (result.exitCode !== 0) {
@@ -311,13 +354,22 @@ class UnavailableBackend implements KeychainBackend {
   async deleteKey(): Promise<void> {}
 }
 
-export function defaultBackend(credentialsPath: string): KeychainBackend {
+export function defaultBackend(scope: CredentialScopeV1): KeychainBackend {
   const testDir = process.env.DRWN_TEST_KEYCHAIN_DIR;
   if (testDir) {
-    return new FileKeychainBackend(join(testDir, "keychain.key"));
+    return new FileKeychainBackend(join(testDir, `${scope.scopeDigest}.key`));
   }
-  if (process.platform === "darwin") return new MacKeychainBackend();
-  if (process.platform === "win32") return new DpapiBackend(`${credentialsPath}.key`);
-  if (process.platform === "linux") return new SecretToolBackend();
+  if (scope.platform === "darwin") return new MacKeychainBackend(scope.keyRef);
+  if (scope.platform === "win32") {
+    return new DpapiBackend(
+      win32.join(
+        win32.dirname(scope.credentialsPath),
+        `.drwn-credentials-v2-${scope.scopeDigest}.key`,
+      ),
+    );
+  }
+  if (scope.platform === "linux") {
+    return new SecretToolBackend(scope.keyRef, `drwn credentials key ${scope.scopeDigest.slice(0, 12)}`);
+  }
   return new UnavailableBackend();
 }
