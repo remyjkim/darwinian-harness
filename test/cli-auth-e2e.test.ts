@@ -6,6 +6,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { readCredentials, writeCredentials } from "../cli/core/auth/credentials";
 import { drwnCliProfile } from "../cli/core/auth/profile";
+import { parseAuthOperationReceipt } from "../cli/core/auth/receipt";
 import { resolveCredentialsPath } from "../cli/core/paths";
 import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
 
@@ -139,7 +140,20 @@ describe("auth CLI E2E", () => {
     expect(login.stderr).toContain("/device?user_code=ABCD-EFGH");
     expect(login.stderr).toContain("Waiting for browser sign-in...");
     expect(login.stderr).not.toContain("Code: ABCD-EFGH");
-    expect(JSON.parse(login.stdout)).toMatchObject({ email: "cli-e2e@example.com" });
+    const loginReceipt = parseAuthOperationReceipt(JSON.parse(login.stdout));
+    expect(loginReceipt).toMatchObject({
+      worker: { sourceCommit: "0".repeat(40) },
+      credential: { generation: 1, issuer: `${apiUrl}/api/auth` },
+      action: "login",
+      mode: "ordinary",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "token_exchange", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(login.stdout).not.toContain("cli-e2e@example.com");
+    expect(login.stdout.trim().split("\n")).toHaveLength(1);
     expect(state.deviceCodeRequests).toEqual([{ client_id: "drwn-cli", scope: "openid email offline_access" }]);
     expect(state.tokenRequests).toHaveLength(2);
     expect(state.tokenRequests.at(-1)).toMatchObject({
@@ -243,7 +257,7 @@ describe("auth CLI E2E", () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("DAH device authorization response missing device_code/user_code.");
+    expect(result.stderr).toContain("DAH device request failed (500).");
     expect(await Bun.file(resolveCredentialsPath(fixture.agentsDir)).exists()).toBe(false);
   });
 

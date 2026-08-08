@@ -11,6 +11,8 @@ import { LogoutCommand } from "../cli/commands/auth/logout";
 import { WhoamiCommand } from "../cli/commands/auth/whoami";
 import type { AgentsContext } from "../cli/context";
 import { readCredentials, writeCredentials } from "../cli/core/auth/credentials";
+import { deriveCredentialScope } from "../cli/core/auth/credential-scope";
+import { parseAuthOperationReceipt } from "../cli/core/auth/receipt";
 import { resolveCredentialsPath } from "../cli/core/paths";
 import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
 
@@ -200,6 +202,183 @@ describe("auth commands", () => {
       refreshToken: "refresh-1",
       userEmail: "x@y.z",
     });
+  });
+
+  test("login --json writes first and emits one sanitized non-qualifying development receipt", async () => {
+    const events: string[] = [];
+    const actionNow = Date.now();
+    LoginCommand.testDeps = {
+      env: {},
+      fetch: deviceFlowFetch(),
+      sleep: async () => {},
+      now: () => actionNow,
+      randomUUID: () => "88888888-8888-4888-8888-888888888888",
+      openBrowser: () => {},
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+      writeCredentials: async (path, credential) => {
+        events.push("write");
+        await writeCredentials(path, credential);
+      },
+    };
+
+    const result = await runAuthCommand(["login", "--json"]);
+    events.push("returned");
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+    const expectedScope = await deriveCredentialScope(resolveCredentialsPath(result.fixture.agentsDir));
+
+    expect(result.exitCode).toBe(0);
+    expect(events).toEqual(["write", "returned"]);
+    expect(result.stderr).toContain("Log in to your Darwinian account:");
+    expect(result.stdout.trim().split("\n")).toHaveLength(1);
+    expect(result.stdout).not.toContain("x@y.z");
+    expect(result.stdout).not.toContain("https://app.test/device");
+    expect(receipt).toMatchObject({
+      worker: { version: "1.2.0", sourceCommit: "0".repeat(40) },
+      qualificationNamespaceDigest: expectedScope.qualificationNamespaceDigest,
+      credential: {
+        credentialId: "88888888-8888-4888-8888-888888888888",
+        generation: 1,
+        clientId: "drwn-cli",
+      },
+      action: "login",
+      mode: "ordinary",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "token_exchange", result: "confirmed", httpClass: "2xx" },
+      local: { action: "write", result: "confirmed", afterConfirmedRemoteRevoke: false },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+  });
+
+  test("login --json emits an accurate failure receipt after a safely identified write failure", async () => {
+    const sentinel = "SENTINEL_CREDENTIAL_WRITE_FAILURE_239";
+    LoginCommand.testDeps = {
+      env: {},
+      fetch: deviceFlowFetch(),
+      sleep: async () => {},
+      randomUUID: () => "99999999-9999-4999-8999-999999999999",
+      openBrowser: () => {},
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+      writeCredentials: async () => { throw new Error(sentinel); },
+    };
+
+    const result = await runAuthCommand(["login", "--json"]);
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(1);
+    expect(receipt).toMatchObject({
+      credential: { credentialId: "99999999-9999-4999-8999-999999999999", generation: 1 },
+      action: "login",
+      outcome: "failed",
+      qualificationEligible: false,
+      local: { action: "write", result: "failed", afterConfirmedRemoteRevoke: false },
+      reason: "CREDENTIAL_WRITE_FAILED",
+    });
+    expect(result.stderr).toContain("CREDENTIAL_WRITE_FAILED");
+    expect(result.stderr).not.toContain(sentinel);
+    expect(await Bun.file(resolveCredentialsPath(result.fixture.agentsDir)).exists()).toBe(false);
+  });
+
+  test("login --json emits no receipt when device flow fails before credential identity exists", async () => {
+    const sentinel = "SENTINEL_DEVICE_NETWORK_FAILURE_239";
+    LoginCommand.testDeps = {
+      env: {},
+      fetch: (async () => { throw new TypeError(sentinel); }) as unknown as typeof fetch,
+      sleep: async () => {},
+      openBrowser: () => {},
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+    };
+
+    const result = await runAuthCommand(["login", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("AUTH_REMOTE_INDETERMINATE\n");
+    expect(result.stderr).not.toContain(sentinel);
+  });
+
+  test("login --json never reports a success-shaped 4xx token response as confirmed 2xx", async () => {
+    const successfulFetch = deviceFlowFetch();
+    LoginCommand.testDeps = {
+      env: {},
+      fetch: (async (url: string, init?: RequestInit) => {
+        const response = await successfulFetch(url, init);
+        if (new URL(url).pathname !== "/api/auth/oauth2/token") return response;
+        return new Response(await response.text(), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch,
+      sleep: async () => {},
+      openBrowser: () => {},
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+    };
+
+    const result = await runAuthCommand(["login", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toEndWith("AUTH_REMOTE_REJECTED\n");
+    expect(await Bun.file(resolveCredentialsPath(result.fixture.agentsDir)).exists()).toBe(false);
+  });
+
+  test("login --json does not echo malformed remote response bodies", async () => {
+    const sentinel = "SENTINEL_MALFORMED_RESPONSE_BODY_239";
+    const successfulFetch = deviceFlowFetch();
+    LoginCommand.testDeps = {
+      env: {},
+      fetch: (async (url: string, init?: RequestInit) => {
+        if (new URL(url).pathname === "/api/auth/oauth2/token") {
+          return new Response(sentinel, { status: 200, headers: { "content-type": "application/json" } });
+        }
+        return successfulFetch(url, init);
+      }) as typeof fetch,
+      sleep: async () => {},
+      openBrowser: () => {},
+      loadBuildIdentity: async () => ({
+        kind: "development",
+        schema: "darwinian.worker.build-identity",
+        schemaVersion: 1,
+        version: "1.2.0",
+        sourceCommit: "0".repeat(40),
+        qualificationEligible: false,
+      }),
+    };
+
+    const result = await runAuthCommand(["login", "--json"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toEndWith("AUTH_RESPONSE_INVALID\n");
+    expect(result.stderr).not.toContain(sentinel);
   });
 
   test("logout removes credentials and best-effort signs out", async () => {

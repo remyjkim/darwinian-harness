@@ -54,12 +54,20 @@ function requireTokenFields(tokens: TokenBundle): asserts tokens is TokenBundle 
   }
 }
 
-async function postJson(fetcher: typeof fetch, url: string, body: Record<string, string>): Promise<Record<string, unknown>> {
+async function postJson(
+  fetcher: typeof fetch,
+  url: string,
+  body: Record<string, string>,
+  options: { allowErrorStatus?: boolean } = {},
+): Promise<Record<string, unknown>> {
   const res = await fetcher(url, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify(body),
   });
+  if (!res.ok && !options.allowErrorStatus) {
+    throw new Error(`DAH device request failed (${res.status}).`);
+  }
   return (await res.json()) as Record<string, unknown>;
 }
 
@@ -69,6 +77,7 @@ async function postForm(fetcher: typeof fetch, url: string, body: Record<string,
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: new URLSearchParams(body).toString(),
   });
+  if (!res.ok) throw new Error(`DAH token request failed (${res.status}).`);
   return (await res.json()) as Record<string, unknown>;
 }
 
@@ -95,11 +104,16 @@ async function pollDeviceToken(
   while (true) {
     await sleep(intervalMs);
     if (now() > expiresAt) throw new Error("device_code_expired");
-    const body = await postJson(fetcher, new URL(DEVICE_TOKEN_PATH, profile.hubOrigin).href, {
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-      client_id: profile.clientId,
-      device_code: device.device_code,
-    });
+    const body = await postJson(
+      fetcher,
+      new URL(DEVICE_TOKEN_PATH, profile.hubOrigin).href,
+      {
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        client_id: profile.clientId,
+        device_code: device.device_code,
+      },
+      { allowErrorStatus: true },
+    );
     if (typeof body.access_token === "string") return body.access_token;
     switch (body.error) {
       case "authorization_pending":
@@ -161,6 +175,7 @@ export async function exchangeDeviceSession(
     method: "GET",
     headers: { authorization: `Bearer ${deviceSessionBearer}`, accept: "application/json" },
   });
+  if (!authorize.ok) throw new Error(`DAH authorize request failed (${authorize.status}).`);
   const authorizeBody = (await authorize.json()) as Record<string, unknown>;
   const code = typeof authorizeBody.code === "string"
     ? authorizeBody.code
