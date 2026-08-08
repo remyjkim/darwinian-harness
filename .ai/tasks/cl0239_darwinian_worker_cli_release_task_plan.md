@@ -171,6 +171,43 @@ Successful qualifying operations use `reason=null`. A command may add no free-fo
 
 Source/development identity and every failed operation are `qualificationEligible=false`. Failed operations emit a receipt only when the credential identity can be established safely; otherwise stdout is empty and stderr contains only a stable diagnostic. Device instructions are transient stderr and are excluded from retained downstream evidence.
 
+#### AuthOperationReceiptV1 producer state table
+
+The producer emits only the rows below; consumers do not infer additional combinations. `packaged` means the strict 1.2.0 build identity is present. In each successful packaged row, `reason=null` unless the row names an explicit degradation reason.
+
+| Action / mode | Preconditions and remote state | Local state | Outcome / reason | Eligible |
+|---|---|---|---|---|
+| `login` / `ordinary` | validated token exchange; `token_exchange / confirmed / 2xx` | `write / confirmed / false` | `succeeded / null` when packaged; `succeeded / BUILD_IDENTITY_UNQUALIFIED` in development | packaged only |
+| `login` / `ordinary` | validated token exchange; `token_exchange / confirmed / 2xx` | `write / failed / false` | `failed / CREDENTIAL_WRITE_FAILED` | false |
+| `refresh` / `ordinary` | safely identified credential but profile mismatch; `refresh / not_applicable / not_applicable`; no request | `write / not_performed / false` | `failed / CREDENTIAL_PROFILE_MISMATCH` | false |
+| `refresh` / `ordinary` | definite remote rejection; `refresh / rejected / 4xx` | `write / not_performed / false` | `failed / AUTH_REMOTE_REJECTED` | false |
+| `refresh` / `ordinary` | redirect, server, or network result; `refresh / indeterminate / 3xx|5xx|network_error` | `write / not_performed / false` | `failed / AUTH_REMOTE_INDETERMINATE` | false |
+| `refresh` / `ordinary` | success-shaped response fails schema/JWT validation; `refresh / rejected / 2xx` | `write / not_performed / false` | `failed / AUTH_RESPONSE_INVALID` | false |
+| `refresh` / `ordinary` | validated refresh; `refresh / confirmed / 2xx` | `write / confirmed / false` | `succeeded / null` when packaged; `succeeded / BUILD_IDENTITY_UNQUALIFIED` in development | packaged only |
+| `refresh` / `ordinary` | validated refresh; `refresh / confirmed / 2xx` | `write / failed / false` | `failed / CREDENTIAL_WRITE_FAILED` | false |
+| `logout` / `ordinary` | safely identified credential but profile mismatch; `revoke / not_applicable / not_applicable`; no request | `delete / confirmed / false` | `succeeded / CREDENTIAL_PROFILE_MISMATCH` | false |
+| `logout` / `ordinary` | `revoke / confirmed / 2xx` | `delete / confirmed / true` | `succeeded / null` | false |
+| `logout` / `ordinary` | `revoke / rejected / 4xx` | `delete / confirmed / false` | `succeeded / AUTH_REMOTE_REJECTED` | false |
+| `logout` / `ordinary` | `revoke / indeterminate / 3xx|5xx|network_error` | `delete / confirmed / false` | `succeeded / AUTH_REMOTE_INDETERMINATE` | false |
+| `logout` / `ordinary` | any remote row above | `delete / failed / true` only after confirmed remote; otherwise `false` | `failed / CREDENTIAL_DELETE_FAILED` | false |
+| `logout` / `require_remote_revoke` | safely identified credential but profile mismatch; `revoke / not_applicable / not_applicable`; no request | `delete / not_performed / false` | `failed / CREDENTIAL_PROFILE_MISMATCH` | false |
+| `logout` / `require_remote_revoke` | `revoke / rejected / 4xx` | `delete / not_performed / false` | `failed / AUTH_REMOTE_REJECTED` | false |
+| `logout` / `require_remote_revoke` | `revoke / indeterminate / 3xx|5xx|network_error` | `delete / not_performed / false` | `failed / AUTH_REMOTE_INDETERMINATE` | false |
+| `logout` / `require_remote_revoke` | `revoke / confirmed / 2xx` | `delete / failed / true` | `failed / CREDENTIAL_DELETE_FAILED` | false |
+| `logout` / `require_remote_revoke` | `revoke / confirmed / 2xx` | `delete / confirmed / true` | `succeeded / null` when packaged; `succeeded / BUILD_IDENTITY_UNQUALIFIED` in development | packaged only |
+
+The table has these binding interpretations:
+
+- ordinary logout's operation goal is scoped local containment, so confirmed local deletion yields `outcome=succeeded` even when remote revoke was rejected or indeterminate; the structured remote fields and required stable reason preserve that degradation, while `qualificationEligible` remains false;
+- strict logout's operation goal is confirmed remote revoke followed by scoped local deletion, so every unconfirmed remote result fails and preserves local custody;
+- `remote.result=not_applicable` appears only in the emitted, safely identified profile-mismatch refresh/logout rows before a request; `remote.action=not_applicable` is reserved by the schema and is not emitted by Worker 1.2.0;
+- `local.result=not_performed` always implies `afterConfirmedRemoteRevoke=false`;
+- login/refresh writes always set `afterConfirmedRemoteRevoke=false`;
+- a logout delete attempt after a confirmed revoke sets `afterConfirmedRemoteRevoke=true` whether the delete confirms or fails; an ordinary delete after an unconfirmed/not-applicable revoke sets it false; strict mode never attempts deletion without confirmation; and
+- when multiple components fail, `CREDENTIAL_DELETE_FAILED` or `CREDENTIAL_WRITE_FAILED` is the primary `reason`; the structured remote fields retain any remote degradation. Otherwise reason precedence is response/profile/remote classification, then `BUILD_IDENTITY_UNQUALIFIED`, then null.
+
+Before credential identity is safely established—including absent custody, unsupported schema, scope mismatch, integrity failure, and login failures before a credential ID exists—no receipt is emitted. Stdout stays empty; command exit/stderr behavior follows the stable diagnostic and ordinary-versus-strict command contract. Automatic refresh uses the refresh state transition but never emits an operation receipt from the unrelated calling command.
+
 ### Packaged and release identity
 
 The package-generated member is strict JSON:
@@ -341,7 +378,7 @@ Any unexpected failure invokes `systematic-debugging`. Do not broaden scope or w
 2. GREEN: implement the runtime loader. Runtime receipts read only this loader, never `GITHUB_SHA`, a command argument, dispatch input, or arbitrary environment variable.
 3. RED: verify the pack generator reads `git rev-parse HEAD` and adjacent package metadata itself, accepts no caller-supplied version/commit, writes the exact generated member, and cannot leave a stale qualifying identity after failure. Include dirty/missing-git/invalid-version/invalid-SHA failures.
 4. GREEN: implement generation in the pack lifecycle or isolated pack staging. Ensure the later artifact verifier compares the generated tuple to checkout and receipt; do not attempt a self-tar hash.
-5. RED: exhaustively validate `AuthOperationReceiptV1` enums, canonical timestamps, stable reason vocabulary, credential epoch, public profile, remote classification, local ordering, and packaged identity.
+5. RED: table-test every permitted producer row above and reject every unlisted action/mode/remote/local/outcome/reason/eligibility combination; also validate canonical timestamps, credential epoch, public profile, and packaged identity.
 6. RED: inject unique sentinels for subject/email/operator, access/refresh token, device/authorization code, response body, raw path, internal scope, key reference, keychain label, secret, and query-bearing URL. Assert none can be serialized to receipt stdout or retained fixtures.
 7. GREEN: implement receipt construction from typed allowlisted inputs rather than redacting a larger object after construction.
 8. RED/GREEN login command behavior:
@@ -377,7 +414,7 @@ Any unexpected failure invokes `systematic-debugging`. Do not broaden scope or w
 1. RED: register `drwn refresh`; require Details/Examples and `--json`; prove help is side-effect-free.
 2. RED: explicit refresh always invokes DAH even for a fresh access token, keeps credential ID, increments generation exactly once, replaces token/timing/profile fields from validated response, and atomically persists before success.
 3. RED: automatic near-expiry and 401 retry refresh use the same ID/generation/persistence state transition but do not emit a qualification receipt from an unrelated command.
-4. RED: classify 2xx, 3xx, 4xx, 5xx, network failure, malformed body, audience/issuer failure, and missing refresh token without retaining the response body.
+4. RED: classify 2xx, 3xx, 4xx, 5xx, network failure, malformed body, audience/issuer failure, and missing refresh token without retaining the response body. Prove a safely identified profile mismatch is the only emitted refresh row with `remote.result=not_applicable` and performs no request/write.
 5. RED: inject local atomic-write failure after successful exchange. Require nonzero exit, no success/eligibility claim, retained local generation unchanged, and a stable re-login-oriented failure. Do not pretend the possibly rotated remote refresh token remains reusable.
 6. GREEN: centralize one refresh transaction returning typed sanitized facts. Increment only in the candidate v3 object written atomically; return the new generation only after persistence.
 7. GREEN: emit the forced-refresh receipt with action `refresh`, mode `ordinary`, remote `refresh`, exact HTTP class, local `write`, and eligibility derived from successful operation plus packaged identity.
@@ -403,7 +440,8 @@ Any unexpected failure invokes `systematic-debugging`. Do not broaden scope or w
 1. RED: add `--json` and `--require-remote-revoke`; ensure help describes the ordinary/strict distinction without claiming access-token invalidation.
 2. RED ordinary mode:
    - remote confirmation then scoped delete succeeds;
-   - 3xx/4xx/5xx/network remote failure is disclosed without body, followed by scoped local delete;
+   - 3xx/4xx/5xx/network remote failure is disclosed without body, followed by scoped local delete; confirmed deletion yields `outcome=succeeded` with the exact remote degradation reason while eligibility remains false;
+   - a safely identified profile mismatch emits `revoke/not_applicable/not_applicable`, performs scoped local deletion, succeeds with `CREDENTIAL_PROFILE_MISMATCH`, and remains non-qualifying;
    - absent custody remains safe/idempotent in human mode;
    - any JSON receipt is accurately non-qualifying; and
    - deletion never touches another scope.
@@ -413,7 +451,7 @@ Any unexpected failure invokes `systematic-debugging`. Do not broaden scope or w
    - 2xx confirmation occurs before any file/key delete call;
    - every 3xx/4xx/5xx/network failure preserves file and key;
    - confirmed revoke deletes exactly the bound file/key;
-   - local deletion failure cannot claim success; and
+   - local deletion failure cannot claim success and sets `afterConfirmedRemoteRevoke=true` only when the attempt followed 2xx confirmation; and
    - successful receipt proves remote confirmed, local confirmed, and `afterConfirmedRemoteRevoke=true`.
 4. GREEN: implement explicit state machines. Ordinary containment and strict qualification may share typed primitives but never share a success predicate.
 5. RED/GREEN: test partial local-delete failures and accurate failure receipts where safe identity is available. Never print or retain a remote body/token/path/key identifier.
