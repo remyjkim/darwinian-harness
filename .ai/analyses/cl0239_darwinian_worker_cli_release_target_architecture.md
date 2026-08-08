@@ -8,7 +8,7 @@
 **Status:** G1 proposal; no G2 plan, implementation, publication, Services mutation, staging action, candidate, secret, or live test is authorized by this document
 **Owner:** Remy K
 **Reviewer:** Remy K (user-authorized G1 reviewer control)
-**Publication environment reviewer:** governed by the checked-in approval policy at `scripts/release/release-policy.json`; currently the `remyjkim` release operator, who approves their own protected deployment
+**Publication environment reviewer:** governed by the checked-in approval policy at `scripts/release/release-policy.json`; currently `mind001-cl`, a credential distinct from the `remyjkim` release operator that creates the tag
 **Repository:** `remyjkim/darwinian-worker`
 **Parent:** I232 cross-repository architecture program
 **Downstream:** I236 canonical-identity qualification and separately numbered Services runtime adoption, then I238 controlled staging qualification
@@ -439,16 +439,20 @@ floor that no policy value can relax:
   OIDC binding; and
 - the exact single `v1.2.0` tag deployment policy is unchanged.
 
-Under the current policy the `remyjkim` release operator creates the tag and supplies the
-environment approval for the same protected job. The receipt therefore truthfully proves a
-single-operator, self-approved control, and no longer asserts a second-person control that
-is not in force.
+Under the current policy the `remyjkim` release operator creates the tag and the distinct
+`mind001-cl` credential supplies the environment approval, with self-review prevented. The
+control this proves is **credential separation, not independent human review**: both
+identities are held by the same maintainer, so the receipt must never be read as evidence
+that a second person examined the release. What it does establish is that possession of the
+`remyjkim` token alone is insufficient to both authorize and publish, which is the property
+worth having for a single-maintainer project.
 
 `preventSelfReview` is compared for exact equality rather than treated as monotonically
-safe. A stricter observed setting is a mismatch, not an upgrade: with a single declared
-reviewer who is also the release initiator, `prevent_self_review=true` would deadlock
-publication rather than harden it. Divergence in either direction means the environment and
-the repository disagree, which is exactly what this receipt exists to detect.
+safe. Divergence in either direction means the environment and the repository disagree,
+which is exactly what this receipt exists to detect. The setting is also load-bearing in
+both directions: with a declared reviewer who is also the release initiator, `true` would
+deadlock publication rather than harden it, and with a distinct declared reviewer, `false`
+would silently discard the separation the policy claims.
 
 The historical `1.1.0` provenance attestation is supporting evidence only. npm trusted
 publisher settings are mutable and must be read from authenticated package settings for

@@ -56,9 +56,13 @@ fresh, normalized evidence for both external control planes:
 - GitHub environment `darwinian-npm-publish` matches the declared approval
   policy in `scripts/release/release-policy.json` for required reviewers and
   self-review, disallows admin bypass, enables custom deployment policies, and
-  admits only tag `v1.2.0`. Under the current policy the `remyjkim` release
-  operator approves their own protected deployment; changing that is a reviewed
-  edit to the policy file, never an undeclared change to GitHub settings.
+  admits only tag `v1.2.0`. Under the current policy the tag is created by
+  `remyjkim` and the deployment is approved by the distinct `mind001-cl`
+  credential with self-review prevented, so the `remyjkim` token alone cannot
+  both authorize and publish. Both identities belong to the same maintainer, so
+  this is credential separation, not independent human review. Changing it is a
+  reviewed edit to the policy file, never an undeclared change to GitHub
+  settings.
 - npm trusted publishing binds package `darwinian` to
   `remyjkim/darwinian-worker`, workflow `release.yml`, environment
   `darwinian-npm-publish`, and action `npm publish` only.
