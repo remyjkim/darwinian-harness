@@ -23,7 +23,9 @@ jobs:
   validate:
     name: Validate
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    # Individual Linux tests still fail at 30s through test:gate; this outer bound
+    # protects the complete matrix job from normal hosted-runner variance.
+    timeout-minutes: 60
     # Linux stays the full required gate. Windows keeps install, typecheck, and
     # targeted smoke coverage until the full suite's platform assumptions are fixed.
     strategy:
@@ -50,7 +52,7 @@ jobs:
         if: runner.os == 'Linux'
         # A per-test timeout converts any CI-only spawn hang into a fast failure so the
         # suite always completes (and reports the culprit) instead of burning the job timeout.
-        run: bun test --timeout 30000 ./test/
+        run: bun run test:gate
 
       - name: Windows smoke tests
         if: runner.os == 'Windows'
