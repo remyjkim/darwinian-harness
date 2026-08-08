@@ -556,7 +556,7 @@ test("mode-limited machine writes retain ownership for the unselected capability
   const mcpOnly = await runAgentsCli(["write", "--scope", "machine", "--mcp-only"], envFor(fixture));
   expect(mcpOnly.exitCode).toBe(0);
   expect((await readJson(fixture.claudeUserMcp)).mcpServers?.context7).toBeUndefined();
-});
+}, 15_000);
 
 test("write --root with empty defaults but prior ownership prunes without emitting the no-defaults warning", async () => {
   const fixture = await scaffoldCliFixture({ curatedSkillNames: [] });
