@@ -28,6 +28,15 @@ export interface TokenBundle {
   claims: JwtClaims;
 }
 
+export type RevokeTokenResult =
+  | { result: "confirmed"; httpClass: "2xx"; reason: null }
+  | { result: "rejected"; httpClass: "4xx"; reason: "AUTH_REMOTE_REJECTED" }
+  | {
+      result: "indeterminate";
+      httpClass: "3xx" | "5xx" | "network_error";
+      reason: "AUTH_REMOTE_INDETERMINATE";
+    };
+
 interface DeviceAuthorization {
   device_code: string;
   user_code: string;
@@ -255,17 +264,33 @@ export async function revokeToken(
   profile: CliAuthProfile,
   token: string,
   fetcher: typeof fetch = fetch,
-): Promise<void> {
-  const res = await fetcher(new URL("/api/auth/oauth2/revoke", profile.hubOrigin).href, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-    body: new URLSearchParams({
-      token,
-      client_id: profile.clientId,
-      token_type_hint: "refresh_token",
-    }).toString(),
-  });
-  if (!res.ok) throw new Error(`DAH refresh-token revoke failed (${res.status}).`);
+): Promise<RevokeTokenResult> {
+  let response: Response;
+  try {
+    response = await fetcher(new URL("/api/auth/oauth2/revoke", profile.hubOrigin).href, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({
+        token,
+        client_id: profile.clientId,
+        token_type_hint: "refresh_token",
+      }).toString(),
+      redirect: "manual",
+    });
+  } catch {
+    return { result: "indeterminate", httpClass: "network_error", reason: "AUTH_REMOTE_INDETERMINATE" };
+  }
+
+  if (response.status >= 200 && response.status < 300) {
+    return { result: "confirmed", httpClass: "2xx", reason: null };
+  }
+  if (response.status >= 300 && response.status < 400) {
+    return { result: "indeterminate", httpClass: "3xx", reason: "AUTH_REMOTE_INDETERMINATE" };
+  }
+  if (response.status >= 400 && response.status < 500) {
+    return { result: "rejected", httpClass: "4xx", reason: "AUTH_REMOTE_REJECTED" };
+  }
+  return { result: "indeterminate", httpClass: "5xx", reason: "AUTH_REMOTE_INDETERMINATE" };
 }
 
 export function credentialFromTokens(

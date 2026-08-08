@@ -255,7 +255,8 @@ export class MacKeychainBackend implements KeychainBackend {
     }
   }
   async deleteKey(): Promise<void> {
-    await runProcess(["security", "delete-generic-password", "-a", this.account, "-s", this.service]);
+    const result = await runProcess(["security", "delete-generic-password", "-a", this.account, "-s", this.service]);
+    if (result.exitCode !== 0) throw new Error("CREDENTIAL_DELETE_FAILED");
   }
 }
 
@@ -286,7 +287,8 @@ export class SecretToolBackend implements KeychainBackend {
     }
   }
   async deleteKey(): Promise<void> {
-    await runProcess(["secret-tool", "clear", "service", this.service, "account", this.account]);
+    const result = await runProcess(["secret-tool", "clear", "service", this.service, "account", this.account]);
+    if (result.exitCode !== 0) throw new Error("CREDENTIAL_DELETE_FAILED");
   }
 }
 

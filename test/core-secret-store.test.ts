@@ -20,6 +20,7 @@ import { deriveCredentialScope } from "../cli/core/auth/credential-scope";
 class FakeKeychainBackend implements KeychainBackend {
   key: Buffer | null = null;
   available = true;
+  failDelete = false;
   loadCalls = 0;
   async isAvailable(): Promise<boolean> {
     return this.available;
@@ -32,6 +33,7 @@ class FakeKeychainBackend implements KeychainBackend {
     this.key = key;
   }
   async deleteKey(): Promise<void> {
+    if (this.failDelete) throw new Error("SENTINEL_KEY_DELETE_FAILURE_239");
     this.key = null;
   }
 }
@@ -108,6 +110,17 @@ describe("secret store", () => {
     await clear(path, backend);
     expect(existsSync(path)).toBe(false);
     expect(backend.key).toBeNull();
+  });
+
+  test("clear surfaces partial deletion when the file is gone but scoped key deletion fails", async () => {
+    await encryptToDisk(path, "super-secret-token", backend);
+    const retainedKey = backend.key;
+    backend.failDelete = true;
+
+    await expect(clear(path, backend)).rejects.toThrow("SENTINEL_KEY_DELETE_FAILURE_239");
+
+    expect(existsSync(path)).toBe(false);
+    expect(backend.key).toEqual(retainedKey);
   });
 
   test("rejects malformed JSON and v1 envelopes with the stable unsupported-schema error", async () => {

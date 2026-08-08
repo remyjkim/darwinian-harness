@@ -2,7 +2,13 @@
 // ABOUTME: Proves the retired Analyzer-client overload is absent and timing/identity are injected.
 
 import { describe, expect, test } from "bun:test";
-import { AuthRemoteOperationError, refreshToken, runDeviceFlow } from "../cli/core/auth/device-flow";
+import {
+  AuthRemoteOperationError,
+  refreshToken,
+  revokeToken,
+  runDeviceFlow,
+  type RevokeTokenResult,
+} from "../cli/core/auth/device-flow";
 import { drwnCliProfile } from "../cli/core/auth/profile";
 
 const IAT = 1_786_080_000;
@@ -282,5 +288,49 @@ describe("refreshToken remote classification", () => {
       }) as unknown as typeof fetch,
     )).rejects.toMatchObject({ reason: "AUTH_RESPONSE_INVALID", result: "rejected", httpClass: "2xx" });
     expect(requests).toBe(0);
+  });
+});
+
+describe("revokeToken remote classification", () => {
+  test("classifies confirmed, redirect, rejection, server, and network results without retaining bodies", async () => {
+    const profile = drwnCliProfile({});
+    const sentinel = "SENTINEL_REVOKE_RESPONSE_BODY_239";
+    const scenarios: Array<{
+      name: string;
+      fetcher: typeof fetch;
+      expected: RevokeTokenResult;
+    }> = [
+      {
+        name: "confirmed",
+        fetcher: (async () => new Response(null, { status: 204 })) as unknown as typeof fetch,
+        expected: { result: "confirmed", httpClass: "2xx", reason: null },
+      },
+      {
+        name: "redirect",
+        fetcher: (async () => new Response(null, { status: 302, headers: { location: "https://elsewhere.test" } })) as unknown as typeof fetch,
+        expected: { result: "indeterminate", httpClass: "3xx", reason: "AUTH_REMOTE_INDETERMINATE" },
+      },
+      {
+        name: "rejection",
+        fetcher: (async () => new Response(sentinel, { status: 400 })) as unknown as typeof fetch,
+        expected: { result: "rejected", httpClass: "4xx", reason: "AUTH_REMOTE_REJECTED" },
+      },
+      {
+        name: "server",
+        fetcher: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+        expected: { result: "indeterminate", httpClass: "5xx", reason: "AUTH_REMOTE_INDETERMINATE" },
+      },
+      {
+        name: "network",
+        fetcher: (async () => { throw new TypeError(sentinel); }) as unknown as typeof fetch,
+        expected: { result: "indeterminate", httpClass: "network_error", reason: "AUTH_REMOTE_INDETERMINATE" },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const result = await revokeToken(profile, "refresh-token", scenario.fetcher);
+      expect(result, scenario.name).toEqual(scenario.expected);
+      expect(JSON.stringify(result)).not.toContain(sentinel);
+    }
   });
 });

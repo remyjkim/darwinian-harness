@@ -315,4 +315,58 @@ describe("auth CLI E2E", () => {
     expect(result.stdout).toContain("Logged out. Credentials removed.");
     expect(await Bun.file(credentialsPath).exists()).toBe(false);
   });
+
+  test("strict logout emits ordered non-qualifying source receipt after confirmed revoke and deletion", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const { apiUrl, state } = startAuthServer();
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
+    const profile = drwnCliProfile({ DRWN_DAH_HUB_URL: apiUrl });
+    const accessToken = fakeJwt("cli-e2e@example.com", undefined, {
+      iss: profile.issuer,
+      aud: profile.resource,
+    });
+    const claims = JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString("utf8")) as {
+      iat: number;
+      exp: number;
+    };
+    await writeCredentials(credentialsPath, {
+      version: 3,
+      credentialId: "99999999-9999-4999-8999-999999999999",
+      generation: 2,
+      issuer: profile.issuer,
+      clientId: "drwn-cli",
+      resource: profile.resource,
+      accessToken,
+      refreshToken: "strict-refresh-token",
+      issuedAt: new Date(claims.iat * 1000).toISOString(),
+      expiresAt: new Date(claims.exp * 1000).toISOString(),
+      savedAt: "2026-08-08T00:00:00.000Z",
+      userEmail: "cli-e2e@example.com",
+    });
+
+    const result = await runAgentsCli(
+      ["logout", "--json", "--require-remote-revoke"],
+      { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl },
+    );
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(0);
+    expect(receipt).toMatchObject({
+      worker: { sourceCommit: "0".repeat(40) },
+      credential: { credentialId: "99999999-9999-4999-8999-999999999999", generation: 2 },
+      action: "logout",
+      mode: "require_remote_revoke",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "revoke", result: "confirmed", httpClass: "2xx" },
+      local: { action: "delete", result: "confirmed", afterConfirmedRemoteRevoke: true },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(result.stdout).not.toContain("strict-refresh-token");
+    expect(result.stdout).not.toContain("cli-e2e@example.com");
+    expect(state.revokeRequests).toContain("token=strict-refresh-token&client_id=drwn-cli&token_type_hint=refresh_token");
+    expect(await Bun.file(credentialsPath).exists()).toBe(false);
+  });
 });

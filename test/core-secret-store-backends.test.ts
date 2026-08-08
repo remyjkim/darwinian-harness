@@ -126,6 +126,23 @@ describe("macOS security backend argv", () => {
       spy.mockRestore();
     }
   });
+
+  test("deleteKey fails closed on an unconfirmed security result without retaining stderr", async () => {
+    const spy = mockRunProcess({ exitCode: 1, stderr: "SENTINEL_MAC_DELETE_239" });
+    try {
+      let failure: unknown;
+      try {
+        await new MacKeychainBackend("acct", "svc").deleteKey();
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect(String(failure)).toContain("CREDENTIAL_DELETE_FAILED");
+      expect(JSON.stringify(failure)).not.toContain("SENTINEL_MAC_DELETE_239");
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 describe("linux secret-tool backend", () => {
@@ -145,6 +162,23 @@ describe("linux secret-tool backend", () => {
     const spy = mockRunProcess({ exitCode: 127 });
     try {
       expect(await new SecretToolBackend("acct", "label").loadKey()).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("deleteKey fails closed on an unconfirmed secret-tool result without retaining stderr", async () => {
+    const spy = mockRunProcess({ exitCode: 1, stderr: "SENTINEL_LINUX_DELETE_239" });
+    try {
+      let failure: unknown;
+      try {
+        await new SecretToolBackend("acct", "label", "svc").deleteKey();
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(Error);
+      expect(String(failure)).toContain("CREDENTIAL_DELETE_FAILED");
+      expect(JSON.stringify(failure)).not.toContain("SENTINEL_LINUX_DELETE_239");
     } finally {
       spy.mockRestore();
     }

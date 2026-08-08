@@ -11,7 +11,7 @@ import { LogoutCommand } from "../cli/commands/auth/logout";
 import { RefreshCommand } from "../cli/commands/auth/refresh";
 import { WhoamiCommand } from "../cli/commands/auth/whoami";
 import type { AgentsContext } from "../cli/context";
-import { readCredentials, writeCredentials } from "../cli/core/auth/credentials";
+import { deleteCredentials, readCredentials, writeCredentials } from "../cli/core/auth/credentials";
 import { deriveCredentialScope } from "../cli/core/auth/credential-scope";
 import { parseAuthOperationReceipt } from "../cli/core/auth/receipt";
 import { resolveCredentialsPath } from "../cli/core/paths";
@@ -61,6 +61,17 @@ function storedCredential(options: { issuer?: string; resource?: string } = {}) 
     savedAt: "2026-08-08T00:00:00.000Z",
     userEmail: "x@y.z",
   };
+}
+
+function developmentBuildIdentity() {
+  return Promise.resolve({
+    kind: "development",
+    schema: "darwinian.worker.build-identity",
+    schemaVersion: 1,
+    version: "1.2.0",
+    sourceCommit: "0".repeat(40),
+    qualificationEligible: false,
+  } as const);
 }
 
 class CaptureStream extends Writable {
@@ -560,6 +571,335 @@ describe("auth commands", () => {
     expect(result.stderr).toBe("CREDENTIAL_ABSENT\n");
     expect(requests).toBe(0);
     expect(await Bun.file(resolveCredentialsPath(result.fixture.agentsDir)).exists()).toBe(false);
+  });
+
+  test("logout help is side-effect-free and documents ordinary versus confirmed-revoke modes", async () => {
+    let effects = 0;
+    LogoutCommand.testDeps = {
+      fetch: (async () => {
+        effects += 1;
+        throw new Error("must not fetch for help");
+      }) as unknown as typeof fetch,
+      readCredentials: async () => {
+        effects += 1;
+        throw new Error("must not read credentials for help");
+      },
+    };
+
+    const result = await runAuthCommand(["logout", "--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/^Details$/m);
+    expect(result.stdout).toMatch(/^Examples$/m);
+    expect(result.stdout).toContain("--json");
+    expect(result.stdout).toContain("--require-remote-revoke");
+    expect(result.stdout).toContain("does not claim");
+    expect(effects).toBe(0);
+  });
+
+  test("ordinary logout --json records confirmed revoke before scoped deletion and never qualifies", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const events: string[] = [];
+    LogoutCommand.testDeps = {
+      env: {},
+      fetch: (async () => {
+        events.push("revoke");
+        return new Response(null, { status: 204 });
+      }) as unknown as typeof fetch,
+      deleteCredentials: async (path) => {
+        events.push(`delete:${path}`);
+        await deleteCredentials(path);
+      },
+      loadBuildIdentity: developmentBuildIdentity,
+    };
+
+    const result = await runAuthCommand(["logout", "--json"], { fixture });
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+    const expectedScope = await deriveCredentialScope(credentialsPath);
+
+    expect(result.exitCode).toBe(0);
+    expect(events).toEqual(["revoke", `delete:${credentialsPath}`]);
+    expect(receipt).toMatchObject({
+      qualificationNamespaceDigest: expectedScope.qualificationNamespaceDigest,
+      credential: { credentialId: current.credentialId, generation: current.generation },
+      action: "logout",
+      mode: "ordinary",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "revoke", result: "confirmed", httpClass: "2xx" },
+      local: { action: "delete", result: "confirmed", afterConfirmedRemoteRevoke: true },
+      reason: null,
+    });
+    expect(result.stdout).not.toContain(current.refreshToken);
+    expect(result.stdout).not.toContain(current.accessToken);
+    expect(result.stdout).not.toContain(credentialsPath);
+    expect(await Bun.file(credentialsPath).exists()).toBe(false);
+  });
+
+  test("ordinary logout contains locally after every degraded remote class and discloses non-qualification", async () => {
+    const sentinel = "SENTINEL_REVOKE_BODY_239";
+    const scenarios: Array<{
+      fetch: typeof fetch;
+      remote: { result: string; httpClass: string };
+      reason: string;
+    }> = [
+      {
+        fetch: (async () => new Response(null, { status: 302, headers: { location: "https://elsewhere.test" } })) as unknown as typeof fetch,
+        remote: { result: "indeterminate", httpClass: "3xx" },
+        reason: "AUTH_REMOTE_INDETERMINATE",
+      },
+      {
+        fetch: (async () => new Response(sentinel, { status: 400 })) as unknown as typeof fetch,
+        remote: { result: "rejected", httpClass: "4xx" },
+        reason: "AUTH_REMOTE_REJECTED",
+      },
+      {
+        fetch: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+        remote: { result: "indeterminate", httpClass: "5xx" },
+        reason: "AUTH_REMOTE_INDETERMINATE",
+      },
+      {
+        fetch: (async () => { throw new TypeError(sentinel); }) as unknown as typeof fetch,
+        remote: { result: "indeterminate", httpClass: "network_error" },
+        reason: "AUTH_REMOTE_INDETERMINATE",
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const fixture = await scaffoldCliFixture();
+      tempRoots.push(fixture.root);
+      const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+      await writeCredentials(credentialsPath, storedCredential());
+      LogoutCommand.testDeps = {
+        env: {},
+        fetch: scenario.fetch,
+        loadBuildIdentity: developmentBuildIdentity,
+      };
+
+      const result = await runAuthCommand(["logout", "--json"], { fixture });
+      const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+      expect(result.exitCode).toBe(0);
+      expect(receipt).toMatchObject({
+        mode: "ordinary",
+        outcome: "succeeded",
+        qualificationEligible: false,
+        remote: { action: "revoke", ...scenario.remote },
+        local: { action: "delete", result: "confirmed", afterConfirmedRemoteRevoke: false },
+        reason: scenario.reason,
+      });
+      expect(result.stderr).toContain(scenario.reason);
+      expect(result.stdout).not.toContain(sentinel);
+      expect(result.stderr).not.toContain(sentinel);
+      expect(await Bun.file(credentialsPath).exists()).toBe(false);
+    }
+  });
+
+  test("profile mismatch deletes in ordinary mode but preserves custody in strict mode without a request", async () => {
+    for (const strict of [false, true]) {
+      const fixture = await scaffoldCliFixture();
+      tempRoots.push(fixture.root);
+      const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+      const current = storedCredential();
+      await writeCredentials(credentialsPath, current);
+      let requests = 0;
+      LogoutCommand.testDeps = {
+        env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+        fetch: (async () => {
+          requests += 1;
+          return new Response(null, { status: 204 });
+        }) as unknown as typeof fetch,
+        loadBuildIdentity: developmentBuildIdentity,
+      };
+
+      const args = ["logout", "--json", ...(strict ? ["--require-remote-revoke"] : [])];
+      const result = await runAuthCommand(args, { fixture });
+      const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+      expect(requests).toBe(0);
+      expect(result.exitCode).toBe(strict ? 1 : 0);
+      expect(receipt).toMatchObject({
+        mode: strict ? "require_remote_revoke" : "ordinary",
+        outcome: strict ? "failed" : "succeeded",
+        qualificationEligible: false,
+        remote: { action: "revoke", result: "not_applicable", httpClass: "not_applicable" },
+        local: {
+          action: "delete",
+          result: strict ? "not_performed" : "confirmed",
+          afterConfirmedRemoteRevoke: false,
+        },
+        reason: "CREDENTIAL_PROFILE_MISMATCH",
+      });
+      expect(await Bun.file(credentialsPath).exists()).toBe(strict);
+    }
+  });
+
+  test("strict logout preserves custody for every unconfirmed remote class", async () => {
+    const sentinel = "SENTINEL_STRICT_REVOKE_239";
+    const scenarios: Array<{
+      fetch: typeof fetch;
+      remote: { result: string; httpClass: string };
+      reason: string;
+    }> = [
+      {
+        fetch: (async () => new Response(null, { status: 302, headers: { location: "https://elsewhere.test" } })) as unknown as typeof fetch,
+        remote: { result: "indeterminate", httpClass: "3xx" },
+        reason: "AUTH_REMOTE_INDETERMINATE",
+      },
+      {
+        fetch: (async () => new Response(sentinel, { status: 400 })) as unknown as typeof fetch,
+        remote: { result: "rejected", httpClass: "4xx" },
+        reason: "AUTH_REMOTE_REJECTED",
+      },
+      {
+        fetch: (async () => new Response(sentinel, { status: 503 })) as unknown as typeof fetch,
+        remote: { result: "indeterminate", httpClass: "5xx" },
+        reason: "AUTH_REMOTE_INDETERMINATE",
+      },
+      {
+        fetch: (async () => { throw new TypeError(sentinel); }) as unknown as typeof fetch,
+        remote: { result: "indeterminate", httpClass: "network_error" },
+        reason: "AUTH_REMOTE_INDETERMINATE",
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const fixture = await scaffoldCliFixture();
+      tempRoots.push(fixture.root);
+      const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+      const current = storedCredential();
+      await writeCredentials(credentialsPath, current);
+      let deletes = 0;
+      LogoutCommand.testDeps = {
+        env: {},
+        fetch: scenario.fetch,
+        deleteCredentials: async () => { deletes += 1; },
+        loadBuildIdentity: developmentBuildIdentity,
+      };
+
+      const result = await runAuthCommand(["logout", "--json", "--require-remote-revoke"], { fixture });
+      const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+      expect(result.exitCode).toBe(1);
+      expect(deletes).toBe(0);
+      expect(receipt).toMatchObject({
+        mode: "require_remote_revoke",
+        outcome: "failed",
+        qualificationEligible: false,
+        remote: { action: "revoke", ...scenario.remote },
+        local: { action: "delete", result: "not_performed", afterConfirmedRemoteRevoke: false },
+        reason: scenario.reason,
+      });
+      expect(result.stdout).not.toContain(sentinel);
+      expect(result.stderr).not.toContain(sentinel);
+      expect(await readCredentials(credentialsPath)).toEqual(current);
+    }
+  });
+
+  test("strict logout qualifies only after confirmed revoke followed by confirmed scoped deletion", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const events: string[] = [];
+    LogoutCommand.testDeps = {
+      env: {},
+      fetch: (async () => {
+        events.push("revoke");
+        return new Response(null, { status: 204 });
+      }) as unknown as typeof fetch,
+      deleteCredentials: async (path) => {
+        events.push("delete");
+        await deleteCredentials(path);
+      },
+      loadBuildIdentity: developmentBuildIdentity,
+    };
+
+    const result = await runAuthCommand(["logout", "--json", "--require-remote-revoke"], { fixture });
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(0);
+    expect(events).toEqual(["revoke", "delete"]);
+    expect(receipt).toMatchObject({
+      mode: "require_remote_revoke",
+      outcome: "succeeded",
+      qualificationEligible: false,
+      remote: { action: "revoke", result: "confirmed", httpClass: "2xx" },
+      local: { action: "delete", result: "confirmed", afterConfirmedRemoteRevoke: true },
+      reason: "BUILD_IDENTITY_UNQUALIFIED",
+    });
+    expect(await Bun.file(credentialsPath).exists()).toBe(false);
+  });
+
+  test("strict logout reports partial local deletion failure after confirmed revoke without false success", async () => {
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const current = storedCredential();
+    await writeCredentials(credentialsPath, current);
+    const sentinel = "SENTINEL_PARTIAL_DELETE_239";
+    LogoutCommand.testDeps = {
+      env: {},
+      fetch: (async () => new Response(null, { status: 204 })) as unknown as typeof fetch,
+      deleteCredentials: async (path) => {
+        await rm(path, { force: true });
+        throw new Error(sentinel);
+      },
+      loadBuildIdentity: developmentBuildIdentity,
+    };
+
+    const result = await runAuthCommand(["logout", "--json", "--require-remote-revoke"], { fixture });
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(1);
+    expect(receipt).toMatchObject({
+      mode: "require_remote_revoke",
+      outcome: "failed",
+      qualificationEligible: false,
+      remote: { action: "revoke", result: "confirmed", httpClass: "2xx" },
+      local: { action: "delete", result: "failed", afterConfirmedRemoteRevoke: true },
+      reason: "CREDENTIAL_DELETE_FAILED",
+    });
+    expect(result.stderr).toContain("CREDENTIAL_DELETE_FAILED");
+    expect(result.stdout).not.toContain(sentinel);
+    expect(result.stderr).not.toContain(sentinel);
+  });
+
+  test("strict logout requires safe v3 custody before build identity, network, or deletion", async () => {
+    let effects = 0;
+    LogoutCommand.testDeps = {
+      fetch: (async () => {
+        effects += 1;
+        return new Response(null, { status: 204 });
+      }) as unknown as typeof fetch,
+      deleteCredentials: async () => { effects += 1; },
+      loadBuildIdentity: async () => {
+        effects += 1;
+        return developmentBuildIdentity();
+      },
+    };
+
+    const absent = await runAuthCommand(["logout", "--json", "--require-remote-revoke"]);
+    expect(absent.exitCode).toBe(1);
+    expect(absent.stdout).toBe("");
+    expect(absent.stderr).toBe("CREDENTIAL_ABSENT\n");
+    expect(effects).toBe(0);
+
+    const fixture = await scaffoldCliFixture();
+    tempRoots.push(fixture.root);
+    const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
+    await writeFile(credentialsPath, "not-an-envelope");
+    const unsupported = await runAuthCommand(["logout", "--json", "--require-remote-revoke"], { fixture });
+    expect(unsupported.exitCode).toBe(1);
+    expect(unsupported.stdout).toBe("");
+    expect(unsupported.stderr).toBe("CREDENTIAL_SCHEMA_UNSUPPORTED\n");
+    expect(effects).toBe(0);
   });
 
   test("logout removes credentials and best-effort signs out", async () => {
