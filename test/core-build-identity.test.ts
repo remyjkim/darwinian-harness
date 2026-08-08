@@ -119,6 +119,29 @@ describe("packaged Worker build identity", () => {
     expect(DEVELOPMENT_SOURCE_COMMIT).toBe("0".repeat(40));
   });
 
+  test("keeps source checkout execution non-qualifying when a generated member lingers after packing", async () => {
+    const root = await tempRoot("drwn-i239-build-source-checkout-");
+    const packagePath = join(root, "package.json");
+    const identityPath = join(root, "build-identity.json");
+    await mkdir(join(root, ".git"));
+    await writeFile(packagePath, JSON.stringify({ version: "1.2.0" }));
+    await writeFile(identityPath, JSON.stringify({
+      schema: "darwinian.worker.build-identity",
+      schemaVersion: 1,
+      version: "1.2.0",
+      sourceCommit: SOURCE_COMMIT,
+    }));
+
+    expect(await loadBuildIdentity({ packagePath, identityPath })).toEqual({
+      kind: "development",
+      schema: "darwinian.worker.build-identity",
+      schemaVersion: 1,
+      version: "1.2.0",
+      sourceCommit: DEVELOPMENT_SOURCE_COMMIT,
+      qualificationEligible: false,
+    });
+  });
+
   test("fails closed rather than treating malformed or mismatched present members as development", async () => {
     const root = await tempRoot("drwn-i239-build-malformed-");
     const packagePath = join(root, "package.json");

@@ -1,7 +1,9 @@
 // ABOUTME: Loads the packaged Worker source identity used by qualification receipts.
 // ABOUTME: Falls back only when the generated member is absent and marks source execution non-qualifying.
 
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import semver from "semver";
 
 const BUILD_IDENTITY_KEYS = ["schema", "schemaVersion", "sourceCommit", "version"] as const;
@@ -72,6 +74,32 @@ function isMissing(error: unknown): boolean {
     (error as { code?: unknown }).code === "ENOENT";
 }
 
+function developmentIdentity(version: string): RuntimeBuildIdentity {
+  return {
+    kind: "development",
+    schema: "darwinian.worker.build-identity",
+    schemaVersion: 1,
+    version,
+    sourceCommit: DEVELOPMENT_SOURCE_COMMIT,
+    qualificationEligible: false,
+  };
+}
+
+function sourceCheckoutMarker(packagePath: string | URL): string {
+  const path = packagePath instanceof URL ? fileURLToPath(packagePath) : packagePath;
+  return join(dirname(path), ".git");
+}
+
+async function isSourceCheckout(packagePath: string | URL): Promise<boolean> {
+  try {
+    await lstat(sourceCheckoutMarker(packagePath));
+    return true;
+  } catch (error) {
+    if (isMissing(error)) return false;
+    throw new BuildIdentityError();
+  }
+}
+
 export interface LoadBuildIdentityOptions {
   packagePath?: string | URL;
   identityPath?: string | URL;
@@ -97,19 +125,17 @@ export async function loadBuildIdentity(
   const packageVersion = (packageMetadata as Record<string, unknown>).version;
   assertPackageVersion(packageVersion);
 
+  // The generated member is deliberately ignored by Git and may remain after a
+  // local pack. A source checkout must never inherit that artifact's release
+  // eligibility; only an installed package without its own Git metadata may.
+  if (await isSourceCheckout(packagePath)) return developmentIdentity(packageVersion);
+
   let identityText: string;
   try {
     identityText = await readText(identityPath);
   } catch (error) {
     if (!isMissing(error)) throw new BuildIdentityError();
-    return {
-      kind: "development",
-      schema: "darwinian.worker.build-identity",
-      schemaVersion: 1,
-      version: packageVersion,
-      sourceCommit: DEVELOPMENT_SOURCE_COMMIT,
-      qualificationEligible: false,
-    };
+    return developmentIdentity(packageVersion);
   }
 
   let parsed: unknown;
