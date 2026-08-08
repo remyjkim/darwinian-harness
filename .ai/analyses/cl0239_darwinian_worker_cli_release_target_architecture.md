@@ -8,7 +8,7 @@
 **Status:** G1 proposal; no G2 plan, implementation, publication, Services mutation, staging action, candidate, secret, or live test is authorized by this document
 **Owner:** Remy K
 **Reviewer:** Remy K (user-authorized G1 reviewer control)
-**Publication environment reviewer:** `leeminseung` (independent GitHub account with verified repository write access)
+**Publication environment reviewer:** governed by the checked-in approval policy at `scripts/release/release-policy.json`; currently the `remyjkim` release operator, who approves their own protected deployment
 **Repository:** `remyjkim/darwinian-worker`
 **Parent:** I232 cross-repository architecture program
 **Downstream:** I236 canonical-identity qualification and separately numbered Services runtime adoption, then I238 controlled staging qualification
@@ -380,7 +380,7 @@ run and uploaded artifact:
    stale, differently versioned, differently headed, renamed, or differently digested
    receipt/tarball;
 6. npm again confirms `1.2.0` is unpublished through the tri-state probe;
-7. the protected `darwinian-npm-publish` environment requires independent approval before
+7. the protected `darwinian-npm-publish` environment requires a policy-conformant approval before
    the minimal OIDC-capable job re-reads the current default-branch tip through GitHub,
    requires it still to equal the dry-run/tag commit, then downloads and re-verifies the
    authorized artifact;
@@ -404,9 +404,10 @@ would break bridge publication. I239 therefore selects a dedicated
 Before any `v1.2.0` tag is created or pushed, an explicitly authorized administrator must
 configure and read back all of the following:
 
-- GitHub environment `darwinian-npm-publish` has required reviewer `leeminseung`,
-  `prevent_self_review=true`, `can_admins_bypass=false`, and a custom deployment tag policy
-  admitting exactly `v1.2.0`;
+- GitHub environment `darwinian-npm-publish` matches the checked-in approval policy at
+  `scripts/release/release-policy.json` for required reviewers and self-review, always has
+  `can_admins_bypass=false`, and carries a custom deployment tag policy admitting exactly
+  `v1.2.0`;
 - the CLI publish job references `darwinian-npm-publish`; no other CLI-release job receives
   `id-token: write`;
 - the `darwinian` npm trusted publisher names owner `remyjkim`, repository
@@ -415,9 +416,33 @@ configure and read back all of the following:
 - `darwinian` publishing access requires 2FA and disallows traditional tokens; and
 - GitHub and authenticated npm settings receipts are timestamped and attached to I239.
 
-The `remyjkim` release operator creates the tag or dispatches recovery; required reviewer
-`leeminseung` supplies the independent environment approval. Self-review prevention means
-the required reviewer cannot initiate and then approve the same protected job.
+### Approval policy is declared, not hard-coded
+
+The original design named a second GitHub account as the sole required reviewer and
+prevented self-review, so publication required two people. For a CLI maintained by one
+operator that is not a control; it is a single point of failure, because an unavailable
+reviewer blocks an otherwise fully qualified release with no in-band remedy.
+
+The approval identity is therefore declared in a single checked-in file,
+`scripts/release/release-policy.json`, and `assertGitHubReceipt` validates the readback
+receipt against that file instead of against constants. Changing who may approve becomes a
+reviewable pull request whose diff states the intent, rather than a silent divergence
+between GitHub settings and the repository.
+
+The policy governs only approver identity and self-review. The validator keeps a fixed
+floor that no policy value can relax:
+
+- `requiredReviewers` must be a non-empty list of named accounts, so publication always
+  requires a deliberate approval click by a named identity;
+- `canAdminsBypass` must be `false`, so the environment gate can never be skipped;
+- the environment must remain `darwinian-npm-publish`, preserving the npm trusted-publisher
+  OIDC binding; and
+- the exact single `v1.2.0` tag deployment policy is unchanged.
+
+Under the current policy the `remyjkim` release operator creates the tag and supplies the
+environment approval for the same protected job. The receipt therefore truthfully proves a
+single-operator, self-approved control, and no longer asserts an independent second-person
+control that is not in force.
 
 The historical `1.1.0` provenance attestation is supporting evidence only. npm trusted
 publisher settings are mutable and must be read from authenticated package settings for
@@ -478,7 +503,7 @@ Recovery uses a separately authorized `.github/workflows/release-recovery.yml`
 authorization receipt, then derives rather than trusts version, tag, and commit from the
 tagged source and canonical run. The workflow has no `id-token: write`, npm publish token,
 publish command, tag mutation, dist-tag mutation, or unpublish action. It enters the same
-independently reviewed `darwinian-npm-publish` environment, so recovery also pauses for
+policy-gated `darwinian-npm-publish` environment, so recovery also pauses for
 approval.
 
 Before any recovery action it requires all of these identities to agree:
@@ -787,7 +812,7 @@ G2 must expand these claims into explicit RED → GREEN increments and exact com
 | Dry-run freshness | workflow validation runs the real online check with `dry_run=true` |
 | Ref/tag binding | manual non-main ref, mismatched input, lightweight tag, peeled-commit mismatch, dry-run SHA not equal to current `origin/main` tip, missing exact run/job, and stale/different-SHA receipt all fail |
 | Exact published bytes | dry run uploads the qualified `.tgz` and receipt; tag binds the exact run/artifact ID/digest; publication downloads and re-verifies that artifact, publishes the relative tar path, and registry shasum/integrity must match |
-| Publication controls | fixture/readback assertions require the dedicated environment name, independent reviewer, self-review prevention, disabled admin bypass, exact tag policy, exact npm trusted-publisher fields, and token prohibition |
+| Publication controls | fixture/readback assertions require the dedicated environment name, policy-declared reviewers and self-review setting, a non-empty reviewer list, disabled admin bypass, exact tag policy, exact npm trusted-publisher fields, and token prohibition |
 | Required members | removal or mismatch of any one of the five source paths or generated build-identity member fails artifact verification |
 | Installed artifact | actual packed tar installs in a clean prefix and all eight safe version/help smokes pass |
 | Recovery non-publication | recovery fixtures prove exact npm/tag/commit/tar identity, verification/metadata-only behavior, and structural absence of OIDC/token/publish/tag-mutation paths |
@@ -890,7 +915,7 @@ Knowledge capture and the immutable I239 handoff require all of the following af
 8. Configure/read back the dedicated GitHub environment, npm trusted publisher, and token
    prohibition; stop on any mismatch.
 9. Re-fetch `origin/main`; if it moved, invalidate the freeze and return to step 6. Otherwise
-   create/push the annotated tag carrying the exact run/artifact identity, obtain independent
+   create/push the annotated tag carrying the exact run/artifact identity, obtain the policy-conformant
    environment approval, publish the exact qualified `.tgz`, and verify npm byte identity,
    installed artifacts, and GitHub Release. Use the non-publishing recovery workflow only
    after a separately authorized partial-publication failure.
