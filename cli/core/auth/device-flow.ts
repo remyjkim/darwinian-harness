@@ -9,6 +9,9 @@ const DEVICE_CODE_PATH = "/api/auth/device/code";
 const DEVICE_TOKEN_PATH = "/api/auth/device/token";
 const AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
 const TOKEN_PATH = "/api/auth/oauth2/token";
+const MAX_FUTURE_IAT_SKEW_MS = 60_000;
+const MAX_DEVICE_FLOW_SECONDS = 3_600;
+const MAX_DEVICE_POLL_INTERVAL_SECONDS = 60;
 
 export class AuthRemoteOperationError extends Error {
   constructor(
@@ -106,8 +109,30 @@ async function startDeviceFlow(profile: CliAuthProfile, fetcher: typeof fetch): 
     client_id: profile.clientId,
     scope: profile.scope,
   });
-  if (typeof body.device_code !== "string" || typeof body.user_code !== "string") {
-    throw new Error("DAH device authorization response missing device_code/user_code.");
+  const isVerificationUrl = (value: unknown): value is string => {
+    if (typeof value !== "string") return false;
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+        parsed.username === "" && parsed.password === "" && parsed.href === value;
+    } catch {
+      return false;
+    }
+  };
+  if (
+    typeof body.device_code !== "string" || body.device_code.length === 0 ||
+    typeof body.user_code !== "string" || body.user_code.length === 0 ||
+    !isVerificationUrl(body.verification_uri) ||
+    (body.verification_uri_complete !== undefined && !isVerificationUrl(body.verification_uri_complete)) ||
+    !Number.isSafeInteger(body.expires_in) ||
+    (body.expires_in as number) <= 0 ||
+    (body.expires_in as number) > MAX_DEVICE_FLOW_SECONDS ||
+    (body.interval !== undefined &&
+      (!Number.isSafeInteger(body.interval) ||
+        (body.interval as number) <= 0 ||
+        (body.interval as number) > MAX_DEVICE_POLL_INTERVAL_SECONDS))
+  ) {
+    throw new Error("DAH device authorization response is invalid.");
   }
   return body as unknown as DeviceAuthorization;
 }
@@ -304,6 +329,12 @@ export function credentialFromTokens(
     (tokens.claims.exp as number) <= (tokens.claims.iat as number)) {
     throw new Error("DAH access token is missing coherent iat/exp claims.");
   }
+  const nowMillis = (epoch.now ?? Date.now)();
+  const issuedAtMillis = (tokens.claims.iat as number) * 1000;
+  const expiresAtMillis = (tokens.claims.exp as number) * 1000;
+  if (issuedAtMillis > nowMillis + MAX_FUTURE_IAT_SKEW_MS || expiresAtMillis <= nowMillis) {
+    throw new Error("DAH access token timing is outside the accepted clock window.");
+  }
   const userEmail = typeof tokens.claims.email === "string" ? tokens.claims.email : "";
   const credential: CliDahCredentialFileV3 = {
     version: 3,
@@ -314,9 +345,9 @@ export function credentialFromTokens(
     resource: profile.resource,
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token,
-    issuedAt: new Date((tokens.claims.iat as number) * 1000).toISOString(),
-    expiresAt: new Date((tokens.claims.exp as number) * 1000).toISOString(),
-    savedAt: new Date((epoch.now ?? Date.now)()).toISOString(),
+    issuedAt: new Date(issuedAtMillis).toISOString(),
+    expiresAt: new Date(expiresAtMillis).toISOString(),
+    savedAt: new Date(nowMillis).toISOString(),
     userEmail,
   };
   assertCredentialV3(credential);

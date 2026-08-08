@@ -155,6 +155,45 @@ describe("runDeviceFlow", () => {
     }
   });
 
+  test("accepts only bounded future iat clock skew for a newly issued token", async () => {
+    const profile = drwnCliProfile({});
+    const fetcherForIat = (iat: number) => (async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/api/auth/device/code") {
+        return Response.json({
+          device_code: "device-code",
+          user_code: "ABCD",
+          verification_uri: "https://app.test/device",
+          expires_in: 600,
+          interval: 1,
+        });
+      }
+      if (path === "/api/auth/device/token") return Response.json({ access_token: "opaque" });
+      if (path === "/api/auth/oauth2/authorize") return Response.json({ code: "code" });
+      if (path === "/api/auth/oauth2/token") {
+        return Response.json({
+          access_token: fakeJwt(profile.issuer, { iat, exp: iat + 900 }),
+          refresh_token: "refresh",
+          expires_in: 900,
+        });
+      }
+      throw new Error(`unexpected ${String(input)}`);
+    }) as unknown as typeof fetch;
+    const run = (iat: number) => runDeviceFlow({
+      profile,
+      fetcher: fetcherForIat(iat),
+      sleep: async () => {},
+      now: () => IAT * 1000,
+      randomUUID: () => UUID,
+      onUserAction: () => {},
+    });
+
+    await expect(run(IAT + 60)).resolves.toMatchObject({
+      issuedAt: new Date((IAT + 60) * 1000).toISOString(),
+    });
+    await expect(run(IAT + 61)).rejects.toThrow("outside the accepted clock window");
+  });
+
   test("preserves native device authorization terminal errors", async () => {
     const profile = drwnCliProfile({});
     const { fetcher } = nativeFetcher({ terminalError: "access_denied" });
@@ -166,6 +205,46 @@ describe("runDeviceFlow", () => {
       randomUUID: () => UUID,
       onUserAction: () => {},
     })).rejects.toThrow("device_authorization_denied");
+  });
+
+  test("rejects malformed device authorization bounds and verification URLs before polling", async () => {
+    const profile = drwnCliProfile({});
+    const valid = {
+      device_code: "device-code",
+      user_code: "ABCD",
+      verification_uri: "https://app.test/device",
+      verification_uri_complete: "https://app.test/device?user_code=ABCD",
+      expires_in: 600,
+      interval: 1,
+    };
+    const invalid = [
+      { ...valid, expires_in: 0 },
+      { ...valid, expires_in: 1.5 },
+      { ...valid, expires_in: 3601 },
+      { ...valid, interval: 0 },
+      { ...valid, interval: 61 },
+      { ...valid, verification_uri: "not-a-url" },
+      { ...valid, verification_uri_complete: "javascript:alert(1)" },
+    ];
+
+    for (const body of invalid) {
+      let polls = 0;
+      let actions = 0;
+      await expect(runDeviceFlow({
+        profile,
+        fetcher: (async (input: string | URL | Request) => {
+          if (new URL(String(input)).pathname === "/api/auth/device/code") return Response.json(body);
+          polls += 1;
+          return Response.json({ access_token: "must-not-poll" });
+        }) as unknown as typeof fetch,
+        sleep: async () => { polls += 1; },
+        now: () => IAT * 1000,
+        randomUUID: () => UUID,
+        onUserAction: () => { actions += 1; },
+      })).rejects.toThrow("DAH device authorization response is invalid");
+      expect(polls).toBe(0);
+      expect(actions).toBe(0);
+    }
   });
 
   test("has no retired Analyzer-client overload", () => {

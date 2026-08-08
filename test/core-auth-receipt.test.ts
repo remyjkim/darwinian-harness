@@ -76,6 +76,10 @@ function producerRows(): AuthOperationReceiptV1[] {
     qualificationEligible: boolean,
   ): AuthOperationReceiptV1 => ({
     ...base,
+    worker: {
+      ...base.worker,
+      sourceCommit: reason === "BUILD_IDENTITY_UNQUALIFIED" ? "0".repeat(40) : SOURCE_COMMIT,
+    },
     credential: { ...base.credential, generation: action === "login" ? 1 : 2 },
     action,
     mode,
@@ -158,6 +162,10 @@ describe("AuthOperationReceiptV1", () => {
               for (const qualificationEligible of [false, true]) {
                 const candidate: AuthOperationReceiptV1 = {
                   ...baseReceipt(),
+                  worker: {
+                    ...baseReceipt().worker,
+                    sourceCommit: reason === "BUILD_IDENTITY_UNQUALIFIED" ? "0".repeat(40) : SOURCE_COMMIT,
+                  },
                   credential: { ...baseReceipt().credential, generation: action === "login" ? 1 : 2 },
                   action,
                   mode,
@@ -200,6 +208,25 @@ describe("AuthOperationReceiptV1", () => {
       { ...valid, actionAt: "2026-08-08T00:59:59.000Z" },
     ];
     for (const candidate of invalid) {
+      expect(() => parseAuthOperationReceipt(candidate)).toThrow(AuthReceiptError);
+    }
+  });
+
+  test("binds qualification eligibility to the exact packaged 1.2.0 identity", () => {
+    const valid = baseReceipt();
+    const development = {
+      ...valid,
+      worker: { version: "1.2.0", sourceCommit: "0".repeat(40) },
+      qualificationEligible: false,
+      reason: "BUILD_IDENTITY_UNQUALIFIED" as const,
+    };
+
+    expect(parseAuthOperationReceipt(development)).toEqual(development);
+    for (const candidate of [
+      { ...valid, worker: { ...valid.worker, version: "9.9.9" } },
+      { ...valid, worker: { ...valid.worker, sourceCommit: "0".repeat(40) } },
+      { ...development, worker: { ...development.worker, sourceCommit: SOURCE_COMMIT } },
+    ]) {
       expect(() => parseAuthOperationReceipt(candidate)).toThrow(AuthReceiptError);
     }
   });

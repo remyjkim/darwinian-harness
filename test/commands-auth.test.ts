@@ -276,6 +276,43 @@ describe("auth commands", () => {
     });
   });
 
+  test("login --json clamps action time to a signed iat within normal clock skew", async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const nowMillis = nowSeconds * 1000;
+    const futureIat = nowSeconds + 30;
+    const successfulFetch = deviceFlowFetch();
+    LoginCommand.testDeps = {
+      env: {},
+      fetch: (async (url: string, init?: RequestInit) => {
+        if (new URL(url).pathname === "/api/auth/oauth2/token") {
+          return Response.json({
+            access_token: fakeJwt("skew@example.test", futureIat + 900),
+            refresh_token: "refresh-skew",
+            token_type: "Bearer",
+            expires_in: 900,
+          });
+        }
+        return successfulFetch(url, init);
+      }) as typeof fetch,
+      sleep: async () => {},
+      now: () => nowMillis,
+      randomUUID: () => "89898989-8989-4989-8989-898989898989",
+      openBrowser: () => {},
+      loadBuildIdentity: developmentBuildIdentity,
+    };
+
+    const result = await runAuthCommand(["login", "--json"]);
+    const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
+
+    expect(result.exitCode).toBe(0);
+    expect(receipt.actionAt).toBe(new Date(futureIat * 1000).toISOString());
+    expect(receipt.actionAt).toBe(receipt.credential.issuedAt);
+    expect(await readCredentials(resolveCredentialsPath(result.fixture.agentsDir))).toMatchObject({
+      credentialId: "89898989-8989-4989-8989-898989898989",
+      refreshToken: "refresh-skew",
+    });
+  });
+
   test("login --json emits an accurate failure receipt after a safely identified write failure", async () => {
     const sentinel = "SENTINEL_CREDENTIAL_WRITE_FAILURE_239";
     LoginCommand.testDeps = {

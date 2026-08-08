@@ -1,7 +1,6 @@
 // ABOUTME: Constructs and validates the exact sanitized Worker auth-operation receipt allowlist.
 // ABOUTME: Derives qualification from trusted build identity and admits only the 32 reviewed producer states.
 
-import semver from "semver";
 import { DEVELOPMENT_SOURCE_COMMIT, type RuntimeBuildIdentity } from "../build-identity";
 
 const ROOT_KEYS = [
@@ -253,7 +252,7 @@ export function parseAuthOperationReceipt(value: unknown): AuthOperationReceiptV
   const local = exactObject(input.local, LOCAL_KEYS);
 
   if (input.schema !== "darwinian.worker.auth-operation" || input.schemaVersion !== 1) fail();
-  if (typeof worker.version !== "string" || semver.valid(worker.version) !== worker.version) fail();
+  if (worker.version !== "1.2.0") fail();
   if (typeof worker.sourceCommit !== "string" || !FULL_LOWERCASE_GIT_SHA.test(worker.sourceCommit)) fail();
   if (typeof input.qualificationNamespaceDigest !== "string" || !SHA256.test(input.qualificationNamespaceDigest)) fail();
   if (typeof credential.credentialId !== "string" || !UUID_V4.test(credential.credentialId)) fail();
@@ -302,18 +301,20 @@ export function parseAuthOperationReceipt(value: unknown): AuthOperationReceiptV
     reason,
   };
   if (!AUTH_OPERATION_PRODUCER_ROWS.has(stateRowKey(receipt))) fail();
+  if (receipt.qualificationEligible && receipt.worker.sourceCommit === DEVELOPMENT_SOURCE_COMMIT) fail();
+  if (receipt.reason === "BUILD_IDENTITY_UNQUALIFIED" &&
+    receipt.worker.sourceCommit !== DEVELOPMENT_SOURCE_COMMIT) fail();
   return receipt;
 }
 
 function assertRuntimeIdentity(identity: RuntimeBuildIdentity): void {
   if (
-    semver.valid(identity.version) !== identity.version ||
+    identity.version !== "1.2.0" ||
     !FULL_LOWERCASE_GIT_SHA.test(identity.sourceCommit) ||
     (identity.kind === "development" &&
       (identity.sourceCommit !== DEVELOPMENT_SOURCE_COMMIT || identity.qualificationEligible)) ||
     (identity.kind === "packaged" &&
-      (identity.sourceCommit === DEVELOPMENT_SOURCE_COMMIT ||
-        identity.qualificationEligible !== (identity.version === "1.2.0")))
+      (identity.sourceCommit === DEVELOPMENT_SOURCE_COMMIT || !identity.qualificationEligible))
   ) fail();
 }
 

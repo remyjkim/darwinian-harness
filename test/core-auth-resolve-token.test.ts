@@ -23,6 +23,10 @@ function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
+function jwtWithClaims(claims: Record<string, unknown>): string {
+  return `${b64({ alg: "none" })}.${b64(claims)}.sig`;
+}
+
 function fakeJwt(options: {
   email?: string;
   iat?: number;
@@ -85,6 +89,30 @@ describe("resolveToken", () => {
 
     expect(result).toEqual({ token, source: "env" });
     expect(await Bun.file(credentialsPath).text()).toBe(before);
+  });
+
+  test("requires DRWN_TOKEN to carry the configured issuer and a safe future expiry", async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const base = { iss: ISSUER, aud: RESOURCE, exp: nowSeconds + 900 };
+    const invalidClaims = [
+      { ...base, exp: undefined },
+      { ...base, exp: String(nowSeconds + 900) },
+      { ...base, exp: Number.MAX_SAFE_INTEGER + 1 },
+      { ...base, exp: nowSeconds },
+      { ...base, iss: "https://wrong-issuer.test/api/auth" },
+    ];
+
+    for (const claims of invalidClaims) {
+      await expect(resolveToken({
+        credentialsPath: "/no/such/path",
+        env: { DRWN_TOKEN: jwtWithClaims(claims) },
+      })).rejects.toThrow();
+    }
+    const token = jwtWithClaims(base);
+    await expect(resolveToken({
+      credentialsPath: "/no/such/path",
+      env: { DRWN_TOKEN: token },
+    })).resolves.toEqual({ token, source: "env" });
   });
 
   test("returns a non-expiring-soon v3 stored bearer without transport configuration", async () => {

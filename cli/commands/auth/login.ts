@@ -120,7 +120,11 @@ export class LoginCommand extends BaseCommand {
       cancelOpenOnEnter?.();
       const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
       const credentialScope = await (deps.deriveCredentialScope ?? deriveCredentialScope)(credentialsPath);
-      const actionAt = new Date((deps.now ?? Date.now)()).toISOString();
+      const actionAtMillis = Math.max(
+        (deps.now ?? Date.now)(),
+        Date.parse(credential.issuedAt),
+      );
+      const actionAt = new Date(actionAtMillis).toISOString();
       try {
         await (deps.writeCredentials ?? writeCredentials)(credentialsPath, credential);
       } catch {

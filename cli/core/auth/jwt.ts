@@ -49,8 +49,13 @@ export function assertJwtAudience(
   if (!audiences.includes(resource)) {
     throw new JwtAudienceError(`Token audience does not include ${resource}.`);
   }
-  if (opts.requireUnexpired && typeof claims.exp === "number" && claims.exp <= Math.floor(Date.now() / 1000)) {
-    throw new JwtAudienceError("Token is expired.");
+  if (opts.requireUnexpired) {
+    if (!Number.isSafeInteger(claims.exp)) {
+      throw new JwtAudienceError("Token expiry is missing or invalid.");
+    }
+    if ((claims.exp as number) <= Math.floor(Date.now() / 1000)) {
+      throw new JwtAudienceError("Token is expired.");
+    }
   }
   return claims;
 }

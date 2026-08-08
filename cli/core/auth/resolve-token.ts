@@ -85,7 +85,7 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
   const profile = input.profile ?? drwnCliProfile(input.env);
   const envToken = input.env.DRWN_TOKEN;
   if (envToken) {
-    assertJwtAudience(envToken, profile.resource, { requireUnexpired: true });
+    assertJwtAudience(envToken, profile.resource, { issuer: profile.issuer, requireUnexpired: true });
     return {
       token: envToken,
       source: "env",
