@@ -130,6 +130,10 @@ describe("Worker annotated-tag publication workflow", () => {
     expect(workflow).toContain("push:\n    tags:\n      - 'v1.2.0'");
     expect(validation).toContain("name: Validate authorized tag");
     expect(validation).toContain("actions: read");
+    expect(validation).toContain('git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"');
+    expect(validation.indexOf('git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"')).toBeLessThan(
+      validation.indexOf('git cat-file -t "refs/tags/$TAG"'),
+    );
     expect(validation).toContain('git cat-file -t "refs/tags/$TAG"');
     expect(validation).toContain('git rev-parse "refs/tags/$TAG^{}"');
     expect(validation).toContain("release-cli.ts parse-tag-authorization");
