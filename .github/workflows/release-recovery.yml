@@ -59,10 +59,15 @@ jobs:
       - name: Validate exact recovery authority and tag
         id: identity
         env:
+          FAILED_RUN_ID: ${{ inputs.failed_run_id }}
           RECOVERY_AUTHORIZATION: ${{ inputs.authorization_receipt }}
         run: |
           if [ "$GITHUB_REF" != "refs/tags/v1.2.0" ]; then
             echo "Recovery must be dispatched with refs/tags/v1.2.0 selected." >&2
+            exit 1
+          fi
+          if ! [[ "$FAILED_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Recovery failed_run_id must be a positive decimal run ID." >&2
             exit 1
           fi
           printf '%s' "$RECOVERY_AUTHORIZATION" > "$RUNNER_TEMP/recovery-authorization.json"
@@ -70,7 +75,7 @@ jobs:
             "$RUNNER_TEMP/recovery-authorization.json" \
             > "$RUNNER_TEMP/parsed-recovery-authorization.json"
           jq -e \
-            --arg failedRunId "${{ inputs.failed_run_id }}" \
+            --arg failedRunId "$FAILED_RUN_ID" \
             '.failedRunId | tostring == $failedRunId' \
             "$RUNNER_TEMP/parsed-recovery-authorization.json" > /dev/null
           TAG_TYPE="$(git cat-file -t "refs/tags/v1.2.0")"
@@ -92,15 +97,17 @@ jobs:
 
       - name: Verify the exact failed canonical release run
         env:
+          FAILED_RUN_ID: ${{ inputs.failed_run_id }}
           GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: ${{ steps.identity.outputs.source_commit }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ inputs.failed_run_id }}" \
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID" \
             > "$RUNNER_TEMP/failed-run.json"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/${{ inputs.failed_run_id }}/jobs?filter=latest&per_page=100" \
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$FAILED_RUN_ID/jobs?filter=latest&per_page=100" \
             > "$RUNNER_TEMP/failed-run-jobs.json"
           jq -e \
-            --arg commit "${{ steps.identity.outputs.source_commit }}" \
-            --arg runId "${{ inputs.failed_run_id }}" \
+            --arg commit "$SOURCE_COMMIT" \
+            --arg runId "$FAILED_RUN_ID" \
             '
               (.id | tostring) == $runId and
               .path == ".github/workflows/release.yml" and

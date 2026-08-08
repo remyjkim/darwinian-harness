@@ -54,17 +54,20 @@ jobs:
 
       - name: Validate manual identity and current main
         id: identity
+        env:
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           if [ "$GITHUB_REF" != "refs/heads/main" ]; then
             echo "Manual release qualification must select refs/heads/main." >&2
             exit 1
           fi
-          if [ "${{ inputs.dry_run }}" != "true" ]; then
+          if [ "$INPUT_DRY_RUN" != "true" ]; then
             echo "Manual release qualification must use dry_run=true." >&2
             exit 1
           fi
           PACKAGE_VERSION="$(bun -e 'console.log(require("./package.json").version)')"
-          if [ "${{ inputs.version }}" != "$PACKAGE_VERSION" ]; then
+          if [ "$INPUT_VERSION" != "$PACKAGE_VERSION" ]; then
             echo "Manual version does not match package metadata." >&2
             exit 1
           fi

@@ -50,7 +50,7 @@ function isForbiddenMember(path: string): boolean {
   const segments = path.split("/");
   const filename = segments.at(-1) ?? "";
   return (
-    path === ".env" || path.startsWith(".env.") ||
+    filename === ".env" || filename.startsWith(".env.") ||
     segments.includes(".ai") ||
     segments[0] === "test" ||
     segments[0] === "scripts" ||

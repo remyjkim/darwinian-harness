@@ -23,6 +23,7 @@ async function classify(result: RegistryCommandResult) {
     "version",
     "--json",
     "--prefer-online",
+    "--registry=https://registry.npmjs.org/",
   ]]);
   return classification;
 }

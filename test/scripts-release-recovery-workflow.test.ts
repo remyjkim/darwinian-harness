@@ -14,7 +14,12 @@ describe("Worker release recovery workflow", () => {
     expect(workflow).toContain("authorization_receipt:");
     expect(workflow).toContain('GITHUB_REF" != "refs/tags/v1.2.0"');
     expect(workflow).toContain('git cat-file -t "refs/tags/v1.2.0"');
-    expect(workflow).toContain("actions/runs/${{ inputs.failed_run_id }}");
+    expect(workflow).toContain('FAILED_RUN_ID: ${{ inputs.failed_run_id }}');
+    expect(workflow).toContain('[[ "$FAILED_RUN_ID" =~ ^[1-9][0-9]*$ ]]');
+    expect(workflow).toContain('actions/runs/$FAILED_RUN_ID');
+    expect(workflow).not.toContain('actions/runs/${{ inputs.failed_run_id }}');
+    expect(workflow).not.toContain('--arg failedRunId "${{ inputs.failed_run_id }}"');
+    expect(workflow).not.toContain('--arg runId "${{ inputs.failed_run_id }}"');
     expect(workflow).toContain("release-cli.ts parse-tag-authorization");
     expect(workflow).toContain("release-cli.ts requalify-artifact");
     expect(workflow).toContain("release-cli.ts verify-recovery-provenance");

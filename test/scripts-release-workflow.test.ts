@@ -21,9 +21,11 @@ describe("Worker release dry-run workflow", () => {
     expect(workflow).toContain("dry_run:");
     expect(workflow).toContain("default: true");
     expect(workflow).toContain('GITHUB_REF" != "refs/heads/main"');
-    expect(workflow).toContain('inputs.dry_run');
-    expect(workflow).toContain('!= "true"');
-    expect(workflow).toContain('inputs.version');
+    expect(workflow).toContain('INPUT_DRY_RUN: ${{ inputs.dry_run }}');
+    expect(workflow).toContain('INPUT_VERSION: ${{ inputs.version }}');
+    expect(workflow).toContain('INPUT_DRY_RUN" != "true"');
+    expect(workflow).toContain('INPUT_VERSION" != "$PACKAGE_VERSION"');
+    expect(workflow).not.toContain('if [ "${{ inputs.');
     expect(workflow).toContain("git fetch --no-tags origin main");
     expect(workflow).toContain("git rev-parse HEAD");
     expect(workflow).toContain("git rev-parse origin/main");

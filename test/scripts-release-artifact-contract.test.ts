@@ -67,6 +67,8 @@ describe("release package member qualification", () => {
 
   test.each([
     ".env",
+    "nested/.env",
+    "nested/.env.production",
     ".ai/tasks/secret.md",
     "test/release.test.ts",
     "scripts/private-release.ts",

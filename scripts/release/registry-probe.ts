@@ -91,6 +91,7 @@ export async function probeRegistryVersion(
     "version",
     "--json",
     "--prefer-online",
+    "--registry=https://registry.npmjs.org/",
   ]);
 
   if (result.failure || result.exitCode === null) return { state: "indeterminate" };
