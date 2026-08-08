@@ -30,7 +30,12 @@ class CaptureStream extends Writable {
 function fakeJwt(): string {
   const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
   const payload = Buffer.from(
-    JSON.stringify({ aud: "https://api.darwinian.dev", exp: Math.floor(Date.now() / 1000) + 3600, sub: "user_test" }),
+    JSON.stringify({
+      iss: "https://auth.darwinian.dev/api/auth",
+      aud: "https://api.darwinian.dev",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      sub: "user_test",
+    }),
   ).toString("base64url");
   return `${header}.${payload}.sig`;
 }

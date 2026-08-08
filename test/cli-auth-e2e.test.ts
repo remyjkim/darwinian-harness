@@ -71,6 +71,7 @@ function startAuthServer(options: { pendingPolls?: number } = {}) {
         return Response.json({
           device_code: "device-code",
           user_code: "ABCD-EFGH",
+          verification_uri: new URL("/device", request.url).toString(),
           verification_uri_complete: new URL("/device?user_code=ABCD-EFGH", request.url).toString(),
           expires_in: 600,
           interval: 1,
@@ -228,21 +229,26 @@ describe("auth CLI E2E", () => {
 
     const valid = await runAgentsCli(["whoami", "--json"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("env-e2e@example.com"),
+      DRWN_TOKEN: fakeJwt("env-e2e@example.com", Math.floor(Date.now() / 1000) + 900, {
+        iss: `${apiUrl}/api/auth`,
+      }),
       DRWN_DAH_HUB_URL: apiUrl,
     });
 
     expect(valid.exitCode).toBe(0);
     expect(JSON.parse(valid.stdout)).toMatchObject({
       email: "env-e2e@example.com",
-      issuer: "https://auth.darwinian.dev/api/auth",
+      issuer: `${apiUrl}/api/auth`,
       source: "env",
     });
     expect(await Bun.file(resolveCredentialsPath(fixture.agentsDir)).exists()).toBe(false);
 
     const wrongAudience = await runAgentsCli(["whoami"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("bad@example.com", Math.floor(Date.now() / 1000) + 900, { aud: "https://wrong.example" }),
+      DRWN_TOKEN: fakeJwt("bad@example.com", Math.floor(Date.now() / 1000) + 900, {
+        aud: "https://wrong.example",
+        iss: `${apiUrl}/api/auth`,
+      }),
       DRWN_DAH_HUB_URL: apiUrl,
     });
     expect(wrongAudience.exitCode).toBe(1);
@@ -250,7 +256,9 @@ describe("auth CLI E2E", () => {
 
     const expired = await runAgentsCli(["whoami"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("expired@example.com", Math.floor(Date.now() / 1000) - 60),
+      DRWN_TOKEN: fakeJwt("expired@example.com", Math.floor(Date.now() / 1000) - 60, {
+        iss: `${apiUrl}/api/auth`,
+      }),
       DRWN_DAH_HUB_URL: apiUrl,
     });
     expect(expired.exitCode).toBe(1);
