@@ -113,6 +113,7 @@ export async function runReleaseCli(args: string[]): Promise<string> {
     const result = validatePublicationControls({
       github: JSON.parse(await readFile(requiredArg(args, 1), "utf8")),
       npm: JSON.parse(await readFile(requiredArg(args, 2), "utf8")),
+      policy: JSON.parse(await readFile(new URL("./release/release-policy.json", import.meta.url), "utf8")),
       now: new Date().toISOString(),
     });
     return `${JSON.stringify(result)}\n`;

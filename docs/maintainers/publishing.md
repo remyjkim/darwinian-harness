@@ -13,8 +13,9 @@ tarball; only the protected `Publish to npm` job receives OIDC.
 The external preconditions must be freshly read back before the tag is created:
 
 - dedicated environment `darwinian-npm-publish`;
-- sole required reviewer `leeminseung`, self-review prevented, admin bypass
-  disabled, and one exact `v1.2.0` tag policy;
+- required reviewers and self-review exactly as declared in
+  `scripts/release/release-policy.json`, admin bypass disabled, and one exact
+  `v1.2.0` tag policy;
 - npm trusted publisher bound to owner `remyjkim`, repository
   `darwinian-worker`, workflow `release.yml`, environment
   `darwinian-npm-publish`, and action `npm publish`; and

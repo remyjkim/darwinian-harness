@@ -1,0 +1,8 @@
+{
+  "schema": "darwinian.worker.publication-approval-policy",
+  "schemaVersion": 1,
+  "githubEnvironment": "darwinian-npm-publish",
+  "requiredReviewers": ["remyjkim"],
+  "preventSelfReview": false,
+  "canAdminsBypass": false
+}

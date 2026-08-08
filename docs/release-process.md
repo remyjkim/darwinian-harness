@@ -53,9 +53,12 @@ readback, and publication. A successful dry run is not publication authority.
 Before creating a tag, an authorized administrator must configure and read back
 fresh, normalized evidence for both external control planes:
 
-- GitHub environment `darwinian-npm-publish` has the sole independent reviewer
-  `leeminseung`, prevents self-review, disallows admin bypass, enables custom
-  deployment policies, and admits only tag `v1.2.0`.
+- GitHub environment `darwinian-npm-publish` matches the declared approval
+  policy in `scripts/release/release-policy.json` for required reviewers and
+  self-review, disallows admin bypass, enables custom deployment policies, and
+  admits only tag `v1.2.0`. Under the current policy the `remyjkim` release
+  operator approves their own protected deployment; changing that is a reviewed
+  edit to the policy file, never an undeclared change to GitHub settings.
 - npm trusted publishing binds package `darwinian` to
   `remyjkim/darwinian-worker`, workflow `release.yml`, environment
   `darwinian-npm-publish`, and action `npm publish` only.

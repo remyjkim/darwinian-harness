@@ -1,5 +1,14 @@
 // ABOUTME: Validates fresh, normalized GitHub and npm publication-control readback receipts.
-// ABOUTME: Requires one independent reviewer, one exact tag policy, OIDC binding, and token prohibition.
+// ABOUTME: Requires the declared approval policy, one exact tag policy, OIDC binding, and token prohibition.
+
+export interface PublicationApprovalPolicyV1 {
+  schema: "darwinian.worker.publication-approval-policy";
+  schemaVersion: 1;
+  githubEnvironment: string;
+  requiredReviewers: string[];
+  preventSelfReview: boolean;
+  canAdminsBypass: false;
+}
 
 export interface GitHubPublicationControlsV1 {
   schema: "darwinian.worker.github-publication-controls";
@@ -79,7 +88,41 @@ function assertFresh(observedAt: unknown, now: string): void {
   if (age > 15 * 60_000 || age < -60_000) fail();
 }
 
-function assertGitHubReceipt(value: unknown, now: string): asserts value is GitHubPublicationControlsV1 {
+/**
+ * The declared policy may choose who approves and whether self-review is allowed. It may
+ * never remove the approval click, permit administrator bypass, or unbind the environment
+ * that the npm trusted publisher authenticates against.
+ */
+function assertApprovalPolicy(value: unknown): asserts value is PublicationApprovalPolicyV1 {
+  if (!exactKeys(value, [
+    "schema",
+    "schemaVersion",
+    "githubEnvironment",
+    "requiredReviewers",
+    "preventSelfReview",
+    "canAdminsBypass",
+  ])) fail();
+  if (value.schema !== "darwinian.worker.publication-approval-policy" || value.schemaVersion !== 1) fail();
+  if (value.githubEnvironment !== "darwinian-npm-publish") fail();
+  if (typeof value.preventSelfReview !== "boolean") fail();
+  if (value.canAdminsBypass !== false) fail();
+  const reviewers = value.requiredReviewers;
+  if (!Array.isArray(reviewers) || reviewers.length === 0) fail();
+  if (!reviewers.every((reviewer) => typeof reviewer === "string" && reviewer.length > 0)) fail();
+  if (new Set(reviewers).size !== reviewers.length) fail();
+}
+
+function sameReviewers(observed: unknown, declared: readonly string[]): boolean {
+  if (!Array.isArray(observed) || observed.length !== declared.length) return false;
+  if (!observed.every((reviewer) => typeof reviewer === "string")) return false;
+  return [...(observed as string[])].sort().join("\0") === [...declared].sort().join("\0");
+}
+
+function assertGitHubReceipt(
+  value: unknown,
+  now: string,
+  policy: PublicationApprovalPolicyV1,
+): asserts value is GitHubPublicationControlsV1 {
   if (!exactKeys(value, ["schema", "schemaVersion", "observedAt", "repository", "environment"])) fail();
   if (value.schema !== "darwinian.worker.github-publication-controls" || value.schemaVersion !== 1) fail();
   assertFresh(value.observedAt, now);
@@ -95,21 +138,24 @@ function assertGitHubReceipt(value: unknown, now: string): asserts value is GitH
     "deploymentPolicies",
   ])) fail();
   if (
-    environment.name !== "darwinian-npm-publish" ||
-    !Array.isArray(environment.requiredReviewers) ||
-    environment.requiredReviewers.length !== 1 ||
-    environment.requiredReviewers[0] !== "leeminseung" ||
-    environment.preventSelfReview !== true ||
+    environment.name !== policy.githubEnvironment ||
+    !sameReviewers(environment.requiredReviewers, policy.requiredReviewers) ||
+    environment.preventSelfReview !== policy.preventSelfReview ||
     environment.canAdminsBypass !== false ||
     environment.customDeploymentPolicies !== true ||
     !Array.isArray(environment.deploymentPolicies) ||
     environment.deploymentPolicies.length !== 1
   ) fail();
-  const policy = environment.deploymentPolicies[0];
-  if (!exactKeys(policy, ["type", "pattern"]) || policy.type !== "tag" || policy.pattern !== "v1.2.0") fail();
+  const deploymentPolicy = environment.deploymentPolicies[0];
+  if (!exactKeys(deploymentPolicy, ["type", "pattern"]) ||
+    deploymentPolicy.type !== "tag" || deploymentPolicy.pattern !== "v1.2.0") fail();
 }
 
-function assertNpmReceipt(value: unknown, now: string): asserts value is NpmPublicationControlsV1 {
+function assertNpmReceipt(
+  value: unknown,
+  now: string,
+  policy: PublicationApprovalPolicyV1,
+): asserts value is NpmPublicationControlsV1 {
   if (!exactKeys(value, ["schema", "schemaVersion", "observedAt", "package", "trustedPublisher", "publishingAccess"])) fail();
   if (value.schema !== "darwinian.worker.npm-publication-controls" || value.schemaVersion !== 1) fail();
   assertFresh(value.observedAt, now);
@@ -121,7 +167,7 @@ function assertNpmReceipt(value: unknown, now: string): asserts value is NpmPubl
     publisher.owner !== "remyjkim" ||
     publisher.repository !== "darwinian-worker" ||
     publisher.workflow !== "release.yml" ||
-    publisher.environment !== "darwinian-npm-publish" ||
+    publisher.environment !== policy.githubEnvironment ||
     publisher.allowedAction !== "npm publish"
   ) fail();
 }
@@ -129,22 +175,28 @@ function assertNpmReceipt(value: unknown, now: string): asserts value is NpmPubl
 export function validatePublicationControls(input: {
   github: unknown;
   npm: unknown;
+  policy: unknown;
   now: string;
 }): {
   repository: "remyjkim/darwinian-worker";
-  environment: "darwinian-npm-publish";
-  reviewer: "leeminseung";
+  environment: string;
+  approval: { requiredReviewers: string[]; preventSelfReview: boolean };
   package: "darwinian";
   versionTag: "v1.2.0";
 } {
   assertNoSecretBearingInput(input.github);
   assertNoSecretBearingInput(input.npm);
-  assertGitHubReceipt(input.github, input.now);
-  assertNpmReceipt(input.npm, input.now);
+  assertNoSecretBearingInput(input.policy);
+  assertApprovalPolicy(input.policy);
+  assertGitHubReceipt(input.github, input.now, input.policy);
+  assertNpmReceipt(input.npm, input.now, input.policy);
   return {
     repository: "remyjkim/darwinian-worker",
-    environment: "darwinian-npm-publish",
-    reviewer: "leeminseung",
+    environment: input.policy.githubEnvironment,
+    approval: {
+      requiredReviewers: [...input.policy.requiredReviewers],
+      preventSelfReview: input.policy.preventSelfReview,
+    },
     package: "darwinian",
     versionTag: "v1.2.0",
   };
