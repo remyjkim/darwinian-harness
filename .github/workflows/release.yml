@@ -1,23 +1,21 @@
 name: CLI Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (must match package.json). For tag-push, leave blank.'
-        required: false
+        description: 'Exact candidate version; must match package.json.'
+        required: true
+        default: '1.2.0'
         type: string
       dry_run:
-        description: 'Run all checks but skip npm publish.'
-        required: false
-        default: false
+        description: 'Qualification only; mutation is not available from manual dispatch.'
+        required: true
+        default: true
         type: boolean
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: cli-release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -30,11 +28,12 @@ jobs:
   validate:
     name: Validate release commit
     runs-on: ubuntu-latest
-    # Runs the full suite (~11m) plus the verify:release gate (~9m); 20m is too tight.
     timeout-minutes: 30
+    permissions:
+      contents: read
     outputs:
-      version: ${{ steps.read_version.outputs.version }}
-      tag: ${{ steps.read_version.outputs.tag }}
+      version: ${{ steps.identity.outputs.version }}
+      source_commit: ${{ steps.identity.outputs.source_commit }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,37 +48,50 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install bridge dependencies
-        working-directory: drwn-command-bridge
-        run: bun install --frozen-lockfile
-
-      - name: Read package version
-        id: read_version
+      - name: Validate manual identity and current main
+        id: identity
         run: |
-          PKG_VERSION="$(bun -e 'console.log(require("./package.json").version)')"
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            EXPECTED="v${PKG_VERSION}"
-            if [ "$TAG" != "$EXPECTED" ]; then
-              echo "Tag $TAG does not match package.json version ($EXPECTED)" >&2
-              exit 1
-            fi
-          else
-            TAG="v${PKG_VERSION}"
-            INPUT_VERSION="${{ inputs.version }}"
-            if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "$PKG_VERSION" ]; then
-              echo "Input version $INPUT_VERSION does not match package.json ($PKG_VERSION)" >&2
-              exit 1
-            fi
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "Manual release qualification must select refs/heads/main." >&2
+            exit 1
           fi
-          echo "version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.dry_run }}" != "true" ]; then
+            echo "Manual release qualification must use dry_run=true." >&2
+            exit 1
+          fi
+          PACKAGE_VERSION="$(bun -e 'console.log(require("./package.json").version)')"
+          if [ "${{ inputs.version }}" != "$PACKAGE_VERSION" ]; then
+            echo "Manual version does not match package metadata." >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          CHECKOUT_SHA="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          if [ "$CHECKOUT_SHA" != "$GITHUB_SHA" ]; then
+            echo "Checked-out commit does not match the workflow commit." >&2
+            exit 1
+          fi
+          if [ "$MAIN_SHA" != "$GITHUB_SHA" ]; then
+            echo "Current origin/main does not match the workflow commit." >&2
+            exit 1
+          fi
+          echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_commit=$CHECKOUT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm candidate version is unpublished
+        env:
+          npm_config_cache: ${{ runner.temp }}/npm-release-probe
+        run: bun scripts/release-cli.ts assert-unpublished
 
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Unit + integration tests
+      - name: Unit and integration tests
         run: bun run test
+
+      - name: Install bridge dependencies
+        working-directory: drwn-command-bridge
+        run: bun install --frozen-lockfile
 
       - name: Verify bridge package
         run: bun run verify:bridge
@@ -87,22 +99,18 @@ jobs:
       - name: Release-readiness gate
         run: bun run verify:release
 
-  publish:
-    name: Publish to npm
+  dry_run_complete:
+    name: Dry run complete
     needs: [validate]
-    if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write
-    environment:
-      name: npm-publish
-      url: https://www.npmjs.com/package/darwinian
 
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.validate.outputs.source_commit }}
           fetch-depth: 0
           submodules: true
 
@@ -110,158 +118,82 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install OIDC-capable npm
-        run: npm install --global npm@11.16.0
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install bridge dependencies
-        working-directory: drwn-command-bridge
-        run: bun install --frozen-lockfile
-
-      - name: Verify bridge package
-        run: bun run verify:bridge
-
-      - name: Re-run release-readiness gate
-        run: bun run verify:release
-
-      - name: Check package publication state
-        id: publication
+      - name: Reconfirm frozen main identity
         run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          PUBLISHED="$(
-            npm view "darwinian@${VERSION}" version \
-              --prefer-online \
-              --cache "$RUNNER_TEMP/npm-release-probe" 2>/dev/null || true
-          )"
-          if [ "$PUBLISHED" = "$VERSION" ]; then
-            echo "already_published=true" >> "$GITHUB_OUTPUT"
-            echo "darwinian@${VERSION} is already published; continuing with qualification"
-          else
-            echo "already_published=false" >> "$GITHUB_OUTPUT"
+          git fetch --no-tags origin main
+          CHECKOUT_SHA="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          if [ "$CHECKOUT_SHA" != "${{ needs.validate.outputs.source_commit }}" ]; then
+            echo "Artifact checkout differs from validated source." >&2
+            exit 1
+          fi
+          if [ "$MAIN_SHA" != "${{ needs.validate.outputs.source_commit }}" ]; then
+            echo "origin/main moved after validation; a fresh dry run is required." >&2
+            exit 1
           fi
 
-      - name: Publish to npm
-        if: ${{ steps.publication.outputs.already_published != 'true' }}
-        run: npm publish --access public
+      - name: Generate packaged build identity
+        run: bun scripts/release/build-identity.ts
 
-      - name: Smoke install (ubuntu)
+      - name: Pack candidate once
         run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          for attempt in $(seq 1 12); do
-            if npm install -g "darwinian@$VERSION" \
-              --prefer-online \
-              --cache "$RUNNER_TEMP/npm-smoke-$attempt"; then
-              break
-            fi
-            if [ "$attempt" -eq 12 ]; then
-              echo "darwinian@$VERSION did not propagate to npm within two minutes" >&2
-              exit 1
-            fi
-            echo "Waiting for darwinian@$VERSION to propagate to npm (attempt $attempt/12)" >&2
-            sleep 10
-          done
-          drwn --version
-          test "$(drwn --version | tr -d '[:space:]')" = "${{ needs.validate.outputs.version }}"
+          mkdir -p "$RUNNER_TEMP/release-candidate"
+          npm pack --ignore-scripts --json \
+            --pack-destination "$RUNNER_TEMP/release-candidate" \
+            --cache "$RUNNER_TEMP/npm-pack-cache" \
+            > "$RUNNER_TEMP/release-candidate/npm-pack.json"
 
-  dry_run_complete:
-    name: Dry run complete
-    needs: [validate]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run == true }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions:
-      contents: read
-
-    steps:
-      - name: Summarize dry run
+      - name: Qualify exact packed artifact
         run: |
+          bun scripts/release-cli.ts qualify-artifact \
+            "$RUNNER_TEMP/release-candidate/npm-pack.json" \
+            "$RUNNER_TEMP/release-candidate" \
+            > "$RUNNER_TEMP/release-candidate/artifact.json"
+
+      - name: Install and smoke exact packed artifact
+        run: |
+          bun scripts/release-cli.ts smoke-artifact \
+            "$RUNNER_TEMP/release-candidate/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/release-smoke"
+
+      - name: Create immutable pre-upload receipt
+        run: |
+          bun scripts/release-cli.ts create-receipt \
+            "$RUNNER_TEMP/release-candidate/artifact.json" \
+            > "$RUNNER_TEMP/release-candidate/release-candidate.json"
+
+      - name: Upload qualified candidate
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwinian-worker-release-candidate
+          path: |
+            ${{ runner.temp }}/release-candidate/darwinian-1.2.0.tgz
+            ${{ runner.temp }}/release-candidate/release-candidate.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 14
+
+      - name: Summarize immutable dry-run evidence
+        run: |
+          TAR_SHA256="$(jq -r '.sha256' "$RUNNER_TEMP/release-candidate/artifact.json")"
+          TAR_SHA1="$(jq -r '.sha1' "$RUNNER_TEMP/release-candidate/artifact.json")"
+          TAR_INTEGRITY="$(jq -r '.integrity' "$RUNNER_TEMP/release-candidate/artifact.json")"
+          TAR_BYTES="$(jq -r '.byteLength' "$RUNNER_TEMP/release-candidate/artifact.json")"
           {
-            echo "## release dry run complete"
+            echo "## Worker release dry run complete"
             echo ""
             echo "- Version: ${{ needs.validate.outputs.version }}"
-            echo "- Publish skipped by workflow_dispatch dry_run=true"
+            echo "- Source commit: ${{ needs.validate.outputs.source_commit }}"
+            echo "- Tar: darwinian-1.2.0.tgz ($TAR_BYTES bytes)"
+            echo "- Tar SHA-1: $TAR_SHA1"
+            echo "- Tar SHA-256: $TAR_SHA256"
+            echo "- Tar integrity: $TAR_INTEGRITY"
+            echo "- Artifact ID: ${{ steps.upload.outputs.artifact-id }}"
+            echo "- Artifact URL: ${{ steps.upload.outputs.artifact-url }}"
+            echo "- Artifact digest: ${{ steps.upload.outputs.artifact-digest }}"
+            echo "- Mutation: unavailable from this dispatch path"
           } >> "$GITHUB_STEP_SUMMARY"
-
-  smoke_macos:
-    name: Smoke install (macos)
-    needs: [validate, publish]
-    if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-    runs-on: macos-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-
-    steps:
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Smoke install (macos)
-        run: |
-          VERSION="${{ needs.validate.outputs.version }}"
-          for attempt in $(seq 1 12); do
-            if npm install -g "darwinian@$VERSION" \
-              --prefer-online \
-              --cache "$RUNNER_TEMP/npm-smoke-$attempt"; then
-              break
-            fi
-            if [ "$attempt" -eq 12 ]; then
-              echo "darwinian@$VERSION did not propagate to npm within two minutes" >&2
-              exit 1
-            fi
-            echo "Waiting for darwinian@$VERSION to propagate to npm (attempt $attempt/12)" >&2
-            sleep 10
-          done
-          drwn --version
-          test "$(drwn --version | tr -d '[:space:]')" = "${{ needs.validate.outputs.version }}"
-
-  github_release:
-    name: GitHub Release
-    needs: [validate, publish, smoke_macos]
-    if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ needs.validate.outputs.tag }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "GitHub Release $TAG already exists; qualification is complete"
-            exit 0
-          fi
-          ANNOTATION=""
-          if [ "$(git cat-file -t "$TAG")" = "tag" ]; then
-            ANNOTATION="$(git tag -l --format='%(contents)' "$TAG")"
-          fi
-          if [ -n "$ANNOTATION" ]; then
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --notes "$ANNOTATION" \
-              --generate-notes \
-              --verify-tag
-          else
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --generate-notes \
-              --verify-tag
-          fi

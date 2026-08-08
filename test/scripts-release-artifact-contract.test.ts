@@ -53,6 +53,15 @@ describe("release package member qualification", () => {
     }
   });
 
+  test("rejects old version-only package bytes even when their version smoke can succeed", () => {
+    const oldPublishedPackage = {
+      versionOutput: "1.1.0",
+      members: ["cli/index.ts", "package.json", "registry/config.json"],
+    };
+    expect(oldPublishedPackage.versionOutput).toBe("1.1.0");
+    expect(() => qualifyPackageMembers(oldPublishedPackage.members)).toThrow("cli/commands/acp/serve.ts");
+  });
+
   test.each([
     ".env",
     ".ai/tasks/secret.md",
