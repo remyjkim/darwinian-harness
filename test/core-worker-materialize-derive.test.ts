@@ -2,16 +2,57 @@
 // ABOUTME: T2 (payload lockfile → V2 project lock with agents-dir-relative path rewrite).
 
 import { describe, expect, test } from "bun:test";
-import { validateCardLockfile } from "../cli/core/card-lock";
+import { validateCardLockfile, type CardLockEntry } from "../cli/core/card-lock";
 import { validateProjectConfig } from "../cli/core/project";
 import { deriveMaterializeConfig, deriveMaterializeLock } from "../cli/core/worker-materialize";
-import type { WorkerDeployPayload } from "../cli/core/worker-deploy";
+import { deriveDeployRuntimeAdmission, type WorkerDeployPayload } from "../cli/core/worker-deploy";
 
 const TREE_ROOT = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 const TREE_MEMBER = "b1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0";
 const COMMIT = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
+const emptyDeclarations = {
+  runtimeAdmission: { version: 1 as const, servers: {}, requirements: [] },
+  applicationRequirements: { version: 1 as const, apps: [] },
+};
+
 function payloadFixture(): WorkerDeployPayload {
+  const cards: CardLockEntry[] = [
+    {
+      name: "@me/frontend-eng",
+      requested: "@me/frontend-eng@^1.0.0",
+      version: "1.0.0",
+      path: `drwn/extracted/${TREE_ROOT}`,
+      integrity: "sha256-root",
+      treeSha: TREE_ROOT,
+      manifest: {
+        name: "@me/frontend-eng",
+        version: "1.0.0",
+        kind: "blueprint",
+        composedFrom: ["@me/react-builder@^1.0.0"],
+        ...emptyDeclarations,
+      },
+      skills: [],
+      hooks: [],
+      registry: null,
+      origin: "store",
+      git: { commit: COMMIT },
+    },
+    {
+      name: "@me/react-builder",
+      requested: "@me/react-builder@^1.0.0",
+      version: "1.0.0",
+      path: `drwn/extracted/${TREE_MEMBER}`,
+      integrity: "sha256-member",
+      treeSha: TREE_MEMBER,
+      manifest: { name: "@me/react-builder", version: "1.0.0", ...emptyDeclarations },
+      skills: ["react"],
+      hooks: [],
+      registry: null,
+      origin: "store",
+      git: { commit: COMMIT },
+    },
+  ];
   return {
     contractVersion: 1,
     materialization: "lockfile-store-export",
@@ -22,45 +63,12 @@ function payloadFixture(): WorkerDeployPayload {
     },
     lockfile: {
       lockfileVersion: 5,
-      store: { minDrwnVersion: "0.8.0" },
-      cards: [
-        {
-          name: "@me/frontend-eng",
-          requested: "@me/frontend-eng@^1.0.0",
-          version: "1.0.0",
-          path: `drwn/extracted/${TREE_ROOT}`,
-          integrity: "sha256-root",
-          treeSha: TREE_ROOT,
-          manifest: {
-            name: "@me/frontend-eng",
-            version: "1.0.0",
-            kind: "blueprint",
-            composedFrom: ["@me/react-builder@^1.0.0"],
-          },
-          skills: [],
-          hooks: [],
-          registry: null,
-          origin: "store",
-          git: { commit: COMMIT },
-        },
-        {
-          name: "@me/react-builder",
-          requested: "@me/react-builder@^1.0.0",
-          version: "1.0.0",
-          path: `drwn/extracted/${TREE_MEMBER}`,
-          integrity: "sha256-member",
-          treeSha: TREE_MEMBER,
-          manifest: { name: "@me/react-builder", version: "1.0.0" },
-          skills: ["react"],
-          hooks: [],
-          registry: null,
-          origin: "store",
-          git: { commit: COMMIT },
-        },
-      ],
+      store: { minDrwnVersion: "1.3.0" },
+      cards,
     },
     config: { version: 1, cards: ["@me/frontend-eng"] },
     governance: null,
+    runtimeAdmission: deriveDeployRuntimeAdmission(cards),
     storeExport: {
       kind: "drwn-store-export-tar",
       compression: "none",
