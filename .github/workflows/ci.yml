@@ -56,7 +56,9 @@ jobs:
 
       - name: Windows smoke tests
         if: runner.os == 'Windows'
-        run: bun test --timeout 30000 test/core-auth-device-flow.test.ts test/core-auth-resolve-token.test.ts test/core-cloud-http.test.ts
+        # The derivation adapter's Windows outcome is a designed fail-closed result, so
+        # it is asserted positively here rather than left to an unexercised code path.
+        run: bun test --timeout 30000 test/core-auth-device-flow.test.ts test/core-auth-resolve-token.test.ts test/core-cloud-http.test.ts test/scripts-runtime-admission-derive.test.ts
 
       - name: Release-readiness gate
         if: runner.os == 'Linux'
