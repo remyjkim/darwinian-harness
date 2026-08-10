@@ -2,6 +2,7 @@
 // ABOUTME: Pins the hard-cut declaration contract before deploy derivation consumes it.
 
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   canonicalizeRuntimeAdmissionJson,
   compareRuntimeAdmissionIds,
@@ -512,6 +513,90 @@ test("aggregates identical apps, rejects conflicts, and sorts with explicit code
     closureCard("alpha", { apps: [shared] }),
     closureCard("beta", { apps: [{ app: "a", pipedreamApp: "different" }] }),
   ])).toThrow(/conflicting/i);
+});
+
+test("the synthetic non-publishable Finch fixture is closed, deterministic, and externally bound", async () => {
+  const fixtureDir = `${import.meta.dir}/fixtures/runtime-admission`;
+  const fixturePath = `${fixtureDir}/finch-runtime-admission.synthetic.v1.json`;
+  const sidecarPath = `${fixtureDir}/finch-runtime-admission.synthetic.v1.source.json`;
+  const fixtureBytes = Buffer.from(await Bun.file(fixturePath).arrayBuffer());
+  const sidecarBytes = Buffer.from(await Bun.file(sidecarPath).arrayBuffer());
+
+  const fixture = JSON.parse(fixtureBytes.toString("utf8"));
+  // Canonical serialization plus one trailing LF makes the frozen bytes deterministic.
+  expect(fixtureBytes.toString("utf8")).toBe(`${canonicalizeRuntimeAdmissionJson(fixture)}\n`);
+  expect(Object.keys(fixture).sort()).toEqual(["closure", "expected", "i107Selectors", "syntheticNonpublishable"]);
+  expect(fixture.syntheticNonpublishable).toBe(true);
+
+  // One synthetic tools Card; the marker stays outside canonical Card bytes.
+  expect(fixture.closure).toHaveLength(1);
+  const card = fixture.closure[0];
+  expect(JSON.stringify(card)).not.toContain("syntheticNonpublishable");
+  expect(card.manifest.servers["buzz-tools"].optional).toBe(false);
+  expect(Object.keys(card.manifest.servers)).toEqual(["buzz-tools"]);
+
+  // Only the two approved probes; the artifact digest is valid hex but unmistakably synthetic.
+  const requirements = card.manifest.runtimeAdmission.requirements;
+  expect(requirements.map((entry: { probeId: string }) => entry.probeId).sort()).toEqual([
+    "buzz-artifact-sha256-v1",
+    "glibc-version-v1",
+  ]);
+  const artifact = requirements.find((entry: { probeId: string }) => entry.probeId === "buzz-artifact-sha256-v1");
+  expect(artifact.expected.artifactSha256).toMatch(/^(0123456789abcdef){4}$/);
+  const glibc = requirements.find((entry: { probeId: string }) => entry.probeId === "glibc-version-v1");
+  expect(glibc.expected.platformCapabilities).toEqual(["glibc>=2.31"]);
+
+  // Explicit empty apps and the exact adjacent I107 selectors, outside the envelope.
+  expect(card.manifest.applicationRequirements).toEqual({ version: 1, apps: [] });
+  expect(fixture.i107Selectors).toEqual({
+    allow: ["mcp:buzz-tools/buzz_messages_send", "mcp:buzz-tools/buzz_messages_thread"],
+    deny: [],
+  });
+  expect(card.manifest.tools).toEqual(fixture.i107Selectors);
+
+  // The expected envelope regenerates byte-exactly from the pure producer; one
+  // required buzz-tools activation; selectors and archive bytes never leak into it.
+  const derivation = deriveRuntimeAdmissionForClosure(fixture.closure);
+  expect(fixture.expected.envelope).toEqual(derivation.envelope);
+  expect(fixture.expected.applicationRequirements).toEqual(derivation.applicationRequirements);
+  expect(derivation.envelope.activation.servers).toEqual([
+    {
+      serverId: "buzz-tools",
+      active: true,
+      readiness: "required",
+      authMode: "none",
+      requirementIds: ["buzz-artifact", "glibc-floor"],
+    },
+  ]);
+  expect(derivation.canonicalEnvelope).not.toContain("i107");
+  expect(derivation.canonicalEnvelope).not.toContain("buzz_messages_send");
+  expect(derivation.canonicalEnvelope).not.toContain("syntheticNonpublishable");
+  expect(derivation.canonicalEnvelope).not.toContain("bytesBase64");
+  expect(fixtureBytes.toString("utf8")).not.toContain("bytesBase64");
+
+  // Sidecar: the exact closed field set, canonical bytes, fixture identity, and
+  // no self-hash or embedded commit.
+  const sidecar = JSON.parse(sidecarBytes.toString("utf8"));
+  expect(sidecarBytes.toString("utf8")).toBe(`${canonicalizeRuntimeAdmissionJson(sidecar)}\n`);
+  expect(Object.keys(sidecar).sort()).toEqual([
+    "derivationVersion",
+    "fixtureByteLength",
+    "fixtureFile",
+    "fixtureSha256",
+    "schema",
+    "sourcePaths",
+    "syntheticNonpublishable",
+  ]);
+  expect(sidecar.schema).toBe("cl.i265.runtime-admission-fixture-source.v1");
+  expect(sidecar.fixtureFile).toBe("finch-runtime-admission.synthetic.v1.json");
+  expect(sidecar.derivationVersion).toBe("worker-runtime-admission-v1");
+  expect(sidecar.syntheticNonpublishable).toBe(true);
+  expect(sidecar.sourcePaths).toEqual(["cli/core/runtime-admission-manifest.ts"]);
+  expect(sidecar.fixtureByteLength).toBe(fixtureBytes.byteLength);
+  expect(sidecar.fixtureSha256).toBe(
+    createHash("sha256").update(fixtureBytes).digest("hex"),
+  );
+  expect(sidecarBytes.toString("utf8")).not.toMatch(/\b[a-f0-9]{40}\b/);
 });
 
 test("applications are outside the envelope but bind closureHash", () => {
