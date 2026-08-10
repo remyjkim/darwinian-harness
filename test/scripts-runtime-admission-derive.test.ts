@@ -160,8 +160,15 @@ interface CardMaterial {
   manifestBytes: Buffer;
 }
 
-function cardMaterial(phase: Phase): CardMaterial[] {
-  const toolsBytes = utf8(JSON.stringify(toolsManifest()));
+interface MaterialMutators {
+  manifest?: (manifest: any) => void;
+  lock?: (lock: any) => void;
+}
+
+function cardMaterial(phase: Phase, mutators: MaterialMutators = {}): CardMaterial[] {
+  const manifest = toolsManifest();
+  mutators.manifest?.(manifest);
+  const toolsBytes = utf8(JSON.stringify(manifest));
   const tools: CardMaterial = {
     name: TOOLS_CARD,
     version: "0.1.0",
@@ -195,13 +202,13 @@ function cardSummary(card: CardMaterial) {
   };
 }
 
-function lockBytes(phase: Phase, cards: CardMaterial[]): Buffer {
+function lockBytes(phase: Phase, cards: CardMaterial[], mutators: MaterialMutators = {}): Buffer {
   const urls: Record<string, string> = {
     [TOOLS_CARD]: "https://github.com/curation-labs/buzz-delivery-tools.git",
     [WORKER_CARD]: "https://github.com/curation-labs/buzz-delivery-worker.git",
   };
   const first = cards[0]!;
-  return utf8(JSON.stringify({
+  const lock: any = {
     schema: "cl.i268.synthetic-card-lock.v1",
     entrypoint: {
       name: first.name,
@@ -222,7 +229,9 @@ function lockBytes(phase: Phase, cards: CardMaterial[]): Buffer {
       registry: null,
     })),
     store: { minDrwnVersion: "1.3.0" },
-  }));
+  };
+  mutators.lock?.(lock);
+  return utf8(JSON.stringify(lock));
 }
 
 function phaseEvidence(phase: Phase) {
@@ -321,9 +330,9 @@ function candidateBytes(phase: Phase, cards: CardMaterial[], lock: Buffer): Buff
 
 type Mutator = (input: Record<string, any>) => void;
 
-function derivationInput(phase: Phase, mutate?: Mutator): string {
-  const cards = cardMaterial(phase);
-  const lock = lockBytes(phase, cards);
+function derivationInput(phase: Phase, mutate?: Mutator, material: MaterialMutators = {}): string {
+  const cards = cardMaterial(phase, material);
+  const lock = lockBytes(phase, cards, material);
   const candidate = candidateBytes(phase, cards, lock);
   const input: Record<string, any> = {
     schema: RUNTIME_ADMISSION_INPUT_SCHEMA,
@@ -416,6 +425,7 @@ interface RunOptions {
   seams?: Record<string, RuntimeAdmissionDeriveSeam>;
   buildIdentity?: typeof PACKAGED_BUILD_IDENTITY | typeof DEVELOPMENT_BUILD_IDENTITY;
   mutate?: Mutator;
+  material?: MaterialMutators;
   root?: string;
 }
 
@@ -432,9 +442,11 @@ async function run(options: RunOptions = {}): Promise<RunResult> {
   const inputOperand = options.inputOperand ?? "derivation-input.json";
   const outputOperand = options.outputOperand ?? "result.json";
   const contents = options.input === undefined
-    ? derivationInput(phase, options.mutate)
+    ? derivationInput(phase, options.mutate, options.material)
     : options.input;
-  if (contents !== null) writeFileSync(join(root, inputOperand), contents);
+  // The admitted input always lives at the default name; a rejected operand is only
+  // ever an argv value and must never require a file to exist.
+  if (contents !== null) writeFileSync(join(root, "derivation-input.json"), contents);
   const outcome = await runRuntimeAdmissionDerive({
     argv: ["--input", inputOperand, "--output", outputOperand],
     workingDirectory: root,
@@ -447,6 +459,25 @@ async function run(options: RunOptions = {}): Promise<RunResult> {
     entries: readdirSync(root).sort(),
     outputPath: join(root, outputOperand),
   };
+}
+
+/**
+ * Sets the unused padding bits of the final data character so the string decodes to
+ * the same bytes but is no longer the canonical encoding of them.
+ */
+function noncanonicalBase64(canonical: string): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const decoded = Buffer.from(canonical, "base64");
+  const padding = canonical.endsWith("==") ? 2 : canonical.endsWith("=") ? 1 : 0;
+  if (padding === 0) throw new Error("the fixture must encode with padding for this case");
+  const position = canonical.length - padding - 1;
+  for (const character of alphabet) {
+    const variant = `${canonical.slice(0, position)}${character}${canonical.slice(position + 1)}`;
+    if (variant === canonical) continue;
+    if (!Buffer.from(variant, "base64").equals(decoded)) continue;
+    return variant;
+  }
+  throw new Error("no noncanonical variant exists for this encoding");
 }
 
 function temporaryEntries(entries: readonly string[]): string[] {
@@ -487,8 +518,19 @@ describe("adapter binding", () => {
   });
 
   test("the adapter never registers a deploy or network control plane", () => {
-    const source = readFileSync(join(REPO_ROOT, RUNTIME_ADMISSION_ADAPTER_ENTRY), "utf8");
-    expect(source).not.toMatch(/fetch\(|node:https?|Bun\.spawn|child_process/);
+    for (const file of [
+      RUNTIME_ADMISSION_ADAPTER_ENTRY,
+      "cli/core/runtime-admission-derive.ts",
+      "cli/core/runtime-admission-descriptors.ts",
+    ]) {
+      const source = readFileSync(join(REPO_ROOT, file), "utf8");
+      expect(source, file).not.toMatch(/fetch\(|node:https?|node:net|Bun\.spawn|child_process/);
+      expect(source, file).not.toMatch(/process\.env|import\.meta\.env/);
+      const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);
+      expect(imports.some((specifier) =>
+        /darwinian-services|ops\/i268|finch-receipt-contract|finch-card-parity/.test(specifier)), file)
+        .toBe(false);
+    }
   });
 });
 
@@ -615,6 +657,20 @@ describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
 
     const outputBytes = readFileSync(result.outputPath);
     const output = JSON.parse(outputBytes.toString("utf8"));
+    expect(Object.keys(output).sort()).toEqual([
+      "adapter",
+      "candidateIdentity",
+      "input",
+      "output",
+      "phase",
+      "phaseEvidence",
+      "producer",
+      "producerSource",
+      "schema",
+      "schemaVersion",
+      "security",
+      "semantic",
+    ]);
     expect(output.schema).toBe(RUNTIME_ADMISSION_OUTPUT_SCHEMA);
     expect(output.schemaVersion).toBe(2);
     expect(output.phase).toBe("tools");
@@ -683,6 +739,62 @@ describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
     expect(stats.isFile()).toBe(true);
     expect(stats.mode & 0o777).toBe(0o600);
     expect(stats.nlink).toBe(1);
+  });
+
+  test("clean success performs the exact descriptor-bound sequence, not a path-only write", async () => {
+    requireDescriptorSupport();
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const calls: string[] = [];
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      observeDescriptorOps: (ops) => ({
+        ...ops,
+        openDirectoryNoFollow(path) {
+          calls.push("open-directory");
+          return ops.openDirectoryNoFollow(path);
+        },
+        openTemporaryExclusive(dirfd, name) {
+          calls.push("open-temporary");
+          return ops.openTemporaryExclusive(dirfd, name);
+        },
+        fchmod(fd, mode) {
+          calls.push(`fchmod:${mode.toString(8)}`);
+          ops.fchmod(fd, mode);
+        },
+        write(fd, bytes) {
+          calls.push("write");
+          return ops.write(fd, bytes);
+        },
+        fsync(fd) {
+          calls.push("fsync");
+          ops.fsync(fd);
+        },
+        linkat(dirfd, from, to) {
+          calls.push("linkat");
+          return ops.linkat(dirfd, from, to);
+        },
+        unlinkat(dirfd, name) {
+          calls.push("unlinkat");
+          ops.unlinkat(dirfd, name);
+        },
+      }),
+    });
+    expect(outcome).toBeNull();
+    expect(calls).toEqual([
+      "open-directory",
+      "fsync",
+      "open-temporary",
+      "fchmod:600",
+      "write",
+      "fsync",
+      "linkat",
+      "fsync",
+      "unlinkat",
+      "fsync",
+    ]);
   });
 
   test("a development build identity still produces structurally valid non-qualifying output", async () => {
@@ -755,9 +867,11 @@ describe.skipIf(SKIP_POSIX !== "")(`operand admission${SKIP_POSIX}`, () => {
     symlinkSync(join(root, "real-parent"), join(root, "linked-parent"));
     symlinkSync(join(outside, "elsewhere.json"), join(root, "linked-result.json"));
     writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    writeFileSync(join(root, "real-parent", "nested-input.json"), derivationInput("tools"));
 
     for (const [inputOperand, outputOperand] of [
       ["linked-input.json", "result.json"],
+      ["linked-parent/nested-input.json", "result.json"],
       ["derivation-input.json", "linked-parent/result.json"],
       ["derivation-input.json", "linked-result.json"],
     ] as const) {
@@ -769,7 +883,7 @@ describe.skipIf(SKIP_POSIX !== "")(`operand admission${SKIP_POSIX}`, () => {
       expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
     }
     expect(lstatSync(join(root, "linked-result.json")).isSymbolicLink()).toBe(true);
-    expect(readdirSync(join(root, "real-parent"))).toEqual([]);
+    expect(readdirSync(join(root, "real-parent"))).toEqual(["nested-input.json"]);
   });
 
   test("rejects a non-regular input and a pre-existing final output", async () => {
@@ -803,24 +917,22 @@ describe.skipIf(SKIP_POSIX !== "")(`operand admission${SKIP_POSIX}`, () => {
 
 describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
   test("rejects an input file larger than the shared ceiling before output creation", async () => {
-    const padded = derivationInput("tools", (input) => {
-      input.padding = "x".repeat(1_100_000);
-    });
+    // Trailing whitespace keeps every field and key set exactly as admitted, so the
+    // raw-byte ceiling is the only rule that can reject this input.
+    const valid = derivationInput("tools");
+    const padded = `${valid}${" ".repeat(1_048_577 - Buffer.byteLength(valid, "utf8"))}`;
+    expect(Buffer.byteLength(padded, "utf8")).toBeGreaterThan(1_048_576);
     const result = await run({ input: padded });
     expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
-    expect(result.entries).not.toContain("result.json");
+    expect(result.entries).toEqual(["derivation-input.json"]);
   });
 
-  test("rejects a jointly oversize decoded preimage", async () => {
-    const result = await run({
-      mutate: (input) => {
-        const filler = Buffer.alloc(600_000, 0x61);
-        input.derivationPreimage.cardLock.bytesBase64 = filler.toString("base64");
-        input.derivationPreimage.cardLock.byteLength = filler.byteLength;
-        input.derivationPreimage.cardLock.sha256 = sha256(filler);
-      },
-    });
-    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+  test("an input at the ceiling is still admitted", async () => {
+    const valid = derivationInput("tools");
+    const padded = `${valid}${" ".repeat(1_048_576 - Buffer.byteLength(valid, "utf8"))}`;
+    expect(Buffer.byteLength(padded, "utf8")).toBe(1_048_576);
+    const result = await run({ input: padded });
+    expect(result.outcome).toBeNull();
   });
 
   const structural: Array<[string, Mutator]> = [
@@ -831,12 +943,18 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
     ["missing candidate bytes", (input) => { delete input.candidate.bytesBase64; }],
     ["extra candidate field", (input) => { input.candidate.extra = 1; }],
     ["noncanonical base64", (input) => {
-      input.candidate.bytesBase64 = `${input.candidate.bytesBase64.slice(0, -1)}=`;
+      input.candidate.bytesBase64 = noncanonicalBase64(input.candidate.bytesBase64);
     }],
     ["candidate length mismatch", (input) => { input.candidate.identity.byteLength += 1; }],
-    ["candidate digest mismatch", (input) => { input.candidate.identity.sha256 = "0".repeat(64); }],
+    ["candidate digest mismatch", (input) => {
+      // The declared coverage moves with the identity so only the recomputed digest
+      // over the actual candidate bytes can reject this input.
+      input.candidate.identity.sha256 = "0".repeat(64);
+      input.context.noSecretEvidence.covered.candidateSha256 = "0".repeat(64);
+    }],
     ["card manifest digest mismatch", (input) => {
       input.derivationPreimage.cards[0].manifest.sha256 = "0".repeat(64);
+      input.context.noSecretEvidence.covered.manifestSha256s = ["0".repeat(64)];
     }],
     ["card summary mismatch", (input) => {
       input.derivationPreimage.cards[0].treeSha = "7".repeat(40);
@@ -884,7 +1002,7 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
     const result = await run({
       mutate: (input) => {
         const bytes = Buffer.from(input.candidate.bytesBase64, "base64");
-        bytes[bytes.length - 2] ^= 0x01;
+        bytes[bytes.length - 2] = (bytes[bytes.length - 2] ?? 0) ^ 0x01;
         input.candidate.bytesBase64 = bytes.toString("base64");
       },
     });
@@ -895,7 +1013,7 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
     const result = await run({
       mutate: (input) => {
         const bytes = Buffer.from(input.derivationPreimage.cards[0].manifest.bytesBase64, "base64");
-        bytes[bytes.length - 3] ^= 0x01;
+        bytes[bytes.length - 3] = (bytes[bytes.length - 3] ?? 0) ^ 0x01;
         input.derivationPreimage.cards[0].manifest.bytesBase64 = bytes.toString("base64");
       },
     });
@@ -915,24 +1033,19 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
       ["url", (manifest) => { manifest.servers["buzz-tools"].url = "https://evil.test"; }],
       ["env", (manifest) => { manifest.servers["buzz-tools"].env = { TOKEN: "x" }; }],
       ["headers", (manifest) => { manifest.servers["buzz-tools"].headers = { Authorization: "x" }; }],
+      ["command", (manifest) => { manifest.servers["buzz-tools"].command = "curl"; }],
       ["arg", (manifest) => { manifest.servers["buzz-tools"].args = ["worker", "buzz-tools", "--exec"]; }],
       ["optionality", (manifest) => { manifest.servers["buzz-tools"].optional = true; }],
+      ["extra server", (manifest) => { manifest.servers.shell = { command: "sh" }; }],
+      ["harness floor", (manifest) => { manifest.harness.minVersion = "1.2.0"; }],
+      ["application payload", (manifest) => { manifest.applicationRequirements.apps = [{ app: "x" }]; }],
     ];
     for (const [name, apply] of hostile) {
-      const result = await run({
-        mutate: (input) => {
-          const manifest = JSON.parse(
-            Buffer.from(input.derivationPreimage.cards[0].manifest.bytesBase64, "base64").toString("utf8"),
-          );
-          apply(manifest);
-          const bytes = utf8(JSON.stringify(manifest));
-          input.derivationPreimage.cards[0].manifest = encoded(bytes);
-          input.derivationPreimage.cards[0].integrity = `sha256-${sha256(bytes)}`;
-          input.context.noSecretEvidence.covered.manifestSha256s = [sha256(bytes)];
-        },
-      });
+      // Every byte identity is rebuilt around the hostile value, so only the producer's
+      // own rerun of the frozen rule can reject it.
+      const result = await run({ material: { manifest: apply } });
       expect(result.outcome?.code, name).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
-      expect(result.entries).not.toContain("result.json");
+      expect(result.entries, name).toEqual(["derivation-input.json"]);
     }
   });
 
@@ -951,27 +1064,19 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
       ["insecure scheme", (lock) => {
         lock.cards[0].git.url = "http://github.com/curation-labs/buzz-delivery-tools.git";
       }],
-      ["control character path", (lock) => { lock.cards[0].path = "cards/evil"; }],
+      ["control character path", (lock) => { lock.cards[0].path = "cards/\u0007evil"; }],
       ["oversize path", (lock) => { lock.cards[0].path = "a".repeat(4_097); }],
       ["registry authority", (lock) => { lock.cards[0].registry = { url: "https://evil.test" }; }],
       ["skill payload", (lock) => { lock.cards[0].skills = ["evil"]; }],
       ["hook payload", (lock) => { lock.cards[0].hooks = ["evil"]; }],
       ["origin drift", (lock) => { lock.cards[0].origin = "npm"; }],
+      ["commit detached from tree", (lock) => { lock.cards[0].git.commit = "f".repeat(40); }],
+      ["store floor drift", (lock) => { lock.store.minDrwnVersion = "1.2.0"; }],
     ];
     for (const [name, apply] of hostile) {
-      const result = await run({
-        mutate: (input) => {
-          const lock = JSON.parse(
-            Buffer.from(input.derivationPreimage.cardLock.bytesBase64, "base64").toString("utf8"),
-          );
-          apply(lock);
-          const bytes = utf8(JSON.stringify(lock));
-          input.derivationPreimage.cardLock = { ...encoded(bytes), storeMinDrwnVersion: "1.3.0" };
-          input.context.noSecretEvidence.covered.cardLockSha256 = sha256(bytes);
-        },
-      });
+      const result = await run({ material: { lock: apply } });
       expect(result.outcome?.code, name).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
-      expect(result.entries).not.toContain("result.json");
+      expect(result.entries, name).toEqual(["derivation-input.json"]);
     }
   });
 
@@ -1128,7 +1233,9 @@ describe.skipIf(SKIP_POSIX !== "")(`parent and temp substitution${SKIP_POSIX}`, 
         "parent-open": () => { ({ moved } = substituteParent(root)); },
       },
     });
-    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
+    // A detected substitution is not unsupported semantics: the identity comparison
+    // worked and refused the handle, which is an open-phase pre-commit failure.
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
     expect(readdirSync(root)).toEqual(["planted.json"]);
     expect(readdirSync(moved).sort()).toEqual(["derivation-input.json"]);
   });
@@ -1154,6 +1261,40 @@ describe.skipIf(SKIP_POSIX !== "")(`parent and temp substitution${SKIP_POSIX}`, 
       expect(readdirSync(moved)).not.toContain("result.json");
     });
   }
+
+  test("a parent swapped during open and restored afterwards is caught by the frozen handle", async () => {
+    // Every pathname check would pass here; only the pre-open admitted device/inode
+    // matched against the opened handle can refuse the substituted directory.
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const original = `${root}-original`;
+    const foreign = `${root}-foreign`;
+    roots.push(original, foreign);
+    mkdirSync(foreign);
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      seams: {
+        "parent-open": () => {
+          renameSync(root, original);
+          renameSync(foreign, root);
+        },
+      },
+      observeDescriptorOps: (ops) => ({
+        ...ops,
+        openDirectoryNoFollow(path) {
+          const fd = ops.openDirectoryNoFollow(path);
+          renameSync(root, foreign);
+          renameSync(original, root);
+          return fd;
+        },
+      }),
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+    expect(readdirSync(foreign)).toEqual([]);
+    expect(readdirSync(root)).toEqual(["derivation-input.json"]);
+  });
 
   test("post-link substitution before the first directory sync is commit-validation-indeterminate", async () => {
     const root = confinementRoot();

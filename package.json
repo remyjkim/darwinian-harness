@@ -54,6 +54,7 @@
     "test": "bun test ./test/",
     "test:gate": "bun test --timeout 30000 ./test/",
     "typecheck": "tsc --noEmit",
+    "runtime-admission:derive:v2": "bun run cli/tools/runtime-admission-derive.ts",
     "verify:release": "bun run scripts/verify-release-readiness.ts",
     "verify:bridge": "bun run --cwd drwn-command-bridge verify",
     "docs:dev": "cd docs-docusaurus && bun run start",
