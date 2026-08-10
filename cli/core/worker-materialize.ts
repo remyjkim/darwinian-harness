@@ -7,18 +7,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create as createArchive, extract } from "./archive";
 import { ensureCardPresentFromLock } from "./card-install";
-import { serializeCardLock, type CardLockEntry, type ProjectLockV1 } from "./card-lock";
+import { serializeCardLock, validateCardLockfile, type CardLockEntry, type ProjectLockV1 } from "./card-lock";
 import { DrwnError } from "./errors";
+import { canonicalizeRuntimeAdmissionJson } from "./runtime-admission-manifest";
 import { syncRepository } from "./sync";
 import type { ProjectConfig } from "./types";
 import {
   createStoreExportForLock,
+  deriveDeployRuntimeAdmission,
   WORKER_DEPLOY_CONTRACT_VERSION,
+  WORKER_RUNTIME_ADMISSION_ENVELOPE_LIMIT_BYTES,
   type WorkerDeployPayload,
 } from "./worker-deploy";
 
 function invalidPayload(detail: string): never {
   throw new DrwnError("WORKER_MATERIALIZE_PAYLOAD_INVALID", `Invalid materialize payload: ${detail}`);
+}
+
+function admissionInvalid(detail: string): never {
+  throw new DrwnError(
+    "WORKER_MATERIALIZE_RUNTIME_ADMISSION_INVALID",
+    `Invalid materialize runtime admission: ${detail}`,
+  );
 }
 
 /**
@@ -30,10 +40,7 @@ function invalidPayload(detail: string): never {
  * carry an empty inline base64), the digest check runs against those bytes — the payload's
  * declared sha256/byteLength stay the single source of truth for both lanes.
  */
-export function validateMaterializePayload(
-  raw: unknown,
-  options: { storeExportBytes?: Buffer } = {},
-): WorkerDeployPayload {
+function validateMaterializeOuterPayload(raw: unknown): WorkerDeployPayload {
   if (typeof raw !== "object" || raw === null) invalidPayload("expected an object");
   const payload = raw as Partial<WorkerDeployPayload>;
   if (payload.contractVersion !== WORKER_DEPLOY_CONTRACT_VERSION) {
@@ -47,7 +54,12 @@ export function validateMaterializePayload(
   if (payload.lockfile.cards.length === 0) invalidPayload("lockfile.cards is empty — cards[0] must be the entrypoint root");
   const storeExport = payload.storeExport;
   if (!storeExport || typeof storeExport.bytesBase64 !== "string") invalidPayload("storeExport is incomplete");
-  const bytes = options.storeExportBytes ?? Buffer.from(storeExport.bytesBase64, "base64");
+  return payload as WorkerDeployPayload;
+}
+
+function verifyStoreExportBytes(payload: WorkerDeployPayload, suppliedBytes?: Buffer): Buffer {
+  const storeExport = payload.storeExport;
+  const bytes = suppliedBytes ?? Buffer.from(storeExport.bytesBase64, "base64");
   if (bytes.byteLength !== storeExport.byteLength) {
     invalidPayload(`storeExport byteLength ${storeExport.byteLength} does not match the supplied bytes (${bytes.byteLength})`);
   }
@@ -55,7 +67,77 @@ export function validateMaterializePayload(
   if (digest !== storeExport.sha256) {
     invalidPayload("storeExport sha256 does not match the supplied bytes");
   }
-  return payload as WorkerDeployPayload;
+  return bytes;
+}
+
+export function validateMaterializePayload(
+  raw: unknown,
+  options: { storeExportBytes?: Buffer } = {},
+): WorkerDeployPayload {
+  const payload = validateMaterializeOuterPayload(raw);
+  verifyStoreExportBytes(payload, options.storeExportBytes);
+  return payload;
+}
+
+/** Sentinel agents dir for the reconstructed-lock check; never touched on disk. */
+const MATERIALIZE_VALIDATION_AGENTS_DIR = "/drwn-materialize-validation";
+
+/**
+ * The complete pre-effect gate for the exported materializer: strict outer contract,
+ * closure identity and portability, reconstructed-lock validation, and canonical
+ * runtime-admission rederivation with deep equality. Pure — no filesystem, store
+ * decoding, or digest work happens here, so every rejection precedes every effect.
+ */
+function assertAdmissibleMaterializePayload(raw: unknown): WorkerDeployPayload {
+  const payload = validateMaterializeOuterPayload(raw);
+
+  const root = payload.lockfile.cards[0]!;
+  if (root.name !== payload.entrypoint.name) {
+    invalidPayload(`entrypoint ${payload.entrypoint.name} does not match root Card ${root.name}`);
+  }
+  const rootKind = root.manifest.kind === "blueprint" ? "blueprint" : "card";
+  if (payload.entrypoint.kind !== rootKind) {
+    invalidPayload(`entrypoint kind ${String(payload.entrypoint.kind)} does not match the root manifest`);
+  }
+  for (const [index, card] of payload.lockfile.cards.entries()) {
+    if (card.origin !== "store" && card.origin !== "git") {
+      invalidPayload(`cards[${index}] origin ${String(card.origin)} is not deployable`);
+    }
+    if (!card.treeSha) invalidPayload(`cards[${index}] is missing treeSha`);
+    if (card.path !== `drwn/extracted/${card.treeSha}`) invalidPayload(`cards[${index}] path is not portable`);
+    if (!card.integrity) invalidPayload(`cards[${index}] is missing integrity`);
+    if (!card.git?.commit) invalidPayload(`cards[${index}] is missing git.commit`);
+  }
+  try {
+    validateCardLockfile(
+      deriveMaterializeLock(payload, MATERIALIZE_VALIDATION_AGENTS_DIR),
+      "<materialize-payload>",
+    );
+  } catch (error) {
+    invalidPayload(error instanceof Error ? error.message : String(error));
+  }
+
+  const supplied = (payload as Partial<WorkerDeployPayload>).runtimeAdmission;
+  if (supplied === undefined || supplied === null) admissionInvalid("envelope is required");
+  let canonicalSupplied: string;
+  try {
+    canonicalSupplied = canonicalizeRuntimeAdmissionJson(supplied);
+  } catch {
+    admissionInvalid("envelope is not canonical JSON");
+  }
+  if (Buffer.byteLength(canonicalSupplied, "utf8") > WORKER_RUNTIME_ADMISSION_ENVELOPE_LIMIT_BYTES) {
+    admissionInvalid("envelope exceeds the canonical byte limit");
+  }
+  let canonicalDerived: string;
+  try {
+    canonicalDerived = canonicalizeRuntimeAdmissionJson(deriveDeployRuntimeAdmission(payload.lockfile.cards));
+  } catch (error) {
+    admissionInvalid(error instanceof DrwnError ? error.message : "closure declarations are invalid");
+  }
+  if (canonicalSupplied !== canonicalDerived) {
+    admissionInvalid("envelope does not match the rederived closure");
+  }
+  return payload;
 }
 
 /**
@@ -150,8 +232,9 @@ async function emittedArtifact(path: string): Promise<EmittedArtifact> {
  * pipeline drwn install composes. Single-shot on clean roots by contract.
  */
 export async function materializeWorkerPayload(options: MaterializeWorkerOptions): Promise<MaterializeWorkerResult> {
-  const { payload, projectRoot, agentsDir, homeDir, repoRoot } = options;
-  const storeBytes = options.storeExportBytes ?? Buffer.from(payload.storeExport.bytesBase64, "base64");
+  const { projectRoot, agentsDir, homeDir, repoRoot } = options;
+  const payload = assertAdmissibleMaterializePayload(options.payload);
+  const storeBytes = verifyStoreExportBytes(payload, options.storeExportBytes);
 
   await mkdir(agentsDir, { recursive: true });
   const tempDir = await mkdtemp(join(tmpdir(), "drwn-materialize-"));
