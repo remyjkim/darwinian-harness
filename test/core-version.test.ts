@@ -45,11 +45,7 @@ describe("drwn version reconciliation", () => {
     expect(WORKER_MIND_MIN_DRWN_VERSION).toBe("0.9.0");
   });
 
-  test("keeps the release hard-cut floor and Buzz delivery floor separate from current identity", () => {
-    const buzz = JSON.parse(
-      readFileSync(join(import.meta.dir, "..", "registry", "cards", "buzz-delivery-worker", "card.json"), "utf8"),
-    ) as { harness?: { minVersion?: string } };
+  test("keeps the release hard-cut floor separate from current identity", () => {
     expect(gte(DRWN_VERSION, "1.1.0")).toBe(true);
-    expect(buzz.harness?.minVersion).toBe("1.2.0");
   });
 });

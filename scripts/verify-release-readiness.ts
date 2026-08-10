@@ -78,7 +78,6 @@ async function verifyPackageContents() {
     "cli/commands/worker/materialize.ts",
     "cli/commands/worker/buzz-tools.ts",
     "cli/commands/worker/secret-set.ts",
-    "registry/cards/buzz-delivery-worker/card.json",
     "registry/config.json",
     "registry/mcp-servers.json",
     "skills/shared/frontend-design/SKILL.md",
@@ -1130,17 +1129,6 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
     issues.push(`package version must be at least the ${FIRST_SUPPORTED_WORKER_VERSION} Worker hard-cut floor`);
   }
   if (runtimeVersion !== pkg.version) issues.push("runtime version must match package version");
-
-  try {
-    const buzz = JSON.parse(source("registry/cards/buzz-delivery-worker/card.json")) as {
-      harness?: { minVersion?: string };
-    };
-    if (buzz.harness?.minVersion !== TARGET_RELEASE_VERSION) {
-      issues.push(`Buzz delivery Card harness.minVersion must be ${TARGET_RELEASE_VERSION}`);
-    }
-  } catch {
-    issues.push("Buzz delivery Card metadata must be valid JSON");
-  }
 
   return {
     name: "project Worker contract",

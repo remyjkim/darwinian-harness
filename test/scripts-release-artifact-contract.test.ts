@@ -46,6 +46,12 @@ function packJson(bytes: Buffer, overrides: Record<string, unknown> = {}): strin
 }
 
 describe("release package member qualification", () => {
+  test("no longer requires the retired Buzz delivery Card as a release member", () => {
+    const retiredCardPath = ["registry", "cards", "buzz-delivery-worker", "card.json"].join("/");
+
+    expect(REQUIRED_RELEASE_MEMBERS).not.toContain(retiredCardPath);
+  });
+
   test("accepts every required source member plus generated build identity", () => {
     expect(qualifyPackageMembers([...REQUIRED_RELEASE_MEMBERS])).toEqual([...REQUIRED_RELEASE_MEMBERS]);
   });

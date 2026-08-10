@@ -5,6 +5,18 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+const RETIRED_BUZZ_CARD_DIR = ["registry", "cards", "buzz-delivery-worker"].join("/");
+const RETIRED_BUZZ_CARD_PATH = `${RETIRED_BUZZ_CARD_DIR}/card.json`;
+const CURRENT_RELEASE_SURFACES = [
+  "package.json",
+  "README.md",
+  ".github",
+  "docs",
+  "registry",
+  "scripts",
+  "test",
+];
+
 describe("package readiness", () => {
   test("published CLI declares its Bun runtime requirement", () => {
     const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as Record<string, unknown>;
@@ -195,7 +207,7 @@ describe("package readiness", () => {
     expect(paths).toContain("cli/commands/worker/materialize.ts");
     expect(paths).toContain("cli/commands/worker/buzz-tools.ts");
     expect(paths).toContain("cli/commands/worker/secret-set.ts");
-    expect(paths).toContain("registry/cards/buzz-delivery-worker/card.json");
+    expect(paths).not.toContain(RETIRED_BUZZ_CARD_PATH);
     expect(paths).not.toContain("cli/commands/apply.ts");
     expect(paths).not.toContain("cli/commands/mcp/apply.ts");
     expect(paths).not.toContain("cli/commands/sync.ts");
@@ -207,5 +219,22 @@ describe("package readiness", () => {
     expect(paths).toContain("registry/mcp-servers.json");
     expect(paths).toContain("docs/assets/darwinian-worker-logo.png");
     expect(paths).toContain("skills/shared/frontend-design/SKILL.md");
+  });
+
+  test("retires the legacy packaged Buzz Card from source and every current release surface", () => {
+    expect(existsSync(join(process.cwd(), RETIRED_BUZZ_CARD_PATH))).toBe(false);
+    expect(existsSync(join(process.cwd(), RETIRED_BUZZ_CARD_DIR))).toBe(false);
+
+    const probe = Bun.spawnSync(
+      ["git", "grep", "-l", RETIRED_BUZZ_CARD_DIR, "--", ...CURRENT_RELEASE_SURFACES],
+      { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
+    );
+    const matches = new TextDecoder().decode(probe.stdout).trim();
+
+    expect(matches).toBe("");
+  });
+
+  test("ships no replacement publishable Finch Card in the Worker registry", () => {
+    expect(existsSync(join(process.cwd(), "registry", "cards"))).toBe(false);
   });
 });

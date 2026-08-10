@@ -1,5 +1,7 @@
 {
   "schemaVersion": 1,
+  "status": "historical",
+  "statusNote": "Retired record. The Card named by cardSourcePath was removed from this repository and no verifier reads this file. Retained as a record of the state at workerSourceRevision only.",
   "workerSourceRevision": "eaca0f9b4119443c48ca543e8b340d6bae314503",
   "cardSourcePath": "registry/cards/buzz-delivery-worker/card.json",
   "cardMcpServerKey": "buzz-tools",
