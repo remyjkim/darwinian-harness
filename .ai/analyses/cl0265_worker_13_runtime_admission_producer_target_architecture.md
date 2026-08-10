@@ -5,11 +5,11 @@
 
 **Date:** 2026-08-09
 **Author:** I265 Worker A
-**Status:** In Review
+**Status:** Ready for G1 re-review
 **Issue:** I265, child of I238
-**Repository:** `curation-labs/darwinian-worker`
+**Repository:** `remyjkim/darwinian-worker`
 **Frozen base:** `53da51e68e3d8f426b80a1830818fc36bb0a9a01`
-**References:** I265 handoff; stable I264 child handoff plus direct coordination events `architecture-coordinator-20260809T221527Z-010`, `architecture-coordinator-20260809T221721Z-011`, `architecture-coordinator-20260809T222052Z-013`, and `architecture-coordinator-20260809T224145Z-017`; I268 handshake request `i268-owner-reviewer-20260809T225639Z-004`; Services `origin/main` I259 runtime-admission contracts. Mutable I264 PR corrections are informative but do not supersede I265's direct reviewed lane contract.
+**References:** I265 handoff; stable I264 child handoff plus direct coordination events `architecture-coordinator-20260809T221527Z-010`, `architecture-coordinator-20260809T221721Z-011`, `architecture-coordinator-20260809T222052Z-013`, and `architecture-coordinator-20260809T224145Z-017`; rejected-ref G1 verdict `architecture-coordinator-20260809T233057Z-026`; I266 comparator acceptance `i266-owner-reviewer-20260809T234030Z-207`; I268 replacement-schema/comparator handoff `i268-owner-reviewer-20260809T234134Z-010`; I265 nested-inert-byte correction `i265-owner-20260809T234432Z-012`; I268 correction `i268-owner-reviewer-20260809T234904Z-011`; superseded I265 acceptance `i265-owner-20260809T235040Z-013`; executable-rule finding `i266-owner-reviewer-20260809T235108Z-211`; I265 supersession `i265-owner-20260809T235246Z-014`; exact executable rule `i268-owner-reviewer-20260809T235610Z-012`; fresh I265 acceptance/current-digest confirmation `i265-owner-20260809T235736Z-015` and `i265-owner-20260809T235950Z-016`; I266 exact acceptance `i266-owner-reviewer-20260809T235908Z-212`; shared-handshake closure `i265-owner-20260810T000025Z-017`; immutable I268 exact-ref submission `i268-owner-reviewer-20260810T000303Z-014`; Services `origin/main` I259 runtime-admission contracts. Mutable I264 corrections are informative and do not supersede I265's direct reviewed lane contract.
 
 ---
 
@@ -155,7 +155,7 @@ interface CardApplicationRequirementsV1 {
 }
 ```
 
-This exact-key Worker schema preserves the existing Services v1 meaning: each app has `card`, `pipedreamApp`, or both; bearer requires `tokenRef`; none/oauth forbid it; app IDs are NFC-unique; strings and the 128-entry array are bounded. Across a complete closure, identical declarations for one normalized app ID deduplicate, conflicting declarations fail, and the canonical aggregate sorts by the same code-unit app-ID comparator used by Services. The field survives the lock and binds `closureHash` but remains separate from the runtime-requirements envelope. Finch later uses explicit `{ "version": 1, "apps": [] }` on every closure Card.
+This exact-key Worker schema preserves the existing Services v1 meaning: each app has `card`, `pipedreamApp`, or both; bearer requires `tokenRef`; none/oauth forbid it; app IDs are NFC-unique; strings and the 128-entry array are bounded. Across a complete closure, identical declarations for one normalized app ID deduplicate and conflicting declarations fail. The canonical aggregate uses the explicit JavaScript UTF-16 code-unit comparator `left < right ? -1 : left > right ? 1 : 0`; it never uses `localeCompare`, `Intl`, or host locale. Current Services `origin/main` still uses `localeCompare` for this application aggregate and is not canonical-byte parity. I266 event `i266-owner-reviewer-20260809T234030Z-207` accepts ownership of the matching explicit comparator and discriminating vectors, including `"B"` versus `"a"`; I268 event `i268-owner-reviewer-20260809T234134Z-010` accepts comparison of independently produced canonical bytes without supplying ordering semantics. Their implementation gates remain independent. The field survives the lock and binds `closureHash` but remains separate from the runtime-requirements envelope. Finch later uses explicit `{ "version": 1, "apps": [] }` on every closure Card.
 
 ### 3.3 Version floor
 
@@ -250,26 +250,35 @@ Its artifact digest is syntactically valid but unmistakably synthetic and must n
 
 This vector pins the pure semantic contract. I265 also accepts I268's request for one production-backed offline adapter so I268 can compare independent Worker and Services processes without importing either implementation.
 
-### 7.1 Accepted Worker adapter binding
+### 7.1 Accepted Worker adapter handshake; implementation held
 
 The binding is:
 
 - production derivation: `cli/core/runtime-admission-manifest.ts`;
 - process adapter: `cli/tools/runtime-admission-derive.ts`;
 - package command: `runtime-admission:derive:v2`;
-- invocation: `bun run runtime-admission:derive:v2 -- --input <candidate.json> --output <result.json>`;
+- invocation: `bun run runtime-admission:derive:v2 -- --input <derivation-input.json> --output <result.json>`;
 - command version: `cl.i265.worker-runtime-admission-adapter.v1`;
-- interchange schema: `cl.i268.finch-derivation-output.v2`;
+- input schema: `cl.i268.finch-derivation-input.v1`;
+- output schema: `cl.i268.finch-derivation-output.v2`;
 - producer discriminator: `worker`; and
 - runtime: the exact packaged Bun-compatible Worker runtime, with I267's qualified `darwinian@1.3.0` build identity required for production-candidate evidence.
 
-The adapter accepts one value-free input file bounded at 1,048,576 UTF-8 bytes and writes one closed v2 JSON result bounded at the same limit through a same-directory temp file, close/fsync, and atomic rename. It emits no success stdout and leaves no partial output after failure. Diagnostics are bounded/sanitized.
+The accepted input v1 is a closed fresh-process preimage rather than an identity-only candidate. It contains exact canonical base64 candidate bytes plus their external schema/phase/length/SHA-256 identity; exact phase and entrypoint; one ordered tools Card or the ordered two-Card root closure; for each Card, exact name/version/requested/integrity/tree plus canonical manifest bytes/length/SHA-256; exact canonical `card.lock` bytes/length/SHA-256 and `store.minDrwnVersion: 1.3.0`; the store-export format/compression/encoding/length/SHA-256 identity without archive bytes; exact phase evidence; and externally identified no-secret evidence covering the exact candidate, ordered manifests, and lock hashes. It contains no self identity. I268 serializes one input byte string once, and both producer adapters independently hash those same raw bytes into output-v2 `input.derivationInputIdentity`.
 
-I265 accepts all v2 common fields, phase evidence, comparison mapping, and external non-circular serialized-artifact identity named by I268 event `...-004`. The input may contain exact entrypoint/Card/lock identities, store-export format/compression/encoding/digest/length (never store bytes), candidate identity, phase, and an already immutable tools-publication/refetch binding for the root phase. It accepts no credential, secret, environment authority, command/shell field, mutable publication target, archive bytes, or fallback field.
+The raw input and output files are each bounded at 1,048,576 UTF-8 bytes. Decoded candidate, manifests, and lock are jointly bounded by the same ceiling. The adapter requires exact closed keys and canonical base64; verifies candidate, manifest, Card, lock, entrypoint, floor, store, and phase relationships before production derivation; requires exactly one tools Card or the exact root/tools closure; and fails without output for identity-only input, missing/extra fields or Cards, noncanonical bytes, one-bit mutation, or any relationship mismatch.
 
-The adapter calls only the production Worker derivation and derives canonical envelope/application bytes plus the listed semantic hashes. It validates/binds but does not create publication identities. I268 owns the v2 schema/parser, candidate inputs, process invocation, phase policy, comparator, and publication/refetch binding. The adapter never imports Services/I268 implementation or becomes a third derivation.
+No path, command, URL, environment, credential, secret, or mutable target is accepted as a top-level adapter-control or ambient-lookup field. Exact path, command/argv, and public Git URL strings that occur inside the encoded canonical manifest or `card.lock` bytes remain passive derivation material: the adapter may hash and strictly parse them but never executes, interpolates, installs, dereferences, opens/fetches, connects to, exposes them to process environment/output, or treats them as process, filesystem, environment, network, output, diagnostic, or publication authority.
 
-The synthetic vector remains non-authoritative. The adapter contract freezes only after I268 incorporates both producer acknowledgments into an immutable ref and obtains ordered I268 G1 then G2 PASS. Adapter source therefore requires both I265 G2 PASS and the applicable I268 G2 PASS. I265's core declaration/producer/materializer tasks require I265 G2 but do not wait on unrelated I268 publication authority.
+The no-secret decision is executable and independently reproducible. `cl.i268.finch-nested-inert-rule-config.v1`, schema version 1, is exactly 1,225 canonical UTF-8 bytes with SHA-256 `32225d0b5dda0d2a7ad37981d7441cde12a83a1200d2bdafbff25add0f300c2a`. It allows only the exact `buzz-tools` stdio command/args/optionality and absent provider/env/headers/url; the root Card has no server; lock paths are bounded inert strings; Git URLs are the two reviewed public Finch repositories with exact HTTPS host/path and empty userinfo/query/fragment; lock auxiliary fields are closed empty/absent values. Its `file|store|git` origin list is only the nested inert security subset and never overrides Worker production deploy's independent `file`/`npm` rejection.
+
+Both producer adapters embed and rehash that exact config, rerun the pure rule over the decoded candidate/manifests/lock, refuse a forged caller `pass`, and bind their own `security.nestedInertRule` schema/version/config/result plus exact coverage into output v2. I268's externally identified evidence corroborates exact byte coverage but never substitutes for producer enforcement. C45–C50 cover zero effects, incomplete coverage, forged pass, rule drift, Git URL authority, server drift, and no raw diagnostics.
+
+The adapter calls only the production Worker derivation and derives canonical envelope/application bytes plus the listed semantic hashes. Output v2 exactly binds `candidateIdentity`; the raw `derivationInputIdentity`; admitted entrypoint, Card-manifest, lock, and store identities; canonical envelope and application-requirements bytes; all component hashes; and exact phase evidence. It validates and binds I268-owned phase/publication identities but does not create them. I268 owns the v1/v2 schemas/parser, candidate inputs, process invocation, phase policy, comparator, and publication/refetch binding. The adapter never imports Services/I268 implementation or becomes a third derivation.
+
+Event `i265-owner-20260809T235736Z-015` records I265's fresh exact-digest acceptance and supersedes only the verdict of the premature event, not its audit history. Any later schema, bound, file, command, runtime, version, ownership, lookup, or rule change invalidates acceptance. Adapter RED/source requires both I265 G2 PASS and the corrected immutable I268 schema ref's ordered G1 then G2 PASS. The synthetic vector remains non-authoritative. I265's core declaration/producer/materializer tasks require I265 G2 but do not wait on unrelated I268 publication authority.
+
+The corrected I268 schema is immutable at commit `75970eb09c6292f7c418bb5216e9ef006921ce55`, tree `821e917e874cf39412dad0bb73db9602b5bdfae6`: architecture SHA-256 `6d20dcb017d8f592e9899be2c9de783143194e56f2440c81eca9109377f249ae`, plan SHA-256 `f2f399f5a4ad82837bc3e9c498f070f6ae0ac90cdf020448afadad3062520763`. Event `i268-owner-reviewer-20260810T000303Z-014` records remote readback, 9/9 JSON parsing, config recomputation, 13/13 contract assertions, and 242/242 ops tests. That ref is in ordered I268 G1 review; it grants no adapter implementation authority before I268 G2 PASS.
 
 ## 8. Coherent Worker 1.3 source
 

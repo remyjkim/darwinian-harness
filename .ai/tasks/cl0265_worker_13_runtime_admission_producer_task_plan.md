@@ -15,15 +15,16 @@
 
 ## 1. Frozen inputs and execution gate
 
-- Repository: `curation-labs/darwinian-worker`.
+- Repository: `remyjkim/darwinian-worker`.
 - Branch: `feat/i265-runtime-admission-producer`.
 - Worktree: `/Users/pureicis/dev/darwinian-minds-worktrees/i265-runtime-admission-producer`.
 - Frozen base/head: `53da51e68e3d8f426b80a1830818fc36bb0a9a01`.
 - Exact tool: Bun 1.2.21 copied immediately from `bunx bun@1.2.21` to a task-specific `mktemp` path; recorded SHA-256 `2803929d4d8a82b6d0a76b1cefb3c929dd6d0c3888604e449d59b64ba891d82a`.
 - Tracked submodule: `darwinian-worker-skills` at gitlink `e01dc06f2bac4594ddc6539fea47937d415972b8`, initialized recursively.
 - Baseline: focused deploy/materialize 14/14 pass; typecheck pass; all `verify:release` gates pass; full suite 2,203 pass, 10 explicit skips, 0 fail across 350 files.
+- Immutable adapter-contract dependency: I268 commit `75970eb09c6292f7c418bb5216e9ef006921ce55`, tree `821e917e874cf39412dad0bb73db9602b5bdfae6`, architecture SHA-256 `6d20dcb017d8f592e9899be2c9de783143194e56f2440c81eca9109377f249ae`, plan SHA-256 `f2f399f5a4ad82837bc3e9c498f070f6ae0ac90cdf020448afadad3062520763`; ordered I268 G1 review is open and G2 remains unapproved.
 
-No source or RED test task begins until the architecture passes formal G1 and this plan passes ordered G2. They may share one exact review ref, but the gate record remains G1 then G2. The I268 comparison adapter additionally waits for I268's immutable v2 schema to receive its own ordered G1/G2 PASS.
+No source or RED test task begins until the architecture passes formal G1 and this plan passes ordered G2. They may share one exact review ref, but the gate record remains G1 then G2. The I268 comparison adapter additionally waits for exact ref `75970eb0` to receive its own ordered I268 G1 then G2 PASS. Both producer-owned application comparators are acknowledged. I265 events `i265-owner-20260809T235736Z-015` and `i265-owner-20260809T235950Z-016`, plus I266 event `i266-owner-reviewer-20260809T235908Z-212`, accept the exact 1,225-byte producer-enforced rule config at SHA-256 `32225d0b5dda0d2a7ad37981d7441cde12a83a1200d2bdafbff25add0f300c2a`. Any later I268 schema, config, path, command, bound, ownership, or rule drift reopens this dependency.
 
 Before each implementation task:
 
@@ -115,9 +116,10 @@ Extend the pure-module tests first for:
 7. exact I259 activation/requirements vector parity;
 8. safe-integer canonical JSON and unsupported-value rejection;
 9. all-absent, either-field absent, `null`, old, mixed, and partial rejection;
-10. exact/NFC collisions failing before ordering; and
-11. apps excluded from the envelope but included in closure binding; and
-12. canonical closure-wide application aggregation: identical duplicates dedupe, conflicts fail, and app IDs sort with the Services comparator.
+10. exact/NFC collisions failing before ordering;
+11. apps excluded from the envelope but included in closure binding;
+12. canonical closure-wide application aggregation: identical duplicates dedupe, conflicts fail, and app IDs sort with the explicit JavaScript UTF-16 code-unit comparator; and
+13. discriminating cross-repository ordering vectors, including `"B"` versus `"a"`, fail against current Services `localeCompare` behavior until I266 adopts the same locale-independent comparator.
 
 ### GREEN
 
@@ -176,13 +178,15 @@ Modify validation/e2e tests first for:
 4. closure or application mutation after envelope production;
 5. direct exported materializer calls with typed-but-tampered payloads;
 6. stable `WORKER_MATERIALIZE_RUNTIME_ADMISSION_INVALID` and sanitized text; and
-7. zero mkdir, mkdtemp, archive write/extract, config/lock write, hydration, sync, project tar, and store tar calls/paths.
+7. zero mkdir, mkdtemp, archive write/extract, config/lock write, hydration, sync, project tar, and store tar calls/paths;
+8. malformed or unknown outer payload, entrypoint/root mismatch, wrong root kind, invalid lock version/floor, duplicate or NFC-colliding Card/root/member identities, inconsistent composition membership, non-portable Card path, disallowed origin, missing tree/integrity/commit identity, and reconstructed-lock validation failure; and
+9. every case in item 8 failing before inline/external store decoding, digest work, mkdir, mkdtemp, archive write/extract, config/lock write, hydration, sync, or emitted artifacts.
 
 Retain separate store-digest error coverage.
 
 ### GREEN
 
-Validate and rederive inside the exported materializer before reading/writing paths. Deep-compare the exact canonical envelope. Keep envelope failures distinct from outer payload/store errors and redact full input data.
+Inside the exported materializer, strictly validate the complete outer payload and entrypoint, derive a sentinel-path reconstructed lock, run the existing strict lock validator, validate/rederive the admission envelope, and deep-compare the exact canonical result before decoding or hashing store bytes and before every filesystem effect. Validation performs no ambient repository/network lookup. Keep envelope failures distinct from outer payload/store errors and redact full input data.
 
 ### Verify and commit
 
@@ -222,84 +226,7 @@ git diff --check
 
 Commit fixture work atomically. Bind commit/tree and both file digests externally in Notion/the coordination log.
 
-## 8. Task 6 — Coherent 1.3.0 source
-
-### RED
-
-Change current-release tests first to fail on any authoritative 1.2.0 surface:
-
-1. package/runtime equality at exact 1.3.0;
-2. build identity and auth receipt eligibility;
-3. readiness target/changelog;
-4. candidate, tag, recovery, provenance parsers/types;
-5. candidate/tar filenames;
-6. publication-control tag;
-7. release/recovery trigger, ref, concurrency, registry lookup, checkout, artifact, and publish literals;
-8. release/maintainer docs;
-9. latest-`origin/main` eligibility, so an older 1.3.0 source cannot qualify; and
-10. preservation of unrelated examples/dependencies/history.
-
-### GREEN
-
-Advance those current release-controlled surfaces to 1.3.0. Add breaking hard-cut/migration text. Do not edit `bun.lock` unless dependency resolution changes.
-
-### Verify and commit
-
-```bash
-bun test \
-  test/core-version.test.ts \
-  test/core-build-identity.test.ts \
-  test/core-auth-receipt.test.ts \
-  test/scripts-release-artifact-contract.test.ts \
-  test/scripts-release-provenance.test.ts \
-  test/scripts-release-publication-controls.test.ts \
-  test/scripts-release-registry-probe.test.ts \
-  test/scripts-release-workflow.test.ts \
-  test/scripts-release-recovery-workflow.test.ts \
-  test/docs-readiness.test.ts
-bun run typecheck
-bun run verify:release
-git diff --check
-```
-
-Commit source coherence atomically. State explicitly that this is not a tag, candidate, publication, registry mutation, or image adoption.
-
-## 9. Task 7 — Offline Worker v2 derivation adapter
-
-This task is held until both I265 G2 and the exact I268 `cl.i268.finch-derivation-output.v2` contract receive ordered G2 PASS. Before RED, consume the exact I268 review ref/digests and append the dependency transition to Notion/the shared log.
-
-### RED
-
-Add `test/scripts-runtime-admission-derive.test.ts` first for the accepted binding:
-
-1. `cli/tools/runtime-admission-derive.ts` is invoked by `bun run runtime-admission:derive:v2 -- --input <candidate.json> --output <result.json>`;
-2. command version is `cl.i265.worker-runtime-admission-adapter.v1`, schema is `cl.i268.finch-derivation-output.v2`, and producer is `worker`;
-3. tools/root inputs emit every reviewed common field, phase evidence field, canonical envelope/application byte identity, and semantic hash;
-4. the adapter imports only the production Worker derivation, never Services/I268 comparator/fixtures;
-5. input/output exceed 1,048,576 UTF-8 bytes fail before output creation;
-6. credentials, secrets, archive/store bytes, environment authority, commands/shell, mutable target, unknown, and fallback fields fail;
-7. store-export format/compression/encoding/digest/length bind without accepting its bytes;
-8. production-candidate output requires the qualified packaged 1.3.0 build identity rather than caller-supplied source authority;
-9. success writes one same-directory temp, closes/fsyncs, atomically renames, emits no stdout, and leaves no temp/partial output;
-10. parse/derivation/write/rename failures are sanitized and leave no result; and
-11. candidate/receipt self-identity is absent while the externally computed serialized-artifact identity remains downstream.
-
-### GREEN
-
-Implement the minimum offline adapter around `cli/core/runtime-admission-manifest.ts`. Accept bounded value-free file input only. Derive Worker-owned values; validate/bind I268-owned phase/publication inputs without creating them. Write one closed v2 result atomically. Add the package command without registering a deploy/network CLI control plane.
-
-### Verify and commit
-
-```bash
-bun test test/scripts-runtime-admission-derive.test.ts test/core-runtime-admission-manifest.test.ts
-bun run typecheck
-npm pack --dry-run --json
-git diff --check
-```
-
-Commit the adapter atomically. Record exact command/version, source/package identity, test totals, and adapter file digest for I268. This receipt grants no Card/package publication authority.
-
-## 10. Task 8 — Retire legacy packaged Buzz Card
+## 8. Task 6 — Retire legacy packaged Buzz Card
 
 ### RED
 
@@ -325,11 +252,97 @@ Delete the Card, retire all nine current consumers, and make package readiness a
 bun test test/package-readiness.test.ts test/scripts-release-artifact-contract.test.ts test/scripts-verify-worker-contract.test.ts test/core-version.test.ts
 bun run verify:release
 npm pack --dry-run --json
-git grep -n 'registry/cards/buzz-delivery-worker/card.json' -- scripts package.json registry test .github docs README.md || true
+git grep -n 'registry/cards/buzz-delivery-worker/card.json' -- scripts package.json registry test .github docs README.md .ai/tasks || true
 git diff --check
 ```
 
-Commit retirement atomically. Notify I267 to prove the path absent from the 1.3 tar and I268 that Worker provides no replacement Card.
+Commit retirement atomically while the source version remains 1.2.0. The updated release verifier must pass by requiring the legacy member's absence, never by advancing the obsolete Card to 1.3.0. Notify I267 to prove the path absent from the eventual 1.3 tar and I268 that Worker provides no replacement Card.
+
+## 9. Task 7 — Coherent 1.3.0 source
+
+This task starts only after Task 6 has removed the obsolete Card and every current verifier/qualification dependency on it. A 1.3.0 checkpoint that updates or still requires the legacy Card is invalid.
+
+### RED
+
+Change current-release tests first to fail on any authoritative 1.2.0 surface:
+
+1. package/runtime equality at exact 1.3.0;
+2. build identity and auth receipt eligibility;
+3. readiness target/changelog;
+4. candidate, tag, recovery, provenance parsers/types;
+5. candidate/tar filenames;
+6. publication-control tag;
+7. release/recovery trigger, ref, concurrency, registry lookup, checkout, artifact, and publish literals;
+8. release/maintainer docs;
+9. latest-`origin/main` eligibility, so an older 1.3.0 source cannot qualify;
+10. preservation of unrelated examples/dependencies/history; and
+11. continued legacy Buzz Card absence from source, package members, release verification, and current documentation.
+
+### GREEN
+
+Advance those current release-controlled surfaces to 1.3.0. Add breaking hard-cut/migration text. Keep the retired Card absent and do not edit `bun.lock` unless dependency resolution changes.
+
+### Verify and commit
+
+```bash
+bun test \
+  test/core-version.test.ts \
+  test/core-build-identity.test.ts \
+  test/core-auth-receipt.test.ts \
+  test/package-readiness.test.ts \
+  test/scripts-release-artifact-contract.test.ts \
+  test/scripts-release-provenance.test.ts \
+  test/scripts-release-publication-controls.test.ts \
+  test/scripts-release-registry-probe.test.ts \
+  test/scripts-release-workflow.test.ts \
+  test/scripts-release-recovery-workflow.test.ts \
+  test/docs-readiness.test.ts
+bun run typecheck
+bun run verify:release
+npm pack --dry-run --json
+git diff --check
+```
+
+Commit source coherence atomically. State explicitly that this is not a tag, candidate, publication, registry mutation, or image adoption.
+
+## 10. Task 8 — Offline Worker v2 derivation adapter
+
+This task is held until I265 G2 and the exact replacement I268 input/output contracts receive ordered I268 G1 then G2 PASS. Before RED, consume the exact I268 review ref/digests, reverify the accepted `cl.i268.finch-derivation-input.v1` and `cl.i268.finch-derivation-output.v2` schemas, and append the dependency transition to Notion/the shared log.
+
+### RED
+
+Add `test/scripts-runtime-admission-derive.test.ts` first for the accepted binding:
+
+1. `cli/tools/runtime-admission-derive.ts` is invoked by `bun run runtime-admission:derive:v2 -- --input <derivation-input.json> --output <result.json>`;
+2. command version is `cl.i265.worker-runtime-admission-adapter.v1`, input schema is `cl.i268.finch-derivation-input.v1`, output schema is `cl.i268.finch-derivation-output.v2`, and producer is `worker`;
+3. identity-only candidates, missing/extra preimage fields, candidate/bundle/Card/lock/store identity mismatches, and one-bit Card/declaration/raw-server mutations fail;
+4. the bounded passive preimage carries the exact candidate bytes, canonical Card manifests/declarations, canonical `card.lock`, and every production derivation input; command/argv/path/public-Git-URL-shaped values nested inside the admitted manifest/lock bytes are inert hash/parse input only and are never executed, interpolated, installed, dereferenced, opened, or treated as process/filesystem/environment/network authority;
+5. the adapter reverifies every byte length/hash and candidate/Card/lock/store relationship before importing and calling only the production Worker derivation, never Services/I268 comparator/fixtures;
+6. no ambient repository, registry, store, network, environment, credential provider, or publication lookup is permitted;
+7. valid tools/root inputs emit every reviewed common field, phase evidence field, canonical envelope/application byte identity, and semantic hash, and `input.derivationInputIdentity` equals the length/SHA-256 of the actual admitted raw input file;
+8. input/output exceed 1,048,576 UTF-8 bytes fail before output creation;
+9. top-level paths, commands, URLs, credentials, secrets, store/archive bytes, environment authority, mutable targets, executable shell authority, unknown, and fallback fields fail; each adapter independently embeds, rehashes, and reruns `cl.i268.finch-nested-inert-rule-config.v1` version 1 at exact SHA-256 `32225d0b5dda0d2a7ad37981d7441cde12a83a1200d2bdafbff25add0f300c2a`, then binds its own pass/digest in output v2 rather than trusting caller-authored evidence;
+10. store-export format/compression/encoding/digest/length bind without accepting its bytes;
+11. production-candidate output requires the qualified packaged 1.3.0 build identity derived by the running Worker rather than caller-supplied source authority;
+12. success writes one same-directory temp, closes/fsyncs, atomically renames, emits no stdout, and leaves no temp/partial output;
+13. parse/identity/derivation/write/rename failures are sanitized and leave no result;
+14. candidate/receipt self-identity is absent while the externally computed serialized-artifact identity remains downstream; and
+15. hostile nested manifest command/environment values and lock path/Git URL values cause no process, filesystem, environment, network, output, or diagnostic side effect before rejection or successful pure derivation; forged caller `pass`, changed rule/config digest, URL userinfo/query/fragment, authorization/cookie/API-key header, unexpected env/header/provider, and missing/changed byte coverage fail without output or raw diagnostics.
+
+### GREEN
+
+Implement the minimum offline adapter around `cli/core/runtime-admission-manifest.ts`. Accept only the reviewed bounded passive derivation-input file, reverify its closed byte identities, and perform no ambient lookup or execution. Treat every nested manifest/lock path, command, and URL as inert bytes. Independently run the exact frozen target-specific rule: allow only the reviewed `buzz-tools` server command/args/optionality with provider/env/headers/url absent, no root server, the two exact public Finch Git URLs with empty userinfo/query/fragment, bounded inert lock paths, and closed empty/absent auxiliary fields. The rule's `file|store|git` origin set does not override the production deploy path's separate `file`/`npm` rejection. Bind the producer's own rule pass/config digest in output v2 and never echo nested values. Derive Worker-owned values; validate/bind I268-owned phase/publication inputs without creating them. Write one closed v2 result atomically. Add the package command without registering a deploy/network CLI control plane.
+
+### Verify and commit
+
+```bash
+bun test test/scripts-runtime-admission-derive.test.ts test/core-runtime-admission-manifest.test.ts
+bun run typecheck
+npm pack --dry-run --json
+git diff --check
+```
+
+Commit the adapter atomically. Record exact command/version, input/output schemas, source/package identity, test totals, and adapter file digest for I268. This receipt grants no Card/package publication authority.
 
 ## 11. Task 9 — Fresh integrated verification and reviews
 
