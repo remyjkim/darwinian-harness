@@ -99,7 +99,7 @@ describe("documentation readiness", () => {
       "build identity",
       "dry-run run ID and attempt",
       "artifact ID and digest",
-      "annotated `v1.2.0` tag",
+      "annotated `v1.3.0` tag",
       "exact tarball",
       "release-recovery.yml",
       "source availability",
@@ -122,6 +122,9 @@ describe("documentation readiness", () => {
     expect(cliPublishing).not.toContain("--userconfig");
     expect(cliPublishing).toContain("No local token fallback");
 
+    expect(changelog).toContain("## [1.3.0]");
+    expect(changelog).toContain("**Breaking hard cut.**");
+    expect(changelog).toContain("must be deliberately recreated");
     expect(changelog).toContain("## [1.2.0] - 2026-08-07");
     expect(changelog).toContain("## [1.1.0] - 2026-08-05");
     expect(changelog).toContain("## [1.0.0] - 2026-08-03");

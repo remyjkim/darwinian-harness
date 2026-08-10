@@ -14,7 +14,7 @@ describe("drwn version reconciliation", () => {
   test("DRWN_VERSION matches package.json version", () => {
     const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string };
     expect(DRWN_VERSION).toBe(pkg.version);
-    expect(DRWN_VERSION).toBe("1.2.0");
+    expect(DRWN_VERSION).toBe("1.3.0");
   });
 
   test("runtime version loading fails loudly for missing, malformed, and invalid package metadata", async () => {

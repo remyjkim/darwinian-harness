@@ -207,7 +207,7 @@ function verifyDocsPresence() {
     ["docs-docusaurus/docs/reference/cli/refresh.md", ["CREDENTIAL_SCHEMA_UNSUPPORTED", "never persisted"]],
     ["docs/release-process.md", ["dry-run run ID and attempt", "artifact ID and digest", "release-recovery.yml"]],
     ["docs/maintainers/publishing.md", ["No local token fallback", "darwinian-npm-publish"]],
-    ["CHANGELOG.md", ["## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
+    ["CHANGELOG.md", ["## [1.3.0]", "## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
   ];
   const drift: string[] = [];
   for (const [file, tokens] of requiredTokens) {
@@ -237,7 +237,7 @@ function verifyDocsPresence() {
 
 type SourceOverrides = Record<string, string>;
 
-const TARGET_RELEASE_VERSION = "1.2.0";
+const TARGET_RELEASE_VERSION = "1.3.0";
 const FIRST_SUPPORTED_WORKER_VERSION = "1.1.0";
 
 function runtimeVersionFromSource(

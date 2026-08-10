@@ -3,13 +3,13 @@ name: CLI Release
 on:
   push:
     tags:
-      - 'v1.2.0'
+      - 'v1.3.0'
   workflow_dispatch:
     inputs:
       version:
         description: 'Exact candidate version; must match package.json.'
         required: true
-        default: '1.2.0'
+        default: '1.3.0'
         type: string
       dry_run:
         description: 'Qualification only; mutation is not available from manual dispatch.'
@@ -168,7 +168,7 @@ jobs:
       - name: Install and smoke exact packed artifact
         run: |
           bun scripts/release-cli.ts smoke-artifact \
-            "$RUNNER_TEMP/release-candidate/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/release-candidate/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/release-smoke"
 
       - name: Create immutable pre-upload receipt
@@ -183,7 +183,7 @@ jobs:
         with:
           name: darwinian-worker-release-candidate
           path: |
-            ${{ runner.temp }}/release-candidate/darwinian-1.2.0.tgz
+            ${{ runner.temp }}/release-candidate/darwinian-1.3.0.tgz
             ${{ runner.temp }}/release-candidate/release-candidate.json
           if-no-files-found: error
           overwrite: false
@@ -200,7 +200,7 @@ jobs:
             echo ""
             echo "- Version: ${{ needs.validate.outputs.version }}"
             echo "- Source commit: ${{ needs.validate.outputs.source_commit }}"
-            echo "- Tar: darwinian-1.2.0.tgz ($TAR_BYTES bytes)"
+            echo "- Tar: darwinian-1.3.0.tgz ($TAR_BYTES bytes)"
             echo "- Tar SHA-1: $TAR_SHA1"
             echo "- Tar SHA-256: $TAR_SHA256"
             echo "- Tar integrity: $TAR_INTEGRITY"
@@ -244,8 +244,8 @@ jobs:
         id: authorization
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          if [ "$TAG" != "v1.2.0" ]; then
-            echo "Only the exact v1.2.0 tag is a release trigger." >&2
+          if [ "$TAG" != "v1.3.0" ]; then
+            echo "Only the exact v1.3.0 tag is a release trigger." >&2
             exit 1
           fi
           git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
@@ -313,7 +313,7 @@ jobs:
           mkdir "$RUNNER_TEMP/candidate"
           unzip -q "$RUNNER_TEMP/candidate.zip" -d "$RUNNER_TEMP/candidate"
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/candidate/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/candidate/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/received-artifact.json"
 
@@ -386,7 +386,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/v1.2.0
+          ref: refs/tags/v1.3.0
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
@@ -407,7 +407,7 @@ jobs:
         run: |
           git fetch --no-tags origin main
           CHECKOUT_SHA="$(git rev-parse HEAD)"
-          TAG_SHA="$(git rev-parse 'refs/tags/v1.2.0^{}')"
+          TAG_SHA="$(git rev-parse 'refs/tags/v1.3.0^{}')"
           MAIN_SHA="$(git rev-parse origin/main)"
           if [ "$CHECKOUT_SHA" != "${{ needs.validate_tag.outputs.source_commit }}" ] ||
              [ "$TAG_SHA" != "${{ needs.validate_tag.outputs.source_commit }}" ] ||
@@ -447,24 +447,24 @@ jobs:
           mkdir "$RUNNER_TEMP/candidate"
           unzip -q "$RUNNER_TEMP/candidate.zip" -d "$RUNNER_TEMP/candidate"
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/candidate/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/candidate/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/protected-artifact.json"
           jq -e \
             --arg source "${{ needs.validate_tag.outputs.source_commit }}" \
             --arg digest "${{ needs.validate_tag.outputs.tar_sha256 }}" \
-            '.sourceCommit == $source and .sha256 == $digest and .filename == "darwinian-1.2.0.tgz"' \
+            '.sourceCommit == $source and .sha256 == $digest and .filename == "darwinian-1.3.0.tgz"' \
             "$RUNNER_TEMP/protected-artifact.json" > /dev/null
 
       - name: Publish the qualified bytes with trusted publishing
-        run: npm publish "./candidate/darwinian-1.2.0.tgz" --access public
+        run: npm publish "./candidate/darwinian-1.3.0.tgz" --access public
         working-directory: ${{ runner.temp }}
 
       - name: Verify propagated registry identity and Ubuntu install
         run: |
           mkdir "$RUNNER_TEMP/published"
           for ATTEMPT in $(seq 1 30); do
-            if npm view darwinian@1.2.0 version gitHead dist.shasum dist.integrity --json \
+            if npm view darwinian@1.3.0 version gitHead dist.shasum dist.integrity --json \
               > "$RUNNER_TEMP/registry-raw.json" 2>/dev/null; then
               jq '
                 if .gitHead == null then
@@ -484,15 +484,15 @@ jobs:
             sleep 10
           done
           test -s "$RUNNER_TEMP/verified-registry.json"
-          npm pack "darwinian@1.2.0" --ignore-scripts \
+          npm pack "darwinian@1.3.0" --ignore-scripts \
             --pack-destination "$RUNNER_TEMP/published" \
             --cache "$RUNNER_TEMP/npm-published-cache" > /dev/null
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/published-artifact.json"
           bun scripts/release-cli.ts smoke-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/published-smoke"
 
   smoke_macos:
@@ -508,7 +508,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/v1.2.0
+          ref: refs/tags/v1.3.0
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
@@ -538,10 +538,10 @@ jobs:
           mkdir "$RUNNER_TEMP/candidate" "$RUNNER_TEMP/published"
           unzip -q "$RUNNER_TEMP/candidate.zip" -d "$RUNNER_TEMP/candidate"
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/candidate/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/candidate/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/candidate-artifact.json"
-          npm view darwinian@1.2.0 version gitHead dist.shasum dist.integrity --json \
+          npm view darwinian@1.3.0 version gitHead dist.shasum dist.integrity --json \
             > "$RUNNER_TEMP/registry-raw.json"
           jq '
             if .gitHead == null then
@@ -553,15 +553,15 @@ jobs:
           bun scripts/release-cli.ts verify-registry \
             "$RUNNER_TEMP/registry.json" \
             "$RUNNER_TEMP/candidate-artifact.json"
-          npm pack "darwinian@1.2.0" --ignore-scripts \
+          npm pack "darwinian@1.3.0" --ignore-scripts \
             --pack-destination "$RUNNER_TEMP/published" \
             --cache "$RUNNER_TEMP/npm-published-cache" > /dev/null
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/published-artifact.json"
           bun scripts/release-cli.ts smoke-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.2.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
             "$RUNNER_TEMP/published-smoke"
 
   github_release:
@@ -576,13 +576,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/v1.2.0
+          ref: refs/tags/v1.3.0
           fetch-depth: 0
 
       - name: Create or verify the exact GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v1.2.0
+          TAG: v1.3.0
           SOURCE_COMMIT: ${{ needs.validate_tag.outputs.source_commit }}
         run: |
           git for-each-ref --format='%(contents)' "refs/tags/$TAG" > "$RUNNER_TEMP/tag-annotation.txt"

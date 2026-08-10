@@ -237,4 +237,29 @@ describe("package readiness", () => {
   test("ships no replacement publishable Finch Card in the Worker registry", () => {
     expect(existsSync(join(process.cwd(), "registry", "cards"))).toBe(false);
   });
+
+  test("embeds no concrete release tuple that only publication can produce", () => {
+    const releaseSurfaces = [
+      ".github/workflows/release.yml",
+      ".github/workflows/release-recovery.yml",
+      "scripts/release/provenance.ts",
+      "scripts/release/publication-controls.ts",
+      "scripts/release/artifact-contract.ts",
+      "scripts/verify-release-readiness.ts",
+      "docs/release-process.md",
+      "docs/maintainers/publishing.md",
+      "CHANGELOG.md",
+    ];
+
+    for (const surface of releaseSurfaces) {
+      const content = readFileSync(join(process.cwd(), surface), "utf8");
+
+      expect({ surface, tagged: /\b[a-f0-9]{40}\b/.exec(content)?.[0] }).toEqual({ surface, tagged: undefined });
+      expect({ surface, digest: /\b[a-f0-9]{64}\b/.exec(content)?.[0] }).toEqual({ surface, digest: undefined });
+      expect({ surface, integrity: /sha512-[A-Za-z0-9+/=]{20,}/.exec(content)?.[0] }).toEqual({
+        surface,
+        integrity: undefined,
+      });
+    }
+  });
 });
