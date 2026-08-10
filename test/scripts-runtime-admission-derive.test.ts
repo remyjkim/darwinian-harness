@@ -1,0 +1,1343 @@
+// ABOUTME: Verifies the offline Worker v2 derivation adapter against the accepted I268 process contract.
+// ABOUTME: Pins operand confinement, descriptor-bound no-replace publication, and every persistence outcome code.
+
+import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  FINCH_NESTED_INERT_RULE_SHA256,
+  RUNTIME_ADMISSION_ADAPTER_ENTRY,
+  RUNTIME_ADMISSION_ADAPTER_VERSION,
+  RUNTIME_ADMISSION_COMMIT_STATES,
+  RUNTIME_ADMISSION_DERIVE_COMMAND_ID,
+  RUNTIME_ADMISSION_INPUT_SCHEMA,
+  RUNTIME_ADMISSION_OUTPUT_SCHEMA,
+  RUNTIME_ADMISSION_PRODUCTION_DERIVATION_ENTRY,
+  PERSISTENCE_OUTCOME_SCHEMA,
+  formatPersistenceOutcome,
+  readNestedInertRuleConfigBytes,
+  runRuntimeAdmissionDerive,
+  type PersistenceOutcomeCode,
+  type RuntimeAdmissionDeriveSeam,
+} from "../cli/core/runtime-admission-derive";
+import { describeDescriptorSupport } from "../cli/core/runtime-admission-descriptors";
+
+const REPO_ROOT = new URL("..", import.meta.url).pathname;
+const PHASES = ["tools", "root"] as const;
+type Phase = (typeof PHASES)[number];
+
+const TOOLS_CARD = "@curation-labs/buzz-delivery-tools";
+const WORKER_CARD = "@curation-labs/buzz-delivery-worker";
+const TOOL_SELECTORS = [
+  "mcp:buzz-tools/buzz_messages_send",
+  "mcp:buzz-tools/buzz_messages_thread",
+];
+const REQUIREMENT_IDS = ["buzz-cli-artifact", "buzz-runtime-glibc"];
+const TOOLS_PUBLICATION_REF = "github:curation-labs/buzz-delivery-tools#synthetic";
+
+const descriptorSupport = describeDescriptorSupport();
+const posixPlatform = process.platform === "linux" || process.platform === "darwin";
+
+// A success-path case must never pass silently where the contract cannot be honoured.
+// On the two required platforms an unsupported descriptor layer is a defect, so the
+// suite fails rather than skips; only Windows takes the documented fail-closed branch.
+function requireDescriptorSupport(): void {
+  if (descriptorSupport.supported) return;
+  if (posixPlatform) {
+    throw new Error(
+      `descriptor-bound persistence must be supported on ${process.platform}: ${descriptorSupport.reason}`,
+    );
+  }
+}
+
+const SKIP_POSIX = posixPlatform
+  ? ""
+  : `skipped on ${process.platform}: descriptor-bound POSIX persistence is unsupported by contract`;
+const SKIP_UNSUPPORTED_PLATFORM = posixPlatform
+  ? `skipped on ${process.platform}: this case asserts the unsupported-platform fail-closed branch`
+  : "";
+
+function sha256(bytes: Uint8Array | string): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function utf8(value: string): Buffer {
+  return Buffer.from(value, "utf8");
+}
+
+function identity(phase: Phase, bytes: Uint8Array) {
+  return {
+    schema: "cl.i268.serialized-artifact-identity.v1",
+    phase,
+    byteLength: bytes.byteLength,
+    sha256: sha256(bytes),
+  };
+}
+
+function encoded(bytes: Buffer) {
+  return {
+    encoding: "base64",
+    bytesBase64: bytes.toString("base64"),
+    byteLength: bytes.byteLength,
+    sha256: sha256(bytes),
+  };
+}
+
+function toolsManifest(): Record<string, unknown> {
+  return {
+    name: TOOLS_CARD,
+    version: "0.1.0",
+    description: "Synthetic Buzz delivery tools capability",
+    servers: {
+      "buzz-tools": {
+        description: "Buzz delivery tools exposed by the Darwinian Worker runtime",
+        transport: "stdio",
+        command: "drwn",
+        args: ["worker", "buzz-tools"],
+        optional: false,
+      },
+    },
+    runtimeAdmission: {
+      version: 1,
+      servers: { "buzz-tools": { authMode: "none", requirementIds: REQUIREMENT_IDS } },
+      requirements: [
+        {
+          requirementId: "buzz-cli-artifact",
+          probeId: "buzz-artifact-sha256-v1",
+          expected: { artifactSha256: "b".repeat(64) },
+        },
+        {
+          requirementId: "buzz-runtime-glibc",
+          probeId: "glibc-version-v1",
+          expected: { platformCapabilities: ["glibc>=2.31"] },
+        },
+      ],
+    },
+    applicationRequirements: { version: 1, apps: [] },
+    license: "Apache-2.0",
+    harness: { minVersion: "1.3.0" },
+    stability: "experimental",
+    lastValidatedWith: "1.3.0",
+  };
+}
+
+function workerManifest(): Record<string, unknown> {
+  return {
+    name: WORKER_CARD,
+    version: "0.1.0",
+    kind: "blueprint",
+    composedFrom: [TOOLS_CARD],
+    description: "Synthetic Buzz delivery worker blueprint",
+    license: "Apache-2.0",
+    harness: { minVersion: "1.3.0" },
+    stability: "experimental",
+    lastValidatedWith: "1.3.0",
+    runtimeAdmission: { version: 1, servers: {}, requirements: [] },
+    applicationRequirements: { version: 1, apps: [] },
+    tools: { allow: TOOL_SELECTORS, deny: [] },
+  };
+}
+
+interface CardMaterial {
+  name: string;
+  version: string;
+  requested: string;
+  treeSha: string;
+  manifestBytes: Buffer;
+}
+
+function cardMaterial(phase: Phase): CardMaterial[] {
+  const toolsBytes = utf8(JSON.stringify(toolsManifest()));
+  const tools: CardMaterial = {
+    name: TOOLS_CARD,
+    version: "0.1.0",
+    requested: "https://github.com/curation-labs/buzz-delivery-tools.git#synthetic",
+    treeSha: "1".repeat(40),
+    manifestBytes: toolsBytes,
+  };
+  if (phase === "tools") return [tools];
+  const workerBytes = utf8(JSON.stringify(workerManifest()));
+  const worker: CardMaterial = {
+    name: WORKER_CARD,
+    version: "0.1.0",
+    requested: "https://github.com/curation-labs/buzz-delivery-worker.git#synthetic",
+    treeSha: "2".repeat(40),
+    manifestBytes: workerBytes,
+  };
+  return [worker, tools];
+}
+
+function cardSummary(card: CardMaterial) {
+  return {
+    name: card.name,
+    version: card.version,
+    requested: card.requested,
+    integrity: `sha256-${sha256(card.manifestBytes)}`,
+    treeSha: card.treeSha,
+    manifestIdentity: {
+      byteLength: card.manifestBytes.byteLength,
+      sha256: sha256(card.manifestBytes),
+    },
+  };
+}
+
+function lockBytes(phase: Phase, cards: CardMaterial[]): Buffer {
+  const urls: Record<string, string> = {
+    [TOOLS_CARD]: "https://github.com/curation-labs/buzz-delivery-tools.git",
+    [WORKER_CARD]: "https://github.com/curation-labs/buzz-delivery-worker.git",
+  };
+  const first = cards[0]!;
+  return utf8(JSON.stringify({
+    schema: "cl.i268.synthetic-card-lock.v1",
+    entrypoint: {
+      name: first.name,
+      version: first.version,
+      kind: phase === "tools" ? "capability" : "blueprint",
+    },
+    cards: cards.map((card) => ({
+      name: card.name,
+      version: card.version,
+      requested: card.requested,
+      integrity: `sha256-${sha256(card.manifestBytes)}`,
+      treeSha: card.treeSha,
+      origin: "git",
+      path: `cards/${card.name}`,
+      git: { url: urls[card.name], ref: "synthetic", commit: card.treeSha },
+      skills: [],
+      hooks: [],
+      registry: null,
+    })),
+    store: { minDrwnVersion: "1.3.0" },
+  }));
+}
+
+function phaseEvidence(phase: Phase) {
+  const publication = {
+    receiptIdentity: identity(phase, utf8("tools-receipt")),
+    immutableRef: TOOLS_PUBLICATION_REF,
+    refetchIdentity: identity(phase, utf8("tools-refetch")),
+  };
+  return {
+    serverIds: ["buzz-tools"],
+    requirementIds: REQUIREMENT_IDS,
+    toolSelectors: phase === "tools" ? [] : TOOL_SELECTORS,
+    deny: [],
+    toolsPublication: phase === "tools" ? null : publication,
+  };
+}
+
+const STORE_EXPORT = {
+  format: "tar",
+  compression: "gzip",
+  encoding: "base64",
+  byteLength: 268,
+  sha256: "d".repeat(64),
+};
+
+const WORKER_SOURCE_COMMIT = "8".repeat(40);
+const WORKER_SOURCE_TREE = "9".repeat(40);
+
+function candidateBytes(phase: Phase, cards: CardMaterial[], lock: Buffer): Buffer {
+  const evidence = phaseEvidence(phase);
+  const candidate: Record<string, unknown> = {
+    schema: `cl.i268.finch-${phase}-candidate.v1`,
+    classification: `production_${phase}_candidate`,
+    phase,
+    target: {
+      designationIdentity: identity(phase, utf8("designation")),
+      collisionSnapshotIdentity: identity(phase, utf8("collision")),
+    },
+    source: {
+      repository: phase === "tools"
+        ? "https://github.com/curation-labs/buzz-delivery-tools.git"
+        : "https://github.com/curation-labs/buzz-delivery-worker.git",
+      commit: "3".repeat(40),
+      tree: "4".repeat(40),
+      card: {
+        blob: "5".repeat(40),
+        byteLength: cards[0]!.manifestBytes.byteLength,
+        sha256: sha256(cards[0]!.manifestBytes),
+      },
+      sidecar: phase === "tools"
+        ? { blob: "6".repeat(40), byteLength: 12, sha256: sha256(utf8("sidecar-body")) }
+        : null,
+    },
+    producerSources: {
+      worker: {
+        repository: "remyjkim/darwinian-worker",
+        commit: WORKER_SOURCE_COMMIT,
+        tree: WORKER_SOURCE_TREE,
+        adapterVersion: "cl.i265.worker-runtime-admission-adapter.v1",
+      },
+      services: {
+        repository: "curation-labs/darwinian-services",
+        commit: "a".repeat(40),
+        tree: "b".repeat(40),
+        adapterVersion: "cl.i266.services-runtime-admission-adapter.v1",
+      },
+    },
+    release: {
+      workerPackageVersion: "1.3.0",
+      workerPackageIdentity: identity(phase, utf8("worker-package")),
+      integratedReceiptIdentity: identity(phase, utf8("integrated-receipt")),
+      sourceEquivalenceReceiptIdentity: identity(phase, utf8("source-equivalence")),
+      commonBuzzSha256: "c".repeat(64),
+      provisional: false,
+    },
+    closure: {
+      entrypoint: {
+        name: cards[0]!.name,
+        version: "0.1.0",
+        kind: phase === "tools" ? "capability" : "blueprint",
+      },
+      cards: cards.map(cardSummary),
+      cardLock: {
+        byteLength: lock.byteLength,
+        sha256: sha256(lock),
+        storeMinDrwnVersion: "1.3.0",
+      },
+      storeExportIdentity: STORE_EXPORT,
+    },
+    phaseEvidence: evidence,
+    noSecretScan: { commandIdentity: "cl.i268.no-secret-scan.v1", result: "pass" },
+  };
+  if (phase === "root") candidate.toolsPublication = evidence.toolsPublication;
+  return utf8(JSON.stringify(candidate));
+}
+
+type Mutator = (input: Record<string, any>) => void;
+
+function derivationInput(phase: Phase, mutate?: Mutator): string {
+  const cards = cardMaterial(phase);
+  const lock = lockBytes(phase, cards);
+  const candidate = candidateBytes(phase, cards, lock);
+  const input: Record<string, any> = {
+    schema: RUNTIME_ADMISSION_INPUT_SCHEMA,
+    schemaVersion: 1,
+    phase,
+    candidate: {
+      schema: `cl.i268.finch-${phase}-candidate.v1`,
+      identity: identity(phase, candidate),
+      encoding: "base64",
+      bytesBase64: candidate.toString("base64"),
+    },
+    derivationPreimage: {
+      entrypoint: {
+        name: cards[0]!.name,
+        version: "0.1.0",
+        kind: phase === "tools" ? "capability" : "blueprint",
+      },
+      cards: cards.map((card) => ({
+        name: card.name,
+        version: card.version,
+        requested: card.requested,
+        integrity: `sha256-${sha256(card.manifestBytes)}`,
+        treeSha: card.treeSha,
+        manifest: encoded(card.manifestBytes),
+      })),
+      cardLock: { ...encoded(lock), storeMinDrwnVersion: "1.3.0" },
+    },
+    context: {
+      storeExportIdentity: STORE_EXPORT,
+      phaseEvidence: phaseEvidence(phase),
+      noSecretEvidence: {
+        schema: "cl.i268.complete-derivation-preimage-no-secret.v1",
+        result: "pass",
+        rule: {
+          schema: "cl.i268.finch-nested-inert-rule-config.v1",
+          schemaVersion: 1,
+          configSha256: FINCH_NESTED_INERT_RULE_SHA256,
+        },
+        receiptIdentity: identity(phase, utf8("no-secret-receipt")),
+        covered: {
+          candidateSha256: sha256(candidate),
+          manifestSha256s: cards.map((card) => sha256(card.manifestBytes)),
+          cardLockSha256: sha256(lock),
+        },
+      },
+    },
+  };
+  mutate?.(input);
+  return JSON.stringify(input);
+}
+
+const PACKAGED_BUILD_IDENTITY = {
+  kind: "packaged" as const,
+  schema: "darwinian.worker.build-identity" as const,
+  schemaVersion: 1 as const,
+  version: "1.3.0",
+  sourceCommit: WORKER_SOURCE_COMMIT,
+  qualificationEligible: true,
+};
+
+const DEVELOPMENT_BUILD_IDENTITY = {
+  kind: "development" as const,
+  schema: "darwinian.worker.build-identity" as const,
+  schemaVersion: 1 as const,
+  version: "1.3.0",
+  sourceCommit: "0".repeat(40),
+  qualificationEligible: false,
+};
+
+const roots: string[] = [];
+
+function confinementRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "i265-derive-"));
+  roots.push(root);
+  return root;
+}
+
+afterEach(() => {
+  while (roots.length > 0) {
+    const root = roots.pop()!;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+interface RunOptions {
+  phase?: Phase;
+  input?: string | null;
+  inputOperand?: string;
+  outputOperand?: string;
+  seams?: Record<string, RuntimeAdmissionDeriveSeam>;
+  buildIdentity?: typeof PACKAGED_BUILD_IDENTITY | typeof DEVELOPMENT_BUILD_IDENTITY;
+  mutate?: Mutator;
+  root?: string;
+}
+
+interface RunResult {
+  root: string;
+  outcome: Awaited<ReturnType<typeof runRuntimeAdmissionDerive>>;
+  entries: string[];
+  outputPath: string;
+}
+
+async function run(options: RunOptions = {}): Promise<RunResult> {
+  const root = options.root ?? confinementRoot();
+  const phase = options.phase ?? "tools";
+  const inputOperand = options.inputOperand ?? "derivation-input.json";
+  const outputOperand = options.outputOperand ?? "result.json";
+  const contents = options.input === undefined
+    ? derivationInput(phase, options.mutate)
+    : options.input;
+  if (contents !== null) writeFileSync(join(root, inputOperand), contents);
+  const outcome = await runRuntimeAdmissionDerive({
+    argv: ["--input", inputOperand, "--output", outputOperand],
+    workingDirectory: root,
+    loadBuildIdentity: async () => options.buildIdentity ?? PACKAGED_BUILD_IDENTITY,
+    seams: options.seams,
+  });
+  return {
+    root,
+    outcome,
+    entries: readdirSync(root).sort(),
+    outputPath: join(root, outputOperand),
+  };
+}
+
+function temporaryEntries(entries: readonly string[]): string[] {
+  return entries.filter((entry) => entry !== "derivation-input.json" && entry !== "result.json");
+}
+
+function fault(message: string): RuntimeAdmissionDeriveSeam {
+  return () => {
+    throw new Error(message);
+  };
+}
+
+function expectCode(result: RunResult, code: PersistenceOutcomeCode): void {
+  expect(result.outcome).not.toBeNull();
+  expect(result.outcome!.code).toBe(code);
+  expect(result.outcome!.commitState).toBe(RUNTIME_ADMISSION_COMMIT_STATES[code]);
+  expect(result.outcome!.retry).toBe("forbidden");
+  if (RUNTIME_ADMISSION_COMMIT_STATES[code] === "not_committed") {
+    expect(result.outcome!.artifactIdentity).toBeNull();
+  } else {
+    expect(result.outcome!.artifactIdentity).not.toBeNull();
+  }
+}
+
+describe("adapter binding", () => {
+  test("package command, adapter files, and schema identities are the accepted binding", async () => {
+    const packageMetadata = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8"));
+    expect(packageMetadata.scripts[RUNTIME_ADMISSION_DERIVE_COMMAND_ID]).toBe(
+      "bun run cli/tools/runtime-admission-derive.ts",
+    );
+    expect(RUNTIME_ADMISSION_DERIVE_COMMAND_ID).toBe("runtime-admission:derive:v2");
+    expect(RUNTIME_ADMISSION_ADAPTER_VERSION).toBe("cl.i265.worker-runtime-admission-adapter.v1");
+    expect(RUNTIME_ADMISSION_INPUT_SCHEMA).toBe("cl.i268.finch-derivation-input.v1");
+    expect(RUNTIME_ADMISSION_OUTPUT_SCHEMA).toBe("cl.i268.finch-derivation-output.v2");
+    expect(RUNTIME_ADMISSION_ADAPTER_ENTRY).toBe("cli/tools/runtime-admission-derive.ts");
+    expect(RUNTIME_ADMISSION_PRODUCTION_DERIVATION_ENTRY).toBe("cli/core/runtime-admission-manifest.ts");
+    expect(lstatSync(join(REPO_ROOT, RUNTIME_ADMISSION_ADAPTER_ENTRY)).isFile()).toBe(true);
+  });
+
+  test("the adapter never registers a deploy or network control plane", () => {
+    const source = readFileSync(join(REPO_ROOT, RUNTIME_ADMISSION_ADAPTER_ENTRY), "utf8");
+    expect(source).not.toMatch(/fetch\(|node:https?|Bun\.spawn|child_process/);
+  });
+});
+
+describe("nested inert rule config", () => {
+  test("the embedded config is exactly the frozen 1225 canonical bytes", () => {
+    const bytes = readNestedInertRuleConfigBytes();
+    expect(bytes.byteLength).toBe(1_225);
+    expect(sha256(bytes)).toBe(FINCH_NESTED_INERT_RULE_SHA256);
+    expect(FINCH_NESTED_INERT_RULE_SHA256).toBe(
+      "32225d0b5dda0d2a7ad37981d7441cde12a83a1200d2bdafbff25add0f300c2a",
+    );
+    // The accepted parser rejects a trailing LF, so an editor or hook that adds one
+    // must fail here rather than at I268 parse time.
+    expect(bytes.at(-1)).not.toBe(0x0a);
+    expect(JSON.stringify(JSON.parse(Buffer.from(bytes).toString("utf8")))).toBe(
+      Buffer.from(bytes).toString("utf8"),
+    );
+  });
+});
+
+describe("diagnostic envelope bytes", () => {
+  const IDENTITY_BEARING_LENGTHS: Record<string, { tools: number; root: number }> = {
+    WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_INDETERMINATE: { tools: 360, root: 359 },
+    WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_VALIDATION_INDETERMINATE: { tools: 371, root: 370 },
+    WORKER_RUNTIME_ADMISSION_OUTPUT_COMMITTED_TEMP_CLEANUP_FAILED: { tools: 365, root: 364 },
+    WORKER_RUNTIME_ADMISSION_OUTPUT_COMMITTED_CLEANUP_DURABILITY_INDETERMINATE: { tools: 378, root: 377 },
+    WORKER_RUNTIME_ADMISSION_OUTPUT_COMMITTED_FINAL_VALIDATION_FAILED: { tools: 369, root: 368 },
+  };
+  const NOT_COMMITTED_LENGTHS: Record<string, number> = {
+    WORKER_RUNTIME_ADMISSION_INPUT_INVALID: 191,
+    WORKER_RUNTIME_ADMISSION_DERIVATION_FAILED: 195,
+    WORKER_RUNTIME_ADMISSION_OUTPUT_SERIALIZATION_FAILED: 205,
+    WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED: 199,
+    WORKER_RUNTIME_ADMISSION_OUTPUT_EXISTS: 191,
+    WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED: 208,
+    WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_TEMP_CLEANUP_FAILED: 214,
+    WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_CLEANUP_DURABILITY_INDETERMINATE: 227,
+  };
+  const FIXED_IDENTITY = (phase: Phase) => ({
+    schema: "cl.i268.serialized-artifact-identity.v1" as const,
+    phase,
+    byteLength: 1,
+    sha256: "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+  });
+
+  test("the closed code set is exactly the accepted thirteen", () => {
+    expect(Object.keys(RUNTIME_ADMISSION_COMMIT_STATES).sort()).toEqual(
+      [...Object.keys(IDENTITY_BEARING_LENGTHS), ...Object.keys(NOT_COMMITTED_LENGTHS)].sort(),
+    );
+    expect(Object.keys(RUNTIME_ADMISSION_COMMIT_STATES)).toHaveLength(13);
+    expect(PERSISTENCE_OUTCOME_SCHEMA).toBe(
+      "cl.i265.worker-runtime-admission-persistence-outcome.v1",
+    );
+  });
+
+  test("the fixed commit-indeterminate tools vector is byte-exact", () => {
+    const line = formatPersistenceOutcome({
+      schema: PERSISTENCE_OUTCOME_SCHEMA,
+      code: "WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_INDETERMINATE",
+      commitState: "indeterminate",
+      retry: "forbidden",
+      artifactIdentity: FIXED_IDENTITY("tools"),
+    });
+    expect(line).toBe(
+      '{"schema":"cl.i265.worker-runtime-admission-persistence-outcome.v1","code":"WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_INDETERMINATE","commitState":"indeterminate","retry":"forbidden","artifactIdentity":{"schema":"cl.i268.serialized-artifact-identity.v1","phase":"tools","byteLength":1,"sha256":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"}}\n',
+    );
+    expect(Buffer.byteLength(line, "utf8")).toBe(360);
+  });
+
+  test("all twenty-six frozen vectors match their accepted byte lengths and ceiling", () => {
+    for (const phase of PHASES) {
+      for (const [code, lengths] of Object.entries(IDENTITY_BEARING_LENGTHS)) {
+        const line = formatPersistenceOutcome({
+          schema: PERSISTENCE_OUTCOME_SCHEMA,
+          code: code as PersistenceOutcomeCode,
+          commitState: RUNTIME_ADMISSION_COMMIT_STATES[code as PersistenceOutcomeCode],
+          retry: "forbidden",
+          artifactIdentity: FIXED_IDENTITY(phase),
+        });
+        expect(Buffer.byteLength(line, "utf8")).toBe(lengths[phase]);
+        expect(Buffer.byteLength(line, "utf8")).toBeLessThanOrEqual(512);
+        expect(line.endsWith("}\n")).toBe(true);
+      }
+      for (const [code, length] of Object.entries(NOT_COMMITTED_LENGTHS)) {
+        const line = formatPersistenceOutcome({
+          schema: PERSISTENCE_OUTCOME_SCHEMA,
+          code: code as PersistenceOutcomeCode,
+          commitState: "not_committed",
+          retry: "forbidden",
+          artifactIdentity: null,
+        });
+        expect(Buffer.byteLength(line, "utf8")).toBe(length);
+        expect(line).toContain('"artifactIdentity":null}');
+      }
+    }
+  });
+
+  test("serialization is insertion-ordered, not the sorted canonical form", () => {
+    const line = formatPersistenceOutcome({
+      schema: PERSISTENCE_OUTCOME_SCHEMA,
+      code: "WORKER_RUNTIME_ADMISSION_INPUT_INVALID",
+      commitState: "not_committed",
+      retry: "forbidden",
+      artifactIdentity: null,
+    });
+    expect(line.indexOf('"schema"')).toBeLessThan(line.indexOf('"code"'));
+    expect(line.indexOf('"code"')).toBeLessThan(line.indexOf('"commitState"'));
+    expect(line.indexOf('"commitState"')).toBeLessThan(line.indexOf('"retry"'));
+    expect(line.indexOf('"retry"')).toBeLessThan(line.indexOf('"artifactIdentity"'));
+    expect(line).not.toContain(" ");
+    expect(line.slice(0, -1)).not.toContain("\n");
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
+  test("valid tools input emits every reviewed output field", async () => {
+    requireDescriptorSupport();
+    const root = confinementRoot();
+    const contents = derivationInput("tools");
+    writeFileSync(join(root, "derivation-input.json"), contents);
+    const result = await run({ root, input: null });
+    expect(result.outcome).toBeNull();
+    expect(temporaryEntries(result.entries)).toEqual([]);
+
+    const outputBytes = readFileSync(result.outputPath);
+    const output = JSON.parse(outputBytes.toString("utf8"));
+    expect(output.schema).toBe(RUNTIME_ADMISSION_OUTPUT_SCHEMA);
+    expect(output.schemaVersion).toBe(2);
+    expect(output.phase).toBe("tools");
+    expect(output.producer).toBe("worker");
+    expect(output.producerSource).toEqual({
+      repository: "remyjkim/darwinian-worker",
+      commit: WORKER_SOURCE_COMMIT,
+      tree: WORKER_SOURCE_TREE,
+    });
+    expect(output.adapter).toEqual({
+      ownerIssue: 265,
+      productionDerivationFile: "cli/core/runtime-admission-manifest.ts",
+      processAdapterFile: "cli/tools/runtime-admission-derive.ts",
+      commandId: "runtime-admission:derive:v2",
+      commandVersion: "cl.i265.worker-runtime-admission-adapter.v1",
+    });
+    expect(output.input.derivationInputIdentity).toEqual(identity("tools", utf8(contents)));
+    expect(output.input.cards).toHaveLength(1);
+    expect(output.input.cardLock.storeMinDrwnVersion).toBe("1.3.0");
+    expect(output.input.storeExport).toEqual(STORE_EXPORT);
+    expect(output.semantic.derivationVersion).toBe("worker-runtime-admission-v1");
+    expect(output.semantic.cardLockHash).toBe(output.input.cardLock.sha256);
+    expect(output.semantic.storeExportHash).toBe(STORE_EXPORT.sha256);
+    for (const key of [
+      "closureHash",
+      "activationHash",
+      "runtimeRequirementsManifestHash",
+      "applicationRequirementsHash",
+      "cardsHash",
+    ]) expect(output.semantic[key]).toMatch(/^[0-9a-f]{64}$/);
+    expect(output.phaseEvidence).toEqual(phaseEvidence("tools"));
+    expect(output.security.nestedInertRule.result).toBe("pass");
+    expect(output.security.nestedInertRule.configSha256).toBe(FINCH_NESTED_INERT_RULE_SHA256);
+    expect(output.security.nestedInertRule.covered.candidateSha256)
+      .toBe(output.candidateIdentity.sha256);
+
+    const envelopeBytes = Buffer.from(output.output.envelope.bytesBase64, "base64");
+    expect(output.output.envelope.byteLength).toBe(envelopeBytes.byteLength);
+    expect(output.output.envelope.sha256).toBe(sha256(envelopeBytes));
+    expect(JSON.parse(envelopeBytes.toString("utf8")).schema)
+      .toBe("darwinian.worker-runtime-admission");
+    // The derived value never becomes self-identifying.
+    expect(outputBytes.toString("utf8")).not.toContain(sha256(outputBytes));
+    expect(outputBytes.toString("utf8")).not.toContain("serialized-artifact-identity.v1\",\"phase\":\"tools\",\"byteLength\":" + outputBytes.byteLength);
+  });
+
+  test("valid root input binds the ordered two-Card closure and publication evidence", async () => {
+    requireDescriptorSupport();
+    const result = await run({ phase: "root" });
+    expect(result.outcome).toBeNull();
+    const output = JSON.parse(readFileSync(result.outputPath, "utf8"));
+    expect(output.phase).toBe("root");
+    expect(output.input.cards.map((card: { name: string }) => card.name)).toEqual([
+      WORKER_CARD,
+      TOOLS_CARD,
+    ]);
+    expect(output.phaseEvidence.toolSelectors).toEqual(TOOL_SELECTORS);
+    expect(output.phaseEvidence.toolsPublication.immutableRef).toBe(TOOLS_PUBLICATION_REF);
+  });
+
+  test("the output file is a mode-0600 regular file with exactly one link", async () => {
+    requireDescriptorSupport();
+    const result = await run();
+    expect(result.outcome).toBeNull();
+    const stats = statSync(result.outputPath);
+    expect(stats.isFile()).toBe(true);
+    expect(stats.mode & 0o777).toBe(0o600);
+    expect(stats.nlink).toBe(1);
+  });
+
+  test("a development build identity still produces structurally valid non-qualifying output", async () => {
+    requireDescriptorSupport();
+    const result = await run({ buildIdentity: DEVELOPMENT_BUILD_IDENTITY });
+    expect(result.outcome).toBeNull();
+    const output = JSON.parse(readFileSync(result.outputPath, "utf8"));
+    expect(output.producerSource.commit).toBe(WORKER_SOURCE_COMMIT);
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`operand admission${SKIP_POSIX}`, () => {
+  const rejected: Array<[string, Partial<RunOptions>]> = [
+    ["absolute input", { inputOperand: "/etc/hosts" }],
+    ["absolute output", { outputOperand: "/tmp/result.json" }],
+    ["empty input", { inputOperand: "" }],
+    ["dot input", { inputOperand: "." }],
+    ["dot output", { outputOperand: "." }],
+    ["traversal input", { inputOperand: "../derivation-input.json" }],
+    ["traversal output", { outputOperand: "../result.json" }],
+    ["nul byte", { outputOperand: "result .json" }],
+    ["backslash separator", { outputOperand: "nested\\result.json" }],
+    ["lone surrogate", { outputOperand: "result\uD800.json" }],
+    ["oversize operand", { outputOperand: `${"a".repeat(4_097)}.json` }],
+    ["missing output parent", { outputOperand: "absent/result.json" }],
+    ["unnormalized path", { outputOperand: "./result.json" }],
+  ];
+
+  for (const [name, options] of rejected) {
+    test(`rejects ${name} before derivation or output creation`, async () => {
+      const result = await run(options);
+      expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+      expect(temporaryEntries(result.entries)).toEqual([]);
+      expect(result.entries).not.toContain("result.json");
+    });
+  }
+
+  test("rejects identical input and output operand identity", async () => {
+    const result = await run({ outputOperand: "derivation-input.json" });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+  });
+
+  test("rejects unknown, missing, and duplicated operands", async () => {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    for (const argv of [
+      [],
+      ["--input", "derivation-input.json"],
+      ["--output", "result.json"],
+      ["--input", "derivation-input.json", "--output", "result.json", "--force"],
+      ["--input", "derivation-input.json", "--input", "derivation-input.json", "--output", "result.json"],
+      ["--input=derivation-input.json", "--output=result.json"],
+    ]) {
+      const outcome = await runRuntimeAdmissionDerive({
+        argv,
+        workingDirectory: root,
+        loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      });
+      expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    }
+    expect(readdirSync(root)).toEqual(["derivation-input.json"]);
+  });
+
+  test("rejects a symlinked input, a symlinked output parent, and a symlinked output name", async () => {
+    const root = confinementRoot();
+    const outside = confinementRoot();
+    writeFileSync(join(outside, "real-input.json"), derivationInput("tools"));
+    symlinkSync(join(outside, "real-input.json"), join(root, "linked-input.json"));
+    mkdirSync(join(root, "real-parent"));
+    symlinkSync(join(root, "real-parent"), join(root, "linked-parent"));
+    symlinkSync(join(outside, "elsewhere.json"), join(root, "linked-result.json"));
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+
+    for (const [inputOperand, outputOperand] of [
+      ["linked-input.json", "result.json"],
+      ["derivation-input.json", "linked-parent/result.json"],
+      ["derivation-input.json", "linked-result.json"],
+    ] as const) {
+      const outcome = await runRuntimeAdmissionDerive({
+        argv: ["--input", inputOperand, "--output", outputOperand],
+        workingDirectory: root,
+        loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      });
+      expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    }
+    expect(lstatSync(join(root, "linked-result.json")).isSymbolicLink()).toBe(true);
+    expect(readdirSync(join(root, "real-parent"))).toEqual([]);
+  });
+
+  test("rejects a non-regular input and a pre-existing final output", async () => {
+    const root = confinementRoot();
+    mkdirSync(join(root, "directory-input.json"));
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    writeFileSync(join(root, "occupied.json"), "existing");
+
+    const nonRegular = await runRuntimeAdmissionDerive({
+      argv: ["--input", "directory-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+    });
+    expect(nonRegular?.code).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+
+    const existing = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "occupied.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+    });
+    expect(existing?.code).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    expect(readFileSync(join(root, "occupied.json"), "utf8")).toBe("existing");
+  });
+
+  test("creates no directory", async () => {
+    const result = await run({ outputOperand: "nested/result.json" });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    expect(result.entries).not.toContain("nested");
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
+  test("rejects an input file larger than the shared ceiling before output creation", async () => {
+    const padded = derivationInput("tools", (input) => {
+      input.padding = "x".repeat(1_100_000);
+    });
+    const result = await run({ input: padded });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    expect(result.entries).not.toContain("result.json");
+  });
+
+  test("rejects a jointly oversize decoded preimage", async () => {
+    const result = await run({
+      mutate: (input) => {
+        const filler = Buffer.alloc(600_000, 0x61);
+        input.derivationPreimage.cardLock.bytesBase64 = filler.toString("base64");
+        input.derivationPreimage.cardLock.byteLength = filler.byteLength;
+        input.derivationPreimage.cardLock.sha256 = sha256(filler);
+      },
+    });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+  });
+
+  const structural: Array<[string, Mutator]> = [
+    ["identity-only candidate", (input) => { delete input.derivationPreimage; }],
+    ["missing schema", (input) => { delete input.schema; }],
+    ["wrong schema", (input) => { input.schema = "cl.i268.finch-derivation-input.v2"; }],
+    ["extra top-level field", (input) => { input.extra = true; }],
+    ["missing candidate bytes", (input) => { delete input.candidate.bytesBase64; }],
+    ["extra candidate field", (input) => { input.candidate.extra = 1; }],
+    ["noncanonical base64", (input) => {
+      input.candidate.bytesBase64 = `${input.candidate.bytesBase64.slice(0, -1)}=`;
+    }],
+    ["candidate length mismatch", (input) => { input.candidate.identity.byteLength += 1; }],
+    ["candidate digest mismatch", (input) => { input.candidate.identity.sha256 = "0".repeat(64); }],
+    ["card manifest digest mismatch", (input) => {
+      input.derivationPreimage.cards[0].manifest.sha256 = "0".repeat(64);
+    }],
+    ["card summary mismatch", (input) => {
+      input.derivationPreimage.cards[0].treeSha = "7".repeat(40);
+    }],
+    ["lock digest mismatch", (input) => { input.derivationPreimage.cardLock.sha256 = "0".repeat(64); }],
+    ["store minimum drift", (input) => {
+      input.derivationPreimage.cardLock.storeMinDrwnVersion = "1.2.0";
+    }],
+    ["store export drift", (input) => { input.context.storeExportIdentity.sha256 = "0".repeat(64); }],
+    ["phase evidence drift", (input) => { input.context.phaseEvidence.serverIds = ["other"]; }],
+    ["extra Card", (input) => {
+      input.derivationPreimage.cards.push(input.derivationPreimage.cards[0]);
+    }],
+    ["missing Card", (input) => { input.derivationPreimage.cards = []; }],
+    ["phase drift", (input) => { input.phase = "root"; }],
+    ["no-secret coverage drift", (input) => {
+      input.context.noSecretEvidence.covered.cardLockSha256 = "0".repeat(64);
+    }],
+    ["no-secret rule digest drift", (input) => {
+      input.context.noSecretEvidence.rule.configSha256 = "0".repeat(64);
+    }],
+    ["forged caller pass", (input) => {
+      const manifest = JSON.parse(
+        Buffer.from(input.derivationPreimage.cards[0].manifest.bytesBase64, "base64").toString("utf8"),
+      );
+      manifest.servers["buzz-tools"].command = "curl";
+      const bytes = utf8(JSON.stringify(manifest));
+      input.derivationPreimage.cards[0].manifest = encoded(bytes);
+      input.derivationPreimage.cards[0].integrity = `sha256-${sha256(bytes)}`;
+      input.context.noSecretEvidence.covered.manifestSha256s = [sha256(bytes)];
+      input.context.noSecretEvidence.result = "pass";
+    }],
+  ];
+
+  for (const [name, mutate] of structural) {
+    test(`rejects ${name} without output`, async () => {
+      const result = await run({ mutate });
+      expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+      expect(result.entries).not.toContain("result.json");
+      expect(temporaryEntries(result.entries)).toEqual([]);
+    });
+  }
+
+  test("one-bit mutation of the candidate bytes fails", async () => {
+    const result = await run({
+      mutate: (input) => {
+        const bytes = Buffer.from(input.candidate.bytesBase64, "base64");
+        bytes[bytes.length - 2] ^= 0x01;
+        input.candidate.bytesBase64 = bytes.toString("base64");
+      },
+    });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+  });
+
+  test("one-bit mutation of a declaration inside the manifest bytes fails", async () => {
+    const result = await run({
+      mutate: (input) => {
+        const bytes = Buffer.from(input.derivationPreimage.cards[0].manifest.bytesBase64, "base64");
+        bytes[bytes.length - 3] ^= 0x01;
+        input.derivationPreimage.cards[0].manifest.bytesBase64 = bytes.toString("base64");
+      },
+    });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+  });
+
+  test("rejects top-level path, command, URL, and environment authority fields", async () => {
+    for (const key of ["path", "command", "argv", "url", "env", "credential", "storeArchiveBase64", "fallback"]) {
+      const result = await run({ mutate: (input) => { input[key] = "value"; } });
+      expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    }
+  });
+
+  test("rejects raw-server drift and hostile nested authority without side effects", async () => {
+    const hostile: Array<[string, (manifest: any) => void]> = [
+      ["provider", (manifest) => { manifest.servers["buzz-tools"].provider = "pipedream"; }],
+      ["url", (manifest) => { manifest.servers["buzz-tools"].url = "https://evil.test"; }],
+      ["env", (manifest) => { manifest.servers["buzz-tools"].env = { TOKEN: "x" }; }],
+      ["headers", (manifest) => { manifest.servers["buzz-tools"].headers = { Authorization: "x" }; }],
+      ["arg", (manifest) => { manifest.servers["buzz-tools"].args = ["worker", "buzz-tools", "--exec"]; }],
+      ["optionality", (manifest) => { manifest.servers["buzz-tools"].optional = true; }],
+    ];
+    for (const [name, apply] of hostile) {
+      const result = await run({
+        mutate: (input) => {
+          const manifest = JSON.parse(
+            Buffer.from(input.derivationPreimage.cards[0].manifest.bytesBase64, "base64").toString("utf8"),
+          );
+          apply(manifest);
+          const bytes = utf8(JSON.stringify(manifest));
+          input.derivationPreimage.cards[0].manifest = encoded(bytes);
+          input.derivationPreimage.cards[0].integrity = `sha256-${sha256(bytes)}`;
+          input.context.noSecretEvidence.covered.manifestSha256s = [sha256(bytes)];
+        },
+      });
+      expect(result.outcome?.code, name).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+      expect(result.entries).not.toContain("result.json");
+    }
+  });
+
+  test("rejects hostile lock paths and Git URL authority", async () => {
+    const hostile: Array<[string, (lock: any) => void]> = [
+      ["userinfo", (lock) => {
+        lock.cards[0].git.url = "https://user:pass@github.com/curation-labs/buzz-delivery-tools.git";
+      }],
+      ["query", (lock) => {
+        lock.cards[0].git.url = "https://github.com/curation-labs/buzz-delivery-tools.git?token=x";
+      }],
+      ["fragment", (lock) => {
+        lock.cards[0].git.url = "https://github.com/curation-labs/buzz-delivery-tools.git#x";
+      }],
+      ["foreign host", (lock) => { lock.cards[0].git.url = "https://evil.test/repo.git"; }],
+      ["insecure scheme", (lock) => {
+        lock.cards[0].git.url = "http://github.com/curation-labs/buzz-delivery-tools.git";
+      }],
+      ["control character path", (lock) => { lock.cards[0].path = "cards/evil"; }],
+      ["oversize path", (lock) => { lock.cards[0].path = "a".repeat(4_097); }],
+      ["registry authority", (lock) => { lock.cards[0].registry = { url: "https://evil.test" }; }],
+      ["skill payload", (lock) => { lock.cards[0].skills = ["evil"]; }],
+      ["hook payload", (lock) => { lock.cards[0].hooks = ["evil"]; }],
+      ["origin drift", (lock) => { lock.cards[0].origin = "npm"; }],
+    ];
+    for (const [name, apply] of hostile) {
+      const result = await run({
+        mutate: (input) => {
+          const lock = JSON.parse(
+            Buffer.from(input.derivationPreimage.cardLock.bytesBase64, "base64").toString("utf8"),
+          );
+          apply(lock);
+          const bytes = utf8(JSON.stringify(lock));
+          input.derivationPreimage.cardLock = { ...encoded(bytes), storeMinDrwnVersion: "1.3.0" };
+          input.context.noSecretEvidence.covered.cardLockSha256 = sha256(bytes);
+        },
+      });
+      expect(result.outcome?.code, name).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+      expect(result.entries).not.toContain("result.json");
+    }
+  });
+
+  test("requires the running Worker build identity rather than caller-supplied source authority", async () => {
+    const drifted = await run({
+      buildIdentity: { ...PACKAGED_BUILD_IDENTITY, version: "1.4.0" },
+    });
+    expectCode(drifted, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+
+    const mismatched = await run({
+      buildIdentity: { ...PACKAGED_BUILD_IDENTITY, sourceCommit: "e".repeat(40) },
+    });
+    expectCode(mismatched, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+  });
+
+  test("performs no ambient lookup and no nested command execution", async () => {
+    const seen: string[] = [];
+    const result = await run({
+      seams: {
+        "ambient-lookup": (context) => { seen.push(String(context)); },
+      },
+    });
+    expect(result.outcome).toBeNull();
+    expect(seen).toEqual([]);
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`descriptor-bound persistence${SKIP_POSIX}`, () => {
+  test("preflight directory-sync failure is persistence-unsupported before any entry exists", async () => {
+    const result = await run({ seams: { "preflight-sync": fault("preflight") } });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
+    expect(temporaryEntries(result.entries)).toEqual([]);
+    expect(result.entries).not.toContain("result.json");
+  });
+
+  test("an unproven temp mode fails closed before any byte is written", async () => {
+    // The variadic mode argument is untrusted on every platform: the adapter proves the
+    // descriptor's mode with fstat and refuses to write when the proof does not hold.
+    const result = await run({
+      seams: {
+        "temp-mode": (context) => {
+          const { fd, ops } = context as { fd: number; ops: { fchmod(fd: number, mode: number): void } };
+          ops.fchmod(fd, 0o640);
+        },
+      },
+    });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
+    expect(temporaryEntries(result.entries)).toEqual([]);
+    expect(result.entries).not.toContain("result.json");
+  });
+
+  test("open, short-write, file-sync, and close failures are persist-failed with clean residue", async () => {
+    for (const seam of ["temp-open", "temp-write", "temp-file-sync", "temp-close"]) {
+      const result = await run({ seams: { [seam]: fault(seam) } });
+      expect(result.outcome?.code, seam).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+      expect(temporaryEntries(result.entries), seam).toEqual([]);
+      expect(result.entries).not.toContain("result.json");
+    }
+  });
+
+  test("derivation and serialization failures never create a temp or final entry", async () => {
+    for (const [seam, code] of [
+      ["derive", "WORKER_RUNTIME_ADMISSION_DERIVATION_FAILED"],
+      ["serialize", "WORKER_RUNTIME_ADMISSION_OUTPUT_SERIALIZATION_FAILED"],
+    ] as const) {
+      const result = await run({ seams: { [seam]: fault(seam) } });
+      expect(result.outcome?.code, seam).toBe(code);
+      expect(result.entries).toEqual(["derivation-input.json"]);
+    }
+  });
+
+  test("a conclusively uncommitted link failure is persist-failed after identity-safe cleanup", async () => {
+    const result = await run({ seams: { link: fault("link") } });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+    expect(result.entries).toEqual(["derivation-input.json"]);
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`competing destination${SKIP_POSIX}`, () => {
+  test("EEXIST maps to output-exists and preserves the competing bytes", async () => {
+    const competing = "competing destination bytes\n";
+    const result = await run({
+      seams: {
+        "pre-link": (context) => {
+          const { root } = context as { root: string };
+          writeFileSync(join(root, "result.json"), competing);
+        },
+      },
+    });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_EXISTS");
+    expect(result.outcome!.artifactIdentity).toBeNull();
+    expect(readFileSync(result.outputPath, "utf8")).toBe(competing);
+    expect(temporaryEntries(result.entries)).toEqual([]);
+  });
+
+  test("cleanup faults after EEXIST surface their own code without hiding behind output-exists", async () => {
+    const competing = "competing destination bytes\n";
+    for (const [seam, code] of [
+      ["cleanup-identity-proof", "WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_TEMP_CLEANUP_FAILED"],
+      ["cleanup-unlink", "WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_TEMP_CLEANUP_FAILED"],
+      ["cleanup-dir-sync", "WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_CLEANUP_DURABILITY_INDETERMINATE"],
+    ] as const) {
+      const result = await run({
+        seams: {
+          "pre-link": (context) => {
+            const { root } = context as { root: string };
+            writeFileSync(join(root, "result.json"), competing);
+          },
+          [seam]: fault(seam),
+        },
+      });
+      expect(result.outcome?.code, seam).toBe(code);
+      expect(result.outcome!.artifactIdentity, seam).toBeNull();
+      expect(readFileSync(result.outputPath, "utf8"), seam).toBe(competing);
+    }
+  });
+
+  test("pre-commit cleanup faults on an ordinary failure keep their own code", async () => {
+    for (const [seam, code, residue] of [
+      ["cleanup-identity-proof", "WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_TEMP_CLEANUP_FAILED", true],
+      ["cleanup-unlink", "WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_TEMP_CLEANUP_FAILED", true],
+      ["cleanup-dir-sync", "WORKER_RUNTIME_ADMISSION_OUTPUT_PRECOMMIT_CLEANUP_DURABILITY_INDETERMINATE", false],
+    ] as const) {
+      const result = await run({ seams: { link: fault("link"), [seam]: fault(seam) } });
+      expect(result.outcome?.code, seam).toBe(code);
+      expect(result.outcome!.artifactIdentity, seam).toBeNull();
+      expect(result.entries).not.toContain("result.json");
+      expect(temporaryEntries(result.entries).length > 0, seam).toBe(residue);
+    }
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`parent and temp substitution${SKIP_POSIX}`, () => {
+  function substituteParent(root: string): { moved: string; foreign: string } {
+    const moved = `${root}-moved`;
+    const foreign = `${root}-foreign`;
+    mkdirSync(foreign);
+    roots.push(moved, foreign);
+    renameSync(root, moved);
+    mkdirSync(root);
+    writeFileSync(join(root, "planted.json"), "foreign bytes");
+    return { moved, foreign };
+  }
+
+  test("substitution inside the parent-open seam is rejected before preflight or any entry", async () => {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    let moved = "";
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      seams: {
+        "parent-open": () => { ({ moved } = substituteParent(root)); },
+      },
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
+    expect(readdirSync(root)).toEqual(["planted.json"]);
+    expect(readdirSync(moved).sort()).toEqual(["derivation-input.json"]);
+  });
+
+  for (const seam of ["temp-create", "pre-link", "cleanup-identity-proof"] as const) {
+    test(`substitution inside the ${seam} seam writes and removes nothing outside the frozen directory`, async () => {
+      const root = confinementRoot();
+      writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+      let moved = "";
+      const seams: Record<string, RuntimeAdmissionDeriveSeam> = {
+        [seam]: () => { if (moved === "") ({ moved } = substituteParent(root)); },
+      };
+      if (seam === "cleanup-identity-proof") seams.link = fault("link");
+      const outcome = await runRuntimeAdmissionDerive({
+        argv: ["--input", "derivation-input.json", "--output", "result.json"],
+        workingDirectory: root,
+        loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+        seams,
+      });
+      expect(outcome).not.toBeNull();
+      expect(outcome!.commitState).toBe("not_committed");
+      expect(readdirSync(root)).toEqual(["planted.json"]);
+      expect(readdirSync(moved)).not.toContain("result.json");
+    });
+  }
+
+  test("post-link substitution before the first directory sync is commit-validation-indeterminate", async () => {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      seams: { "post-link-validation": () => { substituteParent(root); } },
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_VALIDATION_INDETERMINATE");
+    expect(outcome?.commitState).toBe("indeterminate");
+    expect(outcome?.artifactIdentity).not.toBeNull();
+    expect(outcome?.retry).toBe("forbidden");
+  });
+
+  test("substitution at the final pre-success check is committed-final-validation-failed", async () => {
+    const result = await run({ seams: { "final-validation": fault("final-validation") } });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_COMMITTED_FINAL_VALIDATION_FAILED");
+    expect(result.outcome!.commitState).toBe("committed");
+    expect(readFileSync(result.outputPath).byteLength).toBe(
+      result.outcome!.artifactIdentity!.byteLength,
+    );
+    expect(temporaryEntries(result.entries)).toEqual([]);
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`link reconciliation${SKIP_POSIX}`, () => {
+  test("a committed link that then throws still completes both durability barriers", async () => {
+    const result = await run({
+      seams: { "link-after": fault("link raised after committing the namespace entry") },
+    });
+    expect(result.outcome).toBeNull();
+    expect(temporaryEntries(result.entries)).toEqual([]);
+    expect(statSync(result.outputPath).nlink).toBe(1);
+  });
+
+  test("reconciliation that cannot prove owned-final or absent-final is commit-indeterminate", async () => {
+    for (const seam of ["reconcile-final", "reconcile-temp"] as const) {
+      const result = await run({ seams: { link: fault("link"), [seam]: fault(seam) } });
+      expect(result.outcome?.code, seam).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_INDETERMINATE");
+      expect(result.outcome?.commitState, seam).toBe("indeterminate");
+      expect(result.outcome?.artifactIdentity, seam).not.toBeNull();
+      expect(result.entries).not.toContain("result.json");
+      expect(temporaryEntries(result.entries).length, seam).toBe(1);
+    }
+  });
+
+  test("first directory-sync failure after an owned final is commit-indeterminate and mutates nothing", async () => {
+    const result = await run({ seams: { "first-dir-sync": fault("first-dir-sync") } });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_INDETERMINATE");
+    expect(result.entries).toContain("result.json");
+    expect(temporaryEntries(result.entries)).toHaveLength(1);
+    expect(statSync(result.outputPath).nlink).toBe(2);
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`committed cleanup${SKIP_POSIX}`, () => {
+  test("temp identity-proof and unlink failures after commit preserve the final", async () => {
+    for (const seam of ["cleanup-identity-proof", "cleanup-unlink"] as const) {
+      const result = await run({ seams: { [seam]: fault(seam) } });
+      expect(result.outcome?.code, seam).toBe(
+        "WORKER_RUNTIME_ADMISSION_OUTPUT_COMMITTED_TEMP_CLEANUP_FAILED",
+      );
+      expect(result.outcome?.commitState, seam).toBe("committed");
+      expect(result.outcome?.artifactIdentity, seam).not.toBeNull();
+      expect(result.entries, seam).toContain("result.json");
+      expect(temporaryEntries(result.entries).length, seam).toBe(1);
+    }
+  });
+
+  test("second directory-sync failure keeps the final and reports non-durable temp removal", async () => {
+    const result = await run({ seams: { "second-dir-sync": fault("second-dir-sync") } });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_COMMITTED_CLEANUP_DURABILITY_INDETERMINATE");
+    expect(result.outcome!.commitState).toBe("committed");
+    expect(result.entries).toContain("result.json");
+    expect(temporaryEntries(result.entries)).toEqual([]);
+    expect(readFileSync(result.outputPath).byteLength)
+      .toBe(result.outcome!.artifactIdentity!.byteLength);
+  });
+
+  test("an identity-bearing outcome's observed bytes equal its bounded identity", async () => {
+    const result = await run({ seams: { "second-dir-sync": fault("second-dir-sync") } });
+    const bytes = readFileSync(result.outputPath);
+    expect(result.outcome!.artifactIdentity).toEqual({
+      schema: "cl.i268.serialized-artifact-identity.v1",
+      phase: "tools",
+      byteLength: bytes.byteLength,
+      sha256: sha256(bytes),
+    });
+  });
+});
+
+describe(`unsupported platform fail-closed${SKIP_UNSUPPORTED_PLATFORM}`, () => {
+  test.skipIf(SKIP_UNSUPPORTED_PLATFORM !== "")(
+    "an unsupported descriptor layer yields persistence-unsupported with no output",
+    async () => {
+      const result = await run();
+      expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
+      expect(result.entries).toEqual(["derivation-input.json"]);
+      expect(descriptorSupport.supported).toBe(false);
+      expect(descriptorSupport.reason.length).toBeGreaterThan(0);
+    },
+  );
+
+  test("the descriptor layer reports its support decision without throwing at import time", () => {
+    expect(typeof descriptorSupport.supported).toBe("boolean");
+    expect(descriptorSupport.supported).toBe(posixPlatform);
+  });
+});
+
+describe.skipIf(SKIP_POSIX !== "")(`process contract${SKIP_POSIX}`, () => {
+  const entry = join(REPO_ROOT, RUNTIME_ADMISSION_ADAPTER_ENTRY);
+
+  async function spawnAdapter(root: string, inputOperand: string, outputOperand: string) {
+    const proc = Bun.spawn(
+      [process.execPath, "run", entry, "--input", inputOperand, "--output", outputOperand],
+      { cwd: root, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).arrayBuffer(),
+      new Response(proc.stderr).arrayBuffer(),
+      proc.exited,
+    ]);
+    return { stdout: Buffer.from(stdout), stderr: Buffer.from(stderr), exitCode };
+  }
+
+  test("clean success exits 0 with no stdout, no stderr, and one output file", async () => {
+    requireDescriptorSupport();
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const result = await spawnAdapter(root, "derivation-input.json", "result.json");
+    expect(result.stderr.toString("utf8")).toBe("");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.byteLength).toBe(0);
+    expect(readdirSync(root).sort()).toEqual(["derivation-input.json", "result.json"]);
+    expect(JSON.parse(readFileSync(join(root, "result.json"), "utf8")).schema)
+      .toBe(RUNTIME_ADMISSION_OUTPUT_SCHEMA);
+  });
+
+  test("a not_committed failure exits 1 with exactly one canonical stderr line and no stdout", async () => {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), "{}");
+    const result = await spawnAdapter(root, "derivation-input.json", "result.json");
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout.byteLength).toBe(0);
+    expect(result.stderr.byteLength).toBeLessThanOrEqual(512);
+    expect(result.stderr.at(-1)).toBe(0x0a);
+    const body = result.stderr.toString("utf8").slice(0, -1);
+    expect(body).not.toContain("\n");
+    const payload = JSON.parse(body);
+    expect(Object.keys(payload)).toEqual([
+      "schema",
+      "code",
+      "commitState",
+      "retry",
+      "artifactIdentity",
+    ]);
+    expect(payload.schema).toBe(PERSISTENCE_OUTCOME_SCHEMA);
+    expect(payload.code).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    expect(payload.commitState).toBe("not_committed");
+    expect(payload.retry).toBe("forbidden");
+    expect(payload.artifactIdentity).toBeNull();
+    expect(`${JSON.stringify(payload)}\n`).toBe(result.stderr.toString("utf8"));
+    expect(readdirSync(root)).toEqual(["derivation-input.json"]);
+  });
+
+  test("the diagnostic never carries a path, command, environment, or exception text", async () => {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), "not json at all");
+    const result = await spawnAdapter(root, "derivation-input.json", "secret-name.json");
+    const stderr = result.stderr.toString("utf8");
+    expect(stderr).not.toContain(root);
+    expect(stderr).not.toContain("secret-name.json");
+    expect(stderr).not.toContain("derivation-input.json");
+    expect(stderr).not.toContain("Error");
+    expect(stderr).not.toContain("bun");
+  });
+
+  test("an operand rejection happens before any output file exists", async () => {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const result = await spawnAdapter(root, "derivation-input.json", "../escape.json");
+    expect(result.exitCode).toBe(1);
+    expect(readdirSync(root)).toEqual(["derivation-input.json"]);
+  });
+});
