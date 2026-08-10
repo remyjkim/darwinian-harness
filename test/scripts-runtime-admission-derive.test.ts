@@ -17,9 +17,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import {
   FINCH_NESTED_INERT_RULE_SHA256,
+  MAX_DIAGNOSTIC_BYTES,
   RUNTIME_ADMISSION_ADAPTER_ENTRY,
   RUNTIME_ADMISSION_ADAPTER_VERSION,
   RUNTIME_ADMISSION_COMMIT_STATES,
@@ -36,7 +38,7 @@ import {
 } from "../cli/core/runtime-admission-derive";
 import { describeDescriptorSupport } from "../cli/core/runtime-admission-descriptors";
 
-const REPO_ROOT = new URL("..", import.meta.url).pathname;
+const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PHASES = ["tools", "root"] as const;
 type Phase = (typeof PHASES)[number];
 
@@ -577,6 +579,7 @@ describe("diagnostic envelope bytes", () => {
   });
 
   test("the closed code set is exactly the accepted thirteen", () => {
+    expect(MAX_DIAGNOSTIC_BYTES).toBe(512);
     expect(Object.keys(RUNTIME_ADMISSION_COMMIT_STATES).sort()).toEqual(
       [...Object.keys(IDENTITY_BEARING_LENGTHS), ...Object.keys(NOT_COMMITTED_LENGTHS)].sort(),
     );
@@ -611,7 +614,7 @@ describe("diagnostic envelope bytes", () => {
           artifactIdentity: FIXED_IDENTITY(phase),
         });
         expect(Buffer.byteLength(line, "utf8")).toBe(lengths[phase]);
-        expect(Buffer.byteLength(line, "utf8")).toBeLessThanOrEqual(512);
+        expect(Buffer.byteLength(line, "utf8")).toBeLessThanOrEqual(MAX_DIAGNOSTIC_BYTES);
         expect(line.endsWith("}\n")).toBe(true);
       }
       for (const [code, length] of Object.entries(NOT_COMMITTED_LENGTHS)) {
@@ -1441,7 +1444,7 @@ describe.skipIf(SKIP_POSIX !== "")(`process contract${SKIP_POSIX}`, () => {
     const result = await spawnAdapter(root, "derivation-input.json", "result.json");
     expect(result.exitCode).toBe(1);
     expect(result.stdout.byteLength).toBe(0);
-    expect(result.stderr.byteLength).toBeLessThanOrEqual(512);
+    expect(result.stderr.byteLength).toBeLessThanOrEqual(MAX_DIAGNOSTIC_BYTES);
     expect(result.stderr.at(-1)).toBe(0x0a);
     const body = result.stderr.toString("utf8").slice(0, -1);
     expect(body).not.toContain("\n");

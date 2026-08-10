@@ -10,7 +10,6 @@ import {
   type RuntimeBuildIdentity,
 } from "./build-identity";
 import {
-  DescriptorSemanticsUnsupported,
   loadDescriptorOps,
   type DescriptorOps,
   type DescriptorStat,
@@ -1099,6 +1098,8 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
     let temporaryFd = -1;
     try {
       if (!proveParent()) return cleanupBeforeCommit("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+      // Both seams sit immediately after the last pathname check and immediately before
+      // the descriptor-relative create, which is the exact window the contract names.
       seam("temp-create");
       seam("temp-open");
       temporaryFd = ops.openTemporaryExclusive(dirfd, temporaryName);
