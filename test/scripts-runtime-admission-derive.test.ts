@@ -37,6 +37,7 @@ import {
   type RuntimeAdmissionDeriveSeam,
 } from "../cli/core/runtime-admission-derive";
 import { describeDescriptorSupport } from "../cli/core/runtime-admission-descriptors";
+import { canonicalizeRuntimeAdmissionJson } from "../cli/core/runtime-admission-manifest";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PHASES = ["tools", "root"] as const;
@@ -237,10 +238,11 @@ function lockBytes(phase: Phase, cards: CardMaterial[], mutators: MaterialMutato
 }
 
 function phaseEvidence(phase: Phase) {
+  // Publication identities describe the tools artifact in both phases.
   const publication = {
-    receiptIdentity: identity(phase, utf8("tools-receipt")),
+    receiptIdentity: identity("tools", utf8("tools-receipt")),
     immutableRef: TOOLS_PUBLICATION_REF,
-    refetchIdentity: identity(phase, utf8("tools-refetch")),
+    refetchIdentity: identity("tools", utf8("tools-refetch")),
   };
   return {
     serverIds: ["buzz-tools"],
@@ -720,6 +722,25 @@ describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
     expect(outputBytes.toString("utf8")).not.toContain("serialized-artifact-identity.v1\",\"phase\":\"tools\",\"byteLength\":" + outputBytes.byteLength);
   });
 
+  test("the semantic hashes cover exactly the values output v2 already binds", async () => {
+    // Neither producer architecture states these two preimages, and the cross-producer
+    // comparator compares them for equality. Hashing values that both producers bind
+    // byte-identically is the only choice that cannot drift between lanes, so the rule
+    // is pinned here where a reviewer can read and recompute it.
+    requireDescriptorSupport();
+    const result = await run();
+    expect(result.outcome).toBeNull();
+    const output = JSON.parse(readFileSync(result.outputPath, "utf8"));
+    const applicationBytes = Buffer.from(output.output.applicationRequirements.bytesBase64, "base64");
+    expect(output.semantic.applicationRequirementsHash).toBe(sha256(applicationBytes));
+    expect(output.semantic.applicationRequirementsHash)
+      .toBe(output.output.applicationRequirements.sha256);
+    expect(output.semantic.cardsHash)
+      .toBe(sha256(canonicalizeRuntimeAdmissionJson(output.input.cards)));
+    expect(output.semantic.closureHash)
+      .toBe(JSON.parse(Buffer.from(output.output.envelope.bytesBase64, "base64").toString("utf8")).closureHash);
+  });
+
   test("valid root input binds the ordered two-Card closure and publication evidence", async () => {
     requireDescriptorSupport();
     const result = await run({ phase: "root" });
@@ -1000,6 +1021,19 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
       expect(temporaryEntries(result.entries)).toEqual([]);
     });
   }
+
+  test("root publication identities must stay tools-phase", async () => {
+    // The publication tuple describes the tools artifact, so a root-phase identity
+    // inside a root candidate is a relationship failure rather than a phase match.
+    const result = await run({
+      phase: "root",
+      mutate: (input) => {
+        input.context.phaseEvidence.toolsPublication.receiptIdentity.phase = "root";
+      },
+    });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    expect(result.entries).toEqual(["derivation-input.json"]);
+  });
 
   test("one-bit mutation of the candidate bytes fails", async () => {
     const result = await run({

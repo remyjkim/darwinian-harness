@@ -340,10 +340,14 @@ interface AdmittedInput {
   ruleCoverage: { candidateSha256: string; manifestSha256s: string[]; cardLockSha256: string };
 }
 
-function admitToolsPublication(value: unknown, phase: DerivationPhase): void {
+/**
+ * The publication identities always describe the tools artifact, so they stay
+ * tools-phase even when they appear inside a root candidate.
+ */
+function admitToolsPublication(value: unknown): void {
   const record = closed(value, ["receiptIdentity", "immutableRef", "refetchIdentity"]);
-  artifactIdentity(record.receiptIdentity, phase);
-  artifactIdentity(record.refetchIdentity, phase);
+  artifactIdentity(record.receiptIdentity, "tools");
+  artifactIdentity(record.refetchIdentity, "tools");
   if (record.immutableRef !== "github:curation-labs/buzz-delivery-tools#synthetic") reject();
 }
 
@@ -363,7 +367,7 @@ function admitPhaseEvidence(value: unknown, phase: DerivationPhase): Record<stri
     if (record.toolsPublication !== null) reject();
   } else {
     exactStrings(record.toolSelectors, TOOL_SELECTORS);
-    admitToolsPublication(record.toolsPublication, phase);
+    admitToolsPublication(record.toolsPublication);
   }
   return record;
 }
@@ -529,7 +533,7 @@ function admitCandidate(value: unknown, phase: DerivationPhase): AdmittedCandida
   ) reject();
 
   if (phase === "root") {
-    admitToolsPublication(record.toolsPublication, phase);
+    admitToolsPublication(record.toolsPublication);
     if (!deepEqual(record.toolsPublication, phaseEvidence.toolsPublication)) reject();
   }
 
