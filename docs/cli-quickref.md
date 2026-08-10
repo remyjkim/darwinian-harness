@@ -299,9 +299,36 @@ Worker Blueprint authoring and remote operations:
 - `drwn worker buzz-tools`
 - `drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var <NAME>]` (secret bytes come from stdin)
 - `drwn acp serve <slug>` (the slug may instead come from `DRWN_ACP_SLUG` or one unambiguous local binding)
+- `drwn worker routine create <slug> --name <name> --cron <expression> [--timezone <IANA-zone>] [--prompt <text> | --payload <json-file>]`
+- `drwn worker routine list <slug> [--json]`
+- `drwn worker routine update <slug> <routineId> [--name <name>] [--cron <expression>] [--timezone <IANA-zone>] [--prompt <text> | --payload <json-file>]`
+- `drwn worker routine enable <slug> <routineId>`
+- `drwn worker routine disable <slug> <routineId>`
+- `drwn worker routine runs <slug> <routineId> [--limit <1-100>] [--cursor <cursor>] [--json]`
+- `drwn worker routine rm <slug> <routineId> --force`
 
 Cards compose capabilities into one Blueprint. Installed Worker roots are
 alternatives; `drwn use` selects at most one root for project projection.
+
+Routines schedule recurring, cron-triggered runs of an already deployed Worker.
+Creation requires a display name and schedule; the timezone defaults to UTC and
+the server enforces a minimum five-minute interval. Use `--prompt` for the common
+message payload, or `--payload` for an arbitrary JSON object. Repeat
+`--account app=accountId` to pin connected-account selections, and use
+`--jitter false` only when an exact slot is required. Removing a definition does
+not immediately remove its retained run history.
+
+```bash
+drwn worker routine create research-worker \
+  --name "Weekday digest" \
+  --cron "0 9 * * 1-5" \
+  --timezone "America/Los_Angeles" \
+  --prompt "Summarize new research and open decisions" \
+  --account slack=acct_123
+
+drwn worker routine list research-worker
+drwn worker routine runs research-worker <routineId> --limit 20
+```
 
 Card hooks:
 

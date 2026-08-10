@@ -16,6 +16,7 @@ const DETAILS = [
   "  drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var NAME]",
   "  drwn worker buzz-tools",
   "  drwn worker rollback <slug>",
+  "  drwn worker routine create <slug>",
   "  drwn worker delete <slug> --force",
 ].join("\n");
 

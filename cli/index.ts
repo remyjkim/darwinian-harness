@@ -79,6 +79,11 @@ import { WorkerRollbackCommand } from "./commands/worker/rollback";
 import { WorkerStatusCommand } from "./commands/worker/status";
 import { WorkerSecretSetCommand } from "./commands/worker/secret-set";
 import { WorkerBuzzToolsCommand } from "./commands/worker/buzz-tools";
+import {
+  WorkerRoutineCommand, WorkerRoutineCreateCommand, WorkerRoutineListCommand,
+  WorkerRoutineUpdateCommand, WorkerRoutineEnableCommand, WorkerRoutineDisableCommand,
+  WorkerRoutineRunsCommand, WorkerRoutineRemoveCommand,
+} from "./commands/worker/routine";
 import { DoctorCommand } from "./commands/doctor";
 import { HookCardUsageCommand } from "./commands/hook/card-usage";
 import { HookSkillMarkerCommand } from "./commands/hook/skill-marker";
@@ -233,6 +238,14 @@ cli.register(WorkerChatCommand);
 cli.register(WorkerRunStatusCommand);
 cli.register(WorkerRollbackCommand);
 cli.register(WorkerDeleteCommand);
+cli.register(WorkerRoutineCommand);
+cli.register(WorkerRoutineCreateCommand);
+cli.register(WorkerRoutineListCommand);
+cli.register(WorkerRoutineUpdateCommand);
+cli.register(WorkerRoutineEnableCommand);
+cli.register(WorkerRoutineDisableCommand);
+cli.register(WorkerRoutineRunsCommand);
+cli.register(WorkerRoutineRemoveCommand);
 cli.register(ProjectApplyCommand);
 cli.register(ProjectRemoveCommand);
 cli.register(ProjectPinCommand);
