@@ -1,5 +1,8 @@
 // ABOUTME: Defines and strictly validates Worker-owned runtime-admission declarations.
-// ABOUTME: Keeps declaration parsing pure so deploy and materializer derivation can share it.
+// ABOUTME: Derives canonical closure evidence without filesystem, network, or ambient state.
+
+import { createHash } from "node:crypto";
+import { DrwnError } from "./errors";
 
 export const RUNTIME_ADMISSION_SCHEMA_VERSION = 1 as const;
 export const RUNTIME_ADMISSION_MAX_IDENTIFIER_LENGTH = 256;
@@ -47,6 +50,67 @@ export interface RuntimeAdmissionDeclarationCarrier {
 export interface RuntimeAdmissionDeclarationValidationResult {
   ok: boolean;
   errors: string[];
+}
+
+export interface EffectiveMcpActivationV1 {
+  schema: "darwinian.effective-mcp-activation";
+  schemaVersion: 1;
+  servers: Array<{
+    serverId: string;
+    active: true;
+    readiness: "required" | "optional";
+    authMode: "none";
+    requirementIds: string[];
+  }>;
+  activationHash: string;
+}
+
+export interface RuntimeRequirementManifestV1 {
+  schema: "darwinian.runtime-requirements";
+  schemaVersion: 1;
+  requirements: Array<{
+    requirementId: string;
+    probeId: string;
+    criticality: "required" | "optional";
+    expected: {
+      artifactSha256?: string;
+      version?: string;
+      platformCapabilities?: string[];
+    };
+  }>;
+  manifestHash: string;
+}
+
+export interface WorkerRuntimeAdmissionProducerEnvelopeV1 {
+  schema: "darwinian.worker-runtime-admission";
+  schemaVersion: 1;
+  derivationVersion: "worker-runtime-admission-v1";
+  closureHash: string;
+  activation: EffectiveMcpActivationV1;
+  runtimeRequirements: RuntimeRequirementManifestV1;
+}
+
+export interface RuntimeAdmissionClosureCard {
+  name: string;
+  requested: string;
+  version: string;
+  integrity: string;
+  treeSha?: string;
+  manifest: {
+    name: string;
+    version: string;
+    servers?: Record<string, unknown>;
+    runtimeAdmission?: CardRuntimeAdmissionV1;
+    applicationRequirements?: CardApplicationRequirementsV1;
+    [key: string]: unknown;
+  };
+}
+
+export interface RuntimeAdmissionDerivation {
+  envelope: WorkerRuntimeAdmissionProducerEnvelopeV1;
+  applicationRequirements: CardApplicationRequirementsV1;
+  canonicalEnvelope: string;
+  canonicalApplicationRequirements: string;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -288,4 +352,295 @@ export function validateRuntimeAdmissionDeclarations(
     validateApplicationRequirements(input.applicationRequirements, errors);
   }
   return { ok: errors.length === 0, errors };
+}
+
+export function compareRuntimeAdmissionIds(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function canonicalizeRuntimeAdmissionJson(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) {
+      throw new TypeError("runtime admission canonical JSON requires a safe integer");
+    }
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalizeRuntimeAdmissionJson).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const members = Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort(compareRuntimeAdmissionIds)
+      .map((key) => `${JSON.stringify(key)}:${canonicalizeRuntimeAdmissionJson(record[key])}`);
+    return `{${members.join(",")}}`;
+  }
+  throw new TypeError(`unsupported canonical JSON value: ${typeof value}`);
+}
+
+function sha256CanonicalJson(value: unknown): string {
+  return createHash("sha256").update(canonicalizeRuntimeAdmissionJson(value), "utf8").digest("hex");
+}
+
+export function computeEffectiveMcpActivationHash(value: EffectiveMcpActivationV1): string {
+  const servers = value.servers
+    .map((server) => ({
+      ...server,
+      requirementIds: [...server.requirementIds].sort(compareRuntimeAdmissionIds),
+    }))
+    .sort((left, right) => compareRuntimeAdmissionIds(left.serverId, right.serverId));
+  return sha256CanonicalJson({
+    schema: value.schema,
+    schemaVersion: value.schemaVersion,
+    servers,
+  });
+}
+
+export function computeRuntimeRequirementsHash(value: RuntimeRequirementManifestV1): string {
+  const requirements = value.requirements
+    .map((requirement) => ({
+      ...requirement,
+      expected: {
+        ...requirement.expected,
+        ...(requirement.expected.platformCapabilities
+          ? { platformCapabilities: [...requirement.expected.platformCapabilities].sort(compareRuntimeAdmissionIds) }
+          : {}),
+      },
+    }))
+    .sort((left, right) => compareRuntimeAdmissionIds(left.requirementId, right.requirementId));
+  return sha256CanonicalJson({
+    schema: value.schema,
+    schemaVersion: value.schemaVersion,
+    requirements,
+  });
+}
+
+function derivationInvalid(detail: string): never {
+  throw new DrwnError(
+    "WORKER_RUNTIME_ADMISSION_INVALID",
+    `Invalid runtime admission closure: ${detail}`,
+  );
+}
+
+function requireClosureIdentity(value: unknown, path: string): string {
+  if (typeof value !== "string" || value.length === 0 || value.length > RUNTIME_ADMISSION_MAX_IDENTIFIER_LENGTH) {
+    return derivationInvalid(`${path} must be a bounded non-empty string`);
+  }
+  return value;
+}
+
+function recordClosureIdentity(
+  value: string,
+  path: string,
+  seen: Map<string, string>,
+) {
+  const normalized = value.normalize("NFC");
+  const prior = seen.get(normalized);
+  if (prior !== undefined) derivationInvalid(`${path} duplicates or NFC-collides with ${prior}`);
+  seen.set(normalized, path);
+}
+
+function normalizedRuntimeDeclaration(value: CardRuntimeAdmissionV1) {
+  return {
+    version: value.version,
+    servers: Object.fromEntries(
+      Object.entries(value.servers)
+        .sort(([left], [right]) => compareRuntimeAdmissionIds(left, right))
+        .map(([serverId, server]) => [serverId, {
+          authMode: server.authMode,
+          requirementIds: [...server.requirementIds].sort(compareRuntimeAdmissionIds),
+        }]),
+    ),
+    requirements: value.requirements
+      .map((requirement) => ({
+        ...requirement,
+        expected: "platformCapabilities" in requirement.expected
+          ? { platformCapabilities: [...requirement.expected.platformCapabilities].sort(compareRuntimeAdmissionIds) }
+          : { artifactSha256: requirement.expected.artifactSha256 },
+      }))
+      .sort((left, right) => compareRuntimeAdmissionIds(left.requirementId, right.requirementId)),
+  };
+}
+
+function normalizedApplicationDeclaration(value: CardApplicationRequirementsV1): CardApplicationRequirementsV1 {
+  return {
+    version: 1,
+    apps: value.apps
+      .map((app) => ({
+        app: app.app,
+        ...(app.card ? { card: { ...app.card } } : {}),
+        ...(app.pipedreamApp ? { pipedreamApp: app.pipedreamApp } : {}),
+      }))
+      .sort((left, right) => compareRuntimeAdmissionIds(left.app, right.app)),
+  };
+}
+
+function compareClosureCards(left: RuntimeAdmissionClosureCard, right: RuntimeAdmissionClosureCard): number {
+  const identityParts: Array<readonly [string, string]> = [
+    [left.name, right.name],
+    [left.version, right.version],
+    [left.treeSha ?? "", right.treeSha ?? ""],
+    [left.integrity, right.integrity],
+  ];
+  for (const [leftPart, rightPart] of identityParts) {
+    const compared = compareRuntimeAdmissionIds(leftPart, rightPart);
+    if (compared !== 0) return compared;
+  }
+  return 0;
+}
+
+export function deriveRuntimeAdmissionForClosure(
+  cards: readonly RuntimeAdmissionClosureCard[],
+): RuntimeAdmissionDerivation {
+  if (cards.length === 0 || cards.length > RUNTIME_ADMISSION_MAX_ENTRIES) {
+    derivationInvalid(`cards must contain 1-${RUNTIME_ADMISSION_MAX_ENTRIES} entries`);
+  }
+
+  const cardIds = new Map<string, string>();
+  const requestedIds = new Map<string, string>();
+  const serverIds = new Map<string, string>();
+  const requirementIds = new Map<string, string>();
+  const activationServers: EffectiveMcpActivationV1["servers"] = [];
+  const requirements = new Map<string, CardRuntimeAdmissionV1["requirements"][number]>();
+  const requiredRequirementIds = new Set<string>();
+  const applications = new Map<string, CardApplicationRequirementsV1["apps"][number]>();
+
+  for (const [cardIndex, card] of cards.entries()) {
+    const cardPath = `cards[${cardIndex}]`;
+    requireClosureIdentity(card.name, `${cardPath}.name`);
+    requireClosureIdentity(card.requested, `${cardPath}.requested`);
+    requireClosureIdentity(card.version, `${cardPath}.version`);
+    requireClosureIdentity(card.integrity, `${cardPath}.integrity`);
+    if (typeof card.treeSha !== "string" || !/^[a-f0-9]{40}$/.test(card.treeSha)) {
+      derivationInvalid(`${cardPath}.treeSha must be lowercase 40-hex`);
+    }
+    if (card.manifest.name !== card.name || card.manifest.version !== card.version) {
+      derivationInvalid(`${cardPath} identity does not match its manifest`);
+    }
+    recordClosureIdentity(card.name, `${cardPath}.name`, cardIds);
+    recordClosureIdentity(card.requested, `${cardPath}.requested`, requestedIds);
+
+    if (card.manifest.runtimeAdmission === undefined || card.manifest.applicationRequirements === undefined) {
+      derivationInvalid(`${cardPath} declaration coverage is incomplete`);
+    }
+    const declarationValidation = validateRuntimeAdmissionDeclarations(card.manifest);
+    if (!declarationValidation.ok) {
+      derivationInvalid(`${cardPath} declarations are invalid: ${declarationValidation.errors.join("; ")}`);
+    }
+    const runtimeAdmission = card.manifest.runtimeAdmission;
+    const applicationRequirements = card.manifest.applicationRequirements;
+
+    for (const [serverId, declaration] of Object.entries(runtimeAdmission.servers)) {
+      recordClosureIdentity(serverId, `${cardPath}.runtimeAdmission.servers.${serverId}`, serverIds);
+      const rawServer = card.manifest.servers?.[serverId];
+      if (!isObject(rawServer)) derivationInvalid(`${cardPath}.servers.${serverId} is unavailable`);
+      const readiness = rawServer.optional === true ? "optional" : "required";
+      const sortedRequirementIds = [...declaration.requirementIds].sort(compareRuntimeAdmissionIds);
+      activationServers.push({
+        serverId,
+        active: true,
+        readiness,
+        authMode: "none",
+        requirementIds: sortedRequirementIds,
+      });
+      if (readiness === "required") {
+        for (const requirementId of sortedRequirementIds) {
+          requiredRequirementIds.add(requirementId.normalize("NFC"));
+        }
+      }
+    }
+
+    for (const requirement of runtimeAdmission.requirements) {
+      recordClosureIdentity(
+        requirement.requirementId,
+        `${cardPath}.runtimeAdmission.requirements.${requirement.requirementId}`,
+        requirementIds,
+      );
+      requirements.set(requirement.requirementId.normalize("NFC"), requirement);
+    }
+
+    for (const application of applicationRequirements.apps) {
+      const normalized = application.app.normalize("NFC");
+      const existing = applications.get(normalized);
+      if (existing !== undefined) {
+        if (existing.app !== application.app) {
+          derivationInvalid(`application ${application.app} NFC-collides with ${existing.app}`);
+        }
+        if (canonicalizeRuntimeAdmissionJson(existing) !== canonicalizeRuntimeAdmissionJson(application)) {
+          derivationInvalid(`applicationRequirements has conflicting declarations for ${application.app}`);
+        }
+      } else {
+        applications.set(normalized, application);
+      }
+    }
+  }
+
+  const activation: EffectiveMcpActivationV1 = {
+    schema: "darwinian.effective-mcp-activation",
+    schemaVersion: 1,
+    servers: activationServers.sort((left, right) => compareRuntimeAdmissionIds(left.serverId, right.serverId)),
+    activationHash: "0".repeat(64),
+  };
+  activation.activationHash = computeEffectiveMcpActivationHash(activation);
+
+  const runtimeRequirements: RuntimeRequirementManifestV1 = {
+    schema: "darwinian.runtime-requirements",
+    schemaVersion: 1,
+    requirements: [...requirements.entries()]
+      .map(([normalizedId, requirement]) => ({
+        requirementId: requirement.requirementId,
+        probeId: requirement.probeId,
+        criticality: requiredRequirementIds.has(normalizedId) ? "required" as const : "optional" as const,
+        expected: "platformCapabilities" in requirement.expected
+          ? { platformCapabilities: [...requirement.expected.platformCapabilities].sort(compareRuntimeAdmissionIds) }
+          : { artifactSha256: requirement.expected.artifactSha256 },
+      }))
+      .sort((left, right) => compareRuntimeAdmissionIds(left.requirementId, right.requirementId)),
+    manifestHash: "0".repeat(64),
+  };
+  runtimeRequirements.manifestHash = computeRuntimeRequirementsHash(runtimeRequirements);
+
+  const applicationRequirements: CardApplicationRequirementsV1 = {
+    version: 1,
+    apps: [...applications.values()]
+      .map((application) => ({
+        app: application.app,
+        ...(application.card ? { card: { ...application.card } } : {}),
+        ...(application.pipedreamApp ? { pipedreamApp: application.pipedreamApp } : {}),
+      }))
+      .sort((left, right) => compareRuntimeAdmissionIds(left.app, right.app)),
+  };
+
+  const closurePreimage = {
+    derivationVersion: "worker-runtime-admission-v1",
+    cards: [...cards].sort(compareClosureCards).map((card) => ({
+      name: card.name,
+      requested: card.requested,
+      version: card.version,
+      integrity: card.integrity,
+      treeSha: card.treeSha,
+      rawServers: card.manifest.servers ?? {},
+      runtimeAdmission: normalizedRuntimeDeclaration(card.manifest.runtimeAdmission!),
+      applicationRequirements: normalizedApplicationDeclaration(card.manifest.applicationRequirements!),
+    })),
+  };
+
+  const envelope: WorkerRuntimeAdmissionProducerEnvelopeV1 = {
+    schema: "darwinian.worker-runtime-admission",
+    schemaVersion: 1,
+    derivationVersion: "worker-runtime-admission-v1",
+    closureHash: sha256CanonicalJson(closurePreimage),
+    activation,
+    runtimeRequirements,
+  };
+  return {
+    envelope,
+    applicationRequirements,
+    canonicalEnvelope: canonicalizeRuntimeAdmissionJson(envelope),
+    canonicalApplicationRequirements: canonicalizeRuntimeAdmissionJson(applicationRequirements),
+  };
 }
