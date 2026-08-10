@@ -17,6 +17,7 @@ import {
   type CardLockEntry,
   type ProjectLockV1,
 } from "../cli/core/card-lock";
+import { RUNTIME_ADMISSION_MIN_DRWN_VERSION } from "../cli/core/mind-capability";
 import { cleanupTempRoots, createTempRoot } from "./helpers";
 
 const tempRoots: string[] = [];
@@ -289,6 +290,44 @@ test("lock floor covers Mind capability in any installed root", () => {
 
   expect(createCardLockfile(graph).store.minDrwnVersion).toBe(WORKER_MIND_MIN_DRWN_VERSION);
   expect(createCardLockfile({ workerRoots: graph.workerRoots.slice(0, 1), cards: [plain] }).store.minDrwnVersion)
+    .toBe(PROJECT_WORKER_MIN_DRWN_VERSION);
+});
+
+test("lock preserves admission declarations and raises the exact Worker 1.3 floor", async () => {
+  const root = await createTempRoot("card-lock-admission-");
+  tempRoots.push(root);
+  const entry = card("@me/admitted", {
+    manifest: {
+      name: "@me/admitted",
+      version: "1.0.0",
+      runtimeAdmission: { version: 1, servers: {}, requirements: [] },
+      applicationRequirements: { version: 1, apps: [] },
+    },
+  });
+  const graph = lock({
+    workerRoots: [{ name: entry.name, requested: entry.requested, kind: "card", members: [] }],
+    cards: [entry],
+  });
+
+  await writeCardLock(root, graph);
+  const loaded = await loadCardLock(root);
+
+  expect(loaded?.store.minDrwnVersion).toBe("1.3.0");
+  expect(loaded?.store.minDrwnVersion).toBe(RUNTIME_ADMISSION_MIN_DRWN_VERSION);
+  expect(loaded?.cards[0]?.manifest.runtimeAdmission).toEqual({ version: 1, servers: {}, requirements: [] });
+  expect(loaded?.cards[0]?.manifest.applicationRequirements).toEqual({ version: 1, apps: [] });
+});
+
+test("either new declaration alone raises the 1.3 floor while absence remains historical", () => {
+  const root = { name: "@me/one", requested: "@me/one@^1.0.0", kind: "card" as const, members: [] };
+  for (const manifest of [
+    { name: "@me/one", version: "1.0.0", runtimeAdmission: { version: 1 as const, servers: {}, requirements: [] } },
+    { name: "@me/one", version: "1.0.0", applicationRequirements: { version: 1 as const, apps: [] } },
+  ]) {
+    const entry = card("@me/one", { manifest });
+    expect(createCardLockfile({ workerRoots: [root], cards: [entry] }).store.minDrwnVersion).toBe("1.3.0");
+  }
+  expect(createCardLockfile({ workerRoots: [root], cards: [card("@me/one")] }).store.minDrwnVersion)
     .toBe(PROJECT_WORKER_MIN_DRWN_VERSION);
 });
 

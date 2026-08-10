@@ -8,6 +8,23 @@ test("validateCardManifest accepts a minimal valid manifest", () => {
   expect(validateCardManifest({ name: "@me/backend", version: "1.0.0" })).toEqual({ ok: true, errors: [] });
 });
 
+test("validateCardManifest delegates strict runtime-admission declarations", () => {
+  expect(validateCardManifest({
+    name: "@me/backend",
+    version: "1.0.0",
+    runtimeAdmission: { version: 1, servers: {}, requirements: [] },
+    applicationRequirements: { version: 1, apps: [] },
+  })).toEqual({ ok: true, errors: [] });
+
+  const invalid = validateCardManifest({
+    name: "@me/backend",
+    version: "1.0.0",
+    runtimeAdmission: { version: 1, servers: {}, requirements: [], fallback: true },
+  });
+  expect(invalid.ok).toBe(false);
+  expect(invalid.errors.join("\n")).toContain("runtimeAdmission");
+});
+
 test("validateCardManifest rejects missing name or version", () => {
   const result = validateCardManifest({});
   expect(result.ok).toBe(false);
