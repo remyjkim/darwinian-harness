@@ -193,6 +193,37 @@ test("rejects oversized and exact/NFC-colliding identifiers", () => {
   expect(validateRuntimeAdmissionDeclarations(collision).errors.join("\n")).toMatch(/NFC|duplicate/i);
 });
 
+test("enforces the 128-entry runtime server and requirement bounds", () => {
+  const requirement = (index: number) => ({
+    requirementId: `req-${index}`,
+    probeId: "glibc-version-v1",
+    expected: { platformCapabilities: ["glibc>=2.31"] },
+  });
+  const overRequirements = {
+    runtimeAdmission: {
+      version: 1,
+      servers: {},
+      requirements: Array.from({ length: 129 }, (_, index) => requirement(index)),
+    },
+  };
+  expect(validateRuntimeAdmissionDeclarations(overRequirements).ok).toBe(false);
+
+  const serverEntries = Array.from({ length: 129 }, (_, index) => [`server-${index}`, rawServer()]);
+  const overServers = {
+    servers: Object.fromEntries(serverEntries),
+    runtimeAdmission: {
+      version: 1,
+      servers: Object.fromEntries(
+        serverEntries.map(([serverId]) => [serverId, { authMode: "none", requirementIds: [] }]),
+      ),
+      requirements: [],
+    },
+  };
+  const result = validateRuntimeAdmissionDeclarations(overServers);
+  expect(result.ok).toBe(false);
+  expect(result.errors.join("\n")).toContain("128");
+});
+
 test("enforces the 128-entry application bound", () => {
   const app = { app: "a", pipedreamApp: "a" };
   const atBound = { applicationRequirements: { version: 1, apps: Array.from({ length: 128 }, (_, i) => ({ ...app, app: `a-${i}` })) } };
