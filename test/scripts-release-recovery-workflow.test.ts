@@ -12,8 +12,12 @@ describe("Worker release recovery workflow", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("failed_run_id:");
     expect(workflow).toContain("authorization_receipt:");
-    expect(workflow).toContain('GITHUB_REF" != "refs/tags/v1.2.0"');
-    expect(workflow).toContain('git cat-file -t "refs/tags/v1.2.0"');
+    expect(workflow).toContain('GITHUB_REF" != "refs/tags/v1.3.0"');
+    expect(workflow).toContain('git cat-file -t "refs/tags/v1.3.0"');
+    // The recovery lane serialises per released version, and every job checks out that
+    // same tag by name rather than whatever the dispatch happened to select.
+    expect(workflow).toContain("group: cli-release-recovery-v1.3.0");
+    expect(workflow.match(/ref: refs\/tags\/v1\.3\.0/g)).toHaveLength(3);
     expect(workflow).toContain('FAILED_RUN_ID: ${{ inputs.failed_run_id }}');
     expect(workflow).toContain('[[ "$FAILED_RUN_ID" =~ ^[1-9][0-9]*$ ]]');
     expect(workflow).toContain('actions/runs/$FAILED_RUN_ID');

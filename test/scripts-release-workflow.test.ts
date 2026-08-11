@@ -112,7 +112,7 @@ describe("Worker release dry-run workflow", () => {
   test("uploads exactly the tar and pre-upload receipt once under immutable artifact settings", () => {
     expect(workflow.match(/actions\/upload-artifact@v4/g)).toHaveLength(1);
     expect(workflow).toContain("name: darwinian-worker-release-candidate");
-    expect(workflow).toContain("darwinian-1.2.0.tgz");
+    expect(workflow).toContain("darwinian-1.3.0.tgz");
     expect(workflow).toContain("release-candidate.json");
     expect(workflow).toContain("if-no-files-found: error");
     expect(workflow).toContain("overwrite: false");
@@ -125,9 +125,12 @@ describe("Worker release dry-run workflow", () => {
 });
 
 describe("Worker annotated-tag publication workflow", () => {
-  test("accepts only the exact v1.2.0 annotated tag and validates its bound run and artifact before protection", () => {
+  test("accepts only the exact v1.3.0 annotated tag and validates its bound run and artifact before protection", () => {
     const validation = job("validate_tag", "publish");
-    expect(workflow).toContain("push:\n    tags:\n      - 'v1.2.0'");
+    expect(workflow).toContain("push:\n    tags:\n      - 'v1.3.0'");
+    // Every post-validation job checks out the same released tag by name; a stale one
+    // would qualify or publish a different commit than the trigger authorized.
+    expect(workflow.match(/ref: refs\/tags\/v1\.3\.0/g)).toHaveLength(3);
     expect(validation).toContain("name: Validate authorized tag");
     expect(validation).toContain("actions: read");
     expect(validation).toContain('git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"');
@@ -158,9 +161,9 @@ describe("Worker annotated-tag publication workflow", () => {
     expect(publish).toContain("bun scripts/release-cli.ts assert-unpublished");
     expect(publish).toContain("actions/artifacts/${{ needs.validate_tag.outputs.artifact_id }}/zip");
     expect(publish).toContain("bun scripts/release-cli.ts requalify-artifact");
-    expect(publish).toContain('npm publish "./candidate/darwinian-1.2.0.tgz" --access public');
+    expect(publish).toContain('npm publish "./candidate/darwinian-1.3.0.tgz" --access public');
     expect(publish).not.toContain("npm pack --ignore-scripts");
-    expect(publish).toContain('npm pack "darwinian@1.2.0"');
+    expect(publish).toContain('npm pack "darwinian@1.3.0"');
     expect(publish).not.toContain("NODE_AUTH_TOKEN");
     expect(publish).not.toContain("NPM_TOKEN");
   });

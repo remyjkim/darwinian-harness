@@ -34,6 +34,52 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registry default for the cursor target is now off — enable it explicitly
   via machine policy or a project override to keep projecting.
 
+## [1.3.0] - Unreleased
+
+### Added
+
+- Runtime-admission declarations on Card manifests. A Card may declare
+  `runtimeAdmission` (local stdio servers with `authMode: none` and their
+  requirement probes) and `applicationRequirements` (the apps it needs). Both
+  survive the lock, and the presence of either raises the emitted
+  `store.minDrwnVersion` floor to `1.3.0`.
+- A required runtime-admission envelope on every deploy payload. The Worker
+  derives canonical activation and requirement manifests from the exact locked
+  closure and emits them before it builds a store archive. The materializer
+  rederives and byte-compares that envelope before its first filesystem effect,
+  so a tampered payload is rejected before any directory, archive, or artifact
+  exists.
+
+### Changed
+
+- **Breaking hard cut.** Runtime admission is all-or-nothing: every deployable
+  Card must declare both `runtimeAdmission` and `applicationRequirements`.
+  Closures where every Card omits them, where some declare and others omit,
+  where either is `null`, or where the declaration version is unknown are
+  rejected in every runtime-admission mode, including `off`. Explicit empty
+  intent (`{"version": 1, "servers": {}, "requirements": []}`) is valid;
+  absence is not. There is no compatibility reader and no shared-state
+  fallback.
+- Existing deployments are not migrated. They must be deliberately recreated
+  from a fully declared closure, or handled by a separately reviewed offline
+  migration. Upgrading the Worker alone does not convert them.
+- The package/runtime candidate identity is `1.3.0`; the first-supported Worker
+  compatibility floor remains `1.1.0`, while project and semantic Mind floors
+  remain `0.8.0` and `0.9.0`.
+
+### Removed
+
+- The packaged `buzz-delivery-worker` registry Card. It was never the actual
+  Finch Card, and the Worker no longer ships a Card of its own or requires one
+  as a release member.
+
+### Qualification boundary
+
+- This source release does not create or qualify a release. No tag, candidate,
+  package publication, registry reconciliation, image adoption, or Card
+  publication is performed or implied here, and no successor release identity
+  is recorded until it is independently qualified.
+
 ## [1.2.0] - 2026-08-07
 
 ### Added

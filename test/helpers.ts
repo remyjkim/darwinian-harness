@@ -208,6 +208,7 @@ export async function publishCardWithSkills(
     servers?: Record<string, unknown>;
     instructions?: { text: string };
     hooks?: string[];
+    manifestExtra?: Record<string, unknown>;
   },
 ): Promise<string> {
   const version = options.version ?? "1.0.0";
@@ -237,6 +238,9 @@ export async function publishCardWithSkills(
   }
   if (options.hooks && options.hooks.length > 0) {
     manifest.hooks = { include: options.hooks };
+  }
+  if (options.manifestExtra) {
+    Object.assign(manifest, options.manifestExtra);
   }
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 

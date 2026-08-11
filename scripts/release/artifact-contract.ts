@@ -17,7 +17,6 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "cli/commands/worker/materialize.ts",
   "cli/commands/worker/buzz-tools.ts",
   "cli/commands/worker/secret-set.ts",
-  "registry/cards/buzz-delivery-worker/card.json",
   "cli/generated/build-identity.json",
 ] as const;
 

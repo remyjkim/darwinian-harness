@@ -7,6 +7,11 @@ import { isStrictSemver, validRange } from "./semver-utils";
 import { isSafePathPart } from "./store-paths";
 import { DrwnError } from "./errors";
 import { parseUpstreamRef } from "./git-ref";
+import {
+  validateRuntimeAdmissionDeclarations,
+  type CardApplicationRequirementsV1,
+  type CardRuntimeAdmissionV1,
+} from "./runtime-admission-manifest";
 
 export type MindContentVisibility = "private" | "internal" | "public";
 export type MemoryKind = "observations" | "insights";
@@ -49,6 +54,8 @@ export interface CardManifest {
   beliefs?: BeliefsManifest;
   memory?: MemoryManifest;
   servers?: Record<string, ServerOverride>;
+  runtimeAdmission?: CardRuntimeAdmissionV1;
+  applicationRequirements?: CardApplicationRequirementsV1;
   extensions?: Record<string, ProjectExtensionConfig>;
   targets?: Partial<Record<TargetName, { enabled: boolean }>>;
   stability?: "experimental" | "stable" | "production";
@@ -354,6 +361,7 @@ export function validateCardManifest(input: unknown): CardManifestValidationResu
       errors.push(`servers.${name}.headers must be a string-to-string map`);
     }
   }
+  errors.push(...validateRuntimeAdmissionDeclarations(record).errors);
   return { ok: errors.length === 0, errors };
 }
 

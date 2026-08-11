@@ -33,10 +33,10 @@ afterEach(async () => {
 
 function packJson(bytes: Buffer, overrides: Record<string, unknown> = {}): string {
   return JSON.stringify([{
-    id: "darwinian@1.2.0",
+    id: "darwinian@1.3.0",
     name: "darwinian",
-    version: "1.2.0",
-    filename: "darwinian-1.2.0.tgz",
+    version: "1.3.0",
+    filename: "darwinian-1.3.0.tgz",
     size: bytes.length,
     shasum: createHash("sha1").update(bytes).digest("hex"),
     integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
@@ -46,6 +46,12 @@ function packJson(bytes: Buffer, overrides: Record<string, unknown> = {}): strin
 }
 
 describe("release package member qualification", () => {
+  test("no longer requires the retired Buzz delivery Card as a release member", () => {
+    const retiredCardPath = ["registry", "cards", "buzz-delivery-worker", "card.json"].join("/");
+
+    expect(REQUIRED_RELEASE_MEMBERS).not.toContain(retiredCardPath);
+  });
+
   test("accepts every required source member plus generated build identity", () => {
     expect(qualifyPackageMembers([...REQUIRED_RELEASE_MEMBERS])).toEqual([...REQUIRED_RELEASE_MEMBERS]);
   });
@@ -97,21 +103,21 @@ describe("packed artifact measurement", () => {
         ? JSON.stringify({
           schema: "darwinian.worker.build-identity",
           schemaVersion: 1,
-          version: "1.2.0",
+          version: "1.3.0",
           sourceCommit: SOURCE_COMMIT,
         })
         : "fixture\n");
     }
-    const artifactPath = join(root, "darwinian-1.2.0.tgz");
+    const artifactPath = join(root, "darwinian-1.3.0.tgz");
     await tar.c({ gzip: true, file: artifactPath, cwd: root }, ["package"]);
     const bytes = Buffer.from(await Bun.file(artifactPath).arrayBuffer());
     const result = await requalifyReceivedArtifact({
       artifactPath,
       expected: {
         packageName: "darwinian",
-        version: "1.2.0",
+        version: "1.3.0",
         sourceCommit: SOURCE_COMMIT,
-        filename: "darwinian-1.2.0.tgz",
+        filename: "darwinian-1.3.0.tgz",
         byteLength: bytes.length,
         sha1: createHash("sha1").update(bytes).digest("hex"),
         sha256: createHash("sha256").update(bytes).digest("hex"),
@@ -125,28 +131,28 @@ describe("packed artifact measurement", () => {
   test("parses one actual pack result and binds byte identities to checkout and build identity", async () => {
     const root = await tempRoot();
     const bytes = Buffer.from("qualified tar bytes");
-    await writeFile(join(root, "darwinian-1.2.0.tgz"), bytes);
+    await writeFile(join(root, "darwinian-1.3.0.tgz"), bytes);
 
     const result = await qualifyPackedArtifact({
       packDirectory: root,
       packResultJson: packJson(bytes),
       expectedPackageName: "darwinian",
-      expectedVersion: "1.2.0",
+      expectedVersion: "1.3.0",
       checkoutCommit: SOURCE_COMMIT,
     }, {
       readBuildIdentity: async () => ({
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.3.0",
         sourceCommit: SOURCE_COMMIT,
       }),
     });
 
     expect(result).toEqual({
       packageName: "darwinian",
-      version: "1.2.0",
+      version: "1.3.0",
       sourceCommit: SOURCE_COMMIT,
-      filename: "darwinian-1.2.0.tgz",
+      filename: "darwinian-1.3.0.tgz",
       byteLength: bytes.length,
       sha1: createHash("sha1").update(bytes).digest("hex"),
       sha256: createHash("sha256").update(bytes).digest("hex"),
@@ -156,8 +162,8 @@ describe("packed artifact measurement", () => {
   });
 
   test.each([
-    ["path traversal", { filename: "../darwinian-1.2.0.tgz" }],
-    ["absolute path", { filename: "/tmp/darwinian-1.2.0.tgz" }],
+    ["path traversal", { filename: "../darwinian-1.3.0.tgz" }],
+    ["absolute path", { filename: "/tmp/darwinian-1.3.0.tgz" }],
     ["renamed tar", { filename: "other.tgz" }],
     ["wrong package", { name: "other" }],
     ["wrong version", { version: "1.2.1" }],
@@ -168,7 +174,7 @@ describe("packed artifact measurement", () => {
   ])("rejects %s", async (_label, overrides) => {
     const root = await tempRoot();
     const bytes = Buffer.from("qualified tar bytes");
-    await writeFile(join(root, "darwinian-1.2.0.tgz"), bytes);
+    await writeFile(join(root, "darwinian-1.3.0.tgz"), bytes);
     const json = overrides === null
       ? JSON.stringify([...JSON.parse(packJson(bytes)), ...JSON.parse(packJson(bytes))])
       : packJson(bytes, overrides);
@@ -176,13 +182,13 @@ describe("packed artifact measurement", () => {
       packDirectory: root,
       packResultJson: json,
       expectedPackageName: "darwinian",
-      expectedVersion: "1.2.0",
+      expectedVersion: "1.3.0",
       checkoutCommit: SOURCE_COMMIT,
     }, {
       readBuildIdentity: async () => ({
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.3.0",
         sourceCommit: SOURCE_COMMIT,
       }),
     })).rejects.toThrow();
@@ -191,17 +197,17 @@ describe("packed artifact measurement", () => {
   test("rejects mismatched build and checkout tuples", async () => {
     for (const scenario of [
       { identity: { version: "1.2.1", sourceCommit: SOURCE_COMMIT }, checkoutCommit: SOURCE_COMMIT },
-      { identity: { version: "1.2.0", sourceCommit: "b".repeat(40) }, checkoutCommit: SOURCE_COMMIT },
-      { identity: { version: "1.2.0", sourceCommit: SOURCE_COMMIT }, checkoutCommit: "A".repeat(40) },
+      { identity: { version: "1.3.0", sourceCommit: "b".repeat(40) }, checkoutCommit: SOURCE_COMMIT },
+      { identity: { version: "1.3.0", sourceCommit: SOURCE_COMMIT }, checkoutCommit: "A".repeat(40) },
     ]) {
       const root = await tempRoot();
       const bytes = Buffer.from("qualified tar bytes");
-      await writeFile(join(root, "darwinian-1.2.0.tgz"), bytes);
+      await writeFile(join(root, "darwinian-1.3.0.tgz"), bytes);
       await expect(qualifyPackedArtifact({
         packDirectory: root,
         packResultJson: packJson(bytes),
         expectedPackageName: "darwinian",
-        expectedVersion: "1.2.0",
+        expectedVersion: "1.3.0",
         checkoutCommit: scenario.checkoutCommit,
       }, {
         readBuildIdentity: async () => ({
@@ -217,24 +223,24 @@ describe("packed artifact measurement", () => {
 describe("installed artifact smokes", () => {
   test("installs into an isolated prefix/cache and invokes only the installed bin for all eight safe smokes", async () => {
     const root = await tempRoot();
-    const artifact = join(root, "darwinian-1.2.0.tgz");
+    const artifact = join(root, "darwinian-1.3.0.tgz");
     const calls: Array<{ command: string[]; cwd: string; env: Record<string, string | undefined> }> = [];
     await writeFile(artifact, "fixture");
     const runner: ReleaseCommandRunner = async (command, options) => {
       calls.push({ command, cwd: options.cwd, env: options.env });
-      return { exitCode: 0, stdout: command.includes("--version") ? "1.2.0\n" : "Usage\n", stderr: "" };
+      return { exitCode: 0, stdout: command.includes("--version") ? "1.3.0\n" : "Usage\n", stderr: "" };
     };
 
     const result = await runInstalledArtifactSmokes({
       artifactPath: artifact,
-      expectedVersion: "1.2.0",
+      expectedVersion: "1.3.0",
       workspaceRoot: join(root, "smoke"),
     }, {
       run: runner,
       resolveInstalledBin: async (prefix) => join(await realpath(prefix), "lib", "node_modules", "darwinian", "cli", "index.ts"),
     });
 
-    expect(result).toEqual({ version: "1.2.0", passed: SAFE_INSTALLED_SMOKES.map((smoke) => smoke.join(" ")) });
+    expect(result).toEqual({ version: "1.3.0", passed: SAFE_INSTALLED_SMOKES.map((smoke) => smoke.join(" ")) });
     expect(calls).toHaveLength(1 + SAFE_INSTALLED_SMOKES.length);
     expect(calls[0]?.command.slice(0, 4)).toEqual(["npm", "install", "--global", artifact]);
     for (const [index, smoke] of SAFE_INSTALLED_SMOKES.entries()) {
@@ -251,7 +257,7 @@ describe("installed artifact smokes", () => {
 
   test("fails when version output differs or a help smoke mutates quarantined auth/project state", async () => {
     const root = await tempRoot();
-    const artifact = join(root, "darwinian-1.2.0.tgz");
+    const artifact = join(root, "darwinian-1.3.0.tgz");
     await writeFile(artifact, "fixture");
     const workspaceRoot = join(root, "smoke");
     let smokeCount = 0;
@@ -262,9 +268,9 @@ describe("installed artifact smokes", () => {
         await mkdir(options.env.AGENTS_DIR!, { recursive: true });
         await writeFile(join(options.env.AGENTS_DIR!, "unexpected"), "mutation");
       }
-      return { exitCode: 0, stdout: smokeCount === 1 ? "1.2.0\n" : "Usage\n", stderr: "" };
+      return { exitCode: 0, stdout: smokeCount === 1 ? "1.3.0\n" : "Usage\n", stderr: "" };
     };
-    await expect(runInstalledArtifactSmokes({ artifactPath: artifact, expectedVersion: "1.2.0", workspaceRoot }, {
+    await expect(runInstalledArtifactSmokes({ artifactPath: artifact, expectedVersion: "1.3.0", workspaceRoot }, {
       run: runner,
       resolveInstalledBin: async (prefix) => join(await realpath(prefix), "lib", "node_modules", "darwinian", "cli", "index.ts"),
     })).rejects.toThrow("mutated quarantined state");
@@ -273,7 +279,7 @@ describe("installed artifact smokes", () => {
 
 describe("published registry byte identity", () => {
   const expected = {
-    version: "1.2.0",
+    version: "1.3.0",
     sourceCommit: SOURCE_COMMIT,
     sha1: "c".repeat(40),
     integrity: `sha512-${Buffer.alloc(64, 1).toString("base64")}`,
@@ -281,12 +287,12 @@ describe("published registry byte identity", () => {
 
   test("requires version and registry byte identity and validates gitHead wherever reported", () => {
     expect(verifyPublishedRegistryIdentity({
-      version: "1.2.0",
+      version: "1.3.0",
       gitHead: SOURCE_COMMIT,
       dist: { shasum: expected.sha1, integrity: expected.integrity },
     }, expected)).toEqual({ ...expected, gitHead: SOURCE_COMMIT });
     expect(verifyPublishedRegistryIdentity({
-      version: "1.2.0",
+      version: "1.3.0",
       dist: { shasum: expected.sha1, integrity: expected.integrity },
     }, expected)).toEqual({ ...expected, gitHead: null });
   });
@@ -294,15 +300,15 @@ describe("published registry byte identity", () => {
   test("fails on mismatches, malformed metadata, and absent gitHead when recovery requires it", () => {
     for (const metadata of [
       { version: "1.2.1", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: expected.integrity } },
-      { version: "1.2.0", gitHead: "b".repeat(40), dist: { shasum: expected.sha1, integrity: expected.integrity } },
-      { version: "1.2.0", gitHead: SOURCE_COMMIT, dist: { shasum: "d".repeat(40), integrity: expected.integrity } },
-      { version: "1.2.0", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: "bad" } },
-      { version: "1.2.0", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: expected.integrity }, extra: true },
+      { version: "1.3.0", gitHead: "b".repeat(40), dist: { shasum: expected.sha1, integrity: expected.integrity } },
+      { version: "1.3.0", gitHead: SOURCE_COMMIT, dist: { shasum: "d".repeat(40), integrity: expected.integrity } },
+      { version: "1.3.0", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: "bad" } },
+      { version: "1.3.0", gitHead: SOURCE_COMMIT, dist: { shasum: expected.sha1, integrity: expected.integrity }, extra: true },
     ]) {
       expect(() => verifyPublishedRegistryIdentity(metadata, expected)).toThrow();
     }
     expect(() => verifyPublishedRegistryIdentity({
-      version: "1.2.0",
+      version: "1.3.0",
       dist: { shasum: expected.sha1, integrity: expected.integrity },
     }, expected, { requireGitHead: true })).toThrow();
   });

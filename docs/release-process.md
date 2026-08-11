@@ -1,9 +1,9 @@
 # Release Process
 
-## Releasing a new CLI version: Darwinian Worker 1.2.0
+## Releasing a new CLI version: Darwinian Worker 1.3.0
 
 The CLI release is a two-event, exact-byte process. Manual dispatch can only
-qualify current `main`; it cannot publish. A later exact annotated `v1.2.0` tag
+qualify current `main`; it cannot publish. A later exact annotated `v1.3.0` tag
 authorizes publication of the one artifact uploaded by that dry run. No path
 treats an already-published version as successful qualification of new source.
 
@@ -21,7 +21,7 @@ bun run verify:release
 ```
 
 Package version, runtime version, and generated build identity must agree on
-`1.2.0`. A source/development identity is explicitly non-eligible. Source
+`1.3.0`. A source/development identity is explicitly non-eligible. Source
 availability is not installed qualification: the workflow must generate the
 build identity from clean Git, pack once, require the ACP/materialize/Buzz/secret
 members, install that exact tar, and run all eight safe version/help smokes.
@@ -30,13 +30,13 @@ part of the retained release evidence.
 
 ### 2. Run the immutable dry run
 
-Dispatch `CLI Release` from `main` with version `1.2.0` and `dry_run: true`.
+Dispatch `CLI Release` from `main` with version `1.3.0` and `dry_run: true`.
 The workflow rejects any other ref, a moved `origin/main`, a package-version
-mismatch, an indeterminate registry result, or an existing `darwinian@1.2.0`.
+mismatch, an indeterminate registry result, or an existing `darwinian@1.3.0`.
 It runs the full qualification gates, packs once, installs once, and uploads
 exactly:
 
-- `darwinian-1.2.0.tgz`; and
+- `darwinian-1.3.0.tgz`; and
 - `release-candidate.json`.
 
 Record the dry-run run ID and attempt, artifact ID and digest, source commit,
@@ -56,7 +56,7 @@ fresh, normalized evidence for both external control planes:
 - GitHub environment `darwinian-npm-publish` matches the declared approval
   policy in `scripts/release/release-policy.json` for required reviewers and
   self-review, disallows admin bypass, enables custom deployment policies, and
-  admits only tag `v1.2.0`. Under the current policy the tag is created by
+  admits only tag `v1.3.0`. Under the current policy the tag is created by
   `remyjkim` and the deployment is approved by the distinct `mind001-cl`
   credential with self-review prevented, so the `remyjkim` token alone cannot
   both authorize and publish. Both identities belong to the same maintainer, so
@@ -79,12 +79,12 @@ Create a tag message containing a human title and exactly one closed machine
 block. Substitute only values copied from the successful dry run:
 
 ```text
-Darwinian Worker CLI v1.2.0
+Darwinian Worker CLI v1.3.0
 
 -----BEGIN DARWINIAN WORKER RELEASE AUTHORIZATION-----
 schema=darwinian.worker.release-authorization
 schema_version=1
-version=1.2.0
+version=1.3.0
 dry_run_run_id=<run-id>
 dry_run_run_attempt=<attempt>
 artifact_id=<artifact-id>
@@ -92,12 +92,12 @@ artifact_digest=sha256:<artifact-archive-digest>
 -----END DARWINIAN WORKER RELEASE AUTHORIZATION-----
 ```
 
-Create and inspect the annotated `v1.2.0` tag locally before pushing it:
+Create and inspect the annotated `v1.3.0` tag locally before pushing it:
 
 ```bash
-git tag -a v1.2.0 --file release-tag-message.txt
-git cat-file -p refs/tags/v1.2.0
-git push origin v1.2.0
+git tag -a v1.3.0 --file release-tag-message.txt
+git cat-file -p refs/tags/v1.3.0
+git push origin v1.3.0
 ```
 
 The tag workflow requires the tag to peel to the dry-run source, the checkout,
@@ -115,7 +115,7 @@ checks. It then publishes the downloaded exact tarball; it does not repack the
 checkout:
 
 ```bash
-npm publish "./candidate/darwinian-1.2.0.tgz" --access public
+npm publish "./candidate/darwinian-1.3.0.tgz" --access public
 ```
 
 There is no `NPM_TOKEN` or maintainer-token fallback for the `darwinian` CLI.
@@ -132,7 +132,7 @@ target commit, title, and body exactly match the annotated tag.
 The read-only registry metadata check is:
 
 ```bash
-npm view darwinian@1.2.0 version gitHead dist.shasum dist.integrity --json
+npm view darwinian@1.3.0 version gitHead dist.shasum dist.integrity --json
 ```
 
 Record the registry metadata, both installed-smoke results, tag/commit, GitHub
@@ -148,10 +148,10 @@ authorization, or production traffic proof.
 ### Recovery after npm publication
 
 If npm publication succeeds but a later registry smoke or GitHub Release step
-fails, the ordinary workflow cannot be rerun because `1.2.0` now exists. Use
+fails, the ordinary workflow cannot be rerun because `1.3.0` now exists. Use
 `.github/workflows/release-recovery.yml` only after a new policy-conformant approval.
 
-Dispatch `CLI Release Recovery` with ref `v1.2.0`, the exact failed canonical
+Dispatch `CLI Release Recovery` with ref `v1.3.0`, the exact failed canonical
 release run ID, and this closed authorization JSON (with the real canonical
 timestamp and run ID):
 
@@ -160,7 +160,7 @@ timestamp and run ID):
   "schema": "darwinian.worker.release-recovery-authorization",
   "schemaVersion": 1,
   "authorizedAt": "2026-08-08T00:00:00.000Z",
-  "tag": "v1.2.0",
+  "tag": "v1.3.0",
   "failedRunId": 123456789,
   "action": "verify_and_repair_metadata"
 }

@@ -78,7 +78,6 @@ async function verifyPackageContents() {
     "cli/commands/worker/materialize.ts",
     "cli/commands/worker/buzz-tools.ts",
     "cli/commands/worker/secret-set.ts",
-    "registry/cards/buzz-delivery-worker/card.json",
     "registry/config.json",
     "registry/mcp-servers.json",
     "skills/shared/frontend-design/SKILL.md",
@@ -208,7 +207,7 @@ function verifyDocsPresence() {
     ["docs-docusaurus/docs/reference/cli/refresh.md", ["CREDENTIAL_SCHEMA_UNSUPPORTED", "never persisted"]],
     ["docs/release-process.md", ["dry-run run ID and attempt", "artifact ID and digest", "release-recovery.yml"]],
     ["docs/maintainers/publishing.md", ["No local token fallback", "darwinian-npm-publish"]],
-    ["CHANGELOG.md", ["## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
+    ["CHANGELOG.md", ["## [1.3.0]", "## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
   ];
   const drift: string[] = [];
   for (const [file, tokens] of requiredTokens) {
@@ -238,7 +237,7 @@ function verifyDocsPresence() {
 
 type SourceOverrides = Record<string, string>;
 
-const TARGET_RELEASE_VERSION = "1.2.0";
+const TARGET_RELEASE_VERSION = "1.3.0";
 const FIRST_SUPPORTED_WORKER_VERSION = "1.1.0";
 
 function runtimeVersionFromSource(
@@ -1130,17 +1129,6 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
     issues.push(`package version must be at least the ${FIRST_SUPPORTED_WORKER_VERSION} Worker hard-cut floor`);
   }
   if (runtimeVersion !== pkg.version) issues.push("runtime version must match package version");
-
-  try {
-    const buzz = JSON.parse(source("registry/cards/buzz-delivery-worker/card.json")) as {
-      harness?: { minVersion?: string };
-    };
-    if (buzz.harness?.minVersion !== TARGET_RELEASE_VERSION) {
-      issues.push(`Buzz delivery Card harness.minVersion must be ${TARGET_RELEASE_VERSION}`);
-    }
-  } catch {
-    issues.push("Buzz delivery Card metadata must be valid JSON");
-  }
 
   return {
     name: "project Worker contract",

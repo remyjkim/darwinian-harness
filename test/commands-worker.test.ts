@@ -104,6 +104,12 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Promise<Respons
   globalThis.fetch = handler as unknown as typeof fetch;
 }
 
+/** A deployable Card declares runtime admission and application requirements; a serverless Card declares both empty. */
+const emptyDeclarations = {
+  runtimeAdmission: { version: 1, servers: {}, requirements: [] },
+  applicationRequirements: { version: 1, apps: [] },
+};
+
 describe("worker config and secrets", () => {
   test("uses new defaults and DRWN studio endpoint overrides", () => {
     expect(resolveWorkerConfig({})).toEqual({
@@ -406,7 +412,7 @@ describe("worker API commands", () => {
     process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
+    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"], manifestExtra: emptyDeclarations });
     const cwd = await mkdtemp(join(tmpdir(), "drwn-worker-test-"));
     tempRoots.push(cwd);
     process.chdir(cwd);
@@ -438,7 +444,7 @@ describe("worker API commands", () => {
     process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
+    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"], manifestExtra: emptyDeclarations });
     const cwd = await mkdtemp(join(tmpdir(), "drwn-worker-test-"));
     tempRoots.push(cwd);
     process.chdir(cwd);
@@ -477,7 +483,7 @@ describe("worker API commands", () => {
     process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
+    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"], manifestExtra: emptyDeclarations });
     const cwd = await mkdtemp(join(tmpdir(), "drwn-worker-test-"));
     tempRoots.push(cwd);
     process.chdir(cwd);
