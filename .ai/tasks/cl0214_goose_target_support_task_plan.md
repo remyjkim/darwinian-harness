@@ -5,7 +5,10 @@
 
 > Execute via the plan-execution skill (executing-plans or subagent-driven-development).
 
-**Status:** Candidate GATE 2 plan stacked behind candidate-v5 G1. This artifact is not approved for implementation, is not a G2 submission, and does not authorize production changes until G2 passes and the Owner acknowledges Received into Building.
+**Status:** Candidate GATE 2 plan amendment after exact-commit T5-R5 changes requested. This
+artifact requires renewed exact-byte Owner approval and review, is not approved for
+implementation, is not a G2 submission, and does not authorize production changes until G2
+passes and the Owner acknowledges Received into Building.
 
 **Goal:** Deliver first-class, project-only Goose support through a generic projection adapter and optional runtime observer, with complete proposed-state preflight, ordered recoverable commits, whole-image project projection recovery, truthful runtime qualification, and no Pi production scope.
 
@@ -294,6 +297,11 @@ For every task:
 6. Commit the test and implementation as one atomic behavior change unless the task is docs-only.
 
 Do not batch several unobserved RED tests before implementation.
+
+Plural behavior lists in the task steps below are eventual case catalogs, not authorization to
+create a batch of failing tests. Add one case, run that task's listed focused command to observe
+RED, implement the minimum behavior, rerun the same command to GREEN, and only then add the next
+case.
 
 ### Case catalog
 
@@ -910,11 +918,23 @@ Inject a late projection blocker after proposed acknowledgement, registry, store
 
 Return immutable proposed bytes/tokens. Commit independent upstream state only after preflight; revalidate before projection.
 
-**Step 4: Add and pass retry-required behavior**
+Run GREEN with the exact Step 2 command before adding another behavior.
+
+**Step 4: Add one failing retry-required behavior**
+
+    bun test test/core-project-commit-sequence.test.ts
+
+Expected: the new retry case fails for the asserted behavior, not fixture setup.
+
+**Step 5: Implement and pass retry-required behavior**
 
 Inject failure after an upstream commit. Assert retained upstream state, stable projection-retry-required output, and idempotent convergence.
 
-**Step 5: Commit**
+    bun test test/core-project-commit-sequence.test.ts
+
+Then rerun the complete Step 2 command and require GREEN.
+
+**Step 6: Commit**
 
     git add cli/core/project-preflight.ts cli/core/project-commit-sequence.ts cli/core/hook-consent-ack.ts cli/core/instruction-consent-ack.ts cli/core/project-registry.ts cli/core/card-store.ts cli/core/store-seed.ts cli/core/worker-materialize.ts test/core-project-preflight.test.ts test/core-project-commit-sequence.test.ts
     git commit -m "[other] preflight complete project operations"
@@ -999,14 +1019,11 @@ Run the RED command.
 
 ## Task 15: Implement the Goose leaf projection
 
-**Owner:** T2.
+**Owner:** T2 for Goose-local output, followed by a bounded T2 → T1 shared-wiring handoff.
 
 **Dependencies:** C1/C2 freezes and Task 14.
 
-**Files:**
-- Modify: cli/core/target-adapter-registry.ts
-- Modify: cli/context.ts
-- Modify: registry/target-adapters.json
+**T2-owned files:**
 - Create: cli/core/goose/adapter.ts
 - Create: cli/core/goose/plugin.ts
 - Create: cli/core/goose/mcp-codec.ts
@@ -1014,43 +1031,70 @@ Run the RED command.
 - Create: test/core-goose-adapter.test.ts
 - Create: test/core-goose-plugin.test.ts
 - Create: test/core-goose-mcp-codec.test.ts
-- Create: test/core-goose-registry.test.ts
 - Create: test/fixtures/goose/
 
-**Step 1: Write failing deterministic adapter and codec tests**
+**T1-owned files after the bounded handoff:**
+- Modify: cli/core/target-adapter-registry.ts
+- Modify: cli/context.ts
+- Modify: registry/target-adapters.json
+- Create: test/core-goose-registry.test.ts
+
+**Step 1: Implement deterministic adapter and codec behaviors one at a time**
 
 Cover exact plugin files, atomic unit identity, stdio-only server validation, raw unknown keys, safe
 literals, same-name inherited environment references, aliases/interpolation/reserved keys,
-machine/hook/recipe/committed-surface exclusions, explicit registry dispatch, and default-disabled
-selection.
+and machine/hook/recipe/committed-surface exclusions.
 
-**Step 2: Run RED**
+For each new behavior, add one failing case and run the following command to observe RED:
 
-    bun test test/core-goose-adapter.test.ts test/core-goose-plugin.test.ts test/core-goose-mcp-codec.test.ts test/core-goose-registry.test.ts
+    bun test test/core-goose-adapter.test.ts test/core-goose-plugin.test.ts test/core-goose-mcp-codec.test.ts
 
-**Step 3: Implement pure Goose renderers**
+Implement only that behavior and rerun the same command to GREEN before adding another case.
 
-The adapter declares instruction capability without owning AGENTS.md and consumes shared-skill plans
-without implementing their projector. Register it through the target-adapter registry and context
-composition path, and add its default-disabled descriptor to the packed registry. It authors no
-global Goose config.
+**Step 2: Complete the pure Goose renderers while green**
 
-**Step 4: Run GREEN and conformance**
+The adapter declares instruction capability without owning AGENTS.md and consumes shared-skill
+plans without implementing their projector. It authors no global Goose config and does not edit a
+T1 shared hotspot.
 
-    bun test test/core-goose-adapter.test.ts test/core-goose-plugin.test.ts test/core-goose-mcp-codec.test.ts test/core-goose-registry.test.ts test/core-target-shared-skills.test.ts test/core-target-projection-executor.test.ts
+**Step 3: Run full GREEN and conformance**
 
-**Step 5: Commit**
+    bun test test/core-goose-adapter.test.ts test/core-goose-plugin.test.ts test/core-goose-mcp-codec.test.ts test/core-target-shared-skills.test.ts test/core-target-projection-executor.test.ts
 
-    git add cli/core/target-adapter-registry.ts cli/context.ts registry/target-adapters.json cli/core/goose/adapter.ts cli/core/goose/plugin.ts cli/core/goose/mcp-codec.ts cli/core/goose/qualification.ts test/core-goose-adapter.test.ts test/core-goose-plugin.test.ts test/core-goose-mcp-codec.test.ts test/core-goose-registry.test.ts test/fixtures/goose
+**Step 4: T2 commits the frozen Goose leaf**
+
+    git add cli/core/goose/adapter.ts cli/core/goose/plugin.ts cli/core/goose/mcp-codec.ts cli/core/goose/qualification.ts test/core-goose-adapter.test.ts test/core-goose-plugin.test.ts test/core-goose-mcp-codec.test.ts test/fixtures/goose
     git commit -m "[other] add Goose project projection"
+
+**Step 5: Transfer the frozen leaf from T2 to T1 and write registry RED**
+
+T2 stops editing. T1 verifies the T2 commit, then adds one failing explicit-dispatch behavior and
+one failing default-disabled behavior sequentially. For each behavior, run:
+
+    bun test test/core-goose-registry.test.ts
+
+Observe RED, make only the minimum T1-owned registry/context change, and rerun the same command to
+GREEN before adding the next behavior.
+
+**Step 6: T1 runs registry and packaging GREEN**
+
+Register the frozen adapter through the target-adapter registry and context composition path, and
+add its default-disabled descriptor to the packed registry.
+
+    bun test test/core-goose-registry.test.ts test/core-target-adapter-registry.test.ts test/package-readiness.test.ts
+
+**Step 7: T1 commits bounded shared wiring**
+
+    git add cli/core/target-adapter-registry.ts cli/context.ts registry/target-adapters.json test/core-goose-registry.test.ts
+    git commit -m "[other] register the Goose projection adapter"
 
 ## Task 16: Implement the audited observer, strict envelope, and Goose consent command
 
-**Owner:** T2 for Goose interpretation; T4 reviews qualification safety.
+**Owner:** T2 for Goose interpretation, then T4 for consent, then T1 for bounded CLI registration.
 
 **Dependencies:** Task 11, Task 15, and frozen db7a704 audit fixtures.
 
-**Files:**
+**T2-owned files:**
 - Create: cli/core/goose/runtime-observer.ts
 - Create: cli/core/goose/skill-observer.ts
 - Create: cli/core/goose/installed-plugin-mirror.ts
@@ -1059,7 +1103,6 @@ global Goose config.
 - Create: cli/core/goose/state-machine.ts
 - Create: cli/core/goose/hook-observer.ts
 - Create: cli/core/goose/instruction-observer.ts
-- Create: cli/commands/target/consent.ts
 - Create: test/core-goose-runtime-observer.test.ts
 - Create: test/core-goose-skill-observer.test.ts
 - Create: test/core-goose-installed-plugin-mirror.test.ts
@@ -1068,24 +1111,38 @@ global Goose config.
 - Create: test/core-goose-state-machine.test.ts
 - Create: test/core-goose-hook-observer.test.ts
 - Create: test/core-goose-instruction-observer.test.ts
+
+**T4-owned files after the T2 → T4 handoff:**
+- Create: cli/commands/target/consent.ts
 - Create: test/commands-target-consent.test.ts
 - Create: test/scenarios-goose-preflight-order.test.ts
 - Modify: cli/core/target-projection/consent.ts
-- Modify: cli/index.ts
 - Modify: test/scenarios-org-worker-materialization.test.ts
 
-**Step 1: Write failing GOOSE_PATH_ROOT tests**
+**T1-owned files after the T4 → T1 handoff:**
+- Modify: cli/index.ts
+- Create: test/cli-target-consent-registration.test.ts
+
+For every step below, add exactly one new behavior, run the listed focused command to observe RED,
+implement the minimum change, and rerun that same command to GREEN before adding the next
+behavior. Do not batch unobserved failing tests.
+
+**Step 1: T2 implements the GOOSE_PATH_ROOT behaviors one at a time**
 
 Assert unset/empty/relative fallback, absolute Unicode selection, and absolute non-Unicode fail-closed consent/publication with cleanup/revoke still available.
 
-**Step 2: Write failing legacy/state-machine axis tests**
+    bun test test/core-goose-path-resolution.test.ts
+
+**Step 2: T2 implements the legacy/state-machine axis one behavior at a time**
 
 Assert only 1, true, TRUE, and yes enable state machine globally and that bang-shell dispatch
 selects it for one reply; enabled state always installs SkillOperation and discovers session-CWD
 skills independently of profile/recipe/persisted MCP vector; MCP stays extension-selected; chat
 skips load_skill/MCP.
 
-**Step 3: Write failing entry-point, name, collision, and hook tests**
+    bun test test/core-goose-state-machine.test.ts test/core-goose-skill-observer.test.ts
+
+**Step 3: T2 implements entry-point, name, collision, and hook behaviors one at a time**
 
 Remove legacy HTTP. Treat serve as ACP. Assert direct-CLI-only positive acceptance and distinct
 no-profile, recipe, resume, fork, term, review, ACP/serve, Desktop, scheduler, gateway, summon,
@@ -1097,7 +1154,15 @@ root agents-home AGENTS.md plus dynamic contained hints; recursive Open Plugin a
 behavior; Summon empty hooks/no ambient project-plugin rediscovery while its inherited/filtered
 session-carried MCP vector still loads; and ordinary orchestrator/restore process-CWD hooks.
 
-**Step 4: Bind the strict Goose consent command**
+    bun test test/core-goose-runtime-observer.test.ts test/core-goose-installed-plugin-mirror.test.ts test/core-goose-extension-selection.test.ts test/core-goose-hook-observer.test.ts test/core-goose-instruction-observer.test.ts
+
+**Step 4: T2 runs full observer GREEN and commits**
+
+    bun test test/core-goose-runtime-observer.test.ts test/core-goose-skill-observer.test.ts test/core-goose-installed-plugin-mirror.test.ts test/core-goose-path-resolution.test.ts test/core-goose-extension-selection.test.ts test/core-goose-state-machine.test.ts test/core-goose-hook-observer.test.ts test/core-goose-instruction-observer.test.ts
+    git add cli/core/goose/runtime-observer.ts cli/core/goose/skill-observer.ts cli/core/goose/installed-plugin-mirror.ts cli/core/goose/path-resolution.ts cli/core/goose/extension-selection.ts cli/core/goose/state-machine.ts cli/core/goose/hook-observer.ts cli/core/goose/instruction-observer.ts test/core-goose-runtime-observer.test.ts test/core-goose-skill-observer.test.ts test/core-goose-installed-plugin-mirror.test.ts test/core-goose-path-resolution.test.ts test/core-goose-extension-selection.test.ts test/core-goose-state-machine.test.ts test/core-goose-hook-observer.test.ts test/core-goose-instruction-observer.test.ts
+    git commit -m "[other] observe audited Goose runtime modes"
+
+**Step 5: Transfer the frozen observer from T2 to T4 and bind consent one behavior at a time**
 
 Derive the caller-supplied consent binding only after registered-adapter selection and read-only
 runtime observation. Bind the canonical project root, exact source/binary/build identity, supported
@@ -1107,61 +1172,85 @@ revoke, non-TTY refusal, historical 1.41 refusal, absolute-non-Unicode refusal, 
 preflight ordering, and Org Worker integration. The command never weakens the target-neutral
 receipt primitive.
 
-**Step 5: Implement the read-only observer and run GREEN**
+For each consent or integration behavior, use this exact RED→GREEN command before adding another:
 
-    bun test test/core-goose-runtime-observer.test.ts test/core-goose-skill-observer.test.ts test/core-goose-installed-plugin-mirror.test.ts test/core-goose-path-resolution.test.ts test/core-goose-extension-selection.test.ts test/core-goose-state-machine.test.ts test/core-goose-hook-observer.test.ts test/core-goose-instruction-observer.test.ts
     bun test test/commands-target-consent.test.ts test/scenarios-goose-preflight-order.test.ts test/scenarios-org-worker-materialization.test.ts
+
+**Step 6: T4 runs consent GREEN and commits**
+
+    bun test test/core-target-consent.test.ts test/commands-target-consent.test.ts test/scenarios-goose-preflight-order.test.ts test/scenarios-org-worker-materialization.test.ts
+    git add cli/core/target-projection/consent.ts cli/commands/target/consent.ts test/commands-target-consent.test.ts test/scenarios-goose-preflight-order.test.ts test/scenarios-org-worker-materialization.test.ts
+    git commit -m "[other] bind Goose runtime consent"
+
+**Step 7: Transfer the frozen command from T4 to T1 and register it RED→GREEN**
+
+T1 adds one failing CLI registration case, observes RED, changes only the shared entrypoint, and
+reruns the same command to GREEN:
+
+    bun test test/cli-target-consent-registration.test.ts
+
+**Step 8: T1 commits bounded registration and A0 runs conformance**
+
+    git add cli/index.ts test/cli-target-consent-registration.test.ts
+    git commit -m "[other] register Goose consent commands"
     bun run typecheck
 
 The observer never invokes Goose, Git, package launchers, or network access.
 
-**Step 6: Commit**
-
-    git add cli/core/goose/runtime-observer.ts cli/core/goose/skill-observer.ts cli/core/goose/installed-plugin-mirror.ts cli/core/goose/path-resolution.ts cli/core/goose/extension-selection.ts cli/core/goose/state-machine.ts cli/core/goose/hook-observer.ts cli/core/goose/instruction-observer.ts cli/core/target-projection/consent.ts cli/commands/target/consent.ts cli/index.ts test/core-goose-runtime-observer.test.ts test/core-goose-skill-observer.test.ts test/core-goose-installed-plugin-mirror.test.ts test/core-goose-path-resolution.test.ts test/core-goose-extension-selection.test.ts test/core-goose-state-machine.test.ts test/core-goose-hook-observer.test.ts test/core-goose-instruction-observer.test.ts test/commands-target-consent.test.ts test/scenarios-goose-preflight-order.test.ts test/scenarios-org-worker-materialization.test.ts
-    git commit -m "[other] qualify and consent Goose runtime modes"
-
 ## Task 17: Add ambient diagnostics and journal-aware watch behavior
 
-**Owner:** T4.
+**Owner:** T4 for diagnostics, followed by a bounded T4 → T1 watcher-wiring handoff.
 
 **Dependencies:** Task 16.
 
-**Files:**
+**T4-owned files:**
 - Create: cli/core/goose/ambient-classifier.ts
 - Create: test/core-goose-ambient.test.ts
-- Create: test/core-target-projection-watch.test.ts
 - Modify: cli/core/ambient-capabilities.ts
 - Modify: cli/core/ambient-policy.ts
 - Modify: cli/core/diagnostics.ts
 - Modify: cli/commands/status.ts
 - Modify: cli/commands/doctor.ts
-- Modify: cli/core/write-watch.ts
-- Modify: cli/core/write-watch-recursive.ts
 - Modify: test/commands-status.test.ts
 - Modify: test/commands-doctor.test.ts
+
+**T1-owned files after the bounded handoff:**
+- Create: test/core-target-projection-watch.test.ts
+- Modify: cli/core/write-watch.ts
+- Modify: cli/core/write-watch-recursive.ts
 - Modify: test/commands-write-watch.test.ts
 
-**Step 1: Write failing single-snapshot diagnostic tests**
+**Step 1: T4 implements single-snapshot diagnostics one behavior at a time**
 
 Assert one inspection feeds human, JSON, severity, and exit behavior across projection, transaction, consent, GOOSE_PATH_ROOT, state-machine, extension selection, skills, MCP, hooks, TUI launcher, and ambient registration.
 
-**Step 2: Write failing dynamic watcher tests**
+For each new behavior, add one failing case, run the following command to observe RED, implement
+the minimum change, and rerun it to GREEN before adding another:
+
+    bun test test/core-goose-ambient.test.ts test/core-diagnostics-sections.test.ts test/commands-status.test.ts test/commands-doctor.test.ts
+
+**Step 2: T4 commits diagnostics**
+
+    bun test test/core-goose-ambient.test.ts test/core-diagnostics-sections.test.ts test/commands-status.test.ts test/commands-doctor.test.ts
+    git add cli/core/goose/ambient-classifier.ts cli/core/ambient-capabilities.ts cli/core/ambient-policy.ts cli/core/diagnostics.ts cli/commands/status.ts cli/commands/doctor.ts test/core-goose-ambient.test.ts test/commands-status.test.ts test/commands-doctor.test.ts
+    git commit -m "[other] report Goose projection and activation"
+
+**Step 3: Transfer the frozen diagnostic snapshot from T4 to T1 and implement watcher behaviors one at a time**
 
 Cover absent roots, creation/deletion/recreation, native/fallback attachment parity, null filenames, watcher errors, unsafe roots, journal transitions, exact hash/mode suppression, retained paths, and no self-trigger masking.
 
-**Step 3: Run RED**
+For each new watcher behavior, use this exact RED→GREEN command before adding another:
 
-    bun test test/core-goose-ambient.test.ts test/core-target-projection-watch.test.ts test/core-diagnostics-sections.test.ts test/commands-status.test.ts test/commands-doctor.test.ts test/commands-write-watch.test.ts
+    bun test test/core-target-projection-watch.test.ts test/commands-write-watch.test.ts
 
-**Step 4: Implement read-only diagnostics and watcher refresh**
+**Step 4: T1 commits watcher refresh and A0 runs conformance**
 
 Never scan arbitrary map keys as filesystem paths, execute Goose, mutate ambient config, recover a journal, or expose secret values.
 
-**Step 5: Run GREEN and commit**
-
     bun test test/core-goose-ambient.test.ts test/core-target-projection-watch.test.ts test/core-diagnostics-sections.test.ts test/commands-status.test.ts test/commands-doctor.test.ts test/commands-write-watch.test.ts
-    git add cli/core/goose/ambient-classifier.ts cli/core/ambient-capabilities.ts cli/core/ambient-policy.ts cli/core/diagnostics.ts cli/commands/status.ts cli/commands/doctor.ts cli/core/write-watch.ts cli/core/write-watch-recursive.ts test/core-goose-ambient.test.ts test/core-target-projection-watch.test.ts test/commands-status.test.ts test/commands-doctor.test.ts test/commands-write-watch.test.ts
-    git commit -m "[other] report Goose projection and activation"
+    git add cli/core/write-watch.ts cli/core/write-watch-recursive.ts test/core-target-projection-watch.test.ts test/commands-write-watch.test.ts
+    git commit -m "[other] refresh target projection watchers"
+    bun run typecheck
 
 ## Task 18: Finish release, documentation, and qualification evidence
 

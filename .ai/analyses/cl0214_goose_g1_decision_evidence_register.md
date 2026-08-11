@@ -3,7 +3,7 @@
 
 # I214 Goose G1 Decision and Evidence Register
 
-**Status:** Candidate-v5 integrity frozen; documentation commit and exact-commit T5-R5 pending
+**Status:** Candidate-v5 amendment approved; replacement commit and exact-commit T5-R6 pending
 
 **Date:** 2026-08-10
 
@@ -428,6 +428,24 @@ amendments:
 The source audit is an evidence packet, not an agent or human G1 verdict. No Notion workflow
 state was read or changed by this work, and this register records no formal human Reviewer pass.
 
+### T5-R5 — Exact-commit review of candidate v5
+
+T5-R5 reviewed exact commit `35a1ac782ca1b5d335da9b403a49a2627b4a1818` over base
+`ea13a582d7797619f2a934a59c34368241cca191`. It verified the clean eight-file range, all frozen
+hashes, `git diff --check`, fresh `bun run typecheck`, the baseline log identity and
+2,212-pass/10-skip/0-fail summary, clean Goose source at `db7a704...`, source-contract closure, and
+the concurrent-work quarantine. It returned changes requested for two important task-plan defects:
+
+1. Tasks 15–17 assigned T2 or T4 edits to T1-exclusive shared hotspots without the required
+   bounded ownership transfers.
+2. Tasks 12 and 16 did not expose the plan's required behavior-by-behavior observed RED, minimal
+   implementation, and exact GREEN commands.
+
+The architecture/source packet remained coherent. A0 stopped before push, PR creation, or Notion
+mutation and routed both findings back into the task plan. This agent review is not a human
+Reviewer verdict and changes no workflow status. The amended plan requires renewed exact-byte
+Owner approval, a new commit, and a fresh exact-commit T5 review before formal G1 submission.
+
 ## 4. Human decisions
 
 | Decision ID | Authority | State | Decision |
@@ -441,15 +459,17 @@ state was read or changed by this work, and this register records no formal huma
 | `I214-D007` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, approved proceeding with the candidate-v5 direction after the source-complete reconciliation and identified `~/dev/goose` (`/Users/pureicis/dev/goose`) as the authoritative latest Goose source. This approves continued architecture amendment against commit `db7a704446975c88d3b67490c74d33bcd684404e`; it does not approve not-yet-frozen candidate-v5 bytes, does not record a Notion transition, and is not a formal human Reviewer G1 verdict. |
 | `I214-D008` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, identified I238 and I265–I269 as active coworker-owned work and directed I214 not to interfere. Their mutable worktrees are quarantined from I214 edits, rebases, tests, cleanup, and cherry-picks. Before G2 freeze or implementation, A0 records owner-supplied landed SHAs or explicit non-overlap dispositions and audits the combined `main` descendant for I214 path/semantic overlap. This decision changes no Notion status and grants no authority over those issues. |
 | `I214-D009` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, approved the exact candidate-v5 pre-freeze hash set recorded below after an independent read-only adversarial review returned PASS with no material findings. This authorizes deterministic integrity-register finalization only. It does not authorize a Git commit, mutate Notion, record a formal Reviewer G1 verdict, close the concurrent-issue integration gate, approve G2, or authorize implementation. |
+| `I214-D010` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, approved the exact T5-R5 amendment: task plan `f4185413ab65239bf5570adf4465b6d672dcd02bbd65ecfd0c44edb040b34de7` and pre-approval decision register `9c237ba6911e0667b25a5127113ac3dfa9949e9d9488caaa5e8c36655da83d9c`, with the other six artifact hashes unchanged. This authorizes deterministic register finalization, a replacement documentation commit, fresh exact-commit T5-R6 review, and—only if T5-R6 passes—the G1 PR/submission and a separately recorded stacked Planning transition. It does not itself record a human Reviewer verdict, close the combined-base gate, approve G2, or authorize implementation. |
 
 Candidate v3 received `I214-D005` and was reviewed by T5-R3. Candidate v4 received explicit
 `I214-D006` Owner approval in the active Codex conversation and was reviewed by T5-R4. That
 review returned changes required. `I214-D007` approves the candidate-v5 direction and latest
 source authority, not its future exact bytes. `I214-D008` quarantines active concurrent work and
 adds a pre-G2 integration audit without blocking isolated G1 documentation. `I214-D009` approves
-the candidate-v5 pre-freeze bytes and permits the deterministic integrity finalization below.
-Formal G1 submission remains prohibited until the frozen candidate is committed under separate
-authority and passes fresh exact-commit T5-R5 review; the human Reviewer alone records the
+the candidate-v5 pre-freeze bytes and permitted the deterministic integrity finalization below.
+Exact-commit T5-R5 subsequently returned changes requested. `I214-D010` approves the exact
+two-file amendment and authorizes its replacement commit and T5-R6 review. Formal G1 submission
+remains prohibited until that exact commit passes T5-R6; the human Reviewer alone records the
 subsequent formal G1 verdict.
 
 ## 5. Integrity register
@@ -571,11 +591,45 @@ same eight supplied hashes and returned PASS with no material findings:
 - latest Goose runtime qualification: source-qualified but live-unverified; no binary whose
   digest/build provenance is tied to `db7a704...` was used for a positive runtime claim
 
-The register cannot contain its own frozen dispatch digest without recursion. A0 supplies the
-post-finalization SHA-256 out of band with the future exact-commit T5-R5 prompt. The pre-freeze
-adversarial PASS is not T5-R5 and records no formal gate. Separate documentation commit authority
-is still required; after that commit, T5-R5 must verify the exact commit and every digest from a
-clean read-only checkout before formal G1 submission.
+The register cannot contain its own frozen dispatch digest without recursion. A0 supplied the
+post-finalization SHA-256 out of band with T5-R5. The pre-freeze adversarial PASS was not T5-R5,
+and exact-commit T5-R5 returned changes requested as recorded above. Commit `35a1ac7` is therefore
+a historical reviewed candidate, not eligible for formal G1 submission. The amended plan and this
+register require renewed exact-byte Owner approval, a new commit, and a fresh clean-checkout review.
+
+### Candidate v5 amendment integrity freeze
+
+Frozen under `I214-D010` after two independent read-only pre-freeze reviews returned PASS with no
+material findings:
+
+- preserved evidence 134:
+  `73b8f3e11a870aefd3863f377250ea22e4dac2ed5df772c160b6a020a02596fd`
+- deterministic baseline evidence:
+  `d25e169ef62f9b8003f07be9e1f423092da4df28beb637cb9f6eddd665dfe1c1`
+- latest-source skill-precedence audit:
+  `3b4ea0ec0f25b76998cd94fce79b8af7636ed22f09498d7d2124cb84bafed280`
+- source-to-contract coverage:
+  `04333772caec3fb61bcae050310ad043c36eb8f717edffdc7740836da3a91de8`
+- target architecture candidate v5:
+  `535180d0877bd20b50b8f97392f668a845570c177a1571f28f79995fcc35cef0`
+- team strategy candidate v5:
+  `834cbcd792c1d3e53fd486f38fb2f43245fdf5f3e158b168b35a3c5ba1b75d6b`
+- amended candidate GATE 2 task plan:
+  `f4185413ab65239bf5570adf4465b6d672dcd02bbd65ecfd0c44edb040b34de7`
+- decision/evidence register before this deterministic approval record and freeze:
+  `9c237ba6911e0667b25a5127113ac3dfa9949e9d9488caaa5e8c36655da83d9c`
+- historical T5-R5-reviewed commit:
+  `35a1ac782ca1b5d335da9b403a49a2627b4a1818`
+- repository base commit:
+  `ea13a582d7797619f2a934a59c34368241cca191`
+- authoritative latest Goose source:
+  `db7a704446975c88d3b67490c74d33bcd684404e` (workspace version `1.45.0`)
+- latest Goose runtime qualification: source-qualified but live-unverified; no binary whose
+  digest/build provenance is tied to `db7a704...` was used for a positive runtime claim
+
+The register cannot contain its own amended dispatch digest without recursion. A0 supplies the
+post-approval SHA-256 out of band with T5-R6. Any further candidate edit invalidates this freeze
+and requires renewed exact-byte Owner approval before another commit.
 
 ## 6. Baseline and provenance index
 
