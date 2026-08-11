@@ -507,6 +507,7 @@ export function deriveRuntimeAdmissionForClosure(
   const activationServers: EffectiveMcpActivationV1["servers"] = [];
   const requirements = new Map<string, CardRuntimeAdmissionV1["requirements"][number]>();
   const requiredRequirementIds = new Set<string>();
+  const applicationIds = new Map<string, string>();
   const applications = new Map<string, CardApplicationRequirementsV1["apps"][number]>();
 
   for (const [cardIndex, card] of cards.entries()) {
@@ -564,18 +565,12 @@ export function deriveRuntimeAdmissionForClosure(
     }
 
     for (const application of applicationRequirements.apps) {
-      const normalized = application.app.normalize("NFC");
-      const existing = applications.get(normalized);
-      if (existing !== undefined) {
-        if (existing.app !== application.app) {
-          derivationInvalid(`application ${application.app} NFC-collides with ${existing.app}`);
-        }
-        if (canonicalizeRuntimeAdmissionJson(existing) !== canonicalizeRuntimeAdmissionJson(application)) {
-          derivationInvalid(`applicationRequirements has conflicting declarations for ${application.app}`);
-        }
-      } else {
-        applications.set(normalized, application);
-      }
+      recordClosureIdentity(
+        application.app,
+        `${cardPath}.applicationRequirements.apps.${application.app}`,
+        applicationIds,
+      );
+      applications.set(application.app.normalize("NFC"), application);
     }
   }
 

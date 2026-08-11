@@ -186,7 +186,7 @@ test("rejects oversized and exact/NFC-colliding identifiers", () => {
     applicationRequirements: {
       version: 1,
       apps: [
-        { app: "café", pipedreamApp: "a" },
+        { app: "caf\u00e9", pipedreamApp: "a" },
         { app: "cafe\u0301", pipedreamApp: "b" },
       ],
     },
@@ -498,21 +498,31 @@ test("rejects exact/NFC Card, server, and requirement collisions across the clos
   ])).toThrow(/requirement.*collision|duplicate.*requirement/i);
 });
 
-test("aggregates identical apps, rejects conflicts, and sorts with explicit code-unit order", () => {
-  const shared = { app: "a", pipedreamApp: "shared" };
+test("rejects every repeated app across the closure and sorts with explicit code-unit order", () => {
   const result = deriveRuntimeAdmissionForClosure([
-    closureCard("alpha", { apps: [shared] }),
-    closureCard("beta", { apps: [{ app: "B", pipedreamApp: "upper" }, shared] }),
+    closureCard("alpha", { apps: [{ app: "a", pipedreamApp: "lower" }] }),
+    closureCard("beta", { apps: [{ app: "B", pipedreamApp: "upper" }] }),
   ]);
   expect(result.applicationRequirements.apps.map(({ app }) => app)).toEqual(["B", "a"]);
   expect(compareRuntimeAdmissionIds("B", "a")).toBe(-1);
   expect("B".localeCompare("a")).not.toBe(compareRuntimeAdmissionIds("B", "a"));
   expect(JSON.stringify(result.envelope)).not.toContain("pipedreamApp");
 
+  // Apps reject on any repeat, exactly as Card, server, and requirement ids do: an
+  // identical redeclaration is a duplicate, not something to aggregate away.
+  const shared = { app: "a", pipedreamApp: "shared" };
+  expect(() => deriveRuntimeAdmissionForClosure([
+    closureCard("alpha", { apps: [shared] }),
+    closureCard("beta", { apps: [shared] }),
+  ])).toThrow(/duplicate|collide/i);
   expect(() => deriveRuntimeAdmissionForClosure([
     closureCard("alpha", { apps: [shared] }),
     closureCard("beta", { apps: [{ app: "a", pipedreamApp: "different" }] }),
-  ])).toThrow(/conflicting/i);
+  ])).toThrow(/duplicate|collide/i);
+  expect(() => deriveRuntimeAdmissionForClosure([
+    closureCard("alpha", { apps: [{ app: "caf\u00e9", pipedreamApp: "a" }] }),
+    closureCard("beta", { apps: [{ app: "cafe\u0301", pipedreamApp: "b" }] }),
+  ])).toThrow(/duplicate|collide/i);
 });
 
 test("the synthetic non-publishable Finch fixture is closed, deterministic, and externally bound", async () => {
