@@ -498,7 +498,10 @@ test("rejects exact/NFC Card, server, and requirement collisions across the clos
   ])).toThrow(/requirement.*collision|duplicate.*requirement/i);
 });
 
-test("rejects every repeated app across the closure and sorts with explicit code-unit order", () => {
+test("aggregates an application two Cards agree on, rejects one they disagree on", () => {
+  // An application is a shared external resource, so two Cards needing the same one is
+  // ordinary. Card, server, and requirement ids are identity keys and keep rejecting a
+  // repeat outright; the case above holds that line.
   const result = deriveRuntimeAdmissionForClosure([
     closureCard("alpha", { apps: [{ app: "a", pipedreamApp: "lower" }] }),
     closureCard("beta", { apps: [{ app: "B", pipedreamApp: "upper" }] }),
@@ -508,21 +511,43 @@ test("rejects every repeated app across the closure and sorts with explicit code
   expect("B".localeCompare("a")).not.toBe(compareRuntimeAdmissionIds("B", "a"));
   expect(JSON.stringify(result.envelope)).not.toContain("pipedreamApp");
 
-  // Apps reject on any repeat, exactly as Card, server, and requirement ids do: an
-  // identical redeclaration is a duplicate, not something to aggregate away.
   const shared = { app: "a", pipedreamApp: "shared" };
-  expect(() => deriveRuntimeAdmissionForClosure([
+  const agreed = deriveRuntimeAdmissionForClosure([
     closureCard("alpha", { apps: [shared] }),
-    closureCard("beta", { apps: [shared] }),
-  ])).toThrow(/duplicate|collide/i);
+    closureCard("beta", { apps: [{ ...shared }] }),
+  ]);
+  expect(agreed.applicationRequirements.apps).toEqual([shared]);
+
   expect(() => deriveRuntimeAdmissionForClosure([
     closureCard("alpha", { apps: [shared] }),
     closureCard("beta", { apps: [{ app: "a", pipedreamApp: "different" }] }),
-  ])).toThrow(/duplicate|collide/i);
+  ])).toThrow(/conflicting/i);
+
+  // Two spellings of one NFC-equivalent id are refused even where the declarations
+  // otherwise agree. Aggregating them would require choosing which spelling the single
+  // entry carries, and the first-seen spelling makes the derived hash depend on the
+  // order the closure was passed in — which the Card sort in the closure preimage
+  // exists to keep it from doing.
   expect(() => deriveRuntimeAdmissionForClosure([
     closureCard("alpha", { apps: [{ app: "caf\u00e9", pipedreamApp: "a" }] }),
-    closureCard("beta", { apps: [{ app: "cafe\u0301", pipedreamApp: "b" }] }),
-  ])).toThrow(/duplicate|collide/i);
+    closureCard("beta", { apps: [{ app: "cafe\u0301", pipedreamApp: "a" }] }),
+  ])).toThrow(/NFC-collides/i);
+});
+
+test("agreement between Cards is canonical equality, not key insertion order", () => {
+  // Two declarations of the same application differ in the order their keys were
+  // written. Comparing their serializations directly would call that a conflict.
+  const card = { server: "s", authMode: "none" as const, certification: "maintained" as const };
+  const written = { app: "a", card, pipedreamApp: "p" };
+  const reordered = { pipedreamApp: "p", card: { certification: card.certification, authMode: card.authMode, server: card.server }, app: "a" };
+  expect(JSON.stringify(written)).not.toBe(JSON.stringify(reordered));
+  expect(canonicalizeRuntimeAdmissionJson(written)).toBe(canonicalizeRuntimeAdmissionJson(reordered));
+
+  const result = deriveRuntimeAdmissionForClosure([
+    closureCard("alpha", { apps: [written] }),
+    closureCard("beta", { apps: [reordered as typeof written] }),
+  ]);
+  expect(result.applicationRequirements.apps).toEqual([written]);
 });
 
 test("the synthetic non-publishable Finch fixture is closed, deterministic, and externally bound", async () => {

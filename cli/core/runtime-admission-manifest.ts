@@ -507,7 +507,6 @@ export function deriveRuntimeAdmissionForClosure(
   const activationServers: EffectiveMcpActivationV1["servers"] = [];
   const requirements = new Map<string, CardRuntimeAdmissionV1["requirements"][number]>();
   const requiredRequirementIds = new Set<string>();
-  const applicationIds = new Map<string, string>();
   const applications = new Map<string, CardApplicationRequirementsV1["apps"][number]>();
 
   for (const [cardIndex, card] of cards.entries()) {
@@ -571,13 +570,31 @@ export function deriveRuntimeAdmissionForClosure(
       requirements.set(requirement.requirementId.normalize("NFC"), requirement);
     }
 
+    // Card, server, and requirement ids are identity keys, so a repeat of one is a
+    // defect and rejects outright. An application is a shared external resource, so
+    // two Cards needing the same one is ordinary: a repeat aggregates to one entry
+    // where the declarations agree and is a conflict where they do not. Agreement is
+    // canonical equality — comparing serializations directly would call two
+    // declarations written with their keys in different orders a conflict.
     for (const application of applicationRequirements.apps) {
-      recordClosureIdentity(
-        application.app,
-        `${cardPath}.applicationRequirements.apps.${application.app}`,
-        applicationIds,
-      );
-      applications.set(application.app.normalize("NFC"), application);
+      const normalized = application.app.normalize("NFC");
+      const existing = applications.get(normalized);
+      if (existing === undefined) {
+        applications.set(normalized, application);
+        continue;
+      }
+      // Two spellings of one id are refused even where the declarations agree:
+      // aggregating them would require choosing which spelling the single entry
+      // carries, and the first spelling reached makes the derived hash depend on the
+      // order the closure was passed in.
+      if (existing.app !== application.app) {
+        derivationInvalid(
+          `${cardPath}.applicationRequirements.apps.${application.app} NFC-collides with ${existing.app}`,
+        );
+      }
+      if (canonicalizeRuntimeAdmissionJson(existing) !== canonicalizeRuntimeAdmissionJson(application)) {
+        derivationInvalid(`applicationRequirements has conflicting declarations for ${application.app}`);
+      }
     }
   }
 
