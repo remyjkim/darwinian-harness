@@ -466,6 +466,15 @@ function normalizedRuntimeDeclaration(value: CardRuntimeAdmissionV1) {
   };
 }
 
+/**
+ * The form two declarations of one application are compared in: the id in its NFC
+ * normal form, because that is the identity being matched, and every other member
+ * exactly as declared.
+ */
+function comparableApplication(value: CardApplicationRequirementsV1["apps"][number]): string {
+  return canonicalizeRuntimeAdmissionJson({ ...value, app: value.app.normalize("NFC") });
+}
+
 function normalizedApplicationDeclaration(value: CardApplicationRequirementsV1): CardApplicationRequirementsV1 {
   return {
     version: 1,
@@ -572,10 +581,16 @@ export function deriveRuntimeAdmissionForClosure(
 
     // Card, server, and requirement ids are identity keys, so a repeat of one is a
     // defect and rejects outright. An application is a shared external resource, so
-    // two Cards needing the same one is ordinary: a repeat aggregates to one entry
-    // where the declarations agree and is a conflict where they do not. Agreement is
-    // canonical equality — comparing serializations directly would call two
-    // declarations written with their keys in different orders a conflict.
+    // two Cards needing the same one is ordinary: a repeat across the closure
+    // aggregates to one entry where the declarations agree and is a conflict where
+    // they do not. A repeat inside one Card never arrives here — declaration
+    // validation refuses it whether or not the two entries agree.
+    //
+    // The id normalizes NFC because it is the identity being matched. Every other
+    // member compares as declared, so two NFC-equal spellings of a pipedream app, a
+    // server, or a token reference are two declarations, not one. Comparison is by
+    // value rather than over a serialization, which keeps the verdict independent of
+    // how either declaration was written.
     for (const application of applicationRequirements.apps) {
       const normalized = application.app.normalize("NFC");
       const existing = applications.get(normalized);
@@ -583,18 +598,13 @@ export function deriveRuntimeAdmissionForClosure(
         applications.set(normalized, application);
         continue;
       }
-      // Two spellings of one id are refused even where the declarations agree:
-      // aggregating them would require choosing which spelling the single entry
-      // carries, and the first spelling reached makes the derived hash depend on the
-      // order the closure was passed in.
-      if (existing.app !== application.app) {
-        derivationInvalid(
-          `${cardPath}.applicationRequirements.apps.${application.app} NFC-collides with ${existing.app}`,
-        );
-      }
-      if (canonicalizeRuntimeAdmissionJson(existing) !== canonicalizeRuntimeAdmissionJson(application)) {
+      if (comparableApplication(existing) !== comparableApplication(application)) {
         derivationInvalid(`applicationRequirements has conflicting declarations for ${application.app}`);
       }
+      // The surviving entry keeps its `app` verbatim, so where two spellings of one id
+      // agree the aggregate carries the first the closure reaches. That is observable
+      // in the emitted bytes and the closure order is the lockfile's, so it is
+      // reproducible from the receipt rather than incidental.
     }
   }
 

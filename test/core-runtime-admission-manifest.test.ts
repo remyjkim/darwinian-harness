@@ -523,20 +523,53 @@ test("aggregates an application two Cards agree on, rejects one they disagree on
     closureCard("beta", { apps: [{ app: "a", pipedreamApp: "different" }] }),
   ])).toThrow(/conflicting/i);
 
-  // Two spellings of one NFC-equivalent id are refused even where the declarations
-  // otherwise agree. Aggregating them would require choosing which spelling the single
-  // entry carries, and the first-seen spelling makes the derived hash depend on the
-  // order the closure was passed in — which the Card sort in the closure preimage
-  // exists to keep it from doing.
+  // A member that is not the id compares as declared, so two NFC-equal spellings of it
+  // are two different declarations.
   expect(() => deriveRuntimeAdmissionForClosure([
+    closureCard("alpha", { apps: [{ app: "a", pipedreamApp: "caf\u00e9" }] }),
+    closureCard("beta", { apps: [{ app: "a", pipedreamApp: "cafe\u0301" }] }),
+  ])).toThrow(/conflicting/i);
+});
+
+test("the id normalizes NFC and the first spelling the closure reaches survives verbatim", () => {
+  // NFC applies where identity matching requires it and nowhere else, so two spellings
+  // of one id are one application. The aggregate carries a spelling rather than a
+  // normal form, which is observable in the emitted bytes: the closure order decides
+  // which spelling survives, and the closure order is the lockfile's.
+  const precomposed = deriveRuntimeAdmissionForClosure([
     closureCard("alpha", { apps: [{ app: "caf\u00e9", pipedreamApp: "a" }] }),
     closureCard("beta", { apps: [{ app: "cafe\u0301", pipedreamApp: "a" }] }),
-  ])).toThrow(/NFC-collides/i);
+  ]);
+  expect(precomposed.applicationRequirements.apps).toEqual([{ app: "caf\u00e9", pipedreamApp: "a" }]);
+
+  const decomposed = deriveRuntimeAdmissionForClosure([
+    closureCard("alpha", { apps: [{ app: "cafe\u0301", pipedreamApp: "a" }] }),
+    closureCard("beta", { apps: [{ app: "caf\u00e9", pipedreamApp: "a" }] }),
+  ]);
+  expect(decomposed.applicationRequirements.apps).toEqual([{ app: "cafe\u0301", pipedreamApp: "a" }]);
+  expect(precomposed.canonicalApplicationRequirements)
+    .not.toBe(decomposed.canonicalApplicationRequirements);
+});
+
+test("one Card declaring the same application twice is a malformed manifest", () => {
+  // The closure-wide rule lets two Cards agree on one application. Inside one Card a
+  // repeat is a declaration error whether or not the two entries agree, so aggregation
+  // never sees it and the closure-wide rule cannot reach it.
+  const shared = { app: "a", pipedreamApp: "shared" };
+  expect(() => deriveRuntimeAdmissionForClosure([
+    closureCard("alpha", { apps: [shared, { ...shared }] }),
+  ])).toThrow(/duplicate|NFC/i);
+  expect(() => deriveRuntimeAdmissionForClosure([
+    closureCard("alpha", {
+      apps: [{ app: "caf\u00e9", pipedreamApp: "a" }, { app: "cafe\u0301", pipedreamApp: "a" }],
+    }),
+  ])).toThrow(/duplicate|NFC/i);
 });
 
 test("agreement between Cards is canonical equality, not key insertion order", () => {
-  // Two declarations of the same application differ in the order their keys were
-  // written. Comparing their serializations directly would call that a conflict.
+  // Two declarations of one application whose members were written in different orders
+  // are the same declaration. The comparison is by value, so the shape of either
+  // serialization does not reach it.
   const card = { server: "s", authMode: "none" as const, certification: "maintained" as const };
   const written = { app: "a", card, pipedreamApp: "p" };
   const reordered = { pipedreamApp: "p", card: { certification: card.certification, authMode: card.authMode, server: card.server }, app: "a" };

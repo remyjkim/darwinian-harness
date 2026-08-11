@@ -910,7 +910,7 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
   // separate whenever the implementation set changes and any such change fails here,
   // which is the point of pinning both rather than deriving one from the other.
   const VECTOR_ROLLUP = "a1ea41dd24713fb6ee768c6a7396094d04b207c64783167bc1b651767eaac4f1";
-  const ADAPTER_ROLLUP = "4027eb499861a1b635d3770139f06c915e39571d28f3640d8af3443be18680d7";
+  const ADAPTER_ROLLUP = "5f9b5407b410d372465754c38c7f4e7ba2388020886c5ebbc55b82d87982e5e0";
   const ACCEPTED = {
     toolsInput: { byteLength: 9513, sha256: "162284db0ddab5c09e5b1f653c37683a7b669062273a91cb9bfb84804b463c31" },
     toolsCandidate: { byteLength: 3859, sha256: "f626993ddd23d4edb30bc038c17eec9067544ed4a40942afe1cc07417eb1b02d" },
