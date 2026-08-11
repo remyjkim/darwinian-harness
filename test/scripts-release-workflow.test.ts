@@ -128,6 +128,9 @@ describe("Worker annotated-tag publication workflow", () => {
   test("accepts only the exact v1.3.0 annotated tag and validates its bound run and artifact before protection", () => {
     const validation = job("validate_tag", "publish");
     expect(workflow).toContain("push:\n    tags:\n      - 'v1.3.0'");
+    // Every post-validation job checks out the same released tag by name; a stale one
+    // would qualify or publish a different commit than the trigger authorized.
+    expect(workflow.match(/ref: refs\/tags\/v1\.3\.0/g)).toHaveLength(3);
     expect(validation).toContain("name: Validate authorized tag");
     expect(validation).toContain("actions: read");
     expect(validation).toContain('git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"');
