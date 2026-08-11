@@ -908,9 +908,8 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
   // the implementation set moves the second and fails here until a regeneration moves
   // the first to match.
   const ACCEPTED_ROLLUP = "5f9b5407b410d372465754c38c7f4e7ba2388020886c5ebbc55b82d87982e5e0";
-  // Every byte length below is unchanged from the preceding set: a rollup is
-  // fixed-width hex, so a regeneration moves the digests and leaves the lengths alone.
-  // Only the digest separates one pinned set from another.
+  // A rollup is fixed-width hex, so a regeneration moves the digests and leaves the
+  // lengths alone. Only the digest separates one pinned set from another.
   const ACCEPTED = {
     toolsInput: { byteLength: 9513, sha256: "215be44678c8ef6a1f80c2a8d365af5b9e3d4c051370dc560da85cda89dc5b9f" },
     toolsCandidate: { byteLength: 3859, sha256: "c120280ebc7ecae4ad919994dc63259feee8b8fbdcefb5ad3679ee4e5bf53b85" },

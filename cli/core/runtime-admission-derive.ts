@@ -1276,9 +1276,9 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
     // harmless: the admitted identity was walked out component by component from the
     // root, so publishing into an object that carries it publishes into the directory
     // proved to be under the root, whatever the pathname resolves to now. The
-    // publication is bound to the object; the pathname only has to find it. The two
-    // readings use the same stat interface, so no ABI or signedness translation sits
-    // between them.
+    // publication is bound to the object; the pathname only has to find it. Every
+    // identity compared below is decoded by that one descriptor interface, so no ABI or
+    // signedness translation sits between any two of them.
     let handle: DescriptorStat;
     try {
       handle = ops.fstat(dirfd);
