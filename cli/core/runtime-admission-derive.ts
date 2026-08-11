@@ -20,7 +20,9 @@ import {
   type RuntimeBuildIdentity,
 } from "./build-identity";
 import {
+  identityOf,
   loadDescriptorOps,
+  type DescriptorIdentity,
   type DescriptorOps,
   type DescriptorStat,
 } from "./runtime-admission-descriptors";
@@ -941,7 +943,7 @@ interface AdmittedOperands {
    * The parent directory itself, resolved by descriptor from the root. `null` where
    * the platform has no descriptor-bound semantics, which publication refuses.
    */
-  outputParentIdentity: { dev: bigint; ino: bigint } | null;
+  outputParentIdentity: DescriptorIdentity | null;
   outputName: string;
 }
 
@@ -1036,7 +1038,7 @@ function resolveAdmittedParent(
   root: string,
   components: readonly string[],
   seams: Record<string, RuntimeAdmissionDeriveSeam>,
-): { dev: bigint; ino: bigint } | null {
+): DescriptorIdentity | null {
   let ops: DescriptorOps;
   try {
     ops = loadDescriptorOps();
@@ -1053,7 +1055,7 @@ function resolveAdmittedParent(
     }
     const opened = ops.fstat(dirfd);
     if (!opened.isDirectory) reject();
-    return { dev: opened.dev, ino: opened.ino };
+    return identityOf(opened);
   } finally {
     ops.close(dirfd);
   }
@@ -1229,10 +1231,14 @@ interface PersistenceContext {
   observeDescriptorOps?: (ops: DescriptorOps) => DescriptorOps;
 }
 
-/** Identity is the device and inode pair, so any reading that carries both compares. */
+/**
+ * Identity is the device and inode pair. Both sides must be readings this module's
+ * decoder produced: a pair carrying the same numbers from another stat implementation
+ * is not the same value, because the two need not widen a narrow field alike.
+ */
 function sameEntry(
-  left: { dev: bigint; ino: bigint } | null,
-  right: { dev: bigint; ino: bigint } | null,
+  left: DescriptorIdentity | null,
+  right: DescriptorIdentity | null,
 ): boolean {
   return left !== null && right !== null && left.dev === right.dev && left.ino === right.ino;
 }

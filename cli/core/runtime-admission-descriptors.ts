@@ -5,13 +5,32 @@ import { dlopen, ptr } from "bun:ffi";
 import { lstatSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export interface DescriptorStat {
+declare const descriptorDecoded: unique symbol;
+
+/**
+ * A device and inode pair decoded by this module. The marker is declared and never
+ * written, so it costs nothing at runtime and cannot be produced outside this file: a
+ * reading from any other stat implementation is not assignable, and two decoders of the
+ * same platform struct therefore cannot be compared to each other by mistake. Their
+ * widening conventions for a narrow field need not agree, so such a comparison is only
+ * sound where both sides are known to come from one decoder.
+ */
+export interface DescriptorIdentity {
   dev: bigint;
   ino: bigint;
+  readonly [descriptorDecoded]: true;
+}
+
+export interface DescriptorStat extends DescriptorIdentity {
   mode: number;
   nlink: number;
   isDirectory: boolean;
   isRegular: boolean;
+}
+
+/** Narrows a decoded reading to its identity pair, carrying the decoder's provenance. */
+export function identityOf(stat: DescriptorIdentity): DescriptorIdentity {
+  return { dev: stat.dev, ino: stat.ino } as DescriptorIdentity;
 }
 
 export interface DescriptorOps {
@@ -184,6 +203,8 @@ function build(): DescriptorOps {
       : layout!.linkWidth === 4
         ? view.getUint32(layout!.linkOffset, true)
         : view.getUint16(layout!.linkOffset, true);
+    // The one place a decoded reading is constructed, and so the one place the marker
+    // is asserted rather than carried.
     return {
       dev,
       ino: view.getBigUint64(layout!.inodeOffset, true),
@@ -191,7 +212,7 @@ function build(): DescriptorOps {
       nlink,
       isDirectory: (mode & 0o170000) === 0o040000,
       isRegular: (mode & 0o170000) === 0o100000,
-    };
+    } as DescriptorStat;
   }
 
   const ops: DescriptorOps = {
@@ -283,11 +304,11 @@ function verifyLayout(ops: DescriptorOps, probePath: string): void {
   // would round an inode above 2^53 and compare two values that are equal only after
   // the rounding, which is the opposite of what a layout proof is for.
   const reference = lstatSync(probePath, { bigint: true });
-  // `dev` is compared over the bits the field actually holds. Where the declared field
-  // is narrower than the reference reading's, each side widens it under its own
-  // convention and those conventions need not agree on the sign bit, so only the
-  // declared width is common ground between them.
-  const referenceDev = layout.devWidth === 8 ? reference.dev : BigInt.asUintN(32, reference.dev);
+  // `dev` is compared over the bits the field actually holds. Any widening preserves the
+  // source bit pattern in the low half, so the low bits of the declared width are the
+  // same under every convention, while the bits above it are whatever each side chose to
+  // fill in and need not agree.
+  const referenceDev = BigInt.asUintN(layout.devWidth * 8, reference.dev);
   if (
     observed.ino !== reference.ino ||
     observed.dev !== referenceDev ||
