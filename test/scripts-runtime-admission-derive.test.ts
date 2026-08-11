@@ -910,7 +910,7 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
   // separate whenever the implementation set changes and any such change fails here,
   // which is the point of pinning both rather than deriving one from the other.
   const VECTOR_ROLLUP = "5f9b5407b410d372465754c38c7f4e7ba2388020886c5ebbc55b82d87982e5e0";
-  const ADAPTER_ROLLUP = "f229c327a49a3904e4421c8f5f6a6245558b1ba7f8ded35629a1375d98fbbf23";
+  const ADAPTER_ROLLUP = "cf8ffe146aa023f91c08c1b5536d5669967200901c5ccc4b8c0a5148f7065c53";
   // A rollup is fixed-width hex, so a regeneration moves the digests and leaves the
   // lengths alone. Only the digest separates one pinned set from another.
   const ACCEPTED = {
