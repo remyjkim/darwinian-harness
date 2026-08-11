@@ -54,6 +54,10 @@ const TOOLS_PUBLICATION_REF = "github:curation-labs/buzz-delivery-tools#syntheti
 
 const descriptorSupport = describeDescriptorSupport();
 const posixPlatform = process.platform === "linux" || process.platform === "darwin";
+// The descriptor layer describes a struct layout for darwin on any architecture and
+// for linux only on x64, and refuses to guess anywhere else.
+const DESCRIBED_STRUCT_LAYOUT = process.platform === "darwin" ||
+  (process.platform === "linux" && process.arch === "x64");
 
 // A success-path case must never pass silently where the contract cannot be honoured.
 // On the two required platforms an unsupported descriptor layer is a defect, so the
@@ -821,7 +825,10 @@ describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
     ]);
   });
 
-  test("a development build identity still produces structurally valid non-qualifying output", async () => {
+  test("a development build identity is admitted and binds the candidate's producer source", async () => {
+    // Output v2 is a closed twelve-key schema, so the build's own kind is deliberately
+    // not one of its fields. What this case pins is that the packaged-only commit rule
+    // does not reject a development build and that the bound source is the candidate's.
     requireDescriptorSupport();
     const result = await run({ buildIdentity: DEVELOPMENT_BUILD_IDENTITY });
     expect(result.outcome).toBeNull();
@@ -839,7 +846,7 @@ describe.skipIf(SKIP_POSIX !== "")(`operand admission${SKIP_POSIX}`, () => {
     ["dot output", { outputOperand: "." }],
     ["traversal input", { inputOperand: "../derivation-input.json" }],
     ["traversal output", { outputOperand: "../result.json" }],
-    ["nul byte", { outputOperand: "result .json" }],
+    ["nul byte", { outputOperand: "result\u0000.json" }],
     ["backslash separator", { outputOperand: "nested\\result.json" }],
     ["lone surrogate", { outputOperand: "result\uD800.json" }],
     ["oversize operand", { outputOperand: `${"a".repeat(4_097)}.json` }],
@@ -1076,6 +1083,9 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
       ["extra server", (manifest) => { manifest.servers.shell = { command: "sh" }; }],
       ["harness floor", (manifest) => { manifest.harness.minVersion = "1.2.0"; }],
       ["application payload", (manifest) => { manifest.applicationRequirements.apps = [{ app: "x" }]; }],
+      // A Card name that names an inherited property is not an allowlisted Card.
+      ["prototype Card name", (manifest) => { manifest.name = "__proto__"; }],
+      ["constructor Card name", (manifest) => { manifest.name = "constructor"; }],
     ];
     for (const [name, apply] of hostile) {
       // Every byte identity is rebuilt around the hostile value, so only the producer's
@@ -1129,15 +1139,41 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
     expectCode(mismatched, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
   });
 
-  test("performs no ambient lookup and no nested command execution", async () => {
-    const seen: string[] = [];
+  test("the admitted descriptor, not the pathname, supplies the derivation bytes", async () => {
+    // The `input-read` seam is the window between proving one regular input and
+    // reading it. A pathname read there takes whatever occupies the name instead.
+    const root = confinementRoot();
+    const contents = derivationInput("tools");
     const result = await run({
+      root,
       seams: {
-        "ambient-lookup": (context) => { seen.push(String(context)); },
+        "input-read": () => {
+          rmSync(join(root, "derivation-input.json"));
+          writeFileSync(join(root, "derivation-input.json"), "not an admissible input");
+        },
       },
     });
     expect(result.outcome).toBeNull();
-    expect(seen).toEqual([]);
+    const output = JSON.parse(readFileSync(result.outputPath, "utf8"));
+    expect(output.input.derivationInputIdentity).toEqual(identity("tools", utf8(contents)));
+  });
+
+  test("a FIFO substituted for the admitted input cannot block or redirect the read", async () => {
+    const root = confinementRoot();
+    const result = await run({
+      root,
+      seams: {
+        "input-read": () => {
+          rmSync(join(root, "derivation-input.json"));
+          Bun.spawnSync(["mkfifo", join(root, "derivation-input.json")]);
+          // A pathname read of this name never returns while no writer exists.
+          expect(lstatSync(join(root, "derivation-input.json")).isFIFO()).toBe(true);
+        },
+      },
+    });
+    expect(result.outcome).toBeNull();
+    expect(JSON.parse(readFileSync(result.outputPath, "utf8")).schema)
+      .toBe(RUNTIME_ADMISSION_OUTPUT_SCHEMA);
   });
 });
 
@@ -1163,6 +1199,32 @@ describe.skipIf(SKIP_POSIX !== "")(`descriptor-bound persistence${SKIP_POSIX}`, 
     expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
     expect(temporaryEntries(result.entries)).toEqual([]);
     expect(result.entries).not.toContain("result.json");
+  });
+
+  test("the temporary is created under a restrictive umask that is restored afterwards", async () => {
+    // POSIX evaluates permission at open, not at each write, so a descriptor another
+    // process obtains during creation survives every later fchmod. The creation mode
+    // must already be bounded here; the fchmod and fstat proof cannot reach this.
+    requireDescriptorSupport();
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const before = process.umask();
+    let observed = -1;
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      observeDescriptorOps: (ops) => ({
+        ...ops,
+        openTemporaryExclusive(dirfd, name) {
+          observed = process.umask();
+          return ops.openTemporaryExclusive(dirfd, name);
+        },
+      }),
+    });
+    expect(outcome).toBeNull();
+    expect(observed).toBe(0o077);
+    expect(process.umask()).toBe(before);
   });
 
   test("open, short-write, file-sync, and close failures are persist-failed with clean residue", async () => {
@@ -1333,6 +1395,34 @@ describe.skipIf(SKIP_POSIX !== "")(`parent and temp substitution${SKIP_POSIX}`, 
     expect(readdirSync(root)).toEqual(["derivation-input.json"]);
   });
 
+  test("an intermediate directory substituted after admission cannot move the publication", async () => {
+    // `lstat` does not follow a final component but does follow every intermediate
+    // one, and `O_NOFOLLOW` guards only the final component. Re-deriving the parent
+    // from its pathname after admission therefore proves self-consistency across
+    // three instants, not containment: all three readings traverse the same swapped
+    // intermediate component and agree on the attacker's directory.
+    const root = confinementRoot();
+    const foreign = confinementRoot();
+    mkdirSync(join(root, "nested", "out"), { recursive: true });
+    mkdirSync(join(foreign, "out"));
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "nested/out/result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => {
+        // The admission-to-publication window: reading the input, admitting up to a
+        // mebibyte of JSON, and this awaited lookup all sit inside it.
+        renameSync(join(root, "nested"), join(root, "nested-real"));
+        symlinkSync(foreign, join(root, "nested"));
+        return PACKAGED_BUILD_IDENTITY;
+      },
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+    expect(outcome?.commitState).toBe("not_committed");
+    expect(readdirSync(join(foreign, "out"))).toEqual([]);
+    expect(readdirSync(join(root, "nested-real", "out"))).toEqual([]);
+  });
+
   test("post-link substitution before the first directory sync is commit-validation-indeterminate", async () => {
     const root = confinementRoot();
     writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
@@ -1378,6 +1468,52 @@ describe.skipIf(SKIP_POSIX !== "")(`link reconciliation${SKIP_POSIX}`, () => {
       expect(result.entries).not.toContain("result.json");
       expect(temporaryEntries(result.entries).length, seam).toBe(1);
     }
+  });
+
+  test("an owned final whose temporary identity is lost is commit-indeterminate", async () => {
+    // The link commits and the owned temporary then disappears, so reconciliation
+    // must classify on the identity mismatch rather than on a thrown lookup. A
+    // committed final may never be reported as an ordinary pre-commit failure.
+    const result = await run({
+      seams: {
+        "reconcile-temp": (context) => {
+          const { root } = context as { root: string };
+          for (const entry of temporaryEntries(readdirSync(root))) rmSync(join(root, entry));
+        },
+      },
+    });
+    expectCode(result, "WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_INDETERMINATE");
+    expect(result.entries).toContain("result.json");
+    expect(temporaryEntries(result.entries)).toEqual([]);
+    const bytes = readFileSync(result.outputPath);
+    expect(result.outcome!.artifactIdentity).toEqual({
+      schema: "cl.i268.serialized-artifact-identity.v1",
+      phase: "tools",
+      byteLength: bytes.byteLength,
+      sha256: sha256(bytes),
+    });
+  });
+
+  test("a reported link whose final is then absent is commit-indeterminate, never persist-failed", async () => {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      observeDescriptorOps: (ops) => ({
+        ...ops,
+        linkat(dirfd, from, to) {
+          const linked = ops.linkat(dirfd, from, to);
+          rmSync(join(root, to));
+          return linked;
+        },
+      }),
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_COMMIT_INDETERMINATE");
+    expect(outcome?.commitState).toBe("indeterminate");
+    expect(outcome?.artifactIdentity).not.toBeNull();
+    expect(readdirSync(root)).not.toContain("result.json");
   });
 
   test("first directory-sync failure after an owned final is commit-indeterminate and mutates nothing", async () => {
@@ -1439,7 +1575,7 @@ describe(`unsupported platform fail-closed${SKIP_UNSUPPORTED_PLATFORM}`, () => {
 
   test("the descriptor layer reports its support decision without throwing at import time", () => {
     expect(typeof descriptorSupport.supported).toBe("boolean");
-    expect(descriptorSupport.supported).toBe(posixPlatform);
+    expect(descriptorSupport.supported).toBe(DESCRIBED_STRUCT_LAYOUT);
   });
 });
 

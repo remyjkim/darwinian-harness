@@ -2,7 +2,15 @@
 // ABOUTME: Confines both operands, proves descriptor-bound no-replace publication, and classifies every outcome.
 
 import { createHash, randomBytes } from "node:crypto";
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { posix as posixPath } from "node:path";
 import {
@@ -567,6 +575,9 @@ function applyNestedInertRule(
   for (const manifest of manifests) {
     const name = manifest.name;
     if (typeof name !== "string") reject();
+    // A plain property read would resolve `__proto__` and `constructor` through the
+    // prototype chain and admit a Card name the allowlist never declared.
+    if (!Object.hasOwn(config.cards, name)) reject();
     const allowed = config.cards[name];
     if (allowed === undefined) reject();
     const servers = manifest.servers;
@@ -848,10 +859,57 @@ function admitDerivationInput(rawBytes: Buffer): AdmittedInput {
 
 interface AdmittedOperands {
   root: string;
-  inputPath: string;
+  /** The admitted regular input itself; every derivation byte is read from here. */
+  inputFd: number;
   outputPath: string;
   outputParent: string;
+  /** The parent's identity, captured where its pathname is proven symlink-free. */
+  outputParentIdentity: { dev: bigint; ino: bigint };
   outputName: string;
+}
+
+/**
+ * `O_NOFOLLOW` refuses a final component that became a symlink, and `O_NONBLOCK`
+ * refuses to wait on a substituted FIFO instead of blocking forever. Both are POSIX
+ * only; on a platform that omits them the pathname admission above is the only
+ * available defence and descriptor-bound publication is refused outright anyway.
+ */
+const INPUT_OPEN_FLAGS = constants.O_RDONLY |
+  (constants.O_NOFOLLOW ?? 0) |
+  (constants.O_NONBLOCK ?? 0);
+
+function openAdmittedInput(inputPath: string): number {
+  let fd: number;
+  try {
+    fd = openSync(inputPath, INPUT_OPEN_FLAGS);
+  } catch {
+    return reject();
+  }
+  try {
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile() || opened.size > BigInt(MAX_DERIVATION_BYTES)) reject();
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
+  return fd;
+}
+
+/**
+ * Reads the admitted descriptor rather than its name, and refuses at the ceiling
+ * instead of admitting an unbounded read into memory first. Reads are positioned so
+ * the descriptor's own offset is never load-bearing.
+ */
+function readAdmittedInput(fd: number): Buffer {
+  const buffer = Buffer.alloc(MAX_DERIVATION_BYTES + 1);
+  let total = 0;
+  for (;;) {
+    const read = readSync(fd, buffer, total, buffer.byteLength - total, total);
+    if (read === 0) break;
+    total += read;
+    if (total > MAX_DERIVATION_BYTES) reject();
+  }
+  return buffer.subarray(0, total);
 }
 
 function admitOperand(value: string): string {
@@ -898,35 +956,48 @@ function admitOperands(argv: readonly string[], workingDirectory: string): Admit
   } catch {
     return reject();
   }
-  if (inputReal !== inputPath || !lstatSync(inputPath).isFile()) reject();
+  if (inputReal !== inputPath) reject();
+  const inputFd = openAdmittedInput(inputPath);
 
-  const outputPath = join(root, outputOperand);
-  if (inputPath === outputPath) reject();
-  let outputExists = true;
   try {
-    lstatSync(outputPath);
-  } catch {
-    outputExists = false;
-  }
-  // Only a fast diagnostic; the atomic no-replace link is the sole commit authority.
-  if (outputExists) reject();
+    const outputPath = join(root, outputOperand);
+    if (inputPath === outputPath) reject();
+    let outputExists = true;
+    try {
+      lstatSync(outputPath);
+    } catch {
+      outputExists = false;
+    }
+    // Only a fast diagnostic; the atomic no-replace link is the sole commit authority.
+    if (outputExists) reject();
 
-  const outputParent = dirname(outputPath);
-  let parentReal: string;
-  try {
-    parentReal = realpathSync(outputParent);
-  } catch {
-    return reject();
-  }
-  if (parentReal !== outputParent || !lstatSync(outputParent).isDirectory()) reject();
+    const outputParent = dirname(outputPath);
+    let parentReal: string;
+    try {
+      parentReal = realpathSync(outputParent);
+    } catch {
+      return reject();
+    }
+    // The identity is taken at the instant the pathname is proven symlink-free, and
+    // the publication handle is later required to be this same object. Re-deriving
+    // the parent from its pathname afterwards would prove nothing: `lstat` follows
+    // every intermediate component and `O_NOFOLLOW` guards only the final one, so a
+    // later reading traverses any substituted intermediate exactly as the open does.
+    const parentStat = lstatSync(outputParent, { bigint: true });
+    if (parentReal !== outputParent || !parentStat.isDirectory()) reject();
 
-  return {
-    root,
-    inputPath,
-    outputPath,
-    outputParent,
-    outputName: posixPath.basename(outputOperand),
-  };
+    return {
+      root,
+      inputFd,
+      outputPath,
+      outputParent,
+      outputParentIdentity: { dev: parentStat.dev, ino: parentStat.ino },
+      outputName: posixPath.basename(outputOperand),
+    };
+  } catch (error) {
+    closeSync(inputFd);
+    throw error;
+  }
 }
 
 function buildOutputValue(
@@ -1029,7 +1100,7 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
 
   let ops: DescriptorOps;
   try {
-    const loaded = loadDescriptorOps(operands.outputParent);
+    const loaded = loadDescriptorOps();
     ops = context.observeDescriptorOps ? context.observeDescriptorOps(loaded) : loaded;
   } catch {
     return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
@@ -1048,9 +1119,21 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
     } catch {
       return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
     }
-    // Only this three-way match freezes the handle as the sole filesystem authority.
-    const handle = ops.fstat(dirfd);
+    // The opened handle is bound to the identity captured at admission, which is the
+    // only reading that predates the whole derivation window. The two readings use the
+    // same stat interface, so no ABI or signedness translation sits between them.
+    let handle: DescriptorStat;
+    let openedIdentity: { dev: bigint; ino: bigint };
+    try {
+      handle = ops.fstat(dirfd);
+      const opened = fstatSync(dirfd, { bigint: true });
+      openedIdentity = { dev: opened.dev, ino: opened.ino };
+    } catch {
+      return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+    }
     if (
+      openedIdentity.dev !== operands.outputParentIdentity.dev ||
+      openedIdentity.ino !== operands.outputParentIdentity.ino ||
       !sameEntry(handle, admitted) ||
       !handle.isDirectory ||
       !sameEntry(ops.statPathNoFollow(operands.outputParent), admitted)
@@ -1065,7 +1148,12 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
       return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
     }
 
-    const temporaryName = `.drwn-runtime-admission-${randomBytes(12).toString("hex")}.tmp`;
+    let temporaryName: string;
+    try {
+      temporaryName = `.drwn-runtime-admission-${randomBytes(12).toString("hex")}.tmp`;
+    } catch {
+      return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+    }
     let temporary: DescriptorStat | null = null;
     let created = false;
 
@@ -1106,7 +1194,18 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
       // the descriptor-relative create, which is the exact window the contract names.
       seam("temp-create");
       seam("temp-open");
-      temporaryFd = ops.openTemporaryExclusive(dirfd, temporaryName);
+      // POSIX evaluates permission at open, not at each write, so a descriptor another
+      // process obtains during creation stays valid for the inode that becomes the
+      // published artifact; no later fchmod can revoke it and no fstat can see it. The
+      // umask bounds the mode the create can produce, which is the only reach into
+      // that instant. Residual: a umask does not mask setuid or setgid, so a garbage
+      // 04000 still creates a setuid file — same-uid, and cleared by the fchmod below.
+      const previousMask = process.umask(0o077);
+      try {
+        temporaryFd = ops.openTemporaryExclusive(dirfd, temporaryName);
+      } finally {
+        process.umask(previousMask);
+      }
       created = true;
 
       // The variadic mode argument is untrusted on every platform, so the descriptor's
@@ -1247,9 +1346,12 @@ export async function runRuntimeAdmissionDerive(
   const seams = options.seams ?? {};
   let operands: AdmittedOperands;
   let input: AdmittedInput;
+  let inputFd = -1;
   try {
     operands = admitOperands(options.argv, options.workingDirectory);
-    const rawBytes = readFileSync(operands.inputPath);
+    inputFd = operands.inputFd;
+    seams["input-read"]?.({ root: operands.root });
+    const rawBytes = readAdmittedInput(inputFd);
     input = admitDerivationInput(rawBytes);
     const buildIdentity = await (options.loadBuildIdentity ?? loadPackagedBuildIdentity)();
     // The release identity comes from the running Worker, never from caller-supplied
@@ -1261,6 +1363,8 @@ export async function runRuntimeAdmissionDerive(
     ) reject();
   } catch {
     return outcome("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+  } finally {
+    if (inputFd >= 0) closeSync(inputFd);
   }
 
   let derived: ReturnType<typeof deriveRuntimeAdmissionForClosure>;

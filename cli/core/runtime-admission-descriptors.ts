@@ -3,6 +3,7 @@
 
 import { dlopen, ptr } from "bun:ffi";
 import { lstatSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export interface DescriptorStat {
   dev: bigint;
@@ -267,8 +268,17 @@ function verifyLayout(ops: DescriptorOps, probePath: string): void {
   }
 }
 
-/** Loads the descriptor-bound operations, verifying the layout against `probePath`. */
-export function loadDescriptorOps(probePath: string): DescriptorOps {
+/**
+ * The layout probe reads this module's own file rather than a caller-supplied
+ * directory. A directory's link count changes on every `mkdir` and `rmdir` inside it,
+ * so probing the publication target would let an adversary — or an ordinary
+ * concurrent writer — make the two readings disagree and report the semantics as
+ * conclusively unsupported.
+ */
+const LAYOUT_PROBE_PATH = fileURLToPath(import.meta.url);
+
+/** Loads the descriptor-bound operations, verifying the declared layout first. */
+export function loadDescriptorOps(): DescriptorOps {
   if (cached !== null && "reason" in cached) {
     throw new DescriptorSemanticsUnsupported(cached.reason);
   }
@@ -281,14 +291,14 @@ export function loadDescriptorOps(probePath: string): DescriptorOps {
       throw new DescriptorSemanticsUnsupported(reason);
     }
   }
-  verifyLayout(cached.ops, probePath);
+  verifyLayout(cached.ops, LAYOUT_PROBE_PATH);
   return cached.ops;
 }
 
 /** Reports whether this platform can honour the descriptor-bound publication contract. */
 export function describeDescriptorSupport(): DescriptorSupport {
   try {
-    loadDescriptorOps(process.cwd());
+    loadDescriptorOps();
     return { supported: true, reason: "" };
   } catch (error) {
     return {
