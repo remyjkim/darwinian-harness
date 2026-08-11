@@ -1229,7 +1229,11 @@ interface PersistenceContext {
   observeDescriptorOps?: (ops: DescriptorOps) => DescriptorOps;
 }
 
-function sameEntry(left: DescriptorStat | null, right: DescriptorStat | null): boolean {
+/** Identity is the device and inode pair, so any reading that carries both compares. */
+function sameEntry(
+  left: { dev: bigint; ino: bigint } | null,
+  right: { dev: bigint; ino: bigint } | null,
+): boolean {
   return left !== null && right !== null && left.dev === right.dev && left.ino === right.ino;
 }
 
@@ -1276,17 +1280,13 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
     // readings use the same stat interface, so no ABI or signedness translation sits
     // between them.
     let handle: DescriptorStat;
-    let openedIdentity: { dev: bigint; ino: bigint };
     try {
       handle = ops.fstat(dirfd);
-      const opened = fstatSync(dirfd, { bigint: true });
-      openedIdentity = { dev: opened.dev, ino: opened.ino };
     } catch {
       return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
     }
     if (
-      openedIdentity.dev !== admittedParent.dev ||
-      openedIdentity.ino !== admittedParent.ino ||
+      !sameEntry(handle, admittedParent) ||
       !sameEntry(handle, admitted) ||
       !handle.isDirectory ||
       !sameEntry(ops.statPathNoFollow(operands.outputParent), admitted)
@@ -1310,8 +1310,11 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
     let temporary: DescriptorStat | null = null;
     let created = false;
 
+    // Compared against the descriptor-walked identity rather than the pathname reading
+    // above, so the proof rests on the object walked out from the root and not on a
+    // reading whose binding to that walk is only implied by the checks that precede it.
     const proveParent = (): boolean =>
-      sameEntry(ops.statPathNoFollow(operands.outputParent), admitted);
+      sameEntry(ops.statPathNoFollow(operands.outputParent), admittedParent);
 
     const cleanupBeforeCommit = (
       code: PersistenceOutcomeCode,
