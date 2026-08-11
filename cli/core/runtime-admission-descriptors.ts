@@ -269,16 +269,30 @@ function build(): DescriptorOps {
  * Proves the declared struct layout against an independent reading of the same
  * pathname. A wrong offset would otherwise produce identity comparisons that are
  * quietly meaningless, which is exactly what the frozen-handle contract forbids.
+ *
+ * The link count is proved along with the identity fields because it is the only
+ * reading that exercises the link-count offset, and the post-link check that a
+ * published file carries exactly one name is meaningless if that offset is wrong.
  */
 function verifyLayout(ops: DescriptorOps, probePath: string): void {
   const observed = ops.statPathNoFollow(probePath);
   if (observed === null) throw new DescriptorSemanticsUnsupported("layout probe is unreadable");
-  const reference = lstatSync(probePath);
+  const layout = platformLayout();
+  if (layout === null) throw new DescriptorSemanticsUnsupported("no declared layout to prove");
+  // The reference is read as bigints so both sides are exact. Reading it as numbers
+  // would round an inode above 2^53 and compare two values that are equal only after
+  // the rounding, which is the opposite of what a layout proof is for.
+  const reference = lstatSync(probePath, { bigint: true });
+  // `dev` is compared over the bits the field actually holds. Where the declared field
+  // is narrower than the reference reading's, each side widens it under its own
+  // convention and those conventions need not agree on the sign bit, so only the
+  // declared width is common ground between them.
+  const referenceDev = layout.devWidth === 8 ? reference.dev : BigInt.asUintN(32, reference.dev);
   if (
-    observed.ino !== BigInt(reference.ino) ||
-    observed.dev !== BigInt(reference.dev) ||
-    (observed.mode & 0o170000) !== (reference.mode & 0o170000) ||
-    observed.nlink !== reference.nlink
+    observed.ino !== reference.ino ||
+    observed.dev !== referenceDev ||
+    (observed.mode & 0o170000) !== Number(reference.mode & 0o170000n) ||
+    BigInt(observed.nlink) !== reference.nlink
   ) {
     throw new DescriptorSemanticsUnsupported("platform metadata layout does not match");
   }
@@ -290,6 +304,10 @@ function verifyLayout(ops: DescriptorOps, probePath: string): void {
  * so probing the publication target would let an adversary — or an ordinary
  * concurrent writer — make the two readings disagree and report the semantics as
  * conclusively unsupported.
+ *
+ * It follows that the proof covers the declared struct layout, not the device the
+ * publication writes to: the two can be different filesystems, so a caller may not read
+ * a passing probe as a statement about the publication target's metadata.
  */
 const LAYOUT_PROBE_PATH = fileURLToPath(import.meta.url);
 
