@@ -1667,6 +1667,63 @@ describe.skipIf(SKIP_POSIX !== "")(`parent and temp substitution${SKIP_POSIX}`, 
     expect(readdirSync(join(root, "nested-real", "out"))).toEqual([]);
   });
 
+  // The parent is resolved one component at a time from the admitted root, and the
+  // identity is the resulting descriptor's own. These two cases bracket the step the
+  // substitution can land on: before a component is opened the walk refuses it, and
+  // after it is opened the descriptor already holds the real directory, so the
+  // pathname the publication re-opens no longer matches. A second pathname reading
+  // taken to record the identity would have agreed with the attacker in both.
+  const substituteIntermediate = (root: string, foreign: string) => () => {
+    renameSync(join(root, "nested"), join(root, "nested-real"));
+    symlinkSync(foreign, join(root, "nested"));
+  };
+
+  test("an intermediate substituted before the walk reaches it is refused at admission", async () => {
+    const root = confinementRoot();
+    const foreign = confinementRoot();
+    mkdirSync(join(root, "nested", "out"), { recursive: true });
+    mkdirSync(join(foreign, "out"));
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const substitute = substituteIntermediate(root, foreign);
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "nested/out/result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      seams: {
+        "parent-resolve": (context) => {
+          if (context.component === "nested") substitute();
+        },
+      },
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    expect(outcome?.commitState).toBe("not_committed");
+    expect(readdirSync(join(foreign, "out"))).toEqual([]);
+    expect(readdirSync(join(root, "nested-real", "out"))).toEqual([]);
+  });
+
+  test("an intermediate substituted after the walk passes it cannot move the publication", async () => {
+    const root = confinementRoot();
+    const foreign = confinementRoot();
+    mkdirSync(join(root, "nested", "out"), { recursive: true });
+    mkdirSync(join(foreign, "out"));
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const substitute = substituteIntermediate(root, foreign);
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "nested/out/result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      seams: {
+        "parent-resolve": (context) => {
+          if (context.component === "out") substitute();
+        },
+      },
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+    expect(outcome?.commitState).toBe("not_committed");
+    expect(readdirSync(join(foreign, "out"))).toEqual([]);
+    expect(readdirSync(join(root, "nested-real", "out"))).toEqual([]);
+  });
+
   test("post-link substitution before the first directory sync is commit-validation-indeterminate", async () => {
     const root = confinementRoot();
     writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));

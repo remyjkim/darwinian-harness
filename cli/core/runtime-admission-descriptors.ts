@@ -19,6 +19,12 @@ export interface DescriptorOps {
   statPathNoFollow(path: string): DescriptorStat | null;
   /** Opens an existing directory with directory and no-follow semantics. */
   openDirectoryNoFollow(path: string): number;
+  /**
+   * Descriptor-relative open of one directory component with the same semantics.
+   * Raising is an ordinary refusal — the name is a symlink, is not a directory, or
+   * is gone — never a statement that the platform lacks the semantics.
+   */
+  openDirectoryAtNoFollow(dirfd: number, name: string): number;
   fstat(fd: number): DescriptorStat;
   /** Descriptor-relative no-follow metadata; `null` when the name does not exist. */
   fstatatNoFollow(dirfd: number, name: string): DescriptorStat | null;
@@ -201,6 +207,16 @@ function build(): DescriptorOps {
         0,
       );
       if (fd < 0) throw new DescriptorSemanticsUnsupported("directory open failed");
+      return fd;
+    },
+    openDirectoryAtNoFollow(dirfd, name) {
+      const fd = call.openat(
+        dirfd,
+        terminated(name),
+        layout.openReadOnly | layout.openDirectory | layout.openNoFollow,
+        0,
+      );
+      if (fd < 0) throw new Error("directory component open failed");
       return fd;
     },
     fstat(fd) {

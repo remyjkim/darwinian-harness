@@ -935,13 +935,24 @@ function admitDerivationInput(rawBytes: Buffer): AdmittedInput {
 
 interface AdmittedOperands {
   root: string;
-  /** The admitted regular input itself; every derivation byte is read from here. */
-  inputFd: number;
   outputPath: string;
   outputParent: string;
-  /** The parent's identity, captured where its pathname is proven symlink-free. */
-  outputParentIdentity: { dev: bigint; ino: bigint };
+  /**
+   * The parent directory itself, resolved by descriptor from the root. `null` where
+   * the platform has no descriptor-bound semantics, which publication refuses.
+   */
+  outputParentIdentity: { dev: bigint; ino: bigint } | null;
   outputName: string;
+}
+
+/**
+ * The confined operands and the open input they were admitted with. The descriptor is
+ * kept out of the operand record so nothing downstream of the read can reach a number
+ * the process has already closed and the kernel is free to reissue.
+ */
+interface AdmittedInvocation {
+  operands: AdmittedOperands;
+  inputFd: number;
 }
 
 /**
@@ -1003,7 +1014,56 @@ function admitOperand(value: string): string {
   return value;
 }
 
-function admitOperands(argv: readonly string[], workingDirectory: string): AdmittedOperands {
+/**
+ * Resolves the publication parent by descriptor: the root is opened by pathname —
+ * it is the boundary itself, so its own resolution is the definition rather than a
+ * step inside it — and every component below it is then opened relative to the handle
+ * above it with directory and no-follow semantics. The identity is the resulting
+ * descriptor's own, so no pathname is traversed to obtain it. Reading the identity
+ * back from the pathname instead, however adjacent the two readings are, would let a
+ * component substituted between them name a directory outside the root: `lstat`
+ * follows every intermediate component, and the handle the publication opens later
+ * follows exactly the same ones, so both readings would agree on it.
+ *
+ * The unwrapped operations are used deliberately. A caller's observer belongs to the
+ * publication phase it was written against, and running it here would fire it against
+ * a tree that phase has not reached yet.
+ *
+ * Returns `null` where the platform has no descriptor-bound semantics; publication is
+ * refused outright there, so an unproven identity is never acted on.
+ */
+function resolveAdmittedParent(
+  root: string,
+  components: readonly string[],
+  seams: Record<string, RuntimeAdmissionDeriveSeam>,
+): { dev: bigint; ino: bigint } | null {
+  let ops: DescriptorOps;
+  try {
+    ops = loadDescriptorOps();
+  } catch {
+    return null;
+  }
+  let dirfd = ops.openDirectoryNoFollow(root);
+  try {
+    for (const component of components) {
+      seams["parent-resolve"]?.({ root, component });
+      const above = dirfd;
+      dirfd = ops.openDirectoryAtNoFollow(above, component);
+      ops.close(above);
+    }
+    const opened = ops.fstat(dirfd);
+    if (!opened.isDirectory) reject();
+    return { dev: opened.dev, ino: opened.ino };
+  } finally {
+    ops.close(dirfd);
+  }
+}
+
+function admitOperands(
+  argv: readonly string[],
+  workingDirectory: string,
+  seams: Record<string, RuntimeAdmissionDeriveSeam>,
+): AdmittedInvocation {
   if (argv.length !== 4) reject();
   const operands = new Map<string, string>();
   for (let index = 0; index < argv.length; index += 2) {
@@ -1048,27 +1108,30 @@ function admitOperands(argv: readonly string[], workingDirectory: string): Admit
     if (outputExists) reject();
 
     const outputParent = dirname(outputPath);
+    // Admits the operand as a pathname: it must name a place under the root that no
+    // symlink reaches. This is the whole of the confinement wherever descriptor-bound
+    // semantics are absent, and publication is refused outright there.
     let parentReal: string;
     try {
       parentReal = realpathSync(outputParent);
     } catch {
       return reject();
     }
-    // The identity is taken at the instant the pathname is proven symlink-free, and
-    // the publication handle is later required to be this same object. Re-deriving
-    // the parent from its pathname afterwards would prove nothing: `lstat` follows
-    // every intermediate component and `O_NOFOLLOW` guards only the final one, so a
-    // later reading traverses any substituted intermediate exactly as the open does.
-    const parentStat = lstatSync(outputParent, { bigint: true });
-    if (parentReal !== outputParent || !parentStat.isDirectory()) reject();
+    if (parentReal !== outputParent) reject();
 
     return {
-      root,
+      operands: {
+        root,
+        outputPath,
+        outputParent,
+        outputParentIdentity: resolveAdmittedParent(
+          root,
+          outputOperand.split("/").slice(0, -1),
+          seams,
+        ),
+        outputName: posixPath.basename(outputOperand),
+      },
       inputFd,
-      outputPath,
-      outputParent,
-      outputParentIdentity: { dev: parentStat.dev, ino: parentStat.ino },
-      outputName: posixPath.basename(outputOperand),
     };
   } catch (error) {
     closeSync(inputFd);
@@ -1176,6 +1239,13 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
     seams[name]?.({ root: operands.root, ...payload });
   };
 
+  // Admission could not resolve the parent by descriptor, so there is no proved
+  // object to bind the publication to and nothing may be written.
+  const admittedParent = operands.outputParentIdentity;
+  if (admittedParent === null) {
+    return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
+  }
+
   let ops: DescriptorOps;
   try {
     const loaded = loadDescriptorOps();
@@ -1197,9 +1267,14 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
     } catch {
       return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSISTENCE_UNSUPPORTED");
     }
-    // The opened handle is bound to the identity captured at admission, which is the
-    // only reading that predates the whole derivation window. The two readings use the
-    // same stat interface, so no ABI or signedness translation sits between them.
+    // This open resolves the pathname again and so may reach a different object than
+    // admission did. Requiring it to be the admitted identity is what makes that
+    // harmless: the admitted identity was walked out component by component from the
+    // root, so publishing into an object that carries it publishes into the directory
+    // proved to be under the root, whatever the pathname resolves to now. The
+    // publication is bound to the object; the pathname only has to find it. The two
+    // readings use the same stat interface, so no ABI or signedness translation sits
+    // between them.
     let handle: DescriptorStat;
     let openedIdentity: { dev: bigint; ino: bigint };
     try {
@@ -1210,8 +1285,8 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
       return outcome("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
     }
     if (
-      openedIdentity.dev !== operands.outputParentIdentity.dev ||
-      openedIdentity.ino !== operands.outputParentIdentity.ino ||
+      openedIdentity.dev !== admittedParent.dev ||
+      openedIdentity.ino !== admittedParent.ino ||
       !sameEntry(handle, admitted) ||
       !handle.isDirectory ||
       !sameEntry(ops.statPathNoFollow(operands.outputParent), admitted)
@@ -1436,8 +1511,9 @@ export async function runRuntimeAdmissionDerive(
   let input: AdmittedInput;
   let inputFd = -1;
   try {
-    operands = admitOperands(options.argv, options.workingDirectory);
-    inputFd = operands.inputFd;
+    const admitted = admitOperands(options.argv, options.workingDirectory, seams);
+    operands = admitted.operands;
+    inputFd = admitted.inputFd;
     seams["input-read"]?.({ root: operands.root });
     const rawBytes = readAdmittedInput(inputFd);
     input = admitDerivationInput(rawBytes);
