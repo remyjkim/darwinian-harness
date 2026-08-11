@@ -8,11 +8,13 @@ import {
   fstatSync,
   lstatSync,
   openSync,
+  readFileSync,
   readSync,
   realpathSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { posix as posixPath } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   loadBuildIdentity as loadPackagedBuildIdentity,
   type RuntimeBuildIdentity,
@@ -33,7 +35,21 @@ export const RUNTIME_ADMISSION_ADAPTER_VERSION = "cl.i265.worker-runtime-admissi
 export const RUNTIME_ADMISSION_INPUT_SCHEMA = "cl.i268.finch-derivation-input.v1";
 export const RUNTIME_ADMISSION_OUTPUT_SCHEMA = "cl.i268.finch-derivation-output.v2";
 export const RUNTIME_ADMISSION_ADAPTER_ENTRY = "cli/tools/runtime-admission-derive.ts";
-export const RUNTIME_ADMISSION_PRODUCTION_DERIVATION_ENTRY = "cli/core/runtime-admission-manifest.ts";
+
+/**
+ * Every file that implements the process-adapter contract, in the strictly ascending
+ * order the attestation requires. Reachability from the entry found these; what puts
+ * a file here is that replacing it changes what the adapter admits or publishes.
+ * `cli/core/errors.ts` is reachable and deliberately absent: it is a repo-wide error
+ * module the adapter never dispatches on, so it carries none of the contract.
+ */
+export const RUNTIME_ADMISSION_ADAPTER_IMPLEMENTATION = [
+  "cli/core/build-identity.ts",
+  "cli/core/runtime-admission-derive.ts",
+  "cli/core/runtime-admission-descriptors.ts",
+  "cli/core/runtime-admission-manifest.ts",
+  RUNTIME_ADMISSION_ADAPTER_ENTRY,
+] as const;
 export const PERSISTENCE_OUTCOME_SCHEMA = "cl.i265.worker-runtime-admission-persistence-outcome.v1";
 export const ARTIFACT_IDENTITY_SCHEMA = "cl.i268.serialized-artifact-identity.v1";
 export const FINCH_NESTED_INERT_RULE_SCHEMA = "cl.i268.finch-nested-inert-rule-config.v1";
@@ -140,6 +156,34 @@ function sha256(bytes: Uint8Array | string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
+export interface AdapterImplementationFile {
+  path: string;
+  byteLength: number;
+  sha256: string;
+}
+
+const PACKAGE_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
+/**
+ * Attests the adapter over its own real bytes. A frozen table cannot express this:
+ * whichever file carried it would have to contain its own digest, and moving the
+ * table to an excluded module would restore exactly the hole this attestation closes
+ * — a file that decides the attested value while not being part of it.
+ */
+export function readAdapterImplementation(): {
+  implementation: AdapterImplementationFile[];
+  implementationSha256: string;
+} {
+  const implementation = RUNTIME_ADMISSION_ADAPTER_IMPLEMENTATION.map((path) => {
+    const bytes = readFileSync(join(PACKAGE_ROOT, path));
+    return { path: path as string, byteLength: bytes.byteLength, sha256: sha256(bytes) };
+  });
+  return {
+    implementation,
+    implementationSha256: sha256(Buffer.from(JSON.stringify(implementation), "utf8")),
+  };
+}
+
 const NESTED_INERT_RULE_CONFIG_BASE64 =
   "eyJzY2hlbWEiOiJjbC5pMjY4LmZpbmNoLW5lc3RlZC1pbmVydC1ydWxlLWNvbmZpZy52MSIsInNjaGVtYVZlcnNpb24iOjEsImNh" +
   "cmRzIjp7IkBjdXJhdGlvbi1sYWJzL2J1enotZGVsaXZlcnktdG9vbHMiOnsic2VydmVySWRzIjpbImJ1enotdG9vbHMiXSwic2Vy" +
@@ -209,6 +253,7 @@ const GIT_OBJECT_PATTERN = /^[0-9a-f]{40}$/;
 const CONTROL_PATTERN = /[\u0000-\u001f\u007f]/u;
 const LONE_SURROGATE_PATTERN = /\p{Surrogate}/u;
 const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const REGISTRY_INTEGRITY_PATTERN = /^sha512-[A-Za-z0-9+/]{86}==$/;
 const TOOLS_CARD_NAME = "@curation-labs/buzz-delivery-tools";
 const WORKER_CARD_NAME = "@curation-labs/buzz-delivery-worker";
 const TOOL_SELECTORS = ["mcp:buzz-tools/buzz_messages_send", "mcp:buzz-tools/buzz_messages_thread"];
@@ -256,6 +301,15 @@ function hex(value: unknown, pattern: RegExp): string {
 function positiveInteger(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) <= 0) reject();
   return value as number;
+}
+
+/** A registry subresource integrity string: `sha512-` and 64 canonically encoded bytes. */
+function registryIntegrity(value: unknown): string {
+  if (typeof value !== "string" || !REGISTRY_INTEGRITY_PATTERN.test(value)) reject();
+  const encoded = (value as string).slice("sha512-".length);
+  const decoded = Buffer.from(encoded, "base64");
+  if (decoded.byteLength !== 64 || decoded.toString("base64") !== encoded) reject();
+  return value as string;
 }
 
 function decodeCanonicalBase64(value: unknown): Buffer {
@@ -339,6 +393,7 @@ interface AdmittedInput {
   candidateBytes: Buffer;
   candidateIdentity: SerializedArtifactIdentity;
   producerSource: { repository: string; commit: string; tree: string };
+  workerSourceCommit: string;
   workerPackageVersion: string;
   entrypoint: { name: string; version: string; kind: string };
   cards: AdmittedCard[];
@@ -422,7 +477,17 @@ function admitProducerSource(
   value: unknown,
   producer: "worker" | "services",
 ): { repository: string; commit: string; tree: string } {
-  const record = closed(value, ["repository", "commit", "tree", "adapterVersion"]);
+  const record = closed(value, [
+    "repository",
+    "commit",
+    "tree",
+    "adapterVersion",
+    "adapterImplementationSha256",
+  ]);
+  // The frozen adapter rollup is admitted for shape only. This producer publishes the
+  // rollup it computes over its own bytes; the candidate freeze is where a producer
+  // that swapped its implementation and recomputed its own rollup is caught.
+  hex(record.adapterImplementationSha256, SHA256_PATTERN);
   const expected = producer === "worker"
     ? { repository: "remyjkim/darwinian-worker", adapterVersion: RUNTIME_ADMISSION_ADAPTER_VERSION }
     : {
@@ -442,6 +507,7 @@ function admitProducerSource(
 interface AdmittedCandidate {
   producerSource: { repository: string; commit: string; tree: string };
   workerPackageVersion: string;
+  workerSourceCommit: string;
   entrypoint: { name: string; version: string; kind: string };
   cards: ReturnType<typeof admitCardSummary>[];
   cardLock: { byteLength: number; sha256: string; storeMinDrwnVersion: string };
@@ -497,14 +563,22 @@ function admitCandidate(value: unknown, phase: DerivationPhase): AdmittedCandida
 
   const release = closed(record.release, [
     "workerPackageVersion",
+    "workerSourceCommit",
+    "workerSourceTree",
     "workerPackageIdentity",
+    "workerPackageIntegrity",
+    "workerExecutableIdentity",
     "integratedReceiptIdentity",
     "sourceEquivalenceReceiptIdentity",
     "commonBuzzSha256",
     "provisional",
   ]);
   if (typeof release.workerPackageVersion !== "string" || release.provisional !== false) reject();
+  const workerSourceCommit = hex(release.workerSourceCommit, GIT_OBJECT_PATTERN);
+  hex(release.workerSourceTree, GIT_OBJECT_PATTERN);
   artifactIdentity(release.workerPackageIdentity, phase);
+  registryIntegrity(release.workerPackageIntegrity);
+  artifactIdentity(release.workerExecutableIdentity, phase);
   artifactIdentity(release.integratedReceiptIdentity, phase);
   artifactIdentity(release.sourceEquivalenceReceiptIdentity, phase);
   hex(release.commonBuzzSha256, SHA256_PATTERN);
@@ -548,6 +622,7 @@ function admitCandidate(value: unknown, phase: DerivationPhase): AdmittedCandida
   return {
     producerSource: workerSource,
     workerPackageVersion: release.workerPackageVersion as string,
+    workerSourceCommit,
     entrypoint: entrypoint as { name: string; version: string; kind: string },
     cards,
     cardLock: {
@@ -844,6 +919,7 @@ function admitDerivationInput(rawBytes: Buffer): AdmittedInput {
     candidateIdentity: declaredCandidateIdentity,
     producerSource: candidate.producerSource,
     workerPackageVersion: candidate.workerPackageVersion,
+    workerSourceCommit: candidate.workerSourceCommit,
     entrypoint: candidate.entrypoint,
     cards,
     cardLock: candidate.cardLock,
@@ -1006,6 +1082,7 @@ function buildOutputValue(
 ): Record<string, unknown> {
   const envelopeBytes = Buffer.from(derived.canonicalEnvelope, "utf8");
   const applicationBytes = Buffer.from(derived.canonicalApplicationRequirements, "utf8");
+  const adapter = readAdapterImplementation();
   const cards = input.cards.map((card) => ({
     name: card.name,
     version: card.version,
@@ -1022,8 +1099,9 @@ function buildOutputValue(
     producerSource: input.producerSource,
     adapter: {
       ownerIssue: 265,
-      productionDerivationFile: RUNTIME_ADMISSION_PRODUCTION_DERIVATION_ENTRY,
-      processAdapterFile: RUNTIME_ADMISSION_ADAPTER_ENTRY,
+      entrypoint: RUNTIME_ADMISSION_ADAPTER_ENTRY,
+      implementation: adapter.implementation,
+      implementationSha256: adapter.implementationSha256,
       commandId: RUNTIME_ADMISSION_DERIVE_COMMAND_ID,
       commandVersion: RUNTIME_ADMISSION_ADAPTER_VERSION,
     },
@@ -1355,11 +1433,14 @@ export async function runRuntimeAdmissionDerive(
     input = admitDerivationInput(rawBytes);
     const buildIdentity = await (options.loadBuildIdentity ?? loadPackagedBuildIdentity)();
     // The release identity comes from the running Worker, never from caller-supplied
-    // source authority; a packaged identity must also match the declared commit.
+    // source authority. Both comparisons are against the release the candidate
+    // declares: the packaged build's source commit is the commit the released package
+    // was built from, which is what `release.workerSourceCommit` names. The adapter's
+    // own source identity in `producerSources.worker` is a different referent.
     if (buildIdentity.version !== input.workerPackageVersion) reject();
     if (
       buildIdentity.kind === "packaged" &&
-      buildIdentity.sourceCommit !== input.producerSource.commit
+      buildIdentity.sourceCommit !== input.workerSourceCommit
     ) reject();
   } catch {
     return outcome("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");

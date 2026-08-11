@@ -23,14 +23,15 @@ import {
   FINCH_NESTED_INERT_RULE_SHA256,
   MAX_DIAGNOSTIC_BYTES,
   RUNTIME_ADMISSION_ADAPTER_ENTRY,
+  RUNTIME_ADMISSION_ADAPTER_IMPLEMENTATION,
   RUNTIME_ADMISSION_ADAPTER_VERSION,
   RUNTIME_ADMISSION_COMMIT_STATES,
   RUNTIME_ADMISSION_DERIVE_COMMAND_ID,
   RUNTIME_ADMISSION_INPUT_SCHEMA,
   RUNTIME_ADMISSION_OUTPUT_SCHEMA,
-  RUNTIME_ADMISSION_PRODUCTION_DERIVATION_ENTRY,
   PERSISTENCE_OUTCOME_SCHEMA,
   formatPersistenceOutcome,
+  readAdapterImplementation,
   readNestedInertRuleConfigBytes,
   runRuntimeAdmissionDerive,
   type PersistenceOutcomeCode,
@@ -170,6 +171,8 @@ interface CardMaterial {
 interface MaterialMutators {
   manifest?: (manifest: any) => void;
   lock?: (lock: any) => void;
+  /** Rewrites the candidate before it is encoded, so every byte identity moves with it. */
+  candidate?: (candidate: any) => void;
 }
 
 function cardMaterial(phase: Phase, mutators: MaterialMutators = {}): CardMaterial[] {
@@ -265,10 +268,22 @@ const STORE_EXPORT = {
   sha256: "d".repeat(64),
 };
 
+// The adapter's own source identity and the source the released package was built
+// from are different referents, so the fixture keeps them distinct: a comparison that
+// confuses the two would pass under equal values and prove nothing.
 const WORKER_SOURCE_COMMIT = "8".repeat(40);
 const WORKER_SOURCE_TREE = "9".repeat(40);
+const RELEASE_SOURCE_COMMIT = "e".repeat(40);
+const RELEASE_SOURCE_TREE = "f".repeat(40);
+const RELEASE_PACKAGE_INTEGRITY =
+  "sha512-iV91GIi4km5zq8vTodp2z6T/3orT0+oj3LYGBLgL35/p2D+NpAMNFpQLaf/0q2BX0AwwQIkgr+bYnzXB1rR4rQ==";
 
-function candidateBytes(phase: Phase, cards: CardMaterial[], lock: Buffer): Buffer {
+function candidateBytes(
+  phase: Phase,
+  cards: CardMaterial[],
+  lock: Buffer,
+  mutators: MaterialMutators = {},
+): Buffer {
   const evidence = phaseEvidence(phase);
   const candidate: Record<string, unknown> = {
     schema: `cl.i268.finch-${phase}-candidate.v1`,
@@ -299,17 +314,25 @@ function candidateBytes(phase: Phase, cards: CardMaterial[], lock: Buffer): Buff
         commit: WORKER_SOURCE_COMMIT,
         tree: WORKER_SOURCE_TREE,
         adapterVersion: "cl.i265.worker-runtime-admission-adapter.v1",
+        // The frozen rollup a candidate carries is reviewed evidence, not something
+        // this producer reproduces; it publishes the rollup over its own real bytes.
+        adapterImplementationSha256: "1".repeat(64),
       },
       services: {
         repository: "curation-labs/darwinian-services",
         commit: "a".repeat(40),
         tree: "b".repeat(40),
         adapterVersion: "cl.i266.services-runtime-admission-adapter.v1",
+        adapterImplementationSha256: "2".repeat(64),
       },
     },
     release: {
       workerPackageVersion: "1.3.0",
+      workerSourceCommit: RELEASE_SOURCE_COMMIT,
+      workerSourceTree: RELEASE_SOURCE_TREE,
       workerPackageIdentity: identity(phase, utf8("worker-package")),
+      workerPackageIntegrity: RELEASE_PACKAGE_INTEGRITY,
+      workerExecutableIdentity: identity(phase, utf8("worker-executable")),
       integratedReceiptIdentity: identity(phase, utf8("integrated-receipt")),
       sourceEquivalenceReceiptIdentity: identity(phase, utf8("source-equivalence")),
       commonBuzzSha256: "c".repeat(64),
@@ -333,6 +356,7 @@ function candidateBytes(phase: Phase, cards: CardMaterial[], lock: Buffer): Buff
     noSecretScan: { commandIdentity: "cl.i268.no-secret-scan.v1", result: "pass" },
   };
   if (phase === "root") candidate.toolsPublication = evidence.toolsPublication;
+  mutators.candidate?.(candidate);
   return utf8(JSON.stringify(candidate));
 }
 
@@ -341,7 +365,7 @@ type Mutator = (input: Record<string, any>) => void;
 function derivationInput(phase: Phase, mutate?: Mutator, material: MaterialMutators = {}): string {
   const cards = cardMaterial(phase, material);
   const lock = lockBytes(phase, cards, material);
-  const candidate = candidateBytes(phase, cards, lock);
+  const candidate = candidateBytes(phase, cards, lock, material);
   const input: Record<string, any> = {
     schema: RUNTIME_ADMISSION_INPUT_SCHEMA,
     schemaVersion: 1,
@@ -397,7 +421,7 @@ const PACKAGED_BUILD_IDENTITY = {
   schema: "darwinian.worker.build-identity" as const,
   schemaVersion: 1 as const,
   version: "1.3.0",
-  sourceCommit: WORKER_SOURCE_COMMIT,
+  sourceCommit: RELEASE_SOURCE_COMMIT,
   qualificationEligible: true,
 };
 
@@ -521,8 +545,43 @@ describe("adapter binding", () => {
     expect(RUNTIME_ADMISSION_INPUT_SCHEMA).toBe("cl.i268.finch-derivation-input.v1");
     expect(RUNTIME_ADMISSION_OUTPUT_SCHEMA).toBe("cl.i268.finch-derivation-output.v2");
     expect(RUNTIME_ADMISSION_ADAPTER_ENTRY).toBe("cli/tools/runtime-admission-derive.ts");
-    expect(RUNTIME_ADMISSION_PRODUCTION_DERIVATION_ENTRY).toBe("cli/core/runtime-admission-manifest.ts");
     expect(lstatSync(join(REPO_ROOT, RUNTIME_ADMISSION_ADAPTER_ENTRY)).isFile()).toBe(true);
+  });
+
+  test("the attested implementation set is the real bytes of every contract file", () => {
+    // The rollup is recomputed here from the files on disk rather than compared against
+    // a second hardcoded digest, so any edit to any of them fails this case. A frozen
+    // table cannot express this: whichever file held it would contain its own digest.
+    const { implementation, implementationSha256 } = readAdapterImplementation();
+    expect(implementation.map(({ path }) => path)).toEqual([...RUNTIME_ADMISSION_ADAPTER_IMPLEMENTATION]);
+    expect(implementation).toHaveLength(5);
+    // The entrypoint is a fourteen-line shim, so an attestation that named only it and
+    // one collaborator would not change when the contract itself was replaced.
+    expect(implementation.some(({ path }) => path === RUNTIME_ADMISSION_ADAPTER_ENTRY)).toBe(true);
+    for (let index = 1; index < implementation.length; index += 1) {
+      expect(implementation[index - 1]!.path < implementation[index]!.path).toBe(true);
+    }
+    for (const entry of implementation) {
+      const bytes = readFileSync(join(REPO_ROOT, entry.path));
+      expect(entry.byteLength, entry.path).toBe(bytes.byteLength);
+      expect(entry.sha256, entry.path).toBe(sha256(bytes));
+      expect(Buffer.byteLength(entry.path)).toBeLessThanOrEqual(256);
+      expect(entry.path.normalize("NFC")).toBe(entry.path);
+    }
+    expect(implementationSha256).toBe(sha256(utf8(JSON.stringify(implementation))));
+  });
+
+  test("the adapter dispatches on no shared error type, which is why errors.ts is excluded", () => {
+    // cli/core/errors.ts is reachable through the derivation module but carries none of
+    // the process-adapter contract, and 61 unrelated modules import it. The exclusion
+    // holds only while nothing here dispatches on those types, so that is asserted
+    // rather than left as a condition nobody re-checks.
+    expect([...RUNTIME_ADMISSION_ADAPTER_IMPLEMENTATION]).not.toContain("cli/core/errors.ts");
+    for (const file of ["cli/core/runtime-admission-derive.ts", RUNTIME_ADMISSION_ADAPTER_ENTRY]) {
+      const source = readFileSync(join(REPO_ROOT, file), "utf8");
+      expect(source, file).not.toContain("DrwnError");
+      expect(source, file).not.toContain("NotAuthenticatedError");
+    }
   });
 
   test("the adapter never registers a deploy or network control plane", () => {
@@ -689,10 +748,12 @@ describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
       commit: WORKER_SOURCE_COMMIT,
       tree: WORKER_SOURCE_TREE,
     });
+    const adapter = readAdapterImplementation();
     expect(output.adapter).toEqual({
       ownerIssue: 265,
-      productionDerivationFile: "cli/core/runtime-admission-manifest.ts",
-      processAdapterFile: "cli/tools/runtime-admission-derive.ts",
+      entrypoint: "cli/tools/runtime-admission-derive.ts",
+      implementation: adapter.implementation,
+      implementationSha256: adapter.implementationSha256,
       commandId: "runtime-admission:derive:v2",
       commandVersion: "cl.i265.worker-runtime-admission-adapter.v1",
     });
@@ -974,7 +1035,19 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
     ["missing candidate bytes", (input) => { delete input.candidate.bytesBase64; }],
     ["extra candidate field", (input) => { input.candidate.extra = 1; }],
     ["noncanonical base64", (input) => {
-      input.candidate.bytesBase64 = noncanonicalBase64(input.candidate.bytesBase64);
+      // Only an encoding with padding carries unused bits to set, and which admitted
+      // envelope has them follows from its byte length, so the case takes the first
+      // one that does rather than depending on a fixture staying that length.
+      for (const envelope of [
+        input.candidate,
+        input.derivationPreimage.cardLock,
+        input.derivationPreimage.cards[0].manifest,
+      ]) {
+        if (!envelope.bytesBase64.endsWith("=")) continue;
+        envelope.bytesBase64 = noncanonicalBase64(envelope.bytesBase64);
+        return;
+      }
+      throw new Error("no admitted envelope encodes with padding");
     }],
     ["candidate length mismatch", (input) => { input.candidate.identity.byteLength += 1; }],
     ["candidate digest mismatch", (input) => {
@@ -1127,6 +1200,41 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
     }
   });
 
+  test("rejects malformed release bindings and adapter rollups inside the candidate", async () => {
+    const hostile: Array<[string, (candidate: any) => void]> = [
+      ["short release source commit", (c) => { c.release.workerSourceCommit = "e".repeat(39); }],
+      ["missing release source tree", (c) => { delete c.release.workerSourceTree; }],
+      ["extra release field", (c) => { c.release.workerSourceBranch = "main"; }],
+      ["sha256 package integrity", (c) => {
+        c.release.workerPackageIntegrity = `sha256-${"a".repeat(64)}`;
+      }],
+      ["truncated package integrity", (c) => {
+        c.release.workerPackageIntegrity = `sha512-${"a".repeat(85)}==`;
+      }],
+      ["noncanonical package integrity", (c) => {
+        c.release.workerPackageIntegrity =
+          `sha512-${noncanonicalBase64(RELEASE_PACKAGE_INTEGRITY.slice("sha512-".length))}`;
+      }],
+      ["wrong-phase executable identity", (c) => {
+        c.release.workerExecutableIdentity.phase = "root";
+      }],
+      ["missing worker adapter rollup", (c) => {
+        delete c.producerSources.worker.adapterImplementationSha256;
+      }],
+      ["short services adapter rollup", (c) => {
+        c.producerSources.services.adapterImplementationSha256 = "2".repeat(63);
+      }],
+      ["uppercase worker adapter rollup", (c) => {
+        c.producerSources.worker.adapterImplementationSha256 = "A".repeat(64);
+      }],
+    ];
+    for (const [name, apply] of hostile) {
+      const result = await run({ material: { candidate: apply } });
+      expect(result.outcome?.code, name).toBe("WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+      expect(result.entries, name).toEqual(["derivation-input.json"]);
+    }
+  });
+
   test("requires the running Worker build identity rather than caller-supplied source authority", async () => {
     const drifted = await run({
       buildIdentity: { ...PACKAGED_BUILD_IDENTITY, version: "1.4.0" },
@@ -1134,9 +1242,22 @@ describe.skipIf(SKIP_POSIX !== "")(`input admission${SKIP_POSIX}`, () => {
     expectCode(drifted, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
 
     const mismatched = await run({
-      buildIdentity: { ...PACKAGED_BUILD_IDENTITY, sourceCommit: "e".repeat(40) },
+      buildIdentity: { ...PACKAGED_BUILD_IDENTITY, sourceCommit: "7".repeat(40) },
     });
     expectCode(mismatched, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+
+    // The packaged build's source commit is the commit the released package was built
+    // from, which is release.workerSourceCommit. producerSources.worker.commit is the
+    // adapter's own source; matching against it would only ever hold by coincidence.
+    expect(WORKER_SOURCE_COMMIT).not.toBe(RELEASE_SOURCE_COMMIT);
+    const adapterSource = await run({
+      buildIdentity: { ...PACKAGED_BUILD_IDENTITY, sourceCommit: WORKER_SOURCE_COMMIT },
+    });
+    expectCode(adapterSource, "WORKER_RUNTIME_ADMISSION_INPUT_INVALID");
+    const releaseSource = await run({
+      buildIdentity: { ...PACKAGED_BUILD_IDENTITY, sourceCommit: RELEASE_SOURCE_COMMIT },
+    });
+    expect(releaseSource.outcome).toBeNull();
   });
 
   test("the admitted descriptor, not the pathname, supplies the derivation bytes", async () => {
