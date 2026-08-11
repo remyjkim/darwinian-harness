@@ -900,25 +900,23 @@ describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
 
 describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, () => {
   // The exact accepted artifacts, vendored beside this file at darwinian-services
-  // 4449a59c. Pinning identities alone would assert nothing, so the bytes are here and
+  // 379593ae. Pinning identities alone would assert nothing, so the bytes are here and
   // every pinned number below is the identity of a file the suite actually reads.
   const FIXTURES = join(REPO_ROOT, "test", "fixtures", "runtime-admission");
-  // Two names for one value at a regenerated I268. VECTOR_ROLLUP is what the vendored
-  // artifacts carry: the rollup of the implementation set they were generated against.
-  // ADAPTER_ROLLUP is the rollup this adapter computes over its own real bytes at this
-  // head, which is the value the next regeneration writes into the vectors. They
-  // separate whenever the implementation set changes and any such change fails here,
-  // which is the point of pinning both rather than deriving one from the other.
-  const VECTOR_ROLLUP = "cf8ffe146aa023f91c08c1b5536d5669967200901c5ccc4b8c0a5148f7065c53";
-  const ADAPTER_ROLLUP = "bfb965d4dca0264088727ad2dfb9ebddc801978d747d35d9f3994068d5e5a775";
+  // One value with two readings that must agree: the rollup the vendored artifacts
+  // carry, and the rollup this adapter computes over its own real bytes. Any edit to
+  // the implementation set moves the second and fails here until a regeneration moves
+  // the first to match, so a pin that was never applied fails here rather than passing
+  // on a set that is stale in both places at once.
+  const ACCEPTED_ROLLUP = "bfb965d4dca0264088727ad2dfb9ebddc801978d747d35d9f3994068d5e5a775";
   // A rollup is fixed-width hex, so a regeneration moves the digests and leaves the
   // lengths alone. Only the digest separates one pinned set from another.
   const ACCEPTED = {
-    toolsInput: { byteLength: 9513, sha256: "d7c7d7e51cf67317115af3e7d22659f925fd2dc1f5d6013b2bfb5645ec782e63" },
-    toolsCandidate: { byteLength: 3859, sha256: "27ac76d37d7ed7bda3e567ba2cdf3b4aa4ebafaae8bbc6b1296f3b1476546766" },
-    rootInput: { byteLength: 13538, sha256: "33d0a3ed37965bfb0bd02689448976fc85574b74a61e89e22b91eeb1016c993f" },
-    rootCandidate: { byteLength: 5056, sha256: "fe0bf7063489fd3867c33e622a74592c184760f729069f189498a8fe39980c96" },
-    workerOutput: { byteLength: 4152, sha256: "9aaa8ac4609d39a8753399194c8212f8e78be81049a4fac3862b0b87ac4e0c45" },
+    toolsInput: { byteLength: 9513, sha256: "9c5809b097e1572adae5ea2764ff5d34d3904da9bd5e4f1f226355b3141bf583" },
+    toolsCandidate: { byteLength: 3859, sha256: "91c0758823795de7d8ace2ccca842c710fb1921fb4ce6ea1dc6d3aca3fa4a3a4" },
+    rootInput: { byteLength: 13538, sha256: "677a714dbf64078a4e538940cba9c06341160505b3aa87ece109ace1e7895916" },
+    rootCandidate: { byteLength: 5056, sha256: "dada271d8e411768367d47a1f5db0c25a000b25b7239789c2216b3e82093f9db" },
+    workerOutput: { byteLength: 4152, sha256: "303c49a105381e54f740227cb9d630d505930669e2f976a90bbbcbc0f51362e2" },
   };
 
   function vector(name: string): Buffer {
@@ -960,14 +958,14 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
       expect(sha256(bytes), name).toBe(expected.sha256);
     }
 
-    // The live link: this adapter's rollup over its real bytes, so any edit to the
-    // implementation set fails here rather than at the publication gate.
-    expect(readAdapterImplementation().implementationSha256).toBe(ADAPTER_ROLLUP);
+    // The live link: the frozen value in both candidates is this adapter's own rollup
+    // over its real bytes, so any edit to the implementation set fails here.
+    expect(readAdapterImplementation().implementationSha256).toBe(ACCEPTED_ROLLUP);
     for (const input of [toolsInput, rootInput]) {
       const candidate = JSON.parse(candidateOf(input).toString("utf8"));
-      expect(candidate.producerSources.worker.adapterImplementationSha256).toBe(VECTOR_ROLLUP);
+      expect(candidate.producerSources.worker.adapterImplementationSha256).toBe(ACCEPTED_ROLLUP);
     }
-    expect(JSON.parse(workerOutput.toString("utf8")).adapter.implementationSha256).toBe(VECTOR_ROLLUP);
+    expect(JSON.parse(workerOutput.toString("utf8")).adapter.implementationSha256).toBe(ACCEPTED_ROLLUP);
   });
 
   test("the tools vector reproduces every accepted block this adapter does not derive", async () => {
@@ -983,6 +981,7 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
 
     expect(Object.keys(produced).sort()).toEqual(Object.keys(expected).sort());
     for (const block of [
+      "adapter",
       "candidateIdentity",
       "input",
       "phase",
@@ -996,21 +995,9 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
       expect(JSON.stringify(produced[block]), block).toBe(JSON.stringify(expected[block]));
     }
 
-    // `adapter` is the one bound block that names the implementation set, so it equals
-    // the vector everywhere except where it reports this head's own bytes. Its shape
-    // and every other field are still the vector's, and the two attested fields are
-    // required to be the real ones rather than merely well-formed.
-    expect(Object.keys(produced.adapter).sort()).toEqual(Object.keys(expected.adapter).sort());
-    for (const field of ["ownerIssue", "entrypoint", "commandId", "commandVersion"]) {
-      expect(JSON.stringify(produced.adapter[field]), field).toBe(
-        JSON.stringify(expected.adapter[field]),
-      );
-    }
+    // `adapter` is inside that comparison, so the vector's per-file lengths and digests
+    // are required to be this head's own bytes rather than merely the same shape.
     expect(produced.adapter.implementation).toEqual(readAdapterImplementation().implementation);
-    expect(produced.adapter.implementationSha256).toBe(ADAPTER_ROLLUP);
-    expect(expected.adapter.implementationSha256).toBe(VECTOR_ROLLUP);
-    expect(produced.adapter.implementation.map((file: { path: string }) => file.path))
-      .toEqual(expected.adapter.implementation.map((file: { path: string }) => file.path));
 
     // The derived blocks must be this adapter's real output, never the vector's stubs.
     for (const [key, placeholder] of [
@@ -1039,7 +1026,7 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
       WORKER_CARD,
       TOOLS_CARD,
     ]);
-    expect(output.adapter.implementationSha256).toBe(ADAPTER_ROLLUP);
+    expect(output.adapter.implementationSha256).toBe(ACCEPTED_ROLLUP);
     expect(output.adapter.implementation).toEqual(readAdapterImplementation().implementation);
   });
 });
