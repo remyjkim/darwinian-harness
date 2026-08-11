@@ -1803,6 +1803,38 @@ describe.skipIf(SKIP_POSIX !== "")(`committed cleanup${SKIP_POSIX}`, () => {
       sha256: sha256(bytes),
     });
   });
+
+  test("a directory handle release that raises cannot discard a committed outcome", async () => {
+    // The handle is released after the link and outside every outcome handler, so a
+    // throw there would replace a committed result with the entry backstop's
+    // not-committed code for an artifact that already exists on disk.
+    requireDescriptorSupport();
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    let directoryFd = -1;
+    let released = 0;
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      observeDescriptorOps: (ops) => ({
+        ...ops,
+        openDirectoryNoFollow(path) {
+          directoryFd = ops.openDirectoryNoFollow(path);
+          return directoryFd;
+        },
+        close(fd) {
+          ops.close(fd);
+          if (fd !== directoryFd) return;
+          released += 1;
+          throw new Error("directory handle release");
+        },
+      }),
+    });
+    expect(outcome).toBeNull();
+    expect(released).toBe(1);
+    expect(readdirSync(root).sort()).toEqual(["derivation-input.json", "result.json"]);
+  });
 });
 
 describe(`unsupported platform fail-closed${SKIP_UNSUPPORTED_PLATFORM}`, () => {

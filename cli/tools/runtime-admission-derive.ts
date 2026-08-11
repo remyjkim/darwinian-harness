@@ -11,8 +11,10 @@ import {
 
 /**
  * Every step that can commit the namespace entry is individually classified inside
- * the adapter, and the calls that sit outside a handler all precede the link, so an
- * escaping throw is pre-commit by construction. Reporting it as the closed pre-commit
+ * the adapter. After the link the only statements outside a handler are comparisons
+ * over values already read and the guarded release of the directory handle, so a
+ * throw that arrives here is pre-commit by construction rather than by the raising
+ * behaviour of any particular platform binding. Reporting it as the closed pre-commit
  * code keeps the one-line contract that a stack trace would break.
  */
 const UNCLASSIFIED_PRE_COMMIT: PersistenceOutcome = {

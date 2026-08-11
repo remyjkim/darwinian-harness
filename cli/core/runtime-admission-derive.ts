@@ -1409,7 +1409,17 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
 
     return null;
   } finally {
-    if (dirfd >= 0) ops.close(dirfd);
+    // Releasing the handle is the one step that runs after the link and outside every
+    // outcome handler. A raise here would discard the return value — a committed
+    // outcome included — and report an artifact that exists on disk as not committed,
+    // so the release is guarded and the classification already made stands.
+    if (dirfd >= 0) {
+      try {
+        ops.close(dirfd);
+      } catch {
+        // The outcome is decided; a leaked descriptor cannot change what is on disk.
+      }
+    }
   }
 }
 
