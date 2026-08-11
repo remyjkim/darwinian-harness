@@ -898,6 +898,129 @@ describe.skipIf(SKIP_POSIX !== "")(`clean success${SKIP_POSIX}`, () => {
   });
 });
 
+describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, () => {
+  // The exact accepted artifacts, vendored beside this file at darwinian-services
+  // 083cee30. Pinning identities alone would assert nothing, so the bytes are here and
+  // every pinned number below is the identity of a file the suite actually reads.
+  const FIXTURES = join(REPO_ROOT, "test", "fixtures", "runtime-admission");
+  const ACCEPTED_ROLLUP = "a1ea41dd24713fb6ee768c6a7396094d04b207c64783167bc1b651767eaac4f1";
+  const ACCEPTED = {
+    toolsInput: { byteLength: 9513, sha256: "162284db0ddab5c09e5b1f653c37683a7b669062273a91cb9bfb84804b463c31" },
+    toolsCandidate: { byteLength: 3859, sha256: "f626993ddd23d4edb30bc038c17eec9067544ed4a40942afe1cc07417eb1b02d" },
+    rootInput: { byteLength: 13538, sha256: "daf3e6b17088161f64cefeb11fafee42625f1aecc7fe8701dfdf5217aa79c406" },
+    rootCandidate: { byteLength: 5056, sha256: "bbf79b2a2f93aff4f6c6297aeedbb9aa39c4bef0cf9727272577c6ffc39f3f23" },
+    workerOutput: { byteLength: 4152, sha256: "d2b2b8d68f93d538288304173885336592fc0348c36aece07551521f9b2264db" },
+  };
+
+  function vector(name: string): Buffer {
+    return readFileSync(join(FIXTURES, name));
+  }
+
+  function candidateOf(inputBytes: Buffer): Buffer {
+    return Buffer.from(JSON.parse(inputBytes.toString("utf8")).candidate.bytesBase64, "base64");
+  }
+
+  async function derive(phase: Phase, inputBytes: Buffer): Promise<{ root: string; outcome: unknown }> {
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), inputBytes);
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      // The accepted candidates declare release.workerSourceCommit, which is what a
+      // packaged build's own source commit must equal.
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+    });
+    expect(outcome, phase).toBeNull();
+    return { root, outcome };
+  }
+
+  test("the vendored vectors are the accepted identities and freeze this adapter's rollup", () => {
+    const toolsInput = vector("i268-tools-derivation-input.v1.json");
+    const rootInput = vector("i268-root-derivation-input.v1.json");
+    const workerOutput = vector("i268-worker-output.v2.json");
+    for (const [bytes, expected, name] of [
+      [toolsInput, ACCEPTED.toolsInput, "tools input v1"],
+      [candidateOf(toolsInput), ACCEPTED.toolsCandidate, "tools candidate"],
+      [rootInput, ACCEPTED.rootInput, "root input v1"],
+      [candidateOf(rootInput), ACCEPTED.rootCandidate, "root candidate"],
+      [workerOutput, ACCEPTED.workerOutput, "worker output v2"],
+    ] as const) {
+      expect(bytes.byteLength, name).toBe(expected.byteLength);
+      // Both candidates held their length across regeneration because a rollup is a
+      // fixed-width hex string, so only the digest distinguishes them.
+      expect(sha256(bytes), name).toBe(expected.sha256);
+    }
+
+    // The live link: the frozen value in both candidates is this adapter's own rollup
+    // over its real bytes, so any edit to the implementation set fails here.
+    expect(readAdapterImplementation().implementationSha256).toBe(ACCEPTED_ROLLUP);
+    for (const input of [toolsInput, rootInput]) {
+      const candidate = JSON.parse(candidateOf(input).toString("utf8"));
+      expect(candidate.producerSources.worker.adapterImplementationSha256).toBe(ACCEPTED_ROLLUP);
+    }
+    expect(JSON.parse(workerOutput.toString("utf8")).adapter.implementationSha256).toBe(ACCEPTED_ROLLUP);
+  });
+
+  test("the tools vector reproduces every accepted block this adapter does not derive", async () => {
+    // The accepted output artifact is a parser shape vector, not a derivation product:
+    // its semantic hashes are `1111…` through `5555…` and its envelope is a 38-byte
+    // stub. Asserting whole-artifact equality would pin those placeholders, so the ten
+    // blocks the adapter binds rather than derives are compared byte for byte — which
+    // includes `adapter`, the block this round exists to correct — and the two derived
+    // blocks are instead required to be real.
+    requireDescriptorSupport();
+    const { root } = await derive("tools", vector("i268-tools-derivation-input.v1.json"));
+    const produced = JSON.parse(readFileSync(join(root, "result.json"), "utf8"));
+    const expected = JSON.parse(vector("i268-worker-output.v2.json").toString("utf8"));
+
+    expect(Object.keys(produced).sort()).toEqual(Object.keys(expected).sort());
+    for (const block of [
+      "adapter",
+      "candidateIdentity",
+      "input",
+      "phase",
+      "phaseEvidence",
+      "producer",
+      "producerSource",
+      "schema",
+      "schemaVersion",
+      "security",
+    ]) {
+      expect(JSON.stringify(produced[block]), block).toBe(JSON.stringify(expected[block]));
+    }
+
+    // The derived blocks must be this adapter's real output, never the vector's stubs.
+    for (const [key, placeholder] of [
+      ["closureHash", "1".repeat(64)],
+      ["activationHash", "2".repeat(64)],
+      ["runtimeRequirementsManifestHash", "3".repeat(64)],
+      ["applicationRequirementsHash", "4".repeat(64)],
+      ["cardsHash", "5".repeat(64)],
+    ] as const) {
+      expect(produced.semantic[key], key).toMatch(/^[0-9a-f]{64}$/);
+      expect(produced.semantic[key], key).not.toBe(placeholder);
+    }
+    const envelopeBytes = Buffer.from(produced.output.envelope.bytesBase64, "base64");
+    expect(JSON.parse(envelopeBytes.toString("utf8")).schema).toBe("darwinian.worker-runtime-admission");
+    expect(envelopeBytes.byteLength).toBeGreaterThan(expected.output.envelope.byteLength);
+    expect(produced.semantic.closureHash)
+      .toBe(JSON.parse(envelopeBytes.toString("utf8")).closureHash);
+  });
+
+  test("the root vector is admitted and attests the same implementation set", async () => {
+    requireDescriptorSupport();
+    const { root } = await derive("root", vector("i268-root-derivation-input.v1.json"));
+    const output = JSON.parse(readFileSync(join(root, "result.json"), "utf8"));
+    expect(output.phase).toBe("root");
+    expect(output.input.cards.map((card: { name: string }) => card.name)).toEqual([
+      WORKER_CARD,
+      TOOLS_CARD,
+    ]);
+    expect(output.adapter.implementationSha256).toBe(ACCEPTED_ROLLUP);
+    expect(output.adapter.implementation).toEqual(readAdapterImplementation().implementation);
+  });
+});
+
 describe.skipIf(SKIP_POSIX !== "")(`operand admission${SKIP_POSIX}`, () => {
   const rejected: Array<[string, Partial<RunOptions>]> = [
     ["absolute input", { inputOperand: "/etc/hosts" }],
