@@ -537,7 +537,14 @@ export function deriveRuntimeAdmissionForClosure(
 
     for (const [serverId, declaration] of Object.entries(runtimeAdmission.servers)) {
       recordClosureIdentity(serverId, `${cardPath}.runtimeAdmission.servers.${serverId}`, serverIds);
-      const rawServer = card.manifest.servers?.[serverId];
+      // A plain read would resolve `__proto__` and `constructor` through the prototype
+      // chain and admit a server the Card never published. Declaration validation
+      // already requires the two key sets to match exactly, so this states the
+      // property where it is relied on rather than closing a reachable hole.
+      const rawServers = card.manifest.servers;
+      const rawServer = isObject(rawServers) && Object.hasOwn(rawServers, serverId)
+        ? rawServers[serverId]
+        : undefined;
       if (!isObject(rawServer)) derivationInvalid(`${cardPath}.servers.${serverId} is unavailable`);
       const readiness = rawServer.optional === true ? "optional" : "required";
       const sortedRequirementIds = [...declaration.requirementIds].sort(compareRuntimeAdmissionIds);

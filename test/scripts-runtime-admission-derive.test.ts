@@ -946,8 +946,8 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
       [workerOutput, ACCEPTED.workerOutput, "worker output v2"],
     ] as const) {
       expect(bytes.byteLength, name).toBe(expected.byteLength);
-      // Both candidates held their length across regeneration because a rollup is a
-      // fixed-width hex string, so only the digest distinguishes them.
+      // A rollup is a fixed-width hex string, so a candidate's byte length does not
+      // separate one rollup from another; only the digest does.
       expect(sha256(bytes), name).toBe(expected.sha256);
     }
 
@@ -964,10 +964,9 @@ describe.skipIf(SKIP_POSIX !== "")(`accepted I268 parity vectors${SKIP_POSIX}`, 
   test("the tools vector reproduces every accepted block this adapter does not derive", async () => {
     // The accepted output artifact is a parser shape vector, not a derivation product:
     // its semantic hashes are `1111…` through `5555…` and its envelope is a 38-byte
-    // stub. Asserting whole-artifact equality would pin those placeholders, so the ten
-    // blocks the adapter binds rather than derives are compared byte for byte — which
-    // includes `adapter`, the block this round exists to correct — and the two derived
-    // blocks are instead required to be real.
+    // stub. Asserting whole-artifact equality would pin those placeholders, so the
+    // blocks the adapter binds rather than derives are compared byte for byte and the
+    // two derived blocks are instead required to be real.
     requireDescriptorSupport();
     const { root } = await derive("tools", vector("i268-tools-derivation-input.v1.json"));
     const produced = JSON.parse(readFileSync(join(root, "result.json"), "utf8"));
@@ -1445,15 +1444,17 @@ describe.skipIf(SKIP_POSIX !== "")(`descriptor-bound persistence${SKIP_POSIX}`, 
     expect(result.entries).not.toContain("result.json");
   });
 
-  test("the temporary is created under a restrictive umask that is restored afterwards", async () => {
+  test("the temporary is created with no group or other bits and restores the umask", async () => {
     // POSIX evaluates permission at open, not at each write, so a descriptor another
-    // process obtains during creation survives every later fchmod. The creation mode
-    // must already be bounded here; the fchmod and fstat proof cannot reach this.
+    // process obtains during creation survives every later fchmod. The mode the create
+    // actually produced is what has to be bounded; the fchmod and fstat proof that
+    // follow cannot reach the instant this asserts.
     requireDescriptorSupport();
     const root = confinementRoot();
     writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
     const before = process.umask();
-    let observed = -1;
+    let mask = -1;
+    let createdMode = -1;
     const outcome = await runRuntimeAdmissionDerive({
       argv: ["--input", "derivation-input.json", "--output", "result.json"],
       workingDirectory: root,
@@ -1461,14 +1462,44 @@ describe.skipIf(SKIP_POSIX !== "")(`descriptor-bound persistence${SKIP_POSIX}`, 
       observeDescriptorOps: (ops) => ({
         ...ops,
         openTemporaryExclusive(dirfd, name) {
-          observed = process.umask();
-          return ops.openTemporaryExclusive(dirfd, name);
+          mask = process.umask();
+          const fd = ops.openTemporaryExclusive(dirfd, name);
+          createdMode = ops.fstat(fd).mode & 0o777;
+          return fd;
         },
       }),
     });
     expect(outcome).toBeNull();
-    expect(observed).toBe(0o077);
+    expect(mask).toBe(0o077);
+    expect(createdMode).toBeGreaterThanOrEqual(0);
+    expect(createdMode & 0o077).toBe(0);
     expect(process.umask()).toBe(before);
+  });
+
+  test("the umask is restored when the exclusive create raises inside the window", async () => {
+    // The temp-open seam fires before the mask is narrowed, so only a raise from the
+    // create itself lands inside the window the restoration has to cover.
+    requireDescriptorSupport();
+    const root = confinementRoot();
+    writeFileSync(join(root, "derivation-input.json"), derivationInput("tools"));
+    const before = process.umask();
+    let maskAtRaise = -1;
+    const outcome = await runRuntimeAdmissionDerive({
+      argv: ["--input", "derivation-input.json", "--output", "result.json"],
+      workingDirectory: root,
+      loadBuildIdentity: async () => PACKAGED_BUILD_IDENTITY,
+      observeDescriptorOps: (ops) => ({
+        ...ops,
+        openTemporaryExclusive() {
+          maskAtRaise = process.umask();
+          throw new Error("exclusive temporary creation failed");
+        },
+      }),
+    });
+    expect(outcome?.code).toBe("WORKER_RUNTIME_ADMISSION_OUTPUT_PERSIST_FAILED");
+    expect(maskAtRaise).toBe(0o077);
+    expect(process.umask()).toBe(before);
+    expect(readdirSync(root)).toEqual(["derivation-input.json"]);
   });
 
   test("open, short-write, file-sync, and close failures are persist-failed with clean residue", async () => {

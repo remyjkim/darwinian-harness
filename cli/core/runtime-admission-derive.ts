@@ -1353,6 +1353,10 @@ function persist(context: PersistenceContext): PersistenceOutcome | null {
       // umask bounds the mode the create can produce, which is the only reach into
       // that instant. Residual: a umask does not mask setuid or setgid, so a garbage
       // 04000 still creates a setuid file — same-uid, and cleared by the fchmod below.
+      // The umask is process-wide and this module is an exported library, so a file an
+      // embedder creates on another thread inside this window is created under 0o077
+      // too. The mask only ever removes bits, so what an embedder can observe is a
+      // stricter file than it asked for, never a more permissive one.
       const previousMask = process.umask(0o077);
       try {
         temporaryFd = ops.openTemporaryExclusive(dirfd, temporaryName);
