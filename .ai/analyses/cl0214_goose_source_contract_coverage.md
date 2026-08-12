@@ -1,19 +1,19 @@
 # ABOUTME: Maps every I214 Goose projection and activation claim to pinned runtime and drwn source evidence.
-# ABOUTME: Separates durable projection, ambient effects, runtime activation, and command transaction boundaries before candidate v5.
+# ABOUTME: Separates projection, ambient effects, activation, transactions, and landed Worker admission through the post-I265 amendment.
 
 # I214 Goose Source-to-Contract Coverage
 
-**Status:** Source-refreshed consolidation evidence for written candidate v5 — exact-hash freeze
-and independent review pending
+**Status:** Post-I265 source-contract consolidation — exact-byte Owner approval pending
 
 **Date:** 2026-08-11
 
-**Repository base:** `ea13a582d7797619f2a934a59c34368241cca191`
+**Repository base:** `cef3090c013134b578d87fd938a6741fd288d36a`
 
-**Concurrent-source boundary:** I238 and I265–I269 are actively owned elsewhere. Their mutable
-worktrees are quarantined from I214. The drwn seam citations below remain documentation-baseline
-evidence until those owners provide landed SHAs or explicit non-overlap dispositions; G2 freeze
-requires a read-only overlap/source-delta audit on the combined `main` descendant.
+**Concurrent-source boundary:** I265 landed on `origin/main` at the repository base above and is
+integrated by the Worker 1.3 amendment in this coverage. I238 and I266–I269 remain actively owned
+elsewhere; their mutable worktrees are quarantined from I214. G2 freeze still requires their
+landed SHAs or explicit non-overlap dispositions and a read-only overlap/source-delta audit on the
+combined `main` descendant.
 
 **Authoritative Goose source:** `/Users/pureicis/dev/goose` at
 `db7a704446975c88d3b67490c74d33bcd684404e` (clean, untagged source snapshot; workspace
@@ -25,8 +25,9 @@ qualify the latest source contract, consent grant, plugin publication, or positi
 claim. A latest-source live claim requires a binary digest and build provenance tied to the
 authoritative commit; the untagged workspace version string alone is insufficient.
 
-**Authority:** This document is evidence and option analysis. It records the Owner-approved design
-basis but is not the G1 architecture, a T5 pass, or a human Reviewer verdict.
+**Authority:** This document is evidence and option analysis. It retains the historically
+Owner-approved design basis and adds a not-yet-approved landed-I265 integration amendment; it is
+not the G1 architecture, a T5 pass, or a human Reviewer verdict.
 
 ## 1. Why this consolidation exists
 
@@ -322,6 +323,38 @@ Exact installed-plugin seams: `crates/goose/src/plugins/mod.rs:15-16,84-115,158-
 
 ## 6. Current drwn mutation boundary
 
+Landed I265 adds a pre-effect boundary that I214 must preserve. Deployable Card closures carry
+strict `runtimeAdmission` and `applicationRequirements` declarations; Worker deploy derives a
+canonical envelope; and Worker materialization rederives and exact-compares that envelope after
+outer/closure/lock validation but before store verification or filesystem effects. I214's
+complete proposed-state preflight belongs after this admission gate and store length/SHA
+verification, not around or ahead of them. Exact seams:
+`cli/core/card-manifest.ts:36-64,342-365`;
+`cli/core/mind-capability.ts:7-37`;
+`cli/core/card-lock.ts:121-137,185-201`;
+`cli/core/runtime-admission-manifest.ts:344-370,505-675`;
+`cli/core/worker-deploy.ts:291-343`;
+`cli/core/worker-materialize.ts:82-140,148-154,234-260`.
+
+The landed release-source contract is also exact. `package.json` pins package 1.3.0, Bun 1.2.21,
+the broad `cli`/`registry` package roots, and the exact `runtime-admission:derive:v2` command;
+`build-identity.ts` pins the same target version. I214 leaves `cef3090`'s current release-artifact
+required list unchanged; that list includes Buzz tooling, while package readiness proves the Buzz delivery Card and the entire
+`registry/cards` replacement surface are absent. The four runtime-admission paths are currently
+included only by the broad `cli` package root; I214 adds explicit membership assertions without
+changing `REQUIRED_RELEASE_MEMBERS`. Exact seams:
+
+- `package.json:16,30-38,52-58` and `cli/core/build-identity.ts:9-13`;
+- `scripts/release/artifact-contract.ts:15-32,65-76` and
+  `scripts/verify-release-readiness.ts:65-105,240-253,1125-1137`;
+- `test/package-readiness.test.ts:195-239` and
+  `test/scripts-release-artifact-contract.test.ts:34-63,95-162`;
+- `test/scripts-runtime-admission-derive.test.ts:531-603,901-1025,1939-1996`;
+- `test/scripts-release-provenance.test.ts:1-244`,
+  `test/scripts-release-publication-controls.test.ts:1-248`,
+  `test/scripts-release-workflow.test.ts:127-186`, and
+  `test/scripts-release-recovery-workflow.test.ts:1-55`.
+
 Current state-changing commands can commit state before `syncRepository`:
 
 - `write` mutates hook and instruction acknowledgement stores at
@@ -340,8 +373,8 @@ Current state-changing commands can commit state before `syncRepository`:
 - standalone single/bulk `card link` and `card unlink` without `--write` publish local overlay
   state and return without `syncRepository` at `cli/commands/card/link.ts:29-61`,
   `cli/commands/card/unlink.ts:29-49`, and `cli/core/config-local.ts:163-186`;
-- Worker payload materialization seeds machine state and directly creates project state before
-  sync at `cli/core/worker-materialize.ts:152-177`; and
+- after the admission/store gates, Worker payload materialization seeds machine state and
+  directly creates project state before sync at `cli/core/worker-materialize.ts:234-260`; and
 - Org Worker materialize/remove holds its own journal, commits project state, and reconciles
   vendor state before nested sync at `cli/core/org-worker-materializer.ts:722-924,1308-1573`.
 
@@ -380,6 +413,11 @@ Rejected: Git/network/process effects are not rollback participants; the rewrite
 ### B. Complete preflight plus ordered recoverable commits — provisional recommendation
 
 Define the strong atomic unit as the **project projection commit**, not the whole CLI command:
+
+For Worker payload materialization only, the I265 pre-effect admission gate and store length/SHA
+verification precede this sequence. Their admitted immutable payload/store identities become
+inputs to step 1; I214 must not move either validation behind consent, store seeding, project
+preflight, or any other effect.
 
 1. Resolve/fetch external inputs into immutable temporary sources without publishing drwn-owned
    project, acknowledgement, registry, config/lock, local-overlay, or machine-store state;
@@ -524,7 +562,9 @@ the explicit ordered-commit model.
 | `V5-C33` | Global agents-home instructions and turn-dynamic contained hints expand the instruction read set | Global/dynamic instruction observations and containment tests |
 | `V5-C34` | Latest `goose tui` execs an external frontend and summon subagents suppress hooks | TUI unverified; main/subagent hook and registration rows tested separately |
 | `V5-C35` | Config map keys, exact runtime names, and normalized manager keys are distinct identities | Parse injected/explicit names and require post-selection normalized-key uniqueness before launch |
-| `V5-C36` | I238 and I265–I269 are concurrently changing repository state outside I214 authority | Quarantine their worktrees; require landed-SHA overlap and seam re-audit before G2 freeze/implementation |
+| `V5-C36` | I238 and I266–I269 are concurrently changing repository state outside I214 authority | Quarantine their worktrees; require landed-SHA overlap and seam re-audit before G2 freeze/implementation |
+| `V5-C37` | I265 landed Worker 1.3 Card declarations and a zero-effect materializer admission gate on an I214 shared seam | Preserve declaration validation and enforce admission → store identity → I214 preflight/any applicable consent → upstream commits → projection ordering with targetless-config and zero-effect rejection tests |
+| `V5-C38` | I265 changed package/release contracts and retired the Buzz delivery Card before I214 adds a packaged registry | Preserve package 1.3.0, derivation command, existing required members, required Buzz tooling, provenance/publication/recovery controls, retired-Card absence, and accepted vectors; append and production-parse only the target-adapter sidecar |
 
 ## 10. Minimum pre-approval adversarial matrix
 
@@ -562,6 +602,13 @@ the explicit ordered-commit model.
   immediate raw-name skills; project-plugin `skills/` non-discovery; transient staging children;
   malformed manifests, unsafe/blind paths, and due auto-update withhold qualification.
 - Proposed-state preflight blocks before acknowledgements, hygiene, vendor, V1, or target output.
+- Worker materialization rejects an invalid outer/lock/runtime-admission envelope before store
+  decoding/verification and before any I214 preflight effect; a valid envelope plus a late generic
+  I214 blocker leaves acknowledgement, registry, store, state, consent, and projection bytes
+  unchanged, and current materialization still derives a targetless project config.
+- Card target changes round-trip `runtimeAdmission` and `applicationRequirements`; every deployable
+  fixture has both declarations, `store.minDrwnVersion` of at least 1.3.0, and a derived envelope,
+  including empty explicit declarations for closures with no owned servers/applications.
 - Upstream commit followed by injected projection failure reports retryable partial state.
 - Failure injection between local lock/config checkpoints recovers the extended state transaction;
   failure after that commit but before hygiene/projection reports retry-required and converges.
@@ -575,6 +622,10 @@ the explicit ordered-commit model.
 - One snapshot feeds all status/doctor JSON, human output, and severity decisions.
 - Packed sidecar bytes production-parse before any project command; help/version remain target-
   independent.
+- The same qualified tar retains every pre-I214 `REQUIRED_RELEASE_MEMBERS` entry, separately
+  asserts the four exact runtime-admission paths, keeps the retired Buzz delivery Card absent and
+  required Buzz tooling present, and production-parses the sidecar in both initial and
+  recovery/download artifact lanes.
 - Existing target byte/mtime/output-schema non-regression.
 - Journal-backed project writes create no `.bak*`; machine-write backup/failure behavior remains
   byte-for-byte covered by an explicit retained fixture.

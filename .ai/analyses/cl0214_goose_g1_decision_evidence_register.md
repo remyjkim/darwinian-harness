@@ -3,11 +3,11 @@
 
 # I214 Goose G1 Decision and Evidence Register
 
-**Status:** Candidate-v5 amendment approved; replacement commit and exact-commit T5-R6 pending
+**Status:** Post-I265 amendment approved; commit and exact-commit T5-R6 pending
 
-**Date:** 2026-08-10
+**Date:** 2026-08-11
 
-**Base:** `ea13a582d7797619f2a934a59c34368241cca191`
+**Base:** `cef3090c013134b578d87fd938a6741fd288d36a`
 
 ## 1. Authority boundary
 
@@ -446,6 +446,69 @@ mutation and routed both findings back into the task plan. This agent review is 
 Reviewer verdict and changes no workflow status. The amended plan requires renewed exact-byte
 Owner approval, a new commit, and a fresh exact-commit T5 review before formal G1 submission.
 
+### Landed-I265 base-integration audit
+
+After the T5-R5 amendment commit, the human Owner reported that `origin/main` had moved and
+directed I214 to integrate the latest tip without conflicting with it. A0 fetched
+`cef3090c013134b578d87fd938a6741fd288d36a`, confirmed it was 45 commits ahead of the historical
+base and the merge of I265, rebased the two I214 commits without textual conflict, and proved
+their pre/post-rebase blob equivalence with range-diff and direct comparison. The rebased commits
+are `bbd21f4` and `efd7150`. No coworker worktree was entered or mutated.
+
+The absence of a merge conflict was insufficient. Two read-only specialist audits independently
+closed the semantic overlap:
+
+1. The Worker/materializer audit found that `card-manifest.ts` now carries strict
+   `runtimeAdmission` and `applicationRequirements` declarations and that
+   `worker-materialize.ts` rederives the canonical envelope before store verification or any
+   effect. It froze admission → store identity → I214 preflight/any applicable consent → upstream
+   commit → projection ordering, targetless Worker-config derivation, exact declaration round
+   trips, and zero-effect invalid/late-generic-blocker tests.
+2. The release audit found package `1.3.0`, `runtime-admission:derive:v2`, existing required
+   members, provenance/publication/recovery controls, Windows derivation coverage, retired Buzz
+   delivery Card absence with required Buzz tooling retained, and accepted I268 vectors. It
+   required a strictly additive target-registry artifact contract
+   and left release/adoption to I267 and Finch publication to I268.
+
+A0 then ran a fresh baseline with an official standalone Bun 1.2.21 binary whose SHA-256 is
+`2803929d4d8a82b6d0a76b1cefb3c929dd6d0c3888604e449d59b64ba891d82a`. The focused overlap suite
+passed 306/1 skip/0 fail; the full suite passed 2,365/11 skip/0 fail; typecheck, release readiness,
+package dry-run, and the Docusaurus production build also passed. The separate qualification run
+record is `.ai/analyses/cl0214_goose_post_rebase_baseline_evidence.md`; it remains an
+approval-pending draft until its exact digest and commit are frozen.
+
+Resolution: bounded G1 amendment required; topology unchanged. I265's landed SHA closes its
+portion of `I214-D008`, while I238 and I266–I269 remain quarantined and pending. The prior D010
+approval does not authorize these changed bytes. No push, PR, Notion mutation, G1 verdict, G2
+approval, or production implementation follows until renewed exact-byte Owner approval and a
+fresh exact-commit independent review.
+
+### Post-I265 pre-freeze review
+
+Three independent read-only reviews challenged the uncommitted amendment before hash freeze.
+Their first round found bounded defects: a nonexistent Goose selection in targetless Worker
+materialization; an already-GREEN preservation case mislabeled as Task 12's first RED; an
+ambiguous Card target fixture; imprecise `store.minDrwnVersion`, release-member, and Buzz wording;
+missing producer/release citations and focused tests; omitted T1 ownership of
+`worker-materialize.ts`; and baseline head/base/freeze imprecision. A0 accepted every finding and
+amended only the affected documents.
+
+The reviewers then re-read the corrected shared bytes and all returned PASS with no material
+findings:
+
+- Worker/architecture review: architecture
+  `eeeaa311cdba8bcf2257761397ff0997824ac7eef921a98f40231a8bffc5ba96`, coverage
+  `d43c86fc75505920ec920adb480d0caf46988c1eb5f21cc37f7e252cd58dee69`, and strategy
+  `b3373a46a432e8009ef58423be78a57dadad39c13b59c355b0db7fefb4360bd3`.
+- Release/plan review: plan
+  `67656206944d79a39fea217326f3caaae3b53a895cd1a729104ee875284018f0`, plus the same architecture,
+  coverage, and strategy hashes.
+- Provenance/authority review: exact raw-log sizes/digests, historical evidence immutability,
+  D011 scope, head/base ancestry, Buzz precision, concurrent quarantine, and `git diff --check`.
+
+These are agent evidence passes, not human Owner approval, a formal Reviewer verdict, or workflow
+state. Any edit to a reviewed non-register artifact invalidates the corresponding PASS.
+
 ## 4. Human decisions
 
 | Decision ID | Authority | State | Decision |
@@ -460,6 +523,8 @@ Owner approval, a new commit, and a fresh exact-commit T5 review before formal G
 | `I214-D008` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, identified I238 and I265–I269 as active coworker-owned work and directed I214 not to interfere. Their mutable worktrees are quarantined from I214 edits, rebases, tests, cleanup, and cherry-picks. Before G2 freeze or implementation, A0 records owner-supplied landed SHAs or explicit non-overlap dispositions and audits the combined `main` descendant for I214 path/semantic overlap. This decision changes no Notion status and grants no authority over those issues. |
 | `I214-D009` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, approved the exact candidate-v5 pre-freeze hash set recorded below after an independent read-only adversarial review returned PASS with no material findings. This authorizes deterministic integrity-register finalization only. It does not authorize a Git commit, mutate Notion, record a formal Reviewer G1 verdict, close the concurrent-issue integration gate, approve G2, or authorize implementation. |
 | `I214-D010` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, approved the exact T5-R5 amendment: task plan `f4185413ab65239bf5570adf4465b6d672dcd02bbd65ecfd0c44edb040b34de7` and pre-approval decision register `9c237ba6911e0667b25a5127113ac3dfa9949e9d9488caaa5e8c36655da83d9c`, with the other six artifact hashes unchanged. This authorizes deterministic register finalization, a replacement documentation commit, fresh exact-commit T5-R6 review, and—only if T5-R6 passes—the G1 PR/submission and a separately recorded stacked Planning transition. It does not itself record a human Reviewer verdict, close the combined-base gate, approve G2, or authorize implementation. |
+| `I214-D011` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, reported that `origin/main` had moved and directed I214 to avoid conflicts, ideally by rebasing onto the latest tip. A0 fetched and rebased onto landed-I265 commit `cef3090c013134b578d87fd938a6741fd288d36a`, then performed the semantic overlap and fresh-baseline audit recorded above. This authorizes the rebase and continued integration amendment only; it does not approve the changed document bytes, mutate Notion, record a Reviewer verdict, approve G2, authorize production implementation, or grant authority over I238/I266–I269. |
+| `I214-D012` | Human Owner in the active Codex conversation | Recorded | On 2026-08-11, approved the exact post-I265 pre-approval hash set recorded below: preserved evidence `73b8f3e11a870aefd3863f377250ea22e4dac2ed5df772c160b6a020a02596fd`, historical baseline `d25e169ef62f9b8003f07be9e1f423092da4df28beb637cb9f6eddd665dfe1c1`, fresh baseline `71159b8baae11407c9846d9be9c2197c0cd89fcff458c122019b9733402e252b`, skill probe `3b4ea0ec0f25b76998cd94fce79b8af7636ed22f09498d7d2124cb84bafed280`, coverage `d43c86fc75505920ec920adb480d0caf46988c1eb5f21cc37f7e252cd58dee69`, architecture `eeeaa311cdba8bcf2257761397ff0997824ac7eef921a98f40231a8bffc5ba96`, strategy `b3373a46a432e8009ef58423be78a57dadad39c13b59c355b0db7fefb4360bd3`, task plan `67656206944d79a39fea217326f3caaae3b53a895cd1a729104ee875284018f0`, and pre-approval register `624def21200d702f9e8e4339e6be422593e4743266d8811820fb63c9d013ce25`, on integrated base `cef3090c013134b578d87fd938a6741fd288d36a` with authoritative Goose source `db7a704446975c88d3b67490c74d33bcd684404e`. This authorizes deterministic register finalization, the six-file amendment commit, and exact-commit T5-R6 review. Only if T5-R6 passes does it also authorize branch push, G1 PR/submission, and a separate stacked Planning transaction. It does not record a human Reviewer verdict, approve G2, authorize production implementation, close the I238/I266–I269 integration gate, authorize release/publication, or grant authority over coworker worktrees. |
 
 Candidate v3 received `I214-D005` and was reviewed by T5-R3. Candidate v4 received explicit
 `I214-D006` Owner approval in the active Codex conversation and was reviewed by T5-R4. That
@@ -468,9 +533,11 @@ source authority, not its future exact bytes. `I214-D008` quarantines active con
 adds a pre-G2 integration audit without blocking isolated G1 documentation. `I214-D009` approves
 the candidate-v5 pre-freeze bytes and permitted the deterministic integrity finalization below.
 Exact-commit T5-R5 subsequently returned changes requested. `I214-D010` approves the exact
-two-file amendment and authorizes its replacement commit and T5-R6 review. Formal G1 submission
-remains prohibited until that exact commit passes T5-R6; the human Reviewer alone records the
-subsequent formal G1 verdict.
+two-file amendment and authorized its replacement commit. `I214-D011` then required a latest-main
+rebase and opened this post-I265 semantic amendment; D010 cannot authorize its changed bytes.
+`I214-D012` approves the exact post-I265 bytes and authorizes their deterministic finalization,
+commit, and T5-R6 review. Formal G1 submission remains prohibited until that exact commit passes
+T5-R6; the human Reviewer alone records the subsequent formal G1 verdict.
 
 ## 5. Integrity register
 
@@ -631,6 +698,42 @@ The register cannot contain its own amended dispatch digest without recursion. A
 post-approval SHA-256 out of band with T5-R6. Any further candidate edit invalidates this freeze
 and requires renewed exact-byte Owner approval before another commit.
 
+### Post-I265 amendment integrity freeze
+
+Frozen under `I214-D012` after three independent read-only pre-freeze reviews returned PASS and
+the Owner approved the exact supplied hashes:
+
+- preserved evidence 134:
+  `73b8f3e11a870aefd3863f377250ea22e4dac2ed5df772c160b6a020a02596fd`
+- historical deterministic baseline evidence:
+  `d25e169ef62f9b8003f07be9e1f423092da4df28beb637cb9f6eddd665dfe1c1`
+- fresh post-rebase baseline evidence:
+  `71159b8baae11407c9846d9be9c2197c0cd89fcff458c122019b9733402e252b`
+- latest-source skill-precedence audit:
+  `3b4ea0ec0f25b76998cd94fce79b8af7636ed22f09498d7d2124cb84bafed280`
+- post-I265 source-to-contract coverage:
+  `d43c86fc75505920ec920adb480d0caf46988c1eb5f21cc37f7e252cd58dee69`
+- post-I265 target architecture:
+  `eeeaa311cdba8bcf2257761397ff0997824ac7eef921a98f40231a8bffc5ba96`
+- post-I265 team strategy:
+  `b3373a46a432e8009ef58423be78a57dadad39c13b59c355b0db7fefb4360bd3`
+- post-I265 candidate GATE 2 task plan:
+  `67656206944d79a39fea217326f3caaae3b53a895cd1a729104ee875284018f0`
+- decision/evidence register before this deterministic D012 approval record and freeze:
+  `624def21200d702f9e8e4339e6be422593e4743266d8811820fb63c9d013ce25`
+- qualified rebased documentation head:
+  `efd7150dad20d38a52306d10031622f2d24b8fe3`
+- integrated repository base:
+  `cef3090c013134b578d87fd938a6741fd288d36a`
+- authoritative latest Goose source:
+  `db7a704446975c88d3b67490c74d33bcd684404e` (workspace version `1.45.0`)
+- latest Goose runtime qualification: source-qualified but live-unverified; no binary whose
+  digest/build provenance is tied to `db7a704...` was used for a positive runtime claim
+
+The register cannot contain its own finalized digest without recursion. A0 supplies the
+post-approval SHA-256 out of band with T5-R6. Any further candidate edit invalidates this freeze
+and requires renewed exact-byte Owner approval before another commit.
+
 ## 6. Baseline and provenance index
 
 - Goose configuration evidence:
@@ -641,6 +744,10 @@ and requires renewed exact-byte Owner approval before another commit.
   `.ai/analyses/cl0214_goose_target_support_target_architecture.md`
 - Deterministic repository baseline:
   `.ai/analyses/cl0214_goose_g1_baseline_evidence.md`
+- Fresh post-I265 exact-Bun-1.2.21 baseline:
+  `.ai/analyses/cl0214_goose_post_rebase_baseline_evidence.md`
+- Integrated repository base:
+  `cef3090c013134b578d87fd938a6741fd288d36a`
 - Historical Goose 1.41.0 same-ID skill precedence plus latest-source delta:
   `.ai/analyses/cl0214_goose_skill_precedence_probe.md`
 - Goose 1.41.0 binary SHA-256:
@@ -691,3 +798,8 @@ and requires renewed exact-byte Owner approval before another commit.
   unverified, suppress hooks for Summon subagents, and use absolute-only OS-native
   `GOOSE_PATH_ROOT` semantics. This is a bounded source reconciliation, not retroactive evidence
   mutation or a human gate verdict.
+- Conflict-free Git rebase versus landed I265 semantic overlap: the latter wins. Preserve the
+  I265 declaration/admission and Worker 1.3 release contracts, place I214 preflight after
+  admission/store verification, append rather than replace the packaged registry contract, and
+  require focused regressions. This bounded amendment leaves the adapter/ledger topology intact
+  and does not enter or coordinate coworker worktrees.

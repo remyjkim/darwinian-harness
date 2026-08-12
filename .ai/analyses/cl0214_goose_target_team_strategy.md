@@ -3,11 +3,11 @@
 
 # I214 Goose Target Support — Team Strategy and Execution Graph
 
-**Status:** Source-reconciled candidate v5 strategy — exact-hash independent review pending
+**Status:** Post-I265 base-integration strategy amendment — exact-byte Owner approval pending
 
 **Date:** 2026-08-11
 
-**Base:** `origin/main` at `ea13a582d7797619f2a934a59c34368241cca191`
+**Base:** `origin/main` at `cef3090c013134b578d87fd938a6741fd288d36a`
 
 **Branch:** `codex/i214-goose-target-team-strategy`
 **Program order:** I214 Goose first; Pi support follows under a separately generated Issue Tracker ID
@@ -67,6 +67,24 @@ preflight plus ordered recoverable commits. One subordinate whole-image project-
 journal still commits V1 output and the separate target ledger together. Upstream commits are
 reported honestly and retried idempotently; they are never claimed to have been rolled back by a
 later projection failure.
+
+Before G1 submission, `origin/main` advanced 45 commits and landed I265 at `cef3090`. A0 rebased
+the two I214 documentation commits cleanly, verified range/blob equivalence, and ran a fresh
+exact-Bun-1.2.21 baseline: 2,365 pass, 11 expected skips, 0 fail plus green typecheck, release,
+package, and docs checks. I265 changes shared seams that I214 plans to extend, so A0 opened this
+bounded semantic amendment rather than treating the conflict-free rebase as sufficient.
+`I214-D011` authorizes that rebase/investigation only; the earlier exact-byte D010 approval cannot
+authorize this changed strategy or the related architecture/plan bytes.
+
+The topology remains unchanged. I214 must preserve Worker 1.3's Card runtime-admission and
+application declarations, zero-effect materializer admission gate, package identity 1.3.0,
+`store.minDrwnVersion >= 1.3.0` for declared closures, offline derivation command, required release
+members, provenance/publication controls, retired Buzz delivery Card absence, required Buzz
+tooling, and accepted I268 vectors. I214
+adds the adapter registry and complete project preflight
+after admission/store validation; it neither releases Worker 1.3 nor publishes Finch Cards. I267
+retains release/adoption authority and I268 retains Finch publication authority in their own
+lanes.
 
 This topology is designed to avoid two predictable failure modes:
 
@@ -133,17 +151,23 @@ The six-seat agent team is an execution mechanism, not the Issue Tracker authori
 
 ### 2.4 Concurrent-issue quarantine
 
-The Owner reports that I238 and I265–I269 are actively being worked by other coworkers. I214
+The Owner reports that I238 and I266–I269 are actively being worked by other coworkers. I214
 must not edit, rebase, cherry-pick from, clean, test inside, or otherwise coordinate those mutable
 worktrees. The absence of a locally registered worktree is not evidence that an issue is idle.
 
+I265 is the completed exception: its integration-ready work landed on `origin/main` at `cef3090`,
+and A0 audited that immutable descendant from the I214 worktree without entering an I265 lane.
+The rebase was textually clean but semantically overlapped Card manifest, Worker materializer,
+release-artifact, package-readiness, and docs-readiness seams; this amendment records the required
+preservation and test contracts.
+
 I214 architecture documentation may continue in its isolated worktree. Before G2 freeze or any
-production implementation, A0 waits for each issue owner to identify an integration-ready landed
+production implementation, A0 waits for each remaining issue owner to identify an integration-ready landed
 SHA or explicit non-overlap disposition. A0 then audits the combined descendant of `main` against
 I214's declared production/test path inventory and current-state seams. Any overlap is resolved
 in the I214 worktree after those changes land—never in a coworker's active worktree—and material
 contract drift returns to G1 amendment. The implementation base must be that recorded descendant,
-not mechanically the historical `ea13a582...` documentation base.
+not mechanically `cef3090` or the historical `ea13a582` documentation base.
 
 ## 3. Alternatives considered
 
@@ -234,7 +258,8 @@ preserving all existing target behavior.
 - `cli/core/config-local.ts`
 - `cli/core/mcp.ts`
 - `cli/core/effective-state.ts`
-- `cli/core/card-manifest.ts`
+- `cli/core/card-manifest.ts`, preserving I265 `runtimeAdmission` and
+  `applicationRequirements` fields, validation, and deployable-closure semantics
 - `cli/core/card-project.ts`
 - `cli/core/card-capture.ts`
 - `cli/core/card-diff.ts`
@@ -253,6 +278,9 @@ preserving all existing target behavior.
 - `cli/core/write-watch.ts` exact ledger-derived suppression wiring
 - `cli/core/hook-generator/runtime-selection.ts` and
   `cli/core/hook-generator/sync-hooks.ts`, legacy planning only; no Goose runtime change
+- `cli/core/worker-materialize.ts`, factoring only to compose I214 preflight while preserving
+  I265's complete admission gate, targetless config derivation, and
+  admission → store identity → preflight/any applicable consent ordering
 - `cli/core/worker-generator/sync-worker.ts`
 - `cli/commands/write.ts`
 - `cli/commands/mcp/write.ts`
@@ -262,10 +290,15 @@ preserving all existing target behavior.
 - `cli/commands/init.ts`
 - `cli/commands/extensions/setup.ts`, awaiting Beads, Parallel, and MarkItDown config mutations
 - `cli/commands/extensions/add.ts` awaited-writer parity
-- `scripts/verify-release-readiness.ts` and `test/package-readiness.test.ts`
+- `scripts/verify-release-readiness.ts` and `test/package-readiness.test.ts`, additively
+  preserving Worker 1.3 readiness and runtime-admission coverage
 - `scripts/release/artifact-contract.ts` and
-  `test/scripts-release-artifact-contract.test.ts`, extracting and production-parsing the
-  packaged adapter sidecar, including negative artifacts
+  `test/scripts-release-artifact-contract.test.ts`, retaining every pre-I214
+  `REQUIRED_RELEASE_MEMBERS` entry; separately asserting
+  `cli/core/runtime-admission-manifest.ts`, `cli/core/runtime-admission-derive.ts`,
+  `cli/core/runtime-admission-descriptors.ts`, and `cli/tools/runtime-admission-derive.ts` remain
+  npm-pack members; and appending, extracting, and production-parsing the packaged adapter
+  sidecar from initial and recovery/download artifacts, including negative artifacts
 - new adapter-contract/index modules
 - later `cli/core/runtime-bundle/**`
 
@@ -1044,6 +1077,11 @@ Use three evidence layers.
   validity; provider qualification; and every apply/consent/cleanup/status/doctor row in the
   architecture matrix.
 - Existing target non-regression.
+- Worker 1.3 integration: Card parsing/round-trip preserves `runtimeAdmission` and
+  `applicationRequirements`; a deployable closure requires both; invalid admission beats store
+  verification and I214 preflight with zero effects; valid admission plus a late generic I214
+  blocker leaves every persistent byte unchanged; current Worker materialization remains
+  targetless; and admitted declarations/envelope survive the materialize projection round trip.
 - Unfiltered materialize recovery that updates target-neutral V1 instructions while retiring
   disabled Goose adapter leaves.
 - Whole-image absent/file/symlink/tree recovery across every V1 managed-path kind and complete
@@ -1197,6 +1235,10 @@ T5 independently runs:
 - `bunx tsc --noEmit` after tests, never concurrently with the full suite.
 - Documentation/release gates required by current repository reality.
 - Package and release-artifact qualification that require registry/target-adapters.json.
+- Additive Worker 1.3 package regression proving the same tar retains every pre-I214
+  `REQUIRED_RELEASE_MEMBERS` entry, separately retains the exact four runtime-admission npm-pack
+  paths, production-parses target-adapters.json in initial and recovery/download lanes, keeps the
+  retired Buzz delivery Card absent, and keeps required Buzz tooling present.
 - Package/install smoke if target changes affect distribution.
 - Negative security and cleanup scenarios.
 - Isolated live Goose qualification.
@@ -1297,18 +1339,21 @@ This team strategy succeeds when:
 
 ## 25. Immediate next actions
 
-1. Freeze exact candidate-v5 architecture, strategy, coverage, evidence-register, skill-probe,
-   and stacked GATE 2 plan hashes against Goose commit `db7a7044…`.
-2. Dispatch an independent read-only adversary against those exact hashes; any material finding
-   returns to Architecting and invalidates only the affected evidence.
-3. Present the reviewed candidate-v5 hash set to the human Owner for exact-artifact approval.
-4. With appropriate authority, prepare—but do not silently execute—the atomic G1 submission
-   transaction. Owner Status and Reviewer Status remain unchanged until that transaction occurs.
-5. Because v0.4 permits stacked downstream work, refine the GATE 2 plan while G1 awaits review;
-   before G2 freeze, collect I238/I265–I269 landed-SHA or non-overlap dispositions and audit the
-   combined base without touching their worktrees. G2 cannot pass before G1 and the concurrent
-   integration gate; implementation begins only after G2 passes and the Owner acknowledges
-   Received into Building.
+1. Freeze the exact post-I265 architecture, strategy, coverage, decision-register, skill-probe,
+   historical/current baselines, and stacked GATE 2 plan hashes against repository base
+   `cef3090` and Goose source `db7a7044…`.
+2. Dispatch independent read-only architecture/plan adversaries against those exact bytes; any
+   material finding returns to amendment and invalidates only the affected evidence.
+3. Present the reviewed post-I265 hash set to the human Owner for renewed exact-artifact
+   approval; the earlier D010 approval remains historical and cannot authorize changed bytes.
+4. After approval, finalize the register deterministically, commit the amendment, and dispatch
+   exact-commit T5 review. Only a PASS may proceed to the G1 PR/submission and separately recorded
+   stacked Planning transaction.
+5. Because v0.4 permits stacked downstream work, refine the GATE 2 plan while G1 awaits human
+   review; before G2 freeze, collect I238/I266–I269 landed-SHA or non-overlap dispositions and
+   audit the combined base without touching their worktrees. G2 cannot pass before G1 and the
+   remaining integration gate; implementation begins only after G2 passes and the Owner
+   acknowledges Received into Building.
 
 ## 26. References
 

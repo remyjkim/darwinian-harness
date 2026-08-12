@@ -3,13 +3,13 @@
 
 # I214 Goose Target Support — Target Architecture
 
-**Status:** Source-reconciled G1 candidate v5 — exact-hash independent review pending
+**Status:** Post-I265 base-integration amendment — exact-byte Owner approval pending
 
 **Issue:** [I214] Goose target support
 
 **Date:** 2026-08-11
 
-**Base:** origin/main at ea13a582d7797619f2a934a59c34368241cca191
+**Base:** origin/main at cef3090c013134b578d87fd938a6741fd288d36a
 
 **Strategy:** .ai/analyses/cl0214_goose_target_team_strategy.md
 
@@ -92,23 +92,40 @@ direct-provider parity remain unverified.
 
 ### 2.3 Repository baseline
 
-The initialized worktree baseline at ea13a582 passed:
+The historical initialized-worktree baseline at `ea13a582` passed:
 
 - bun test ./test: 2212 pass, 10 skip, 0 fail across 351 files
 - bunx tsc --noEmit: exit 0
 
-The auditable run record is
+Its immutable auditable run record is
 .ai/analyses/cl0214_goose_g1_baseline_evidence.md. It records the command, checkout,
 result summary, raw-log digest, and deterministic exclusions used for this freeze.
 
-Live-provider tests are excluded from this deterministic baseline.
+`origin/main` subsequently advanced 45 commits and landed I265 at
+`cef3090c013134b578d87fd938a6741fd288d36a`. I214 rebased cleanly onto that exact tip; range-diff
+and blob comparison proved the two pre-existing I214 documentation commits byte-equivalent.
+I265 has real semantic overlap with I214 in Card declarations, Worker materialization, release
+artifact qualification, and package/docs readiness. The bounded reconciliation below preserves
+I265's runtime-admission and release contracts while retaining the selected I214 topology.
 
-I238 and I265–I269 are concurrently active under separate coworkers. This architecture does not
-inspect or modify their mutable worktrees. `ea13a582...` remains the reproducible documentation
-baseline, not an authorization to implement from a stale base. Before G2 freeze, the coordinator
-must record each issue's landed SHA or explicit non-overlap disposition, re-audit the combined
-`main` descendant against every I214 shared seam and plan path, and amend G1 if the target contract
-changed materially.
+A fresh exact-Bun-1.2.21 qualification at rebased I214 head `efd7150` passed:
+
+- focused I265/I214 seams: 306 pass, 1 skip, 0 fail across 11 files;
+- `bun run test:gate`: 2365 pass, 11 skip, 0 fail across 351 files;
+- typecheck, release readiness, package dry run, and Docusaurus production build: exit 0.
+
+The separate current-base run record is
+.ai/analyses/cl0214_goose_post_rebase_baseline_evidence.md. It records exact commands, tool
+digest, checkout identities, counts, exclusions, package tuple, and raw-log digests. The old
+baseline remains historical evidence and is not relabeled as current. Live-provider tests are
+excluded from both deterministic baselines.
+
+I238 and I266–I269 remain concurrently active under separate coworkers. This architecture does
+not inspect or modify their mutable worktrees. Before G2 freeze, the coordinator must record each
+remaining issue's landed SHA or explicit non-overlap disposition, re-audit the combined `main`
+descendant against every I214 shared seam and plan path, and amend G1 again if the target contract
+changes materially. I265 is no longer pending: its landed SHA and integration disposition are
+the `cef3090` amendment recorded here.
 
 ### 2.4 Workflow-rule drift
 
@@ -164,6 +181,13 @@ writable-config migration/serialization behavior is part of informed consent. Th
 and resolutions are preserved in the decision/evidence register. Candidate v4 received explicit
 `I214-D006` approval on 2026-08-11; a fresh exact-hash T5 review remains mandatory before formal
 G1 submission.
+
+Subsequent D009/D010 freezes and T5-R5 findings remain historical in the decision register.
+`I214-D011` authorized the clean rebase to `cef3090` and continued semantic integration, not the
+changed bytes in this document. The I265 amendment changes no ledger schema, adapter ABI,
+consent schema, Pi scope, or selected topology, but it does change the current base, ordering,
+release, evidence, and task contracts. Renewed exact-byte Owner approval and a fresh exact-commit
+independent PASS are therefore required before formal G1 submission.
 
 ## 3. Scope
 
@@ -232,6 +256,52 @@ whole plugin map and rewrite the writable user config after migrations. Drwn doe
 that write, but project materialization creates one condition that triggers discovery. Target
 opt-in alone is project intent; it is not sufficient machine-local consent for this broader
 side effect.
+
+### 4.5 Landed Worker 1.3 runtime-admission boundary
+
+I265 changed the current repository contract before I214 implementation. `CardManifest` now
+admits `runtimeAdmission` and `applicationRequirements`; deployable Worker closures require both
+declarations, derive a canonical runtime-admission envelope, and raise
+`store.minDrwnVersion` to at least `1.3.0` (a Card `harness.minVersion` may raise it further).
+The package identity is separately `darwinian@1.3.0`. Declaration optionality exists only so
+historical manifests can still be parsed; I214 must never interpret absence as deployability.
+
+Worker materialization now has a pure, zero-effect admission gate in
+`cli/core/worker-materialize.ts`. Before store bytes are decoded or verified and before any
+filesystem effect, it strictly validates the outer payload, closure identity/portability,
+reconstructed lock, canonical envelope bounds, and exact rederivation equality. The following
+ordering is an invariant, not an implementation detail that I214 may replace:
+
+1. strict outer, closure/lock, and runtime-admission rederivation/equality validation;
+2. store-export byte-length and SHA-256 verification;
+3. I214 complete proposed-state preflight and any consent required by the derived effective
+   target state; the current Worker payload derives a targetless project config and does not
+   itself select Goose;
+4. explicit independent upstream commits; and
+5. the one journal-backed project-projection commit.
+
+An invalid runtime-admission payload must beat every I214 blocker and leave acknowledgement,
+registry, store, project state, consent, and projection bytes unchanged. A valid admission
+payload that reaches a later generic I214 preflight/projection blocker must also leave all persistent bytes unchanged until
+the complete preflight passes. I214 may factor or export the existing gate for composition, but
+must not bypass, duplicate with weaker validation, or reorder it behind store/preflight effects.
+
+I265 also retired the packaged Buzz delivery Card while retaining required Buzz tooling and
+established additive Worker 1.3 release-source/readiness, provenance, publication-control,
+recovery-workflow, and Windows derivation coverage. I214 will leave the current `cef3090`
+`REQUIRED_RELEASE_MEMBERS` list unchanged. No separate runtime-admission membership
+assertion exists yet; the paths are included incidentally by the broad `cli` package entry. I214
+will add separate npm-pack membership assertions for exactly these paths:
+
+- `cli/core/runtime-admission-manifest.ts`
+- `cli/core/runtime-admission-derive.ts`
+- `cli/core/runtime-admission-descriptors.ts`
+- `cli/tools/runtime-admission-derive.ts`
+
+I214 adds only the target-adapter registry member and its production parser; it does not append
+those four paths to `REQUIRED_RELEASE_MEMBERS`, restore the retired Buzz delivery Card, remove
+required Buzz tooling, replace `runtime-admission:derive:v2`, lower the package identity,
+regenerate I265/I268 receipt/vector dependency chains, or claim release authority.
 
 ## 5. Alternatives
 
@@ -1430,8 +1500,14 @@ design hooks without changing the adapter ABI.
 
 ## 10. Data flow
 
+For Worker payload materialization, the landed Worker 1.3 gate first validates the outer payload,
+closure/lock, and exact rederived runtime-admission envelope, then verifies the store-export
+length and digest. Neither step publishes state. Every other entry point begins directly at step
+1 below.
+
 1. Resolve external inputs without publishing drwn-owned state; record any unavoidable external
-   effect as outside the rollback domain.
+   effect as outside the rollback domain. A materializer carries only already-admitted payload and
+   verified store bytes past this boundary.
 2. Load and strictly validate project config, canonical state, target intent, file-target and
    adapter registries, and mode without widening the file-renderer view.
 3. Derive the complete proposed base/local state and ask pure adapters for declared read sets and
@@ -1441,7 +1517,8 @@ design hooks without changing the adapter ABI.
    `.gitattributes`, V1, the target ledger, sentinels, and watch topology.
 5. Evaluate every known blocker: capability support, aggregate Goose discovery, writable-config
    safety, runtime identity, consent state, ledger schema, cross-ledger overlap, physical paths,
-   foreign collisions, shared-consumer compatibility, and normalized extension keys.
+   foreign collisions, shared-consumer compatibility, normalized extension keys, and the
+   unchanged Worker 1.3 admission/store identity carried from the pre-effect gate.
 6. Dry-run stops here. A mutating command obtains required consent, then publishes each declared
    upstream commit independently. Failure stops before project projection; a later projection
    failure reports the committed upstream state as retry-required rather than rolled back.
@@ -1497,8 +1574,8 @@ path still make dry-run fail because no valid apply plan exists.
 
 ### C0 — G1 evidence and decision freeze
 
-- Analysis 134 provenance, runtime identity, baseline evidence, and the T1–T5 packet
-  register are preserved.
+- Analysis 134 provenance, runtime identity, historical and post-rebase baseline evidence, the
+  landed-I265 seam audit, and the T1–T5 packet register are preserved.
 - The Owner explicitly decides the separate-ledger, consent/disclosure, ASCII projector hard
   cut, writer closure, hook-exclusion, and machine-exclusion contracts.
 - T5 reviews the exact candidate hashes independently before G1 submission.
@@ -1509,6 +1586,9 @@ path still make dry-run fail because no valid apply plan exists.
 - Freeze TargetProjectionAdapterV1, read-set, plan, ambient-observation, and capability
   schemas with deterministic fixtures.
 - Prove unknown ABI and unsupported capability failures.
+- Preserve Worker 1.3 Card declaration fields and validation, package identity 1.3.0,
+  declaration-driven `store.minDrwnVersion >= 1.3.0`, runtime-admission derivation entrypoint, and
+  all pre-I214 required release members while appending the adapter registry contract.
 - T3 confirms future-consumer compatibility without Pi production work.
 
 ### C2 — Executor, ledger, and consent freeze (T4)
@@ -1524,6 +1604,8 @@ path still make dry-run fail because no valid apply plan exists.
 - Route existing targets through the pure legacy planner and shared executor seam.
 - Prove byte, warning, filtering, drift, force, cleanup, dry-run, and command parity.
 - Close every central switch that could fall through for Goose.
+- Prove Worker materialization still rejects an invalid admission envelope before store or I214
+  preflight, while a valid envelope plus a late generic I214 blocker has zero persistent effects.
 
 ### C4 — Goose leaf output freeze (T2)
 
@@ -1553,6 +1635,14 @@ and refactor.
 - target recognition, project-only enablement, disabled cleanup-only reconciliation, and
   explicit unsupported capabilities;
 - legacy target byte-for-byte non-regression;
+- Worker 1.3 Card declaration validation and round-trip preservation; deployable-closure
+  completeness; admission-before-store/preflight priority; valid-admission/late-I214-blocker zero
+  effects; targetless Worker-config derivation; and envelope/lock/materialization round trips;
+- additive package/release qualification retaining package 1.3.0, the exact derivation command,
+  every existing `REQUIRED_RELEASE_MEMBERS` entry, separate membership assertions for the exact
+  four runtime-admission paths, retired Buzz delivery Card absence, required Buzz tooling,
+  accepted vector/receipt chains, and production parsing of the new sidecar in initial and
+  recovery/download artifacts;
 - file- and directory-shaped adapter fixtures;
 - the 18-case enabled/disabled × full/MCP-only/skills-only × absent/current/drifted
   `AGENTS.md` matrix, plus unfiltered full, empty composition, foreign bytes, force, and
@@ -1681,7 +1771,8 @@ Live success never substitutes for deterministic CI.
 - cli/core/effective-state.ts
 - cli/core/user-config.ts
 - cli/core/config-local.ts
-- cli/core/card-manifest.ts
+- cli/core/card-manifest.ts, preserving I265 `runtimeAdmission` and
+  `applicationRequirements` fields and validation through registered-target changes
 - cli/core/card-project.ts
 - cli/core/card-capture.ts
 - cli/core/card-diff.ts
@@ -1699,6 +1790,9 @@ Live success never substitutes for deterministic CI.
 - cli/core/write-watch.ts exact ledger-derived suppression and refresh wiring
 - cli/core/hook-generator/runtime-selection.ts and cli/core/hook-generator/sync-hooks.ts,
   legacy planning only; no Goose runtime change
+- cli/core/worker-materialize.ts, factoring only as needed to compose I214 preflight while
+  preserving the complete I265 admission gate, targetless config derivation, and
+  admission → store identity → preflight/any applicable consent ordering
 - cli/core/worker-generator/sync-worker.ts
 - cli/commands/write.ts
 - cli/commands/mcp/write.ts
@@ -1708,11 +1802,14 @@ Live success never substitutes for deterministic CI.
 - cli/commands/init.ts
 - cli/commands/extensions/setup.ts, awaiting Beads, Parallel, or MarkItDown before success
 - cli/commands/extensions/add.ts awaited-writer parity
-- scripts/verify-release-readiness.ts and test/package-readiness.test.ts, proving the
-  packaged adapter registry is present
+- scripts/verify-release-readiness.ts and test/package-readiness.test.ts, additively proving the
+  packaged adapter registry is present without weakening Worker 1.3 readiness, provenance, or
+  runtime-admission checks
 - scripts/release/artifact-contract.ts and test/scripts-release-artifact-contract.test.ts,
-  extracting and production-parsing registry/target-adapters.json as a required qualified
-  release member, with negative artifact fixtures
+  preserving every pre-I214 `REQUIRED_RELEASE_MEMBERS` entry while separately asserting the four
+  exact runtime-admission paths remain npm-pack members, then appending, extracting, and
+  production-parsing registry/target-adapters.json from both the exact initial tar and
+  downloaded/recovery tar, with negative artifact fixtures
 - new adapter contract, registry, and legacy-planner modules
 
 ### T4 ownership and diagnostics
@@ -1766,11 +1863,14 @@ G1 is ready for human review when:
 
 G3 later requires:
 
-- I238/I265–I269 landed-SHA or explicit non-overlap dispositions and the combined-base I214
+- I238/I266–I269 landed-SHA or explicit non-overlap dispositions and the combined-base I214
   path/semantic audit are recorded without mutating coworker worktrees;
+- landed I265 remains integrated at or after `cef3090`, with its runtime-admission and Worker 1.3
+  release contracts covered by focused regressions;
 - all deterministic tests and typecheck pass from initialized state;
 - package dry-run and release-artifact qualification prove registry/target-adapters.json
-  is present alongside registry/config.json;
+  is present alongside registry/config.json, every existing `REQUIRED_RELEASE_MEMBERS` entry,
+  and the separately asserted four runtime-admission npm-pack paths;
 - isolated live qualification evidence is attached;
 - no foreign bytes or real user configuration were mutated;
 - candidate SHA equals the independently reviewed SHA;

@@ -5,14 +5,14 @@
 
 > Execute via the plan-execution skill (executing-plans or subagent-driven-development).
 
-**Status:** Candidate GATE 2 plan amendment after exact-commit T5-R5 changes requested. This
-artifact requires renewed exact-byte Owner approval and review, is not approved for
+**Status:** Post-I265 candidate GATE 2 plan amendment. This artifact requires renewed exact-byte
+Owner approval and review, is not approved for
 implementation, is not a G2 submission, and does not authorize production changes until G2
 passes and the Owner acknowledges Received into Building.
 
 **Goal:** Deliver first-class, project-only Goose support through a generic projection adapter and optional runtime observer, with complete proposed-state preflight, ordered recoverable commits, whole-image project projection recovery, truthful runtime qualification, and no Pi production scope.
 
-**Architecture:** Keep existing file targets and drwn.write-record@1 intact. Add a strict packaged adapter registry, a pure TargetProjectionAdapterV1 seam, an optional TargetRuntimeObserverV1 seam, and a separate drwn.target-projection-ledger@1; publish every project projection image through one journal-backed executor after complete preflight and independently recoverable upstream commits. A full Goose write invokes the target-neutral canonical AGENTS.md planner, projects shared .agents/skills, and emits the two-file .agents/plugins/drwn MCP unit, while runtime activation and Goose-owned ambient effects remain separately observed.
+**Architecture:** Keep existing file targets, drwn.write-record@1, and landed Worker 1.3 runtime-admission/release contracts intact. Add a strict packaged adapter registry, a pure TargetProjectionAdapterV1 seam, an optional TargetRuntimeObserverV1 seam, and a separate drwn.target-projection-ledger@1; publish every project projection image through one journal-backed executor after complete preflight and independently recoverable upstream commits. A full Goose write invokes the target-neutral canonical AGENTS.md planner, projects shared .agents/skills, and emits the two-file .agents/plugins/drwn MCP unit, while runtime activation and Goose-owned ambient effects remain separately observed. Worker payload materialization preserves the fixed admission → store identity → I214 preflight/any applicable consent → upstream commit → projection order and remains targetless unless a separately approved contract changes that input.
 
 **Tech Stack:** TypeScript 6, Bun 1.2.21, Clipanion, Zod, Node filesystem primitives, Bun test, isolated temporary project/home/config fixtures, and opt-in Goose 1.45.0 live qualification at source commit db7a704446975c88d3b67490c74d33bcd684404e.
 
@@ -45,27 +45,34 @@ commands from inherited prose.
 
 ## Frozen inputs required before implementation
 
-- Repository base: ea13a582d7797619f2a934a59c34368241cca191 or an explicitly recorded descendant integration SHA.
+- Repository base: `cef3090c013134b578d87fd938a6741fd288d36a` or an explicitly recorded descendant integration SHA.
 - Candidate-v5 architecture exact hash.
 - Candidate-v5 source-contract exact hash.
 - Goose 1.45.0 source identity: clean, untagged HEAD db7a704446975c88d3b67490c74d33bcd684404e. Retain all 1.41.0 binaries, probes, and source observations as historical evidence only.
 - Refreshed consent disclosure and effect-contract digest derived from the candidate-v5 source contract.
 - Registered adapter ABI and observer vocabulary frozen at C1.
 - Whole-image journal, ledger, consent, and lock contracts frozen at C2.
-- Baseline test counts recorded after bun install --frozen-lockfile.
-- For I238 and I265–I269, an owner-supplied landed SHA or explicit non-overlap disposition, plus
-  an I214 overlap/source-delta audit on the combined `main` descendant.
+- Historical and fresh post-rebase baseline counts recorded after exact Bun 1.2.21 frozen installs.
+- I265 landed at `cef3090`; its I214 overlap/source-delta audit and preservation contracts are
+  frozen in the architecture/source coverage and must stay green.
+- For I238 and I266–I269, an owner-supplied landed SHA or explicit non-overlap disposition, plus
+  an I214 overlap/source-delta audit on the later combined `main` descendant.
 
 If any frozen schema or audited runtime behavior changes, stop dependent work, amend G1 explicitly, rebase affected lanes, and rerun invalidated review.
 
 ## Concurrent-issue integration gate
 
-I238 and I265–I269 are active in other coworkers' lanes. No I214 agent may edit, clean, rebase,
+I238 and I266–I269 are active in other coworkers' lanes. No I214 agent may edit, clean, rebase,
 test inside, cherry-pick from, or otherwise mutate those worktrees. A missing local worktree is
 not permission to assume that issue is inactive.
 
-The current 19-task path inventory is a candidate against `ea13a582...`. Before G2 freeze, A0
-collects the integration-ready landed SHA or explicit non-overlap disposition from each owner,
+I265 is integrated at `cef3090`: the rebase was textually clean, while the semantic audit found
+overlap in Card manifests, Worker materialization, release artifact qualification, package
+readiness, and docs readiness. The task amendments below preserve the landed contract. No I265
+worktree was entered or changed.
+
+The current 19-task path inventory is a candidate against `cef3090`. Before G2 freeze, A0
+collects the integration-ready landed SHA or explicit non-overlap disposition from each remaining owner,
 builds the intended `main` descendant without touching their lanes, and compares every landed
 diff with all I214 create/modify/test paths and source assumptions. A path overlap triggers an
 ordered integration assignment in the I214 lane; a semantic contract change triggers a G1
@@ -89,6 +96,10 @@ Owner acknowledges Received into Building.
 13. Status, doctor, dry-run, and watcher refresh consume one immutable journal-stable inspection and never recover or mutate.
 14. Positive runtime activation is limited to the exact audited strict native envelope. Projection-current never implies activation-current.
 15. Deterministic CI requires no Goose, provider credentials, network, or real home directories. Live qualification is opt-in, isolated, and evidence-bearing.
+16. Worker 1.3 remains an upstream invariant: Card declaration round-trips, materializer
+    admission/store gates, package 1.3.0, runtime-admission derivation, release/provenance/
+    publication controls, retired Buzz delivery Card absence, required Buzz tooling, and accepted
+    vectors are preserved additively.
 
 ## Selected strategy and rejected alternatives
 
@@ -359,7 +370,7 @@ Release and documentation:
 
     bun test test/package-readiness.test.ts test/scripts-release-artifact-contract.test.ts test/docs-readiness.test.ts
     bun run docs:build
-    bun run verify:release --json
+    QUALITY_GATE_TEST_MODE=1 bun run verify:release --json
 
 ### Required CI jobs and definition of green
 
@@ -370,7 +381,7 @@ Green requires:
 - bun run typecheck exit 0;
 - package, artifact-contract, and docs-readiness tests exit 0;
 - bun run docs:build exit 0 when documentation changes;
-- bun run verify:release --json reports every required check passed;
+- `QUALITY_GATE_TEST_MODE=1 bun run verify:release --json` reports every required check passed;
 - no unexpected worktree changes, project .bak paths, real-home writes, or network use in deterministic tests;
 - opt-in live failures remain visible and are never relabeled deterministic success.
 
@@ -401,23 +412,29 @@ Residual risks: target-owned future runtime changes, provider/auth availability,
 
 T1 owns shared contracts and planning hotspots. T4 owns executor, ownership, consent, and diagnostics after each declared handoff. T2 owns Goose leaf modules after C1/C2 freeze. T3 is a read-only Pi compatibility witness. T5 reviews frozen SHAs and authors no production changes.
 
-## Task 0: Re-freeze candidate-v5 evidence
+## Task 0: Re-freeze post-I265 candidate-v5 evidence
 
 **Owner:** A0 with read-only T1/T2/T4 inputs; T5 reviews after freeze.
 
-**Dependencies:** Updated db7a704 audit packet and human Owner candidate-v5 design decision.
+**Dependencies:** Updated db7a704 audit packet, landed I265 base `cef3090`, fresh post-rebase
+baseline, and human Owner candidate-v5 design direction.
 
 **Files:**
 - Modify: .ai/analyses/cl0214_goose_target_support_target_architecture.md
 - Modify: .ai/analyses/cl0214_goose_target_team_strategy.md
 - Modify: .ai/analyses/cl0214_goose_source_contract_coverage.md
 - Modify: .ai/analyses/cl0214_goose_g1_decision_evidence_register.md
-- Modify: .ai/analyses/cl0214_goose_skill_precedence_probe.md
+- Modify: .ai/tasks/cl0214_goose_target_support_task_plan.md
+- Create: .ai/analyses/cl0214_goose_post_rebase_baseline_evidence.md
 - Preserve historical provenance: .ai/analyses/134_goose-configuration-guide.md
+- Preserve historical baseline: .ai/analyses/cl0214_goose_g1_baseline_evidence.md
+- Preserve latest-source probe: .ai/analyses/cl0214_goose_skill_precedence_probe.md
 
-**Step 1: Add the candidate-v5 source-identity and delta checklist**
+**Step 1: Add the candidate-v5 source-identity, I265 integration, and delta checklist**
 
 Mark 39c27c-derived assertions as historical; add db7a704/1.45.0, state-machine, path-root, current ACP/serve, TUI-launcher, subagent-hook, name-injection, and collision contracts.
+Record `cef3090` as current base, preserve the old baseline, add the exact-Bun-1.2.21 fresh
+baseline, and freeze Worker 1.3 admission/release preservation before dependent tasks.
 
 **Step 2: Verify the old hash is never presented as current**
 
@@ -438,7 +455,7 @@ Expected: exit 0.
 
 **Step 5: Obtain exact-byte Owner approval and freeze the integrity register**
 
-Compute SHA-256 for the architecture, strategy, coverage, probe, plan, baseline, and preserved
+Compute SHA-256 for the architecture, strategy, coverage, probe, plan, both baselines, and preserved
 evidence. Present that pre-freeze set to the Owner. Only after approval, replace the pending
 integrity placeholders deterministically and compute the register digest out of band. Any edit
 invalidates that review set.
@@ -446,7 +463,7 @@ invalidates that review set.
 **Step 6: Commit after explicit documentation authority**
 
     git add .ai/analyses/134_goose-configuration-guide.md .ai/analyses/cl0214_*.md .ai/tasks/cl0214_goose_target_support_task_plan.md
-    git commit -m "[other] freeze I214 candidate-v5 contracts and plan"
+    git commit -m "[other] integrate I265 into I214 candidate contracts"
 
 **Step 7: Dispatch exact-commit T5 review**
 
@@ -461,7 +478,7 @@ and the Owner acknowledges Received into Building.
 **Owner:** T1.
 
 **Dependencies:** Task 0, C1 source contract, human G2 pass/Owner acknowledgement into Building,
-and the I238/I265–I269 combined-base integration gate.
+and the I238/I266–I269 combined-base integration gate. I265 is already integrated at `cef3090`.
 
 **Files:**
 - Create: cli/core/target-adapter.ts
@@ -480,6 +497,20 @@ and the I238/I265–I269 combined-base integration gate.
 **Step 1: Write one failing strict-registry/ABI test**
 
 Start with missing packaged sidecar, malformed sidecar, unknown key, unsupported ABI, and target-independent help/version behavior one case at a time.
+Also add one case at a time proving every pre-I214 `REQUIRED_RELEASE_MEMBERS` entry and packaged
+runtime-admission path below remains present through explicit npm-pack membership assertions; do
+not append the four paths to `REQUIRED_RELEASE_MEMBERS` or conflate the two contracts:
+
+- `cli/core/runtime-admission-manifest.ts`
+- `cli/core/runtime-admission-derive.ts`
+- `cli/core/runtime-admission-descriptors.ts`
+- `cli/tools/runtime-admission-derive.ts`
+
+The retired Buzz delivery Card remains absent while required Buzz tooling remains packaged. The
+exact same tar production-parses `registry/target-adapters.json` in initial and
+recovery/download lanes.
+Assert `runtime-admission:derive:v2` remains exactly
+`bun run cli/tools/runtime-admission-derive.ts`.
 
 **Step 2: Run RED**
 
@@ -489,7 +520,11 @@ Expected: fail because the registry/ABI does not exist.
 
 **Step 3: Implement the minimal pure interfaces and production parser**
 
-Do not add Goose rendering or mutation. Existing file targets remain unchanged.
+Do not add Goose rendering or mutation. Existing file targets remain unchanged. Append the
+sidecar to I265's release contract; do not replace members, change package 1.3.0, modify the
+`runtime-admission:derive:v2` command, regenerate accepted vectors/receipt chains, restore the
+retired Buzz delivery Card, remove required Buzz tooling, or weaken
+provenance/publication/recovery controls.
 
 **Step 4: Run GREEN and typecheck**
 
@@ -528,7 +563,11 @@ Expected: exit 0.
 
 **Step 1: Write failing project-target and canonical-root tests**
 
-Cover unknown keys, invalid values, project-only Goose, machine/Card exclusion, target preservation, and lexical/canonical disagreement.
+Cover unknown keys, invalid values, project-only Goose, machine/Card exclusion, target preservation, and lexical/canonical disagreement. Add a combined Card manifest fixture that carries the exact
+existing file target `claude` plus valid `runtimeAdmission` and `applicationRequirements`;
+parsing, project/capture/diff round trips, and unrelated target mutation must preserve both
+declaration objects exactly. Add a separate negative proving `goose` remains invalid in a Card
+manifest even though it is a registered project adapter target.
 
 **Step 2: Run RED**
 
@@ -537,6 +576,9 @@ Cover unknown keys, invalid values, project-only Goose, machine/Card exclusion, 
 **Step 3: Implement one injected registered-target validator**
 
 Keep TargetName and machine/file renderer views closed. Make sync-mcp.ts delegate to the parser instead of carrying another grammar. Treat init --force as an explicit destructive reset.
+Preserve I265 declaration validation. Optional declaration fields remain parse-compatible for
+historical Card manifests, but every deployable closure still requires both and derives the
+Worker 1.3 envelope; registered-target support cannot lower or bypass that rule.
 
 **Step 4: Run GREEN**
 
@@ -905,28 +947,55 @@ Run the RED command.
 - Modify: cli/core/card-store.ts
 - Modify: cli/core/store-seed.ts
 - Modify: cli/core/worker-materialize.ts
+- Modify: test/core-worker-materialize-validate.test.ts
+- Modify: test/core-worker-materialize-derive.test.ts
+- Modify: test/core-card-lock.test.ts
+- Modify: test/worker-materialize-fixture.ts
 
-**Step 1: Write a failing no-early-mutation test**
+**Step 1: Write one failing valid-admission/late-I214-blocker case**
 
-Inject a late projection blocker after proposed acknowledgement, registry, store, and state changes. Assert every persistent byte remains unchanged.
+Use a valid derived envelope and store export, keep the current targetless Worker project-config
+derivation, inject the latest possible generic I214 preflight/projection blocker, and assert every
+persistent byte remains unchanged. This is the new I214 orchestration behavior that must produce
+a meaningful RED; landed I265 already protects invalid-admission priority.
 
 **Step 2: Run RED**
 
-    bun test test/core-project-preflight.test.ts test/core-project-commit-sequence.test.ts test/core-instruction-consent-ack.test.ts test/scenarios-project-registry-races.test.ts test/core-worker-materialize-derive.test.ts
+    bun test test/core-project-preflight.test.ts test/core-project-commit-sequence.test.ts test/core-instruction-consent-ack.test.ts test/scenarios-project-registry-races.test.ts test/core-worker-materialize-validate.test.ts test/core-worker-materialize-derive.test.ts test/core-card-lock.test.ts
 
 **Step 3: Separate derive, validate, and commit APIs**
 
-Return immutable proposed bytes/tokens. Commit independent upstream state only after preflight; revalidate before projection.
+Return immutable proposed bytes/tokens. Compose with the landed complete pre-effect materializer
+gate—export or factor that exact gate if necessary, but never call the weaker public
+outer/store-only validator as a substitute and never duplicate its rules. Preserve this order:
+strict outer/closure/lock/runtime-admission rederivation and equality; store length/SHA; complete
+I214 proposed-state preflight and consent; explicit upstream commits; project projection. Commit
+independent upstream state only after preflight; revalidate before projection.
 
 Run GREEN with the exact Step 2 command before adding another behavior.
 
-**Step 4: Add one failing retry-required behavior**
+**Step 4: Run landed Worker 1.3 preservation regressions**
+
+Supply an invalid runtime-admission envelope together with instrumented store verification and
+I214 preflight. Assert admission wins, neither downstream stage runs, and every acknowledgement,
+registry, store, project-state, consent, and projection byte remains unchanged. Also preserve
+empty explicit declarations for a deployable no-server/no-app closure,
+`store.minDrwnVersion` of at least 1.3.0, targetless Worker config, and
+declaration/envelope/lock round trips. These are landed preservation contracts and must be GREEN,
+not fabricated as new RED behaviors.
+
+    bun test test/core-worker-materialize-validate.test.ts test/core-worker-materialize-derive.test.ts test/core-card-lock.test.ts test/core-project-preflight.test.ts
+
+If this command fails, stop and repair the regression before continuing; do not weaken I265 to
+manufacture a RED.
+
+**Step 5: Add one failing retry-required behavior**
 
     bun test test/core-project-commit-sequence.test.ts
 
 Expected: the new retry case fails for the asserted behavior, not fixture setup.
 
-**Step 5: Implement and pass retry-required behavior**
+**Step 6: Implement and pass retry-required behavior**
 
 Inject failure after an upstream commit. Assert retained upstream state, stable projection-retry-required output, and idempotent convergence.
 
@@ -934,9 +1003,9 @@ Inject failure after an upstream commit. Assert retained upstream state, stable 
 
 Then rerun the complete Step 2 command and require GREEN.
 
-**Step 6: Commit**
+**Step 7: Commit**
 
-    git add cli/core/project-preflight.ts cli/core/project-commit-sequence.ts cli/core/hook-consent-ack.ts cli/core/instruction-consent-ack.ts cli/core/project-registry.ts cli/core/card-store.ts cli/core/store-seed.ts cli/core/worker-materialize.ts test/core-project-preflight.test.ts test/core-project-commit-sequence.test.ts
+    git add cli/core/project-preflight.ts cli/core/project-commit-sequence.ts cli/core/hook-consent-ack.ts cli/core/instruction-consent-ack.ts cli/core/project-registry.ts cli/core/card-store.ts cli/core/store-seed.ts cli/core/worker-materialize.ts test/core-project-preflight.test.ts test/core-project-commit-sequence.test.ts test/core-worker-materialize-validate.test.ts test/core-worker-materialize-derive.test.ts test/core-card-lock.test.ts test/worker-materialize-fixture.ts
     git commit -m "[other] preflight complete project operations"
 
 ## Task 13: Route all target-aware commands through the commit sequence
@@ -1007,6 +1076,10 @@ do not depend on the Goose adapter, observer, or plugin bytes.
 **Step 3: Prepare before the Org lock and use subordinate projection**
 
 Keep the existing Org journal as operation coordinator. Acquire its explicit lock level before project state/projection and resume projection idempotently.
+Treat I265's `1.3.0` materialize/reconcile/remove receipts and released-boundary manifest as
+immutable fixture baseline. Preserve them byte-for-byte. If implementation evidence proves their
+bytes must change, stop for an explicit plan amendment that lists the fixture paths and
+regenerates the predecessor digest and all boundary hashes as one dependency chain.
 
 **Step 4: Run GREEN**
 
@@ -1171,6 +1244,8 @@ part of the receipt. Cover accept/decline, stale digest, moved project, corrupt 
 revoke, non-TTY refusal, historical 1.41 refusal, absolute-non-Unicode refusal, Goose-specific
 preflight ordering, and Org Worker integration. The command never weakens the target-neutral
 receipt primitive.
+The integration tests consume I265's `1.3.0` Org receipt/boundary fixtures without rewriting
+them; any required byte change triggers the Task 14 dependency-chain stop condition.
 
 For each consent or integration behavior, use this exact RED→GREEN command before adding another:
 
@@ -1252,7 +1327,7 @@ Never scan arbitrary map keys as filesystem paths, execute Goose, mutate ambient
     git commit -m "[other] refresh target projection watchers"
     bun run typecheck
 
-## Task 18: Finish release, documentation, and qualification evidence
+## Task 18: Finish release-readiness, documentation, and qualification evidence
 
 **Owner:** T1 packaging, T2 live evidence, T4 safety evidence, A0 integration; T5 reviews the frozen candidate.
 
@@ -1272,6 +1347,12 @@ Never scan arbitrary map keys as filesystem paths, execute Goose, mutate ambient
 Require target-adapters.json in the tarball, exact project/machine/activation boundaries, the
 db7a704 source contract (workspace 1.45.0), state-machine split, no legacy HTTP, TUI launcher-
 only language, and Pi exclusions.
+Assert additivity: every existing `REQUIRED_RELEASE_MEMBERS` entry remains; separate npm-pack
+membership assertions retain `cli/core/runtime-admission-manifest.ts`,
+`cli/core/runtime-admission-derive.ts`, `cli/core/runtime-admission-descriptors.ts`, and
+`cli/tools/runtime-admission-derive.ts`; the 1.3.0 tuple and derivation command remain; the retired
+Buzz delivery Card stays absent while required Buzz tooling stays present; and
+target-adapters.json production-parses from the same exact initial and recovery/download tar.
 
 **Step 2: Run focused release/documentation checks**
 
@@ -1281,15 +1362,27 @@ Expected RED until docs and package contract are updated.
 
 **Step 3: Update docs and produce isolated live evidence**
 
-Live evidence is opt-in and does not replace deterministic tests. Do not create the completion document before merge.
+Live evidence is opt-in and does not replace deterministic tests. This task qualifies release
+readiness only: do not tag, publish, alter concrete release tuples, execute I267 release/adoption,
+execute I268 Finch publication, or create the completion document before merge.
 
-**Step 4: Run the final gates sequentially**
+**Step 4: Run the final gates sequentially with exact Bun 1.2.21**
 
+    bun --version
+    I214_BUN_BIN="$(command -v bun)"
+    printf '%s\n' "$I214_BUN_BIN"
+    shasum -a 256 "$I214_BUN_BIN" # macOS; use sha256sum/Get-FileHash on Linux/Windows
+    bun install --frozen-lockfile
+    (cd docs-docusaurus && bun install --frozen-lockfile)
+    bun test test/core-card-manifest.test.ts test/core-runtime-admission-manifest.test.ts test/core-worker-deploy.test.ts test/scripts-runtime-admission-derive.test.ts test/core-worker-materialize-validate.test.ts test/core-worker-materialize-derive.test.ts test/core-card-lock.test.ts
+    bun test test/scripts-release-provenance.test.ts test/scripts-release-publication-controls.test.ts test/scripts-release-workflow.test.ts test/scripts-release-recovery-workflow.test.ts
     bun run test:gate
     bun run typecheck
     bun test test/package-readiness.test.ts test/scripts-release-artifact-contract.test.ts test/docs-readiness.test.ts
     bun run docs:build
-    bun run verify:release --json
+    QUALITY_GATE_TEST_MODE=1 bun run verify:release --json
+    npm pack --dry-run --json
+    git diff --check
     git status --short --branch
 
 Expected: every command exits 0; worktree contains only declared changes and evidence.
@@ -1299,7 +1392,10 @@ Expected: every command exits 0; worktree contains only declared changes and evi
     git add docs/cli-quickref.md docs/contracts/project-worker-v1.md test/docs-readiness.test.ts test/package-readiness.test.ts test/scripts-release-artifact-contract.test.ts .ai/analyses/cl0214_goose_live_qualification.md
     git commit -m "[other] document qualified Goose support"
 
-A0 records the exact candidate SHA, plan/architecture hashes, command results/counts, evidence digests, residual risks, and PR Testing & CI evidence. T5 reviews that immutable SHA from a clean checkout.
+A0 records the exact candidate SHA, plan/architecture hashes, exact Bun binary/version, command
+results/counts, evidence digests, residual risks, and PR Testing & CI evidence. CI must include
+the existing Windows runtime-admission derivation leg. T5 reviews that immutable SHA from a clean
+checkout.
 
 ## Integration and finding protocol
 
@@ -1325,10 +1421,14 @@ A0 records the exact candidate SHA, plan/architecture hashes, command results/co
 - Project state, local safety hygiene, upstream commits, and project projection have explicit commit and recovery boundaries.
 - Deterministic CI and opt-in live qualification are separate.
 - Machine behavior, existing target parity, V1 compatibility, and Pi exclusion have regression coverage.
+- Worker 1.3 declaration/admission ordering, package/release additivity, retired Buzz delivery
+  Card absence, required Buzz tooling, and accepted-vector preservation have focused regression
+  coverage.
 - Workflow-rule drift and verified Bun commands are present.
 - The plan hash and exact candidate source hashes are recorded before T5 G2 review.
-- I238/I265–I269 integration dispositions, combined base SHA, path-overlap result, and any required
-  G1 amendment are recorded without mutating coworker worktrees.
+- I265 integration is pinned to `cef3090`; I238/I266–I269 integration dispositions, later
+  combined base SHA, path-overlap result, and any required G1 amendment are recorded without
+  mutating coworker worktrees.
 
 ## PR Testing and CI evidence template
 
@@ -1338,13 +1438,17 @@ A0 records the exact candidate SHA, plan/architecture hashes, command results/co
 - Architecture SHA-256:
 - Task-plan SHA-256:
 - Goose source/version:
+- Repository base / integrated I265 SHA:
+- Bun binary version / SHA-256:
 - Baseline command results and counts:
+- Worker 1.3 admission/release regression results:
 - Focused RED/GREEN command results and counts:
 - bun run test:gate:
 - bun run typecheck:
 - package/artifact/docs tests:
+- npm pack dry-run tuple/member result:
 - bun run docs:build:
-- bun run verify:release --json:
+- QUALITY_GATE_TEST_MODE=1 bun run verify:release --json:
 - Live qualification status and evidence digest:
 - Filesystem before/after digest:
 - Project .bak scan:
