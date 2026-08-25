@@ -68,7 +68,7 @@ function developmentBuildIdentity() {
     kind: "development",
     schema: "darwinian.worker.build-identity",
     schemaVersion: 1,
-    version: "1.2.0",
+    version: "1.4.0",
     sourceCommit: "0".repeat(40),
     qualificationEligible: false,
   } as const);
@@ -237,7 +237,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -259,7 +259,7 @@ describe("auth commands", () => {
     expect(result.stdout).not.toContain("x@y.z");
     expect(result.stdout).not.toContain("https://app.test/device");
     expect(receipt).toMatchObject({
-      worker: { version: "1.2.0", sourceCommit: "0".repeat(40) },
+      worker: { version: "1.4.0", sourceCommit: "0".repeat(40) },
       qualificationNamespaceDigest: expectedScope.qualificationNamespaceDigest,
       credential: {
         credentialId: "88888888-8888-4888-8888-888888888888",
@@ -325,7 +325,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -360,7 +360,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -392,7 +392,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -423,7 +423,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -482,7 +482,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -495,7 +495,7 @@ describe("auth commands", () => {
     expect(requestBodies).toHaveLength(1);
     expect(requestBodies[0]).toContain("grant_type=refresh_token");
     expect(receipt).toMatchObject({
-      worker: { version: "1.2.0", sourceCommit: "0".repeat(40) },
+      worker: { version: "1.4.0", sourceCommit: "0".repeat(40) },
       credential: { credentialId: current.credentialId, generation: 2 },
       action: "refresh",
       mode: "ordinary",
@@ -530,7 +530,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -571,7 +571,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.2.0",
+        version: "1.4.0",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),

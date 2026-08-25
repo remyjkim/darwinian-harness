@@ -34,6 +34,43 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registry default for the cursor target is now off — enable it explicitly
   via machine policy or a project override to keep projecting.
 
+## [1.4.0] - 2026-08-24
+
+### Added
+
+- Per-agent Worker launch contexts for already-installed project roots through
+  `drwn worker launch-context prepare`, `list`, and report-only/explicit
+  `prune`. The active Worker remains the shared base; identical capabilities
+  deduplicate and divergent skill/MCP identities fail before writes.
+- Strict bounded `drwn.worker-launch-plan`, `drwn.worker-launch-context`,
+  `drwn.worker-launch-receipt`, and `drwn.worker-launch-prepare-result` JSON
+  contracts with content-addressed concrete context trees, atomic publication,
+  verified concurrent reuse, drift refusal, doctor health, and Rust-consumer
+  fixtures.
+- Claude directory-plugin rendering and Codex nested launch-workspace rendering.
+  Codex uses `-C` plus `--add-dir`; no synthetic `CODEX_HOME`, user-home profile,
+  shared target rewrite, resolved secret, or content-bearing config argv is
+  introduced.
+- Concrete ancestor/source checks, frozen hook-source bundling, descriptor-aware
+  reuse, a cross-process prepare/prune mutation lock, and hard-kill escalation
+  keep store publication, pruning, and two-second target probes fail-closed.
+- Credential-free target compatibility is release-gated at the exact supported
+  floors. Explicit opt-in Claude, Codex, and three-agent Herdr drills cover hook
+  layering, MCP/profile isolation, and real-worktree edit landing without
+  silently assuming target credentials or trust.
+- Packed-artifact qualification requires the launch-context command/core
+  members and adds four side-effect-free launch-context help smokes, bringing
+  the v1.4 installed smoke set to twelve.
+
+### Compatibility
+
+- Ships directly from the v1.2.0 contract line; v1.3.0 is intentionally not a
+  migration source or compatibility dependency.
+- Conservative target floors are Claude Code 2.1.212 and Codex CLI 0.149.0.
+- Project config/lock schemas are unchanged. Cold resume is not supported;
+  reconstructed orchestrator bindings are `relaunch_required` until explicit
+  relaunch.
+
 ## [1.2.0] - 2026-08-07
 
 ### Added

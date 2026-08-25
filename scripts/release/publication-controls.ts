@@ -151,7 +151,7 @@ function assertGitHubReceipt(
   ) fail();
   const deploymentPolicy = environment.deploymentPolicies[0];
   if (!exactKeys(deploymentPolicy, ["type", "pattern"]) ||
-    deploymentPolicy.type !== "tag" || deploymentPolicy.pattern !== "v1.2.0") fail();
+    deploymentPolicy.type !== "tag" || deploymentPolicy.pattern !== "v1.4.0") fail();
 }
 
 function assertNpmReceipt(
@@ -185,7 +185,7 @@ export function validatePublicationControls(input: {
   environment: "darwinian-npm-publish";
   approval: { requiredReviewers: string[]; preventSelfReview: boolean };
   package: "darwinian";
-  versionTag: "v1.2.0";
+  versionTag: "v1.4.0";
 } {
   assertNoSecretBearingInput(input.github);
   assertNoSecretBearingInput(input.npm);
@@ -201,6 +201,6 @@ export function validatePublicationControls(input: {
       preventSelfReview: input.policy.preventSelfReview,
     },
     package: "darwinian",
-    versionTag: "v1.2.0",
+    versionTag: "v1.4.0",
   };
 }

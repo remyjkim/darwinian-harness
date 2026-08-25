@@ -8,7 +8,7 @@ import semver from "semver";
 
 const BUILD_IDENTITY_KEYS = ["schema", "schemaVersion", "sourceCommit", "version"] as const;
 const FULL_LOWERCASE_GIT_SHA = /^[a-f0-9]{40}$/;
-const TARGET_RELEASE_VERSION = "1.2.0";
+const TARGET_RELEASE_VERSION = "1.4.0";
 
 export const DEVELOPMENT_SOURCE_COMMIT = "0".repeat(40);
 

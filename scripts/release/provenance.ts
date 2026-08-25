@@ -99,10 +99,10 @@ export interface ReleaseCandidateReceiptV1 {
     ref: "refs/heads/main";
     sourceCommit: string;
   };
-  package: { name: "darwinian"; version: "1.2.0" };
-  build: { version: "1.2.0"; sourceCommit: string };
+  package: { name: "darwinian"; version: "1.4.0" };
+  build: { version: "1.4.0"; sourceCommit: string };
   tar: {
-    filename: "darwinian-1.2.0.tgz";
+    filename: "darwinian-1.4.0.tgz";
     byteLength: number;
     sha1: string;
     sha256: string;
@@ -135,17 +135,17 @@ export function parseReleaseCandidateReceipt(text: string): ReleaseCandidateRece
 
   const packageIdentity = value.package;
   if (!isObject(packageIdentity) || !hasExactKeys(packageIdentity, ["name", "version"]) ||
-    packageIdentity.name !== "darwinian" || packageIdentity.version !== "1.2.0") fail();
+    packageIdentity.name !== "darwinian" || packageIdentity.version !== "1.4.0") fail();
 
   const build = value.build;
   if (!isObject(build) || !hasExactKeys(build, ["version", "sourceCommit"]) ||
-    build.version !== "1.2.0" || typeof build.sourceCommit !== "string" || !FULL_SHA.test(build.sourceCommit)) fail();
+    build.version !== "1.4.0" || typeof build.sourceCommit !== "string" || !FULL_SHA.test(build.sourceCommit)) fail();
   if (build.sourceCommit !== workflow.sourceCommit) fail();
 
   const tarball = value.tar;
   if (!isObject(tarball) || !hasExactKeys(tarball, ["filename", "byteLength", "sha1", "sha256", "integrity"])) fail();
   if (
-    tarball.filename !== "darwinian-1.2.0.tgz" ||
+    tarball.filename !== "darwinian-1.4.0.tgz" ||
     !isPositiveInteger(tarball.byteLength) ||
     typeof tarball.sha1 !== "string" || !SHA1.test(tarball.sha1) ||
     typeof tarball.sha256 !== "string" || !SHA256.test(tarball.sha256) ||
@@ -165,7 +165,7 @@ export function createReleaseCandidateReceipt(input: {
 }): string {
   if (
     input.artifact.packageName !== "darwinian" ||
-    input.artifact.version !== "1.2.0" ||
+    input.artifact.version !== "1.4.0" ||
     input.artifact.sourceCommit !== input.sourceCommit
   ) fail();
   const receipt: ReleaseCandidateReceiptV1 = {
@@ -181,10 +181,10 @@ export function createReleaseCandidateReceipt(input: {
       ref: input.ref as "refs/heads/main",
       sourceCommit: input.sourceCommit,
     },
-    package: { name: "darwinian", version: "1.2.0" },
-    build: { version: "1.2.0", sourceCommit: input.sourceCommit },
+    package: { name: "darwinian", version: "1.4.0" },
+    build: { version: "1.4.0", sourceCommit: input.sourceCommit },
     tar: {
-      filename: input.artifact.filename as "darwinian-1.2.0.tgz",
+      filename: input.artifact.filename as "darwinian-1.4.0.tgz",
       byteLength: input.artifact.byteLength,
       sha1: input.artifact.sha1,
       sha256: input.artifact.sha256,
@@ -199,7 +199,7 @@ export function createReleaseCandidateReceipt(input: {
 export interface ReleaseTagAuthorizationV1 {
   schema: "darwinian.worker.release-authorization";
   schemaVersion: 1;
-  version: "1.2.0";
+  version: "1.4.0";
   dryRunRunId: number;
   dryRunRunAttempt: number;
   artifactId: number;
@@ -238,13 +238,13 @@ export function parseReleaseTagAuthorization(message: string): ReleaseTagAuthori
   if (
     entries.get("schema") !== "darwinian.worker.release-authorization" ||
     entries.get("schema_version") !== "1" ||
-    entries.get("version") !== "1.2.0" ||
+    entries.get("version") !== "1.4.0" ||
     !ARTIFACT_DIGEST.test(artifactDigest)
   ) fail();
   return {
     schema: "darwinian.worker.release-authorization",
     schemaVersion: 1,
-    version: "1.2.0",
+    version: "1.4.0",
     dryRunRunId: number("dry_run_run_id"),
     dryRunRunAttempt: number("dry_run_run_attempt"),
     artifactId: number("artifact_id"),
@@ -256,7 +256,7 @@ export interface ReleaseRecoveryAuthorizationV1 {
   schema: "darwinian.worker.release-recovery-authorization";
   schemaVersion: 1;
   authorizedAt: string;
-  tag: "v1.2.0";
+  tag: "v1.4.0";
   failedRunId: number;
   action: "verify_and_repair_metadata";
 }
@@ -274,7 +274,7 @@ export function parseRecoveryAuthorizationReceipt(text: string): ReleaseRecovery
     value.schema !== "darwinian.worker.release-recovery-authorization" ||
     value.schemaVersion !== 1 ||
     !isCanonicalTimestamp(value.authorizedAt) ||
-    value.tag !== "v1.2.0" ||
+    value.tag !== "v1.4.0" ||
     !isPositiveInteger(value.failedRunId) ||
     value.action !== "verify_and_repair_metadata"
   ) fail();
@@ -307,7 +307,7 @@ function oneJob(jobs: ProvenanceInput["jobs"], name: string, conclusion: string)
 }
 
 function verifyReleaseProvenanceWithPolicy(input: ProvenanceInput, requireCurrentMain: boolean): {
-  version: "1.2.0";
+  version: "1.4.0";
   sourceCommit: string;
   runId: number;
   artifactId: number;
@@ -365,7 +365,7 @@ function verifyReleaseProvenanceWithPolicy(input: ProvenanceInput, requireCurren
   ) fail();
 
   return {
-    version: "1.2.0",
+    version: "1.4.0",
     sourceCommit: receipt.workflow.sourceCommit,
     runId: receipt.workflow.runId,
     artifactId: artifactMetadata.id,

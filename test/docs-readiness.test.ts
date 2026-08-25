@@ -99,7 +99,7 @@ describe("documentation readiness", () => {
       "build identity",
       "dry-run run ID and attempt",
       "artifact ID and digest",
-      "annotated `v1.2.0` tag",
+      "annotated `v1.4.0` tag",
       "exact tarball",
       "release-recovery.yml",
       "source availability",
@@ -530,5 +530,41 @@ describe("documentation readiness", () => {
     ]) {
       expect(forwardDocs).not.toMatch(stale);
     }
+  });
+
+  test("v1.4 docs explain per-agent launch contexts, Codex nesting, trust, pruning, and resume limits", async () => {
+    const [concept, worker, schema, patterns, doctor, readme, changelog] = await Promise.all([
+      readFile(new URL("../docs-docusaurus/docs/concepts/per-agent-worker-launch-contexts.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/worker.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/schemas/worker-launch-context-v1.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/guides/per-project-patterns.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/guides/doctor-in-ci.md", import.meta.url), "utf8"),
+      readFile(new URL("../README.md", import.meta.url), "utf8"),
+      readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8"),
+    ]);
+    const all = [concept, worker, schema, patterns, doctor, readme, changelog].join("\n");
+    for (const token of [
+      "drwn worker launch-context prepare",
+      "drwn.worker-launch-plan",
+      "drwn.worker-launch-context",
+      "drwn.worker-launch-receipt",
+      "--enable-mcp",
+      "--execute",
+      "2.1.212",
+      "0.149.0",
+      "-C",
+      "--add-dir",
+      "relaunch_required",
+      "RUN_DRWN_REAL_CLAUDE",
+      "RUN_DRWN_REAL_CODEX",
+      "RUN_DRWN_REAL_HERDR",
+      "DRWN_LIVE_DRWN_BIN",
+      "LAUNCH_CONTEXT_STORE_INVALID",
+    ]) expect(all).toContain(token);
+    expect(concept).toContain("active Worker");
+    expect(concept).toContain("content-addressed");
+    expect(concept).toContain("does not write to user home");
+    expect(doctor).toContain("launchContexts");
+    expect(changelog).toContain("## [1.4.0]");
   });
 });

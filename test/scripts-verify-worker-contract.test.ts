@@ -42,14 +42,14 @@ describe("Worker contract release gate", () => {
     expect(result.details).toContain("prototype migration adapter");
   });
 
-  test("requires exact 1.2.0 package identity derived by the runtime while preserving the 1.1.0 hard-cut floor", () => {
+  test("requires exact 1.4.0 package identity derived by the runtime while preserving the 1.1.0 hard-cut floor", () => {
     const result = verifyWorkerContract(repoRoot, {
       "package.json": JSON.stringify({ version: "0.9.0" }),
       "cli/core/version.ts": 'export const DRWN_VERSION = "0.9.0";\n',
     });
 
     expect(result.ok).toBe(false);
-    expect(result.details).toContain("package version must be 1.2.0");
+    expect(result.details).toContain("package version must be 1.4.0");
     expect(result.details).toContain("runtime version must derive from adjacent package metadata");
     expect(result.details).toContain("package version must be at least the 1.1.0 Worker hard-cut floor");
   });
