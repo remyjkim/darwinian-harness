@@ -324,7 +324,7 @@ export class DpapiBackend implements KeychainBackend {
     try {
       await fs.unlink(this.keyPath);
     } catch (error) {
-      if (!isErrorCode(error, "ENOENT")) throw error;
+      if (!isErrorCode(error, "ENOENT")) throw new Error("CREDENTIAL_DELETE_FAILED");
     }
   }
 }

@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, promises as fsPromises, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import * as processModule from "../cli/core/process";
@@ -30,7 +30,7 @@ function mockRunProcess(result: { exitCode: number; stdout?: string; stderr?: st
   });
 }
 
-async function captureStoreFailure(operation: () => Promise<void>): Promise<unknown> {
+async function captureFailure(operation: () => Promise<void>): Promise<unknown> {
   try {
     await operation();
     throw new Error("store unexpectedly succeeded");
@@ -140,7 +140,7 @@ describe("macOS security backend argv", () => {
     const keyText = "SENTINEL_MAC_STORE_KEY_336";
     const spy = mockRunProcess({ exitCode: 1, stderr });
     try {
-      const failure = await captureStoreFailure(
+      const failure = await captureFailure(
         () => new MacKeychainBackend(account, service).storeKey(Buffer.from(keyText)),
       );
       expectRedactedStoreFailure(failure, [stderr, account, service, keyText, Buffer.from(keyText).toString("base64")]);
@@ -211,7 +211,7 @@ describe("linux secret-tool backend", () => {
     const keyText = "SENTINEL_LINUX_STORE_KEY_336";
     const spy = mockRunProcess({ exitCode: 1, stderr });
     try {
-      const failure = await captureStoreFailure(
+      const failure = await captureFailure(
         () => new SecretToolBackend(account, label, service).storeKey(Buffer.from(keyText)),
       );
       expectRedactedStoreFailure(
@@ -288,6 +288,35 @@ describe("real macOS keychain round-trip", () => {
 });
 
 describe("real Windows DPAPI backend", () => {
+  test("deleteKey sanitizes non-absence unlink failures and preserves missing-key no-op", async () => {
+    const pathSentinel = "SENTINEL_DPAPI_DELETE_PATH_336";
+    const errorSentinel = "SENTINEL_DPAPI_DELETE_ERROR_336";
+    const unlinkFailure = Object.assign(new Error(`${errorSentinel}: ${pathSentinel}`), {
+      code: "EACCES",
+      path: pathSentinel,
+    });
+    const unlinkSpy = spyOn(fsPromises, "unlink").mockRejectedValue(unlinkFailure);
+    try {
+      const failure = await captureFailure(() => new DpapiBackend(pathSentinel).deleteKey());
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).toMatchObject({ message: "CREDENTIAL_DELETE_FAILED" });
+      expect((failure as Error & { cause?: unknown }).cause).toBeUndefined();
+      const exposed = [
+        String(failure),
+        (failure as Error).message,
+        JSON.stringify(failure),
+        String((failure as Error & { cause?: unknown }).cause ?? ""),
+      ].join("\n");
+      expect(exposed).not.toContain(pathSentinel);
+      expect(exposed).not.toContain(errorSentinel);
+
+      unlinkSpy.mockRejectedValue(Object.assign(new Error("missing"), { code: "ENOENT" }));
+      await expect(new DpapiBackend(pathSentinel).deleteKey()).resolves.toBeUndefined();
+    } finally {
+      unlinkSpy.mockRestore();
+    }
+  });
+
   test("storeKey fails closed without retaining process, path, or key material", async () => {
     const dir = mkdtempSync(join(tmpdir(), "drwn-dpapi-store-failure-"));
     const savedPath = process.env.PATH;
@@ -299,7 +328,7 @@ describe("real Windows DPAPI backend", () => {
     process.env.PATH = dir;
     const spy = mockRunProcess({ exitCode: 1, stderr });
     try {
-      const failure = await captureStoreFailure(
+      const failure = await captureFailure(
         () => new DpapiBackend(keyPath).storeKey(Buffer.from(keyText)),
       );
       expectRedactedStoreFailure(
