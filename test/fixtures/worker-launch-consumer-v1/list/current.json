@@ -1,0 +1,49 @@
+{
+  "contexts": [
+    {
+      "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+      "assignedRoot": "@live/base",
+      "contextId": "sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+      "createdAt": "2000-01-01T00:00:00.000Z",
+      "localOnly": false,
+      "state": "current",
+      "target": "codex"
+    },
+    {
+      "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/claude/sha256-849fa4f3e650d46c99cfeb17dd02bd3472720a5d659afe1c2a477471ee89fc17",
+      "assignedRoot": "@live/reviewer",
+      "contextId": "sha256-849fa4f3e650d46c99cfeb17dd02bd3472720a5d659afe1c2a477471ee89fc17",
+      "createdAt": "2000-01-01T00:00:00.000Z",
+      "localOnly": false,
+      "state": "current",
+      "target": "claude"
+    },
+    {
+      "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-95782205ee1de84290234902525d184adaaa873de36a2839ee486ad0e4ea5f19",
+      "assignedRoot": "@live/reviewer",
+      "contextId": "sha256-95782205ee1de84290234902525d184adaaa873de36a2839ee486ad0e4ea5f19",
+      "createdAt": "2000-01-01T00:00:00.000Z",
+      "localOnly": false,
+      "state": "current",
+      "target": "codex"
+    },
+    {
+      "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-a457252fefae7846e13e1ac9008b5859bc90bf26a6dcd0f72004b6a6ab8554d7",
+      "assignedRoot": "@live/reviewer",
+      "contextId": "sha256-a457252fefae7846e13e1ac9008b5859bc90bf26a6dcd0f72004b6a6ab8554d7",
+      "createdAt": "2000-01-01T00:00:00.000Z",
+      "localOnly": false,
+      "state": "current",
+      "target": "codex"
+    }
+  ],
+  "corrupt": 0,
+  "count": 4,
+  "current": 4,
+  "drifted": 0,
+  "foreign": 0,
+  "obsolete": 0,
+  "root": "/fixture/project/.agents/drwn/generated/launch-contexts/v1",
+  "schema": "drwn.worker-launch-context-list",
+  "schemaVersion": 1
+}

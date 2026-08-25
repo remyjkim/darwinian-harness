@@ -1,0 +1,7 @@
+{
+  "code": "LAUNCH_ROOT_NOT_INSTALLED",
+  "hints": [
+    "Choose an exact root name from drwn status --json."
+  ],
+  "message": "Worker launch root @live/missing is not an effective installed project root"
+}

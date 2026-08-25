@@ -1,0 +1,86 @@
+{
+  "assignedClosure": [
+    {
+      "integrity": "sha256-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "local": false,
+      "name": "@live/base",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "local": false,
+      "name": "@live/shared",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "local": false,
+      "name": "@live/base-only",
+      "version": "1.0.0"
+    }
+  ],
+  "assignedRoot": {
+    "closureDigest": "sha256-02b684ed69db3334ee841501ef2a5740a5e0bacc77fbfdb5f97ac27a5a80d2dc",
+    "kind": "blueprint",
+    "localOnly": false,
+    "name": "@live/base",
+    "requested": "@live/base@1.0.0"
+  },
+  "baseClosure": [
+    {
+      "integrity": "sha256-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "local": false,
+      "name": "@live/base",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "local": false,
+      "name": "@live/shared",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "local": false,
+      "name": "@live/base-only",
+      "version": "1.0.0"
+    }
+  ],
+  "baseRoot": {
+    "closureDigest": "sha256-02b684ed69db3334ee841501ef2a5740a5e0bacc77fbfdb5f97ac27a5a80d2dc",
+    "kind": "blueprint",
+    "localOnly": false,
+    "name": "@live/base",
+    "requested": "@live/base@1.0.0"
+  },
+  "capabilities": {
+    "hooks": [],
+    "instructions": {
+      "present": false
+    },
+    "mcpServers": [],
+    "skills": []
+  },
+  "consent": {
+    "excluded": [],
+    "included": [],
+    "strict": false
+  },
+  "deltaClosure": [],
+  "optionalMcp": {
+    "enabled": [],
+    "rejected": [],
+    "requested": []
+  },
+  "plannedArtifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+  "plannedContextId": "sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+  "projectRoot": "/fixture/project",
+  "schema": "drwn.worker-launch-plan",
+  "schemaVersion": 1,
+  "target": "codex",
+  "targetCompatibility": {
+    "minimumVersion": "0.149.0",
+    "probed": false
+  },
+  "warnings": []
+}

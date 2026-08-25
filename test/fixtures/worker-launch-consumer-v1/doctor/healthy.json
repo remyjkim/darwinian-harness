@@ -1,0 +1,268 @@
+{
+  "activeCards": [
+    {
+      "health": "active",
+      "id": "@live/base",
+      "sourceId": "@live/base@1.0.0",
+      "sourceKind": "card",
+      "sourcePath": "/fixture/cards/base",
+      "target": "project"
+    },
+    {
+      "health": "active",
+      "id": "@live/shared",
+      "sourceId": "@live/shared@1.0.0",
+      "sourceKind": "card",
+      "sourcePath": "/fixture/cards/shared",
+      "target": "project"
+    },
+    {
+      "health": "active",
+      "id": "@live/base-only",
+      "sourceId": "@live/base-only@1.0.0",
+      "sourceKind": "card",
+      "sourcePath": "/fixture/cards/base-only",
+      "target": "project"
+    }
+  ],
+  "activeWorker": "@live/base",
+  "ambientCapabilities": {
+    "collisions": [],
+    "enforcement": "target-native",
+    "observations": [],
+    "opencodeSkillShadowing": []
+  },
+  "ambientMcpCollisions": [],
+  "brokenSymlinks": [],
+  "cards": {
+    "configuredRefs": [
+      "@live/base@1.0.0",
+      "@live/reviewer@1.0.0",
+      "@live/implementation@1.0.0"
+    ],
+    "lockedVersions": [
+      "@live/base@1.0.0",
+      "@live/shared@1.0.0",
+      "@live/base-only@1.0.0",
+      "@live/reviewer@1.0.0",
+      "@live/review-only@1.0.0",
+      "@live/implementation@1.0.0",
+      "@live/implementation-only@1.0.0"
+    ],
+    "warnings": []
+  },
+  "declaredCapabilities": {
+    "hooks": [
+      {
+        "health": "active",
+        "id": "sentinel",
+        "sourceId": "@live/shared@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/shared",
+        "target": "hooks"
+      },
+      {
+        "health": "active",
+        "id": "sentinel",
+        "sourceId": "@live/base-only@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/base-only",
+        "target": "hooks"
+      }
+    ],
+    "mcp": [
+      {
+        "health": "active",
+        "id": "shared_live_mcp",
+        "sourceId": "@live/shared@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/shared",
+        "target": "mcp"
+      },
+      {
+        "health": "active",
+        "id": "base_live_mcp",
+        "sourceId": "@live/base-only@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/base-only",
+        "target": "mcp"
+      }
+    ],
+    "skills": [
+      {
+        "health": "active",
+        "id": "shared-live",
+        "sourceId": "@live/shared@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/shared",
+        "target": "skills"
+      },
+      {
+        "health": "active",
+        "id": "base-live",
+        "sourceId": "@live/base-only@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/base-only",
+        "target": "skills"
+      }
+    ]
+  },
+  "hookIssues": [],
+  "installedWorkers": [
+    {
+      "health": "installed",
+      "id": "@live/base",
+      "sourceId": "@live/base@1.0.0",
+      "sourceKind": "worker-root",
+      "sourcePath": "/fixture/cards/base",
+      "target": "project"
+    },
+    {
+      "health": "installed",
+      "id": "@live/reviewer",
+      "sourceId": "@live/reviewer@1.0.0",
+      "sourceKind": "worker-root",
+      "sourcePath": "/fixture/cards/reviewer",
+      "target": "project"
+    },
+    {
+      "health": "installed",
+      "id": "@live/implementation",
+      "sourceId": "@live/implementation@1.0.0",
+      "sourceKind": "worker-root",
+      "sourcePath": "/fixture/cards/implementation",
+      "target": "project"
+    }
+  ],
+  "instructionDelivery": {
+    "adapter": "owned",
+    "consentEvidence": [
+      {
+        "card": "@live/shared",
+        "evidenceId": "@live/shared",
+        "kind": "local_card_consent"
+      },
+      {
+        "card": "@live/base-only",
+        "evidenceId": "@live/base-only",
+        "kind": "local_card_consent"
+      }
+    ],
+    "contentDigest": "sha256-98f85ac34743ccf99764e0b29f62f16f06f38f14fe8b85370b68d8e53cc5ba0f",
+    "instructionId": "worker:@live/base",
+    "issues": [],
+    "ownershipHash": "sha256-c57687ec77fb7c39ddece7fbca9b91c26e94cdea891edae168a663eb107243d1",
+    "state": "current"
+  },
+  "launchContexts": {
+    "contexts": [
+      {
+        "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+        "assignedRoot": "@live/base",
+        "contextId": "sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "localOnly": false,
+        "state": "current",
+        "target": "codex"
+      },
+      {
+        "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/claude/sha256-849fa4f3e650d46c99cfeb17dd02bd3472720a5d659afe1c2a477471ee89fc17",
+        "assignedRoot": "@live/reviewer",
+        "contextId": "sha256-849fa4f3e650d46c99cfeb17dd02bd3472720a5d659afe1c2a477471ee89fc17",
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "localOnly": false,
+        "state": "current",
+        "target": "claude"
+      },
+      {
+        "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-95782205ee1de84290234902525d184adaaa873de36a2839ee486ad0e4ea5f19",
+        "assignedRoot": "@live/reviewer",
+        "contextId": "sha256-95782205ee1de84290234902525d184adaaa873de36a2839ee486ad0e4ea5f19",
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "localOnly": false,
+        "state": "current",
+        "target": "codex"
+      },
+      {
+        "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-a457252fefae7846e13e1ac9008b5859bc90bf26a6dcd0f72004b6a6ab8554d7",
+        "assignedRoot": "@live/reviewer",
+        "contextId": "sha256-a457252fefae7846e13e1ac9008b5859bc90bf26a6dcd0f72004b6a6ab8554d7",
+        "createdAt": "2000-01-01T00:00:00.000Z",
+        "localOnly": false,
+        "state": "current",
+        "target": "codex"
+      }
+    ],
+    "corrupt": 0,
+    "count": 4,
+    "current": 4,
+    "drifted": 0,
+    "foreign": 0,
+    "obsolete": 0,
+    "root": "/fixture/project/.agents/drwn/generated/launch-contexts/v1",
+    "schema": "drwn.worker-launch-context-list",
+    "schemaVersion": 1
+  },
+  "localOverrides": {
+    "activeWorker": null,
+    "cardReplacements": [],
+    "localOnlyRoots": [],
+    "sourceOverrides": []
+  },
+  "machineCapabilityIssues": [],
+  "machineProjectionConflicts": [],
+  "mcpDrift": [],
+  "missingGeneratedFiles": [],
+  "orgWorkerMaterialization": {
+    "issues": [],
+    "state": "absent"
+  },
+  "platformChecks": [
+    {
+      "detail": "/fixture/home",
+      "name": "home directory resolves to a non-empty path",
+      "ok": true
+    },
+    {
+      "name": "node resolvable on PATH (for MCP servers that spawn node)",
+      "ok": true
+    }
+  ],
+  "projectConfigIssues": [],
+  "projectOverlays": {
+    "extensions": [],
+    "hookControls": [],
+    "mcp": [],
+    "skills": [],
+    "targets": []
+  },
+  "projection": {
+    "current": true,
+    "issues": []
+  },
+  "schema": "drwn.project-status",
+  "schemaVersion": 1,
+  "selectionSource": "project",
+  "staleSkillSymlinks": [],
+  "store": {
+    "cardCount": 0,
+    "initialized": false,
+    "legacySourceCount": 0,
+    "mcpServerCount": 0,
+    "path": "/fixture/home/.agents/drwn",
+    "schemaVersion": null,
+    "skillBundleCount": 0
+  },
+  "surfaceNotes": [
+    "The claude target also serves the Cowork surface; materialized skills, MCP servers, and hooks apply there too. Cowork runs in a workspace-trust VM, so review its trust and snapshot prompts."
+  ],
+  "targetDeprecations": [],
+  "writeRecord": {
+    "corrupt": false,
+    "lastWriteAt": "2000-01-01T00:00:00.000Z",
+    "lastWriteHarnessVersion": "1.4.0",
+    "managedPathCount": 39,
+    "path": "/fixture/project/.agents/drwn/write-record.json",
+    "present": true
+  }
+}

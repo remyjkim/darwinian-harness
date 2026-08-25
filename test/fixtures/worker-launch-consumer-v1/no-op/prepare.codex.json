@@ -1,0 +1,58 @@
+{
+  "context": {
+    "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+    "assignedRoot": {
+      "closureDigest": "sha256-02b684ed69db3334ee841501ef2a5740a5e0bacc77fbfdb5f97ac27a5a80d2dc",
+      "kind": "blueprint",
+      "localOnly": false,
+      "name": "@live/base",
+      "requested": "@live/base@1.0.0"
+    },
+    "baseRoot": {
+      "closureDigest": "sha256-02b684ed69db3334ee841501ef2a5740a5e0bacc77fbfdb5f97ac27a5a80d2dc",
+      "kind": "blueprint",
+      "localOnly": false,
+      "name": "@live/base",
+      "requested": "@live/base@1.0.0"
+    },
+    "capabilities": {
+      "hooks": [],
+      "instructions": false,
+      "mcpServers": [],
+      "skills": []
+    },
+    "contextId": "sha256-635836c9ce993e1c17360ccf563dd589efb12103b11eebdbe27fb12acb4a02bc",
+    "kind": "codex",
+    "launch": {
+      "args": [],
+      "env": {}
+    },
+    "provenance": {
+      "drwnVersion": "1.4.0",
+      "localOnly": false,
+      "sourceProjectLockDigest": "sha256-78d558c342e96acea8de7a0ddd53e41b2020403d8c25d27473051691af08e844"
+    },
+    "request": {
+      "enabledOptionalMcp": [],
+      "strict": false
+    },
+    "schema": "drwn.worker-launch-context",
+    "schemaVersion": 1,
+    "sourceState": {
+      "assignedClosureDigest": "sha256-02b684ed69db3334ee841501ef2a5740a5e0bacc77fbfdb5f97ac27a5a80d2dc",
+      "baseClosureDigest": "sha256-02b684ed69db3334ee841501ef2a5740a5e0bacc77fbfdb5f97ac27a5a80d2dc",
+      "projectOverlayDigest": "sha256-f3150889d42a389aa0859c0941f99c0d6ba748095b4a951f36bf01afb1e841f5",
+      "projectRootHash": "sha256-e360e19c127046bf3cf1d2c02c60b1ad76d4634d87d6be3ad0bcfb0414f67aec"
+    },
+    "target": "codex",
+    "targetCompatibility": {
+      "minimumVersion": "0.149.0",
+      "observedVersion": "0.149.0",
+      "probed": true
+    },
+    "warnings": []
+  },
+  "reused": false,
+  "schema": "drwn.worker-launch-prepare-result",
+  "schemaVersion": 1
+}

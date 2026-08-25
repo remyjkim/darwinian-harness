@@ -1,0 +1,339 @@
+{
+  "activeCards": [
+    {
+      "health": "active",
+      "id": "@live/base",
+      "sourceId": "@live/base@1.0.0",
+      "sourceKind": "card",
+      "sourcePath": "/fixture/cards/base",
+      "target": "project"
+    },
+    {
+      "health": "active",
+      "id": "@live/shared",
+      "sourceId": "@live/shared@1.0.0",
+      "sourceKind": "card",
+      "sourcePath": "/fixture/cards/shared",
+      "target": "project"
+    },
+    {
+      "health": "active",
+      "id": "@live/base-only",
+      "sourceId": "@live/base-only@1.0.0",
+      "sourceKind": "card",
+      "sourcePath": "/fixture/cards/base-only",
+      "target": "project"
+    }
+  ],
+  "activeWorker": "@live/base",
+  "agentsDir": "/fixture/home/.agents",
+  "ambientCapabilities": {
+    "collisions": [],
+    "enforcement": "target-native",
+    "observations": [],
+    "opencodeSkillShadowing": []
+  },
+  "capabilities": {
+    "counts": {
+      "missingMcpServers": 0,
+      "missingSkills": 0,
+      "resolvedMcpServers": 0,
+      "resolvedSkills": 0
+    },
+    "mcpServers": [],
+    "skills": []
+  },
+  "cardModes": {
+    "@live/base": {
+      "lane": "committed",
+      "mode": "overlay",
+      "reason": "file-origin card",
+      "sourcePath": "/fixture/cards/base"
+    },
+    "@live/base-only": {
+      "lane": "committed",
+      "mode": "overlay",
+      "reason": "file-origin card",
+      "sourcePath": "/fixture/cards/base-only"
+    },
+    "@live/implementation": {
+      "lane": "committed",
+      "mode": "overlay",
+      "reason": "file-origin card",
+      "sourcePath": "/fixture/cards/implementation"
+    },
+    "@live/implementation-only": {
+      "lane": "committed",
+      "mode": "overlay",
+      "reason": "file-origin card",
+      "sourcePath": "/fixture/cards/implementation-only"
+    },
+    "@live/review-only": {
+      "lane": "committed",
+      "mode": "overlay",
+      "reason": "file-origin card",
+      "sourcePath": "/fixture/cards/review-only"
+    },
+    "@live/reviewer": {
+      "lane": "committed",
+      "mode": "overlay",
+      "reason": "file-origin card",
+      "sourcePath": "/fixture/cards/reviewer"
+    },
+    "@live/shared": {
+      "lane": "committed",
+      "mode": "overlay",
+      "reason": "file-origin card",
+      "sourcePath": "/fixture/cards/shared"
+    }
+  },
+  "config": {
+    "schema": "drwn.machine",
+    "schemaVersion": 2
+  },
+  "declaredCapabilities": {
+    "hooks": [
+      {
+        "health": "active",
+        "id": "sentinel",
+        "sourceId": "@live/shared@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/shared",
+        "target": "hooks"
+      },
+      {
+        "health": "active",
+        "id": "sentinel",
+        "sourceId": "@live/base-only@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/base-only",
+        "target": "hooks"
+      }
+    ],
+    "mcp": [
+      {
+        "health": "active",
+        "id": "shared_live_mcp",
+        "sourceId": "@live/shared@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/shared",
+        "target": "mcp"
+      },
+      {
+        "health": "active",
+        "id": "base_live_mcp",
+        "sourceId": "@live/base-only@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/base-only",
+        "target": "mcp"
+      }
+    ],
+    "skills": [
+      {
+        "health": "active",
+        "id": "shared-live",
+        "sourceId": "@live/shared@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/shared",
+        "target": "skills"
+      },
+      {
+        "health": "active",
+        "id": "base-live",
+        "sourceId": "@live/base-only@1.0.0",
+        "sourceKind": "card",
+        "sourcePath": "/fixture/cards/base-only",
+        "target": "skills"
+      }
+    ]
+  },
+  "enabledTargets": [
+    "claude",
+    "codex"
+  ],
+  "homeDir": "/fixture/home",
+  "installedWorkers": [
+    {
+      "health": "installed",
+      "id": "@live/base",
+      "sourceId": "@live/base@1.0.0",
+      "sourceKind": "worker-root",
+      "sourcePath": "/fixture/cards/base",
+      "target": "project"
+    },
+    {
+      "health": "installed",
+      "id": "@live/reviewer",
+      "sourceId": "@live/reviewer@1.0.0",
+      "sourceKind": "worker-root",
+      "sourcePath": "/fixture/cards/reviewer",
+      "target": "project"
+    },
+    {
+      "health": "installed",
+      "id": "@live/implementation",
+      "sourceId": "@live/implementation@1.0.0",
+      "sourceKind": "worker-root",
+      "sourcePath": "/fixture/cards/implementation",
+      "target": "project"
+    }
+  ],
+  "instructionDelivery": {
+    "adapter": "owned",
+    "consentEvidence": [
+      {
+        "card": "@live/shared",
+        "evidenceId": "@live/shared",
+        "kind": "local_card_consent"
+      },
+      {
+        "card": "@live/base-only",
+        "evidenceId": "@live/base-only",
+        "kind": "local_card_consent"
+      }
+    ],
+    "contentDigest": "sha256-98f85ac34743ccf99764e0b29f62f16f06f38f14fe8b85370b68d8e53cc5ba0f",
+    "instructionId": "worker:@live/base",
+    "issues": [],
+    "ownershipHash": "sha256-c57687ec77fb7c39ddece7fbca9b91c26e94cdea891edae168a663eb107243d1",
+    "state": "current"
+  },
+  "inventory": {
+    "mcpServerCount": 0,
+    "skillCount": 27
+  },
+  "localOverrides": {
+    "activeWorker": null,
+    "cardReplacements": [],
+    "localOnlyRoots": [],
+    "sourceOverrides": []
+  },
+  "orgWorkerMaterialization": {
+    "issues": [],
+    "state": "absent"
+  },
+  "project": {
+    "configPath": "/fixture/project/.agents/drwn/config.json",
+    "extensionOverrideCount": 0,
+    "extensionOverrides": [],
+    "serverAddedCount": 0,
+    "serverDisabledCount": 0,
+    "serverOverrideCount": 0,
+    "skillExcludeCount": 0,
+    "skillIncludeCount": 0,
+    "targetOverrideCount": 0,
+    "targetOverrides": []
+  },
+  "projectOverlays": {
+    "extensions": [],
+    "hookControls": [],
+    "mcp": [],
+    "skills": [],
+    "targets": []
+  },
+  "projection": {
+    "current": true,
+    "issues": []
+  },
+  "repoRoot": "/fixture/repository",
+  "schema": "drwn.project-status",
+  "schemaVersion": 1,
+  "sections": {
+    "cards": {
+      "configuredRefs": [
+        "@live/base@1.0.0",
+        "@live/reviewer@1.0.0",
+        "@live/implementation@1.0.0"
+      ],
+      "lockedVersions": [
+        "@live/base@1.0.0",
+        "@live/shared@1.0.0",
+        "@live/base-only@1.0.0",
+        "@live/reviewer@1.0.0",
+        "@live/review-only@1.0.0",
+        "@live/implementation@1.0.0",
+        "@live/implementation-only@1.0.0"
+      ],
+      "warnings": []
+    },
+    "extensions": {
+      "projectExtensions": []
+    },
+    "machine": {
+      "agentsDir": "/fixture/home/.agents",
+      "homeDir": "/fixture/home",
+      "repoRoot": "/fixture/repository"
+    },
+    "mcp": {
+      "activeServerCount": 2,
+      "cardServers": [
+        {
+          "card": "@live/shared@1.0.0",
+          "server": "shared_live_mcp"
+        },
+        {
+          "card": "@live/base-only@1.0.0",
+          "server": "base_live_mcp"
+        }
+      ],
+      "projectServers": []
+    },
+    "project": {
+      "cardCount": 3,
+      "configPath": "/fixture/project/.agents/drwn/config.json",
+      "root": "/fixture/project"
+    },
+    "skills": {
+      "activeCount": 2,
+      "cardIncludes": [
+        {
+          "card": "@live/shared@1.0.0",
+          "skill": "shared-live"
+        },
+        {
+          "card": "@live/base-only@1.0.0",
+          "skill": "base-live"
+        }
+      ],
+      "inventoryCount": 27,
+      "projectExcludes": [],
+      "projectIncludes": []
+    },
+    "store": {
+      "cardCount": 0,
+      "initialized": false,
+      "legacySourceCount": 0,
+      "mcpServerCount": 0,
+      "path": "/fixture/home/.agents/drwn",
+      "schemaVersion": null,
+      "skillBundleCount": 0
+    },
+    "targets": {
+      "enabled": [
+        "claude",
+        "codex"
+      ],
+      "projectOverrides": []
+    },
+    "versionFloor": {
+      "required": "0.8.0",
+      "running": "1.4.0",
+      "satisfied": true
+    },
+    "writeRecord": {
+      "corrupt": false,
+      "lastWriteAt": "2000-01-01T00:00:00.000Z",
+      "lastWriteHarnessVersion": "1.4.0",
+      "managedPathCount": 39,
+      "path": "/fixture/project/.agents/drwn/write-record.json",
+      "present": true
+    }
+  },
+  "selection": {
+    "activeClosure": [],
+    "activeWorker": null,
+    "installedRoots": []
+  },
+  "selectionSource": "project",
+  "targetDeprecations": []
+}
