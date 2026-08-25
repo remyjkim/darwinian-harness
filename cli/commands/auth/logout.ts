@@ -6,7 +6,7 @@ import { BaseCommand } from "../base";
 import { deriveCredentialScope } from "../../core/auth/credential-scope";
 import { deleteCredentials, readCredentials } from "../../core/auth/credentials";
 import { revokeToken, type RevokeTokenResult } from "../../core/auth/device-flow";
-import { drwnCliProfile } from "../../core/auth/profile";
+import { drwnCliProfile, type CliAuthProfile } from "../../core/auth/profile";
 import { createAuthOperationReceipt, serializeAuthOperationReceipt } from "../../core/auth/receipt";
 import { loadBuildIdentity } from "../../core/build-identity";
 import { resolveCredentialsPath } from "../../core/paths";
@@ -21,6 +21,7 @@ type LogoutDeps = {
   deriveCredentialScope?: typeof deriveCredentialScope;
   loadBuildIdentity?: typeof loadBuildIdentity;
   keychainBackend?: KeychainBackend;
+  profile?: CliAuthProfile;
 };
 
 type LogoutRemoteState = { action: "revoke" } & (
@@ -77,6 +78,7 @@ export class LogoutCommand extends BaseCommand {
     const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
 
     try {
+      const profile = deps.profile ?? drwnCliProfile(deps.env ?? process.env);
       const credential = await (deps.readCredentials ?? readCredentials)(credentialsPath, deps.keychainBackend);
       if (!credential) {
         if (this.requireRemoteRevoke) {
@@ -87,7 +89,6 @@ export class LogoutCommand extends BaseCommand {
         return 0;
       }
 
-      const profile = drwnCliProfile(deps.env ?? process.env);
       const buildIdentity = this.json
         ? await (deps.loadBuildIdentity ?? loadBuildIdentity)()
         : null;

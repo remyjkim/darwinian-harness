@@ -279,17 +279,16 @@ The first supported contract does not read prototype project state. Follow [`doc
 | `AGENTS_HOME_DIR` | Override user-home resolution for isolated tests. |
 | `DRWN_STORE_READONLY=1` | Reject Store mutation while allowing reads/dry-runs. |
 | `DRWN_TOKEN` | Headless Darwinian API authentication. |
-| `DRWN_STUDIO_API_URL` | Override the worker Deploy API (default `https://api.darwinian.dev`). |
-| `DRWN_STUDIO_WEB_URL` | Override worker browser links (default `https://foundry.darwinian.dev`). |
-| `DRWN_DAH_HUB_URL` | Override the Auth Hub origin. |
-| `DRWN_DAH_RESOURCE` | Override the requested/validated services audience. |
+| `DRWN_CLOUD_PROFILE` | Select the complete `production` (default), `staging`, or `local` cloud tuple. |
+| `DRWN_CLOUD_PROFILE_FILE` | Absolute strict profile file, required and accepted only for `local`. |
 | `DRWN_FETCH_CONCURRENCY` | Concurrent Card/skill fetch limit. |
 | `DRWN_GIT_TIMEOUT_MS` | Git operation timeout. |
 
-`DRWN_STUDIO_API_URL` and `DRWN_DAH_RESOURCE` are independent overrides for staging,
-development, and other nonstandard environments. The retired production endpoint
-`https://studio.darwiniantools.com` is not a supported compatibility route; production
-worker commands use `https://api.darwinian.dev`.
+Cloud endpoints cannot be overridden independently. The retired
+`DRWN_STUDIO_API_URL`, `DRWN_STUDIO_WEB_URL`, `DRWN_DAH_HUB_URL`, and
+`DRWN_DAH_RESOURCE` variables are rejected before credential access. Use the bundled
+staging tuple or one reviewed local profile so API, web, Auth Hub, issuer, audience,
+client, and scopes cannot be mixed across environments.
 
 ## References
 

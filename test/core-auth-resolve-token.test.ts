@@ -65,6 +65,7 @@ function fakeJwt(options: {
   exp?: number;
   audience?: string;
   issuer?: string;
+  scope?: string;
 } = {}): string {
   const iat = options.iat ?? Math.floor(Date.now() / 1000) - 1;
   const exp = options.exp ?? iat + 900;
@@ -75,6 +76,7 @@ function fakeJwt(options: {
     email: options.email ?? "x@y.z",
     iat,
     exp,
+    ...(options.scope === undefined ? {} : { scope: options.scope }),
   })}.sig`;
 }
 
@@ -180,16 +182,20 @@ describe("resolveToken", () => {
     );
   });
 
-  test("accepts a stored non-production profile only when the explicit profile override matches", async () => {
+  test("accepts a stored staging profile only when the whole profile selector matches", async () => {
     tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-"));
     const credentialsPath = join(tmp, "credentials.json");
-    const staging = "https://api-staging-main.darwinian.dev";
-    const accessToken = fakeJwt({ audience: staging });
-    await writeCredentials(credentialsPath, storedCredential({ resource: staging, accessToken }));
+    const staging = drwnCliProfile({ DRWN_CLOUD_PROFILE: "staging" });
+    const accessToken = fakeJwt({ audience: staging.resource, issuer: staging.issuer });
+    await writeCredentials(credentialsPath, storedCredential({
+      issuer: staging.issuer,
+      resource: staging.resource,
+      accessToken,
+    }));
 
     const result = await resolveToken({
       credentialsPath,
-      env: { DRWN_DAH_RESOURCE: staging },
+      env: { DRWN_CLOUD_PROFILE: "staging" },
     });
 
     expect(result).toMatchObject({ token: accessToken, source: "stored" });
@@ -275,7 +281,7 @@ describe("resolveToken", () => {
     const result = await refreshStoredCredentialTransaction({
       credentialsPath,
       credential: current,
-      profile: drwnCliProfile({ DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" }),
+      profile: drwnCliProfile({ DRWN_CLOUD_PROFILE: "staging" }),
       fetcher: (async () => {
         requests += 1;
         return Response.json({});
@@ -301,6 +307,36 @@ describe("resolveToken", () => {
       reason: "CREDENTIAL_PROFILE_MISMATCH",
     });
     expect(await readCredentials(credentialsPath)).toEqual(current);
+  });
+
+  test("direct refresh preserves the current exact scope set and refuses added or dropped scopes before write", async () => {
+    const required = "openid email offline_access dah:management.delegate";
+    for (const candidateScope of ["openid email offline_access", `${required} extra:scope`]) {
+      tmp = await mkdtemp(join(tmpdir(), "drwn-resolve-scope-"));
+      const credentialsPath = join(tmp, "credentials.json");
+      const current = storedCredential({ accessToken: fakeJwt({ scope: required }) });
+      await writeCredentials(credentialsPath, current);
+      let writes = 0;
+
+      const result = await refreshStoredCredentialTransaction({
+        credentialsPath,
+        credential: current,
+        profile: drwnCliProfile({}),
+        fetcher: (async () => Response.json({
+          access_token: fakeJwt({ scope: candidateScope }),
+          refresh_token: "candidate-refresh",
+          expires_in: 900,
+        })) as unknown as typeof fetch,
+        writeCredential: async () => { writes += 1; },
+      });
+
+      expect(result).toMatchObject({ outcome: "failed", reason: "AUTH_RESPONSE_INVALID" });
+      expect(writes).toBe(0);
+      expect(await readCredentials(credentialsPath)).toEqual(current);
+      await rm(tmp, { recursive: true, force: true });
+      tmp = null;
+      backend = new InMemoryKeychainBackend();
+    }
   });
 
   test("a write failure after confirmed exchange retains the local epoch and reports no false advancement", async () => {

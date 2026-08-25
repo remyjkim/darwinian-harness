@@ -5,10 +5,34 @@ export interface JwtClaims {
   iss?: string;
   sub?: string;
   aud?: string | string[];
+  azp?: string;
+  scope?: string;
+  scp?: string | string[];
   iat?: number;
   exp?: number;
   email?: string;
   [claim: string]: unknown;
+}
+
+export function parseSpaceDelimitedScopeClaim(value: unknown): readonly string[] | null {
+  if (value === undefined) return null;
+  if (typeof value !== "string" || !/^[^\s]+(?: [^\s]+)*$/.test(value)) {
+    throw new JwtAudienceError("Token scope claim is malformed.");
+  }
+  const scopes = value.split(" ");
+  if (new Set(scopes).size !== scopes.length) {
+    throw new JwtAudienceError("Token scope claim contains duplicates.");
+  }
+  return scopes;
+}
+
+export function jwtScopeSetsEqual(left: unknown, right: unknown): boolean {
+  const a = parseSpaceDelimitedScopeClaim(left);
+  const b = parseSpaceDelimitedScopeClaim(right);
+  if (a === null || b === null) return a === b;
+  if (a.length !== b.length) return false;
+  const rightSet = new Set(b);
+  return a.every((scope) => rightSet.has(scope));
 }
 
 export class JwtAudienceError extends Error {

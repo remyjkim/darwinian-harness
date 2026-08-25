@@ -5,7 +5,7 @@ import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { readCredentials } from "../../core/auth/credentials";
 import { resolveToken } from "../../core/auth/resolve-token";
-import { drwnCliProfile } from "../../core/auth/profile";
+import { drwnCliProfile, type CliAuthProfile } from "../../core/auth/profile";
 import { assertJwtAudience } from "../../core/auth/jwt";
 import { resolveCredentialsPath } from "../../core/paths";
 import type { KeychainBackend } from "../../core/secret-store";
@@ -14,6 +14,7 @@ type WhoamiDeps = {
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
   keychainBackend?: KeychainBackend;
+  profile?: CliAuthProfile;
 };
 
 export class WhoamiCommand extends BaseCommand {
@@ -47,7 +48,7 @@ export class WhoamiCommand extends BaseCommand {
     const env = deps.env ?? process.env as NonNullable<WhoamiDeps["env"]>;
     const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
     try {
-      const profile = drwnCliProfile(env);
+      const profile = deps.profile ?? drwnCliProfile(env);
       const auth = await resolveToken({
         credentialsPath,
         env,

@@ -7,7 +7,7 @@ import { openBrowser as defaultOpenBrowser } from "../../core/auth/browser";
 import { deriveCredentialScope } from "../../core/auth/credential-scope";
 import { runDeviceFlow } from "../../core/auth/device-flow";
 import { writeCredentials } from "../../core/auth/credentials";
-import { drwnCliProfile } from "../../core/auth/profile";
+import { drwnCliProfile, type CliAuthProfile } from "../../core/auth/profile";
 import { createAuthOperationReceipt, serializeAuthOperationReceipt } from "../../core/auth/receipt";
 import { loadBuildIdentity } from "../../core/build-identity";
 import { resolveCredentialsPath } from "../../core/paths";
@@ -24,6 +24,7 @@ type LoginDeps = {
   deriveCredentialScope?: typeof deriveCredentialScope;
   writeCredentials?: typeof writeCredentials;
   keychainBackend?: KeychainBackend;
+  profile?: CliAuthProfile;
 };
 
 function jsonLoginFailureDiagnostic(error: unknown): string {
@@ -75,11 +76,12 @@ export class LoginCommand extends BaseCommand {
       exchanges the approved device session for a services-audience JWT and refresh token, and
       saves credentials to ~/.agents/drwn/credentials.json.
 
-      Set DRWN_DAH_HUB_URL to use a non-production Auth Hub.
+      Select the complete staging tuple with DRWN_CLOUD_PROFILE=staging. Local
+      development requires DRWN_CLOUD_PROFILE=local and one strict absolute profile file.
     `,
     examples: [
       ["Sign in", "drwn login"],
-      ["Use a local Auth Hub", "DRWN_DAH_HUB_URL=http://localhost:8789 drwn login"],
+      ["Use staging", "DRWN_CLOUD_PROFILE=staging drwn login"],
     ],
   });
 
@@ -90,7 +92,7 @@ export class LoginCommand extends BaseCommand {
   async execute() {
     const deps = LoginCommand.testDeps ?? {};
     const env = deps.env ?? process.env as LoginDeps["env"];
-    const profile = drwnCliProfile(env);
+    const profile = deps.profile ?? drwnCliProfile(env);
     let cancelOpenOnEnter: (() => void) | undefined;
 
     try {

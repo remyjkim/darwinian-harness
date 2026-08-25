@@ -55,7 +55,9 @@ function fakeJwt(
   return `${b64({ alg: "none" })}.${b64({
     iss: options.issuer ?? "https://auth.darwinian.dev/api/auth",
     aud: options.resource ?? "https://api.darwinian.dev",
+    azp: "drwn-cli",
     sub: "user_123",
+    scope: "openid email offline_access dah:management.delegate",
     email,
     iat,
     exp,
@@ -203,6 +205,25 @@ function deviceFlowFetch(): typeof fetch {
 }
 
 describe("auth commands", () => {
+  test("retired partial cloud overrides fail before refresh or logout reads credential custody", async () => {
+    for (const Command of [RefreshCommand, LogoutCommand]) {
+      let reads = 0;
+      Command.testDeps = {
+        env: { DRWN_DAH_HUB_URL: "https://partial.example" },
+        readCredentials: async () => {
+          reads += 1;
+          return null;
+        },
+      };
+
+      const result = await runAuthCommand(Command === RefreshCommand ? ["refresh"] : ["logout"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe("CLOUD_PROFILE_INVALID\n");
+      expect(reads).toBe(0);
+      Command.testDeps = undefined;
+    }
+  });
+
   test("login does not require Analyzer transport configuration", async () => {
     LoginCommand.testDeps = {
       env: {},
@@ -548,7 +569,7 @@ describe("auth commands", () => {
     await writeCredentials(credentialsPath, current);
     let requests = 0;
     RefreshCommand.testDeps = {
-      env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+      env: { DRWN_CLOUD_PROFILE: "staging" },
       fetch: (async () => {
         requests += 1;
         return Response.json({});
@@ -777,7 +798,7 @@ describe("auth commands", () => {
       await writeCredentials(credentialsPath, current);
       let requests = 0;
       LogoutCommand.testDeps = {
-        env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+        env: { DRWN_CLOUD_PROFILE: "staging" },
         fetch: (async () => {
           requests += 1;
           return new Response(null, { status: 204 });

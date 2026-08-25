@@ -5,7 +5,7 @@ import { NotAuthenticatedError } from "../errors";
 import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "./credentials";
 import { AuthRemoteOperationError, refreshToken, credentialFromTokens } from "./device-flow";
 import { drwnCliProfile, type CliAuthProfile } from "./profile";
-import { assertJwtAudience, tokenExpiresWithin } from "./jwt";
+import { assertJwtAudience, decodeJwtClaims, jwtScopeSetsEqual, tokenExpiresWithin, type JwtClaims } from "./jwt";
 import type { KeychainBackend } from "../secret-store";
 
 export interface ResolveTokenInput {
@@ -139,6 +139,7 @@ export async function refreshStoredCredential(input: {
   now?: () => number;
   writeCredential?: typeof writeCredentials;
   keychainBackend?: KeychainBackend;
+  validateCandidateClaims?: (claims: JwtClaims) => void;
 }): Promise<CliDahCredentialFileV3> {
   const result = await refreshStoredCredentialTransaction(input);
   if (result.outcome === "failed") throw new RefreshCredentialError(result);
@@ -153,6 +154,7 @@ export async function refreshStoredCredentialTransaction(input: {
   now?: () => number;
   writeCredential?: typeof writeCredentials;
   keychainBackend?: KeychainBackend;
+  validateCandidateClaims?: (claims: JwtClaims) => void;
 }): Promise<RefreshTransactionResult> {
   const current = input.credential ?? await readCredentials(input.credentialsPath, input.keychainBackend);
   if (!current) throw new CredentialAbsentError();
@@ -198,6 +200,11 @@ export async function refreshStoredCredentialTransaction(input: {
     if (Date.parse(candidate.expiresAt) <= refreshedAt) {
       throw new Error("expired refresh response");
     }
+    const currentClaims = decodeJwtClaims(current.accessToken);
+    if (!jwtScopeSetsEqual(currentClaims.scope, tokens.claims.scope)) {
+      throw new Error("refresh changed scope set");
+    }
+    input.validateCandidateClaims?.(tokens.claims);
   } catch {
     return {
       outcome: "failed",
