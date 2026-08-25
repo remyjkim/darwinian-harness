@@ -6,6 +6,7 @@ import { NotAuthenticatedError } from "./errors";
 import { resolveCredentialsPath } from "./paths";
 import { resolveToken, refreshStoredCredential } from "./auth/resolve-token";
 import { drwnCliProfile } from "./auth/profile";
+import type { KeychainBackend } from "./secret-store";
 
 function withBearer(init: RequestInit | undefined, token: string): RequestInit {
   const headers = new Headers(init?.headers);
@@ -23,13 +24,19 @@ export async function fetchWithWorkerAuth(
   context: Pick<AgentsContext, "agentsDir">,
   input: string,
   init?: RequestInit,
-  deps: { fetcher?: typeof fetch; env?: NodeJS.ProcessEnv } = {},
+  deps: { fetcher?: typeof fetch; env?: NodeJS.ProcessEnv; keychainBackend?: KeychainBackend } = {},
 ): Promise<Response> {
   const env = deps.env ?? process.env;
   const fetcher = deps.fetcher ?? fetch;
   const profile = drwnCliProfile(env);
   const credentialsPath = resolveCredentialsPath(context.agentsDir);
-  const auth = await resolveToken({ credentialsPath, env, fetcher, profile });
+  const auth = await resolveToken({
+    credentialsPath,
+    env,
+    fetcher,
+    profile,
+    keychainBackend: deps.keychainBackend,
+  });
   if (!auth) {
     throw new NotAuthenticatedError("Not authenticated. Run `drwn login` first, or set DRWN_TOKEN for headless execution.");
   }
@@ -42,6 +49,7 @@ export async function fetchWithWorkerAuth(
     credential: auth.credential,
     profile,
     fetcher,
+    keychainBackend: deps.keychainBackend,
   });
   return fetcher(input, withBearer(init, refreshed.accessToken));
 }
@@ -50,7 +58,8 @@ export async function fetchJsonWithWorkerAuth<T>(
   context: Pick<AgentsContext, "agentsDir">,
   input: string,
   init?: RequestInit,
+  deps: { fetcher?: typeof fetch; env?: NodeJS.ProcessEnv; keychainBackend?: KeychainBackend } = {},
 ): Promise<{ response: Response; body: T }> {
-  const response = await fetchWithWorkerAuth(context, input, init);
+  const response = await fetchWithWorkerAuth(context, input, init, deps);
   return { response, body: await parseJsonOrText(response) as T };
 }

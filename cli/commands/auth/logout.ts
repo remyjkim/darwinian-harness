@@ -10,6 +10,7 @@ import { drwnCliProfile } from "../../core/auth/profile";
 import { createAuthOperationReceipt, serializeAuthOperationReceipt } from "../../core/auth/receipt";
 import { loadBuildIdentity } from "../../core/build-identity";
 import { resolveCredentialsPath } from "../../core/paths";
+import type { KeychainBackend } from "../../core/secret-store";
 
 type LogoutDeps = {
   env?: Record<string, string | undefined>;
@@ -19,6 +20,7 @@ type LogoutDeps = {
   deleteCredentials?: typeof deleteCredentials;
   deriveCredentialScope?: typeof deriveCredentialScope;
   loadBuildIdentity?: typeof loadBuildIdentity;
+  keychainBackend?: KeychainBackend;
 };
 
 type LogoutRemoteState = { action: "revoke" } & (
@@ -75,7 +77,7 @@ export class LogoutCommand extends BaseCommand {
     const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
 
     try {
-      const credential = await (deps.readCredentials ?? readCredentials)(credentialsPath);
+      const credential = await (deps.readCredentials ?? readCredentials)(credentialsPath, deps.keychainBackend);
       if (!credential) {
         if (this.requireRemoteRevoke) {
           this.context.stderr.write("CREDENTIAL_ABSENT\n");
@@ -116,7 +118,7 @@ export class LogoutCommand extends BaseCommand {
       };
       if (shouldDelete) {
         try {
-          await (deps.deleteCredentials ?? deleteCredentials)(credentialsPath);
+          await (deps.deleteCredentials ?? deleteCredentials)(credentialsPath, deps.keychainBackend);
           local = {
             action: "delete",
             result: "confirmed",

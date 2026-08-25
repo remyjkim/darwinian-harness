@@ -3,14 +3,13 @@
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import * as processModule from "../cli/core/process";
 import {
   DpapiBackend,
   CredentialIntegrityError,
-  FileKeychainBackend,
   MacKeychainBackend,
   SecretToolBackend,
   defaultBackend,
@@ -32,77 +31,67 @@ function mockRunProcess(result: { exitCode: number; stdout?: string; stderr?: st
 }
 
 describe("keychain backend selection", () => {
-  test("selects the file backend when the test env var is set", async () => {
-    const scope = await deriveCredentialScope("/tmp/credentials.json", { platform: "linux" });
-    expect(defaultBackend(scope)).toBeInstanceOf(FileKeychainBackend);
+  test("production custody has no file-backend or environment escape", () => {
+    const source = readFileSync(new URL("../cli/core/secret-store.ts", import.meta.url), "utf8");
+    const bunfig = readFileSync(new URL("../bunfig.toml", import.meta.url), "utf8");
+    const retiredBackend = ["File", "Keychain", "Backend"].join("");
+    const retiredEnvironmentVariable = ["DRWN", "TEST", "KEYCHAIN", "DIR"].join("_");
+    const retiredPreload = ["preload", "keychain"].join("-");
+
+    expect(source).not.toContain(retiredBackend);
+    expect(source).not.toContain(retiredEnvironmentVariable);
+    expect(bunfig).not.toContain(retiredPreload);
+    expect(bunfig).not.toMatch(/^\s*preload\s*=/m);
   });
 
-  test("selects the platform backend when no test env var is set", async () => {
-    const saved = process.env.DRWN_TEST_KEYCHAIN_DIR;
-    delete process.env.DRWN_TEST_KEYCHAIN_DIR;
-    try {
-      expect(defaultBackend(await deriveCredentialScope("/tmp/credentials.json", { platform: "darwin" })))
-        .toBeInstanceOf(MacKeychainBackend);
-      expect(defaultBackend(await deriveCredentialScope("C:\\tmp\\credentials.json", {
-        cwd: "C:\\",
-        platform: "win32",
-        realpath: async () => "C:\\",
-      }))).toBeInstanceOf(DpapiBackend);
-      expect(defaultBackend(await deriveCredentialScope("/tmp/credentials.json", { platform: "linux" })))
-        .toBeInstanceOf(SecretToolBackend);
-    } finally {
-      if (saved !== undefined) process.env.DRWN_TEST_KEYCHAIN_DIR = saved;
-    }
+  test("selects only the production backend for each supported platform", async () => {
+    expect(defaultBackend(await deriveCredentialScope("/tmp/credentials.json", { platform: "darwin" })))
+      .toBeInstanceOf(MacKeychainBackend);
+    expect(defaultBackend(await deriveCredentialScope("C:\\tmp\\credentials.json", {
+      cwd: "C:\\",
+      platform: "win32",
+      realpath: async () => "C:\\",
+    }))).toBeInstanceOf(DpapiBackend);
+    expect(defaultBackend(await deriveCredentialScope("/tmp/credentials.json", { platform: "linux" })))
+      .toBeInstanceOf(SecretToolBackend);
   });
 
   test("derives scope-distinct identities for every platform backend", async () => {
-    const saved = process.env.DRWN_TEST_KEYCHAIN_DIR;
-    delete process.env.DRWN_TEST_KEYCHAIN_DIR;
-    try {
-      const first = await deriveCredentialScope("/tmp/first/credentials.json", { platform: "linux" });
-      const second = await deriveCredentialScope("/tmp/second/credentials.json", { platform: "linux" });
-      const firstMac = defaultBackend({ ...first, platform: "darwin" }) as MacKeychainBackend;
-      const secondMac = defaultBackend({ ...second, platform: "darwin" }) as MacKeychainBackend;
-      const firstLinux = defaultBackend(first) as SecretToolBackend;
-      const secondLinux = defaultBackend(second) as SecretToolBackend;
-      const firstWindows = defaultBackend({ ...first, platform: "win32" }) as DpapiBackend;
-      const secondWindows = defaultBackend({ ...second, platform: "win32" }) as DpapiBackend;
+    const first = await deriveCredentialScope("/tmp/first/credentials.json", { platform: "linux" });
+    const second = await deriveCredentialScope("/tmp/second/credentials.json", { platform: "linux" });
+    const firstMac = defaultBackend({ ...first, platform: "darwin" }) as MacKeychainBackend;
+    const secondMac = defaultBackend({ ...second, platform: "darwin" }) as MacKeychainBackend;
+    const firstLinux = defaultBackend(first) as SecretToolBackend;
+    const secondLinux = defaultBackend(second) as SecretToolBackend;
+    const firstWindows = defaultBackend({ ...first, platform: "win32" }) as DpapiBackend;
+    const secondWindows = defaultBackend({ ...second, platform: "win32" }) as DpapiBackend;
 
-      expect((firstMac as unknown as { account: string }).account).toBe(first.keyRef);
-      expect((secondMac as unknown as { account: string }).account).toBe(second.keyRef);
-      expect((firstLinux as unknown as { account: string }).account).toBe(first.keyRef);
-      expect((secondLinux as unknown as { account: string }).account).toBe(second.keyRef);
-      expect((firstLinux as unknown as { label: string }).label).not.toBe(
-        (secondLinux as unknown as { label: string }).label,
-      );
-      expect((firstWindows as unknown as { keyPath: string }).keyPath).not.toBe(
-        (secondWindows as unknown as { keyPath: string }).keyPath,
-      );
-    } finally {
-      if (saved !== undefined) process.env.DRWN_TEST_KEYCHAIN_DIR = saved;
-    }
+    expect((firstMac as unknown as { account: string }).account).toBe(first.keyRef);
+    expect((secondMac as unknown as { account: string }).account).toBe(second.keyRef);
+    expect((firstLinux as unknown as { account: string }).account).toBe(first.keyRef);
+    expect((secondLinux as unknown as { account: string }).account).toBe(second.keyRef);
+    expect((firstLinux as unknown as { label: string }).label).not.toBe(
+      (secondLinux as unknown as { label: string }).label,
+    );
+    expect((firstWindows as unknown as { keyPath: string }).keyPath).not.toBe(
+      (secondWindows as unknown as { keyPath: string }).keyPath,
+    );
   });
 
   test("places the Windows DPAPI key beside the canonical credential file", async () => {
-    const saved = process.env.DRWN_TEST_KEYCHAIN_DIR;
-    delete process.env.DRWN_TEST_KEYCHAIN_DIR;
-    try {
-      const scope = await deriveCredentialScope("C:\\Users\\Example\\.drwn\\credentials.json", {
-        cwd: "C:\\Users\\Example",
-        platform: "win32",
-        realpath: async (path) => {
-          if (path.toLowerCase() === "c:\\users\\example") return "C:\\Users\\Example";
-          throw Object.assign(new Error("missing"), { code: "ENOENT" });
-        },
-      });
-      const backend = defaultBackend(scope) as DpapiBackend;
+    const scope = await deriveCredentialScope("C:\\Users\\Example\\.drwn\\credentials.json", {
+      cwd: "C:\\Users\\Example",
+      platform: "win32",
+      realpath: async (path) => {
+        if (path.toLowerCase() === "c:\\users\\example") return "C:\\Users\\Example";
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      },
+    });
+    const backend = defaultBackend(scope) as DpapiBackend;
 
-      expect((backend as unknown as { keyPath: string }).keyPath).toBe(
-        win32.join(win32.dirname(scope.credentialsPath), `.drwn-credentials-v2-${scope.scopeDigest}.key`),
-      );
-    } finally {
-      if (saved !== undefined) process.env.DRWN_TEST_KEYCHAIN_DIR = saved;
-    }
+    expect((backend as unknown as { keyPath: string }).keyPath).toBe(
+      win32.join(win32.dirname(scope.credentialsPath), `.drwn-credentials-v2-${scope.scopeDigest}.key`),
+    );
   });
 });
 

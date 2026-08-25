@@ -244,7 +244,7 @@ describe("installed artifact smokes", () => {
       expect(call.cwd).toBe(join(root, "smoke", "project"));
       expect(call.env.AGENTS_HOME_DIR).toBe(join(root, "smoke", "user-home"));
       expect(call.env.AGENTS_DIR).toBe(join(root, "smoke", "agents"));
-      expect(call.env.DRWN_TEST_KEYCHAIN_DIR).toBe(join(root, "smoke", "keychain"));
+      expect(call.env[["DRWN", "TEST", "KEYCHAIN", "DIR"].join("_")]).toBeUndefined();
       expect(call.env.DRWN_TOKEN).toBeUndefined();
     }
   });

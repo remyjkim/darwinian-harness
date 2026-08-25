@@ -1,15 +1,21 @@
 // ABOUTME: Unit tests for the worker Deploy API auth-aware fetch helper.
 // ABOUTME: Covers bearer attachment, the 401 -> refresh-once -> retry path, the env-token no-retry short-circuit, and the not-authenticated guard.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fetchWithWorkerAuth } from "../cli/core/worker-http";
 import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
 import { resolveCredentialsPath } from "../cli/core/paths";
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 let tmp: string | null = null;
+let keychainBackend: InMemoryKeychainBackend;
+
+beforeEach(() => {
+  keychainBackend = new InMemoryKeychainBackend();
+});
 
 function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -64,7 +70,7 @@ describe("fetchWithWorkerAuth", () => {
   test("attaches a bearer from stored credentials and returns the first response when ok", async () => {
     const context = await freshContext();
     const token = fakeJwt();
-    await writeCredentials(resolveCredentialsPath(tmp!), storedV3Credential(token));
+    await writeCredentials(resolveCredentialsPath(tmp!), storedV3Credential(token), keychainBackend);
 
     const seen: { url: string; auth: string }[] = [];
     const fetcher = (async (url: string, init?: RequestInit) => {
@@ -72,7 +78,11 @@ describe("fetchWithWorkerAuth", () => {
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     }) as unknown as typeof fetch;
 
-    const res = await fetchWithWorkerAuth(context, "https://deploy.test/api/minds", undefined, { fetcher, env: {} });
+    const res = await fetchWithWorkerAuth(context, "https://deploy.test/api/minds", undefined, {
+      fetcher,
+      env: {},
+      keychainBackend,
+    });
     expect(res.status).toBe(200);
     expect(seen).toEqual([{ url: "https://deploy.test/api/minds", auth: `Bearer ${token}` }]);
   });
@@ -81,7 +91,7 @@ describe("fetchWithWorkerAuth", () => {
     const context = await freshContext();
     const initialToken = fakeJwt("initial@example.com");
     const refreshedToken = fakeJwt("refreshed@example.com");
-    await writeCredentials(resolveCredentialsPath(tmp!), storedV3Credential(initialToken));
+    await writeCredentials(resolveCredentialsPath(tmp!), storedV3Credential(initialToken), keychainBackend);
 
     const bearersSent: string[] = [];
     let refreshHits = 0;
@@ -98,13 +108,17 @@ describe("fetchWithWorkerAuth", () => {
       return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
     }) as unknown as typeof fetch;
 
-    const res = await fetchWithWorkerAuth(context, "https://deploy.test/api/minds", undefined, { fetcher, env: {} });
+    const res = await fetchWithWorkerAuth(context, "https://deploy.test/api/minds", undefined, {
+      fetcher,
+      env: {},
+      keychainBackend,
+    });
 
     expect(res.status).toBe(200);
     expect(refreshHits).toBe(1);
     // Two Deploy API attempts: the stale token, then the refreshed token.
     expect(bearersSent).toEqual([`Bearer ${initialToken}`, `Bearer ${refreshedToken}`]);
-    expect(await readCredentials(resolveCredentialsPath(tmp!))).toMatchObject({
+    expect(await readCredentials(resolveCredentialsPath(tmp!), keychainBackend)).toMatchObject({
       credentialId: "55555555-5555-4555-8555-555555555555",
       generation: 2,
       accessToken: refreshedToken,
@@ -132,7 +146,7 @@ describe("fetchWithWorkerAuth", () => {
       context,
       "https://deploy.test/api/minds",
       undefined,
-      { fetcher, env: { DRWN_TOKEN: token } },
+      { fetcher, env: { DRWN_TOKEN: token }, keychainBackend },
     );
 
     expect(res.status).toBe(401);
@@ -143,7 +157,7 @@ describe("fetchWithWorkerAuth", () => {
   test("throws Not authenticated when no env token and no credentials", async () => {
     const context = await freshContext();
     await expect(
-      fetchWithWorkerAuth(context, "https://deploy.test/api/minds", undefined, { env: {} }),
+      fetchWithWorkerAuth(context, "https://deploy.test/api/minds", undefined, { env: {}, keychainBackend }),
     ).rejects.toThrow("Not authenticated. Run `drwn login` first");
   });
 });

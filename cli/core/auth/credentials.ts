@@ -1,7 +1,13 @@
 // ABOUTME: Reads and writes the sole supported v3 DAH credential payload.
 // ABOUTME: Rejects legacy, malformed, and JWT-incoherent payloads before they enter product auth paths.
 
-import { clear, CredentialSchemaUnsupportedError, decryptFromDisk, encryptToDisk } from "../secret-store";
+import {
+  clear,
+  CredentialSchemaUnsupportedError,
+  decryptFromDisk,
+  encryptToDisk,
+  type KeychainBackend,
+} from "../secret-store";
 import { assertJwtAudience } from "./jwt";
 
 export interface CliDahCredentialFileV3 {
@@ -89,8 +95,11 @@ export function assertCredentialV3(value: unknown): asserts value is CliDahCrede
   if (!isCredential(value)) throw new CredentialSchemaUnsupportedError();
 }
 
-export async function readCredentials(path: string): Promise<CliDahCredentialFileV3 | null> {
-  const plaintext = await decryptFromDisk(path);
+export async function readCredentials(
+  path: string,
+  keychainBackend?: KeychainBackend,
+): Promise<CliDahCredentialFileV3 | null> {
+  const plaintext = await decryptFromDisk(path, keychainBackend);
   if (plaintext === null) return null;
   let parsed: unknown;
   try {
@@ -102,11 +111,15 @@ export async function readCredentials(path: string): Promise<CliDahCredentialFil
   return parsed;
 }
 
-export async function writeCredentials(path: string, credential: CliDahCredentialFileV3): Promise<void> {
+export async function writeCredentials(
+  path: string,
+  credential: CliDahCredentialFileV3,
+  keychainBackend?: KeychainBackend,
+): Promise<void> {
   assertCredentialV3(credential);
-  await encryptToDisk(path, JSON.stringify(credential, null, 2));
+  await encryptToDisk(path, JSON.stringify(credential, null, 2), keychainBackend);
 }
 
-export async function deleteCredentials(path: string): Promise<void> {
-  await clear(path);
+export async function deleteCredentials(path: string, keychainBackend?: KeychainBackend): Promise<void> {
+  await clear(path, keychainBackend);
 }

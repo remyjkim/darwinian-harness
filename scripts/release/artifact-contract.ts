@@ -411,14 +411,12 @@ export async function runInstalledArtifactSmokes(
   const project = join(workspaceRoot, "project");
   const userHome = join(workspaceRoot, "user-home");
   const agentsDir = join(workspaceRoot, "agents");
-  const keychainDir = join(workspaceRoot, "keychain");
-  await Promise.all([prefix, cache, project, userHome, agentsDir, keychainDir].map((path) => mkdir(path)));
+  await Promise.all([prefix, cache, project, userHome, agentsDir].map((path) => mkdir(path)));
 
   const env: Record<string, string | undefined> = {
     ...process.env,
     AGENTS_HOME_DIR: userHome,
     AGENTS_DIR: agentsDir,
-    DRWN_TEST_KEYCHAIN_DIR: keychainDir,
     DRWN_STUDIO_API_URL: "http://127.0.0.1:9",
   };
   delete env.DRWN_TOKEN;
@@ -445,7 +443,7 @@ export async function runInstalledArtifactSmokes(
     throw new ReleaseArtifactError("installed bin resolves outside the clean prefix");
   }
 
-  const quarantine = [project, userHome, agentsDir, keychainDir];
+  const quarantine = [project, userHome, agentsDir];
   const passed: string[] = [];
   for (const smoke of SAFE_INSTALLED_SMOKES) {
     const result = await run([bin, ...smoke], { cwd: project, env });

@@ -2,7 +2,7 @@
 // ABOUTME: Uses an injected in-memory backend so no real OS keychain is touched.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,43 +13,17 @@ import {
   decryptFromDisk,
   encryptToDisk,
   NoKeychainError,
-  type KeychainBackend,
 } from "../cli/core/secret-store";
-import { deriveCredentialScope } from "../cli/core/auth/credential-scope";
-
-class FakeKeychainBackend implements KeychainBackend {
-  key: Buffer | null = null;
-  available = true;
-  failDelete = false;
-  failLoad = false;
-  loadCalls = 0;
-  storeCalls = 0;
-  async isAvailable(): Promise<boolean> {
-    return this.available;
-  }
-  async loadKey(): Promise<Buffer | null> {
-    this.loadCalls += 1;
-    if (this.failLoad) throw new Error("CREDENTIAL_INTEGRITY");
-    return this.key;
-  }
-  async storeKey(key: Buffer): Promise<void> {
-    this.storeCalls += 1;
-    this.key = key;
-  }
-  async deleteKey(): Promise<void> {
-    if (this.failDelete) throw new Error("SENTINEL_KEY_DELETE_FAILURE_239");
-    this.key = null;
-  }
-}
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 let root: string;
 let path: string;
-let backend: FakeKeychainBackend;
+let backend: InMemoryKeychainBackend;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "secret-store-"));
   path = join(root, "credentials.json");
-  backend = new FakeKeychainBackend();
+  backend = new InMemoryKeychainBackend();
 });
 
 afterEach(() => {
@@ -91,7 +65,7 @@ describe("secret store", () => {
   });
 
   test("fails closed without storing a replacement key after an indeterminate lookup", async () => {
-    backend.failLoad = true;
+    backend.failLoad = new Error("CREDENTIAL_INTEGRITY");
 
     await expect(encryptToDisk(path, "x", backend)).rejects.toThrow("CREDENTIAL_INTEGRITY");
 
@@ -111,7 +85,7 @@ describe("secret store", () => {
 
   test("should fail integrity when an envelope exists but its key is gone", async () => {
     await encryptToDisk(path, "super-secret-token", backend);
-    backend.key = null;
+    backend.discardKey();
     await expect(decryptFromDisk(path, backend)).rejects.toBeInstanceOf(CredentialIntegrityError);
   });
 
@@ -123,18 +97,17 @@ describe("secret store", () => {
     await encryptToDisk(path, "super-secret-token", backend);
     await clear(path, backend);
     expect(existsSync(path)).toBe(false);
-    expect(backend.key).toBeNull();
+    expect(backend.hasKey()).toBe(false);
   });
 
   test("clear surfaces partial deletion when the file is gone but scoped key deletion fails", async () => {
     await encryptToDisk(path, "super-secret-token", backend);
-    const retainedKey = backend.key;
-    backend.failDelete = true;
+    backend.failDelete = new Error("SENTINEL_KEY_DELETE_FAILURE_239");
 
     await expect(clear(path, backend)).rejects.toThrow("SENTINEL_KEY_DELETE_FAILURE_239");
 
     expect(existsSync(path)).toBe(false);
-    expect(backend.key).toEqual(retainedKey);
+    expect(backend.hasKey()).toBe(true);
   });
 
   test("rejects malformed JSON and v1 envelopes with the stable unsupported-schema error", async () => {
@@ -179,36 +152,27 @@ describe("secret store", () => {
     }
   });
 
-  test("default test backends isolate two credential homes across write, read, and clear", async () => {
-    const previous = process.env.DRWN_TEST_KEYCHAIN_DIR;
-    process.env.DRWN_TEST_KEYCHAIN_DIR = join(root, "keys");
+  test("explicit backends isolate two credential homes across write, read, and clear", async () => {
     const first = join(root, "first", "credentials.json");
     const second = join(root, "second", "credentials.json");
-    try {
-      await encryptToDisk(first, "first-secret");
-      await encryptToDisk(second, "second-secret");
-      expect(await decryptFromDisk(first)).toBe("first-secret");
-      expect(await decryptFromDisk(second)).toBe("second-secret");
+    const firstBackend = new InMemoryKeychainBackend();
+    const secondBackend = new InMemoryKeychainBackend();
+    await encryptToDisk(first, "first-secret", firstBackend);
+    await encryptToDisk(second, "second-secret", secondBackend);
+    expect(await decryptFromDisk(first, firstBackend)).toBe("first-secret");
+    expect(await decryptFromDisk(second, secondBackend)).toBe("second-secret");
 
-      await encryptToDisk(first, "first-secret-replaced");
-      expect(await decryptFromDisk(first)).toBe("first-secret-replaced");
-      expect(await decryptFromDisk(second)).toBe("second-secret");
+    await encryptToDisk(first, "first-secret-replaced", firstBackend);
+    expect(await decryptFromDisk(first, firstBackend)).toBe("first-secret-replaced");
+    expect(await decryptFromDisk(second, secondBackend)).toBe("second-secret");
 
-      await clear(first);
-      expect(existsSync(first)).toBe(false);
-      expect(await decryptFromDisk(second)).toBe("second-secret");
-      await clear(first);
-      expect(await decryptFromDisk(second)).toBe("second-secret");
+    await clear(first, firstBackend);
+    expect(existsSync(first)).toBe(false);
+    expect(await decryptFromDisk(second, secondBackend)).toBe("second-secret");
+    expect(secondBackend.hasKey()).toBe(true);
 
-      const secondScope = await deriveCredentialScope(second);
-      unlinkSync(join(root, "keys", `${secondScope.scopeDigest}.key`));
-      await expect(decryptFromDisk(second)).rejects.toBeInstanceOf(CredentialIntegrityError);
-      const secondEnvelope = readFileSync(second, "utf8");
-      await clear(first);
-      expect(readFileSync(second, "utf8")).toBe(secondEnvelope);
-    } finally {
-      if (previous === undefined) delete process.env.DRWN_TEST_KEYCHAIN_DIR;
-      else process.env.DRWN_TEST_KEYCHAIN_DIR = previous;
-    }
+    const secondEnvelope = readFileSync(second, "utf8");
+    await clear(first, firstBackend);
+    expect(readFileSync(second, "utf8")).toBe(secondEnvelope);
   });
 });

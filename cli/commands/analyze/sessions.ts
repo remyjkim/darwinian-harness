@@ -17,6 +17,7 @@ import { createAnalyzerClient, type AnalyzerClient } from "../../core/http/analy
 import { AuthExpiredError, ServerError } from "../../core/http/errors";
 import type { JobInfo } from "../../core/http/schemas";
 import { resolveCredentialsPath } from "../../core/paths";
+import type { KeychainBackend } from "../../core/secret-store";
 
 export interface AnalyzeSessionsCommandTestDeps {
   env?: Partial<Record<"DRWN_TOKEN" | "DRWN_ANALYZER_URL" | "DRWN_ANALYZER_WEB_URL", string | undefined>>;
@@ -26,6 +27,7 @@ export interface AnalyzeSessionsCommandTestDeps {
   openBrowser?: (url: string) => void;
   inlineExport?: (context: AgentsContext) => Promise<string>;
   findNewest?: (exportsDir: string) => Promise<string | null>;
+  keychainBackend?: KeychainBackend;
 }
 
 export class AnalyzeSessionsCommand extends BaseCommand {
@@ -119,6 +121,7 @@ export class AnalyzeSessionsCommand extends BaseCommand {
       const auth = await resolveToken({
         credentialsPath: resolveCredentialsPath(this.context.agentsDir),
         env,
+        keychainBackend: deps.keychainBackend,
       });
       if (!auth) {
         this.context.stderr.write("Not authenticated. Run `drwn login` first (or set DRWN_TOKEN + DRWN_ANALYZER_URL).\n");

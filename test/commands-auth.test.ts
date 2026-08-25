@@ -1,7 +1,7 @@
 // ABOUTME: Command-level tests for drwn login/logout/whoami.
 // ABOUTME: Exercises Clipanion command wiring with injected network and browser dependencies.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
 import { PassThrough, Writable } from "node:stream";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -11,13 +11,36 @@ import { LogoutCommand } from "../cli/commands/auth/logout";
 import { RefreshCommand } from "../cli/commands/auth/refresh";
 import { WhoamiCommand } from "../cli/commands/auth/whoami";
 import type { AgentsContext } from "../cli/context";
-import { deleteCredentials, readCredentials, writeCredentials } from "../cli/core/auth/credentials";
+import {
+  deleteCredentials as deleteCredentialsFromStore,
+  readCredentials as readCredentialsFromStore,
+  writeCredentials as writeCredentialsToStore,
+  type CliDahCredentialFileV3,
+} from "../cli/core/auth/credentials";
 import { deriveCredentialScope } from "../cli/core/auth/credential-scope";
 import { parseAuthOperationReceipt } from "../cli/core/auth/receipt";
 import { resolveCredentialsPath } from "../cli/core/paths";
 import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 const tempRoots: string[] = [];
+let keychainBackend: InMemoryKeychainBackend;
+
+beforeEach(() => {
+  keychainBackend = new InMemoryKeychainBackend();
+});
+
+function readCredentials(path: string) {
+  return readCredentialsFromStore(path, keychainBackend);
+}
+
+function writeCredentials(path: string, credential: CliDahCredentialFileV3) {
+  return writeCredentialsToStore(path, credential, keychainBackend);
+}
+
+function deleteCredentials(path: string) {
+  return deleteCredentialsFromStore(path, keychainBackend);
+}
 
 function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -136,6 +159,10 @@ async function runAuthCommand(
   cli.register(LogoutCommand);
   cli.register(RefreshCommand);
   cli.register(WhoamiCommand);
+  LoginCommand.testDeps = { ...LoginCommand.testDeps, keychainBackend };
+  LogoutCommand.testDeps = { ...LogoutCommand.testDeps, keychainBackend };
+  RefreshCommand.testDeps = { ...RefreshCommand.testDeps, keychainBackend };
+  WhoamiCommand.testDeps = { ...WhoamiCommand.testDeps, keychainBackend };
   const exitCode = await cli.run(args, context);
   return { fixture, stdout: stdout.text(), stderr: stderr.text(), exitCode };
 }

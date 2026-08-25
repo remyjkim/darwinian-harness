@@ -1,19 +1,51 @@
 // ABOUTME: Verifies bearer-token resolution from non-persistent env auth or strict v3 custody.
 // ABOUTME: Proves stored transport aliases are gone and refresh preserves the v3 credential epoch.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
+import {
+  readCredentials as readCredentialsFromStore,
+  writeCredentials as writeCredentialsToStore,
+  type CliDahCredentialFileV3,
+} from "../cli/core/auth/credentials";
 import { drwnCliProfile } from "../cli/core/auth/profile";
 import {
-  refreshStoredCredential,
-  refreshStoredCredentialTransaction,
-  resolveToken,
+  refreshStoredCredential as refreshStoredCredentialFromStore,
+  refreshStoredCredentialTransaction as refreshStoredCredentialTransactionFromStore,
+  resolveToken as resolveTokenFromStore,
 } from "../cli/core/auth/resolve-token";
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 let tmp: string | null = null;
+let backend: InMemoryKeychainBackend;
+
+beforeEach(() => {
+  backend = new InMemoryKeychainBackend();
+});
+
+function readCredentials(path: string) {
+  return readCredentialsFromStore(path, backend);
+}
+
+function writeCredentials(path: string, credential: CliDahCredentialFileV3) {
+  return writeCredentialsToStore(path, credential, backend);
+}
+
+function resolveToken(input: Parameters<typeof resolveTokenFromStore>[0]) {
+  return resolveTokenFromStore({ ...input, keychainBackend: backend });
+}
+
+function refreshStoredCredential(input: Parameters<typeof refreshStoredCredentialFromStore>[0]) {
+  return refreshStoredCredentialFromStore({ ...input, keychainBackend: backend });
+}
+
+function refreshStoredCredentialTransaction(
+  input: Parameters<typeof refreshStoredCredentialTransactionFromStore>[0],
+) {
+  return refreshStoredCredentialTransactionFromStore({ ...input, keychainBackend: backend });
+}
 
 const ISSUER = "https://auth.darwinian.dev/api/auth";
 const RESOURCE = "https://api.darwinian.dev";

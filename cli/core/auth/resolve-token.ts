@@ -6,12 +6,14 @@ import { readCredentials, writeCredentials, type CliDahCredentialFileV3 } from "
 import { AuthRemoteOperationError, refreshToken, credentialFromTokens } from "./device-flow";
 import { drwnCliProfile, type CliAuthProfile } from "./profile";
 import { assertJwtAudience, tokenExpiresWithin } from "./jwt";
+import type { KeychainBackend } from "../secret-store";
 
 export interface ResolveTokenInput {
   credentialsPath: string;
   env: Record<string, string | undefined>;
   fetcher?: typeof fetch;
   profile?: CliAuthProfile;
+  keychainBackend?: KeychainBackend;
 }
 
 export interface ResolvedAuth {
@@ -92,7 +94,7 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
     };
   }
 
-  const creds = await readCredentials(input.credentialsPath);
+  const creds = await readCredentials(input.credentialsPath, input.keychainBackend);
   if (!creds) return null;
   if (creds.resource !== profile.resource) {
     throw new NotAuthenticatedError(
@@ -120,6 +122,7 @@ export async function resolveToken(input: ResolveTokenInput): Promise<ResolvedAu
     credential: creds,
     profile,
     fetcher: input.fetcher,
+    keychainBackend: input.keychainBackend,
   });
   return {
     token: refreshed.accessToken,
@@ -135,6 +138,7 @@ export async function refreshStoredCredential(input: {
   fetcher?: typeof fetch;
   now?: () => number;
   writeCredential?: typeof writeCredentials;
+  keychainBackend?: KeychainBackend;
 }): Promise<CliDahCredentialFileV3> {
   const result = await refreshStoredCredentialTransaction(input);
   if (result.outcome === "failed") throw new RefreshCredentialError(result);
@@ -148,8 +152,9 @@ export async function refreshStoredCredentialTransaction(input: {
   fetcher?: typeof fetch;
   now?: () => number;
   writeCredential?: typeof writeCredentials;
+  keychainBackend?: KeychainBackend;
 }): Promise<RefreshTransactionResult> {
-  const current = input.credential ?? await readCredentials(input.credentialsPath);
+  const current = input.credential ?? await readCredentials(input.credentialsPath, input.keychainBackend);
   if (!current) throw new CredentialAbsentError();
   const profile = input.profile ?? drwnCliProfile();
   if (
@@ -206,7 +211,7 @@ export async function refreshStoredCredentialTransaction(input: {
     ? candidate
     : { ...candidate, userEmail: current.userEmail };
   try {
-    await (input.writeCredential ?? writeCredentials)(input.credentialsPath, refreshed);
+    await (input.writeCredential ?? writeCredentials)(input.credentialsPath, refreshed, input.keychainBackend);
   } catch {
     return {
       outcome: "failed",

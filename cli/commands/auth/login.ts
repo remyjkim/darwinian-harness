@@ -11,6 +11,7 @@ import { drwnCliProfile } from "../../core/auth/profile";
 import { createAuthOperationReceipt, serializeAuthOperationReceipt } from "../../core/auth/receipt";
 import { loadBuildIdentity } from "../../core/build-identity";
 import { resolveCredentialsPath } from "../../core/paths";
+import type { KeychainBackend } from "../../core/secret-store";
 
 type LoginDeps = {
   env?: Record<string, string | undefined>;
@@ -22,6 +23,7 @@ type LoginDeps = {
   loadBuildIdentity?: typeof loadBuildIdentity;
   deriveCredentialScope?: typeof deriveCredentialScope;
   writeCredentials?: typeof writeCredentials;
+  keychainBackend?: KeychainBackend;
 };
 
 function jsonLoginFailureDiagnostic(error: unknown): string {
@@ -126,7 +128,7 @@ export class LoginCommand extends BaseCommand {
       );
       const actionAt = new Date(actionAtMillis).toISOString();
       try {
-        await (deps.writeCredentials ?? writeCredentials)(credentialsPath, credential);
+        await (deps.writeCredentials ?? writeCredentials)(credentialsPath, credential, deps.keychainBackend);
       } catch {
         if (this.json) {
           const receipt = createAuthOperationReceipt({

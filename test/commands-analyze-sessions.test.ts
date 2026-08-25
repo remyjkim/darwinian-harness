@@ -1,7 +1,7 @@
 // ABOUTME: Command-level tests for `drwn analyze sessions`.
 // ABOUTME: Verifies auth handoff, hybrid archive selection, output modes, and error mapping.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -12,8 +12,14 @@ import { writeCredentials } from "../cli/core/auth/credentials";
 import { drwnCliProfile } from "../cli/core/auth/profile";
 import { resolveCredentialsPath } from "../cli/core/paths";
 import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 const tempRoots: string[] = [];
+let keychainBackend: InMemoryKeychainBackend;
+
+beforeEach(() => {
+  keychainBackend = new InMemoryKeychainBackend();
+});
 
 function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -73,7 +79,7 @@ async function runAnalyze(args: string[], options?: { withCredentials?: boolean 
       expiresAt: new Date(claims.exp * 1000).toISOString(),
       savedAt: "2026-08-08T00:00:00.000Z",
       userEmail: "x@y.z",
-    });
+    }, keychainBackend);
   }
 
   const stdout = new CaptureStream();
@@ -92,6 +98,7 @@ async function runAnalyze(args: string[], options?: { withCredentials?: boolean 
   };
   const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0" });
   cli.register(AnalyzeSessionsCommand);
+  AnalyzeSessionsCommand.testDeps = { ...AnalyzeSessionsCommand.testDeps, keychainBackend };
   const exitCode = await cli.run(["analyze", "sessions", ...args], context);
   return { fixture, stdout: stdout.text(), stderr: stderr.text(), exitCode };
 }
@@ -305,6 +312,7 @@ async function runAnalyzeWithFixture(
   };
   const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0" });
   cli.register(AnalyzeSessionsCommand);
+  AnalyzeSessionsCommand.testDeps = { ...AnalyzeSessionsCommand.testDeps, keychainBackend };
   const exitCode = await cli.run(["analyze", "sessions", ...args], context);
   return { stdout: stdout.text(), stderr: stderr.text(), exitCode };
 }

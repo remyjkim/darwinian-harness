@@ -1,19 +1,37 @@
 // ABOUTME: Verifies strict v3 DAH credential storage and hard rejection of every earlier payload.
 // ABOUTME: Protects JWT-bound timestamps, atomic owner-only writes, and fail-closed encrypted reads.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  deleteCredentials,
-  readCredentials,
-  writeCredentials,
+  deleteCredentials as deleteCredentialsFromStore,
+  readCredentials as readCredentialsFromStore,
+  writeCredentials as writeCredentialsToStore,
   type CliDahCredentialFileV3,
 } from "../cli/core/auth/credentials";
 import { CredentialSchemaUnsupportedError, encryptToDisk } from "../cli/core/secret-store";
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 let tmp: string | null = null;
+let backend: InMemoryKeychainBackend;
+
+beforeEach(() => {
+  backend = new InMemoryKeychainBackend();
+});
+
+function readCredentials(path: string, selectedBackend = backend) {
+  return readCredentialsFromStore(path, selectedBackend);
+}
+
+function writeCredentials(path: string, value: CliDahCredentialFileV3, selectedBackend = backend) {
+  return writeCredentialsToStore(path, value, selectedBackend);
+}
+
+function deleteCredentials(path: string, selectedBackend = backend) {
+  return deleteCredentialsFromStore(path, selectedBackend);
+}
 
 const ISSUER = "https://auth.darwinian.dev/api/auth";
 const RESOURCE = "https://api.darwinian.dev";
@@ -60,6 +78,31 @@ afterEach(async () => {
 });
 
 describe("credentials", () => {
+  test("injected credential backends cannot cross-read, overwrite, or delete custody", async () => {
+    tmp = await mkdtemp(join(tmpdir(), "drwn-cred-isolation-"));
+    const firstPath = join(tmp, "first", "credentials.json");
+    const secondPath = join(tmp, "second", "credentials.json");
+    const first = new InMemoryKeychainBackend();
+    const second = new InMemoryKeychainBackend();
+    const initial = credential();
+    const other = credential({
+      credentialId: "22222222-2222-4222-8222-222222222222",
+      refreshToken: "other-refresh",
+    });
+
+    await writeCredentials(firstPath, initial, first);
+    await writeCredentials(secondPath, other, second);
+    await expect(readCredentials(firstPath, second)).rejects.toThrow("integrity verification");
+
+    await writeCredentials(secondPath, { ...other, refreshToken: "other-refresh-replaced" }, second);
+    expect(await readCredentials(firstPath, first)).toEqual(initial);
+
+    await deleteCredentials(secondPath, second);
+    expect(first.hasKey()).toBe(true);
+    expect(second.hasKey()).toBe(false);
+    expect(await readCredentials(firstPath, first)).toEqual(initial);
+  });
+
   test("writes one exact v3 payload at mode 0600 and round-trips it", async () => {
     tmp = await mkdtemp(join(tmpdir(), "drwn-cred-"));
     const path = join(tmp, "credentials.json");
@@ -95,7 +138,7 @@ describe("credentials", () => {
     ];
 
     for (const value of unsupported) {
-      await encryptToDisk(path, typeof value === "string" ? value : JSON.stringify(value));
+      await encryptToDisk(path, typeof value === "string" ? value : JSON.stringify(value), backend);
       await expect(readCredentials(path)).rejects.toMatchObject({
         name: "CredentialSchemaUnsupportedError",
         code: "CREDENTIAL_SCHEMA_UNSUPPORTED",
@@ -121,7 +164,7 @@ describe("credentials", () => {
     ];
 
     for (const value of invalid) {
-      await encryptToDisk(path, JSON.stringify(value));
+      await encryptToDisk(path, JSON.stringify(value), backend);
       await expect(readCredentials(path)).rejects.toBeInstanceOf(CredentialSchemaUnsupportedError);
     }
   });
