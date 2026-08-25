@@ -294,6 +294,57 @@ test("keeps credentials and secret values out of every response schema and vecto
   expect(vectorValuePaths).toEqual(["positive.secrets.set.request.value"]);
 });
 
+function admissionCodeForMutatedContract(mutate: (contract: Record<string, any>) => void): string | undefined {
+  const packageRoot = mkdtempSync(join(tmpdir(), "drwn-management-schema-dialect-"));
+  try {
+    const contractPath = join(packageRoot, "registry", "contracts", "deployed-worker.v1", "contract.json");
+    const packageLockPath = join(packageRoot, "cli", "generated", "drwn-management-contract-lock.json");
+    mkdirSync(dirname(contractPath), { recursive: true });
+    mkdirSync(dirname(packageLockPath), { recursive: true });
+    const mutated = structuredClone(managementContract) as unknown as Record<string, any>;
+    mutate(mutated);
+    const bytes = `${JSON.stringify(mutated, null, 2)}\n`;
+    writeFileSync(contractPath, bytes);
+    writeFileSync(packageLockPath, `${JSON.stringify({
+      ...managementContractLock,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    }, null, 2)}\n`);
+    return caughtCode(() => loadManagementContractFromPackageRoot(packageRoot));
+  } finally {
+    rmSync(packageRoot, { recursive: true, force: true });
+  }
+}
+
+test("strict admission rejects an unknown JSON Schema keyword before compilation", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.OrganizationsListRequest.xUnknownConstraint = true;
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
+test("strict admission rejects a recognized JSON Schema keyword that the compiler ignores", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.OrganizationsListSuccess.properties.organizations.uniqueItems = true;
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
+test("strict admission rejects a schema format that the compiler would ignore", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.Timestamp.format = "json-string";
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
+test("strict admission rejects an invalid value shape for a supported keyword", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.OrganizationsListRequest.required = "requestId";
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
+test("strict admission treats property names as data rather than schema keywords", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.OrganizationsListRequest.properties.xUnknownConstraint = { type: "boolean" };
+  })).toBeUndefined();
+});
+
 test("fails closed with a stable error when packaged bytes pass the lock but violate strict admission", () => {
   const packageRoot = mkdtempSync(join(tmpdir(), "drwn-management-invalid-"));
   try {

@@ -194,22 +194,215 @@ function transformSchemaRefs(value: ManagementJsonValue): ManagementJsonValue {
   return value;
 }
 
-function assertClosedObjectSchemas(value: ManagementJsonValue, path: string): void {
-  if (Array.isArray(value)) {
-    value.forEach((child, index) => assertClosedObjectSchemas(child, `${path}[${index}]`));
-    return;
-  }
-  if (!value || typeof value !== "object") return;
-  if (value.type === "object" && value.additionalProperties !== false) {
-    throw invalidContract(`Management object schema is not closed at ${path}`);
-  }
-  for (const [key, child] of Object.entries(value)) assertClosedObjectSchemas(child, `${path}.${key}`);
-}
-
 function schemaNameFromRef(reference: string): string {
   const match = /^#\/schemas\/([A-Za-z][A-Za-z0-9]*)$/.exec(reference);
   if (!match) throw invalidContract(`Invalid management schema reference: ${reference}`);
   return match[1]!;
+}
+
+const supportedSchemaKeywords = new Set([
+  "$ref",
+  "type",
+  "title",
+  "description",
+  "const",
+  "enum",
+  "format",
+  "pattern",
+  "minimum",
+  "maximum",
+  "minLength",
+  "maxLength",
+  "required",
+  "properties",
+  "additionalProperties",
+  "items",
+  "minItems",
+  "maxItems",
+  "oneOf",
+  "anyOf",
+]);
+const supportedSchemaTypes = new Set(["array", "boolean", "integer", "null", "object", "string"]);
+
+function isJsonObject(value: ManagementJsonValue | undefined): value is ManagementJsonObject {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function assertNonNegativeInteger(value: ManagementJsonValue | undefined, path: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw invalidContract(`Management JSON Schema keyword ${path} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function assertFiniteNumber(value: ManagementJsonValue | undefined, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw invalidContract(`Management JSON Schema keyword ${path} must be a finite number`);
+  }
+  return value;
+}
+
+function assertJsonSchemaDialect(
+  schema: ManagementJsonObject,
+  path: string,
+  references: ReadonlySet<string>,
+): void {
+  const keys = Object.keys(schema);
+  for (const keyword of keys) {
+    if (!supportedSchemaKeywords.has(keyword)) {
+      throw invalidContract(`Unsupported management JSON Schema keyword at ${path}.${keyword}`);
+    }
+  }
+
+  if (Object.hasOwn(schema, "$ref")) {
+    if (typeof schema.$ref !== "string" || !references.has(schema.$ref)) {
+      throw invalidContract(`Management JSON Schema reference is invalid at ${path}.$ref`);
+    }
+    if (keys.length !== 1) {
+      throw invalidContract(`Management JSON Schema reference has ignored sibling keywords at ${path}`);
+    }
+    return;
+  }
+
+  const type = schema.type;
+  if (type !== undefined && (typeof type !== "string" || !supportedSchemaTypes.has(type))) {
+    throw invalidContract(`Management JSON Schema type is unsupported at ${path}.type`);
+  }
+  if (schema.title !== undefined && (typeof schema.title !== "string" || schema.title.length === 0)) {
+    throw invalidContract(`Management JSON Schema title is invalid at ${path}.title`);
+  }
+  if (schema.description !== undefined && (typeof schema.description !== "string" || schema.description.length === 0)) {
+    throw invalidContract(`Management JSON Schema description is invalid at ${path}.description`);
+  }
+
+  if (Object.hasOwn(schema, "const")) {
+    if (schema.const !== null && !["boolean", "number", "string"].includes(typeof schema.const)) {
+      throw invalidContract(`Management JSON Schema const is not a supported literal at ${path}.const`);
+    }
+  }
+  if (schema.enum !== undefined) {
+    if (!Array.isArray(schema.enum) || schema.enum.length === 0 || schema.enum.some((value) =>
+      value !== null && !["boolean", "number", "string"].includes(typeof value)
+    )) {
+      throw invalidContract(`Management JSON Schema enum is invalid at ${path}.enum`);
+    }
+    const identities = schema.enum.map((value) => JSON.stringify(value));
+    if (new Set(identities).size !== identities.length) {
+      throw invalidContract(`Management JSON Schema enum contains duplicate literals at ${path}.enum`);
+    }
+  }
+
+  if (schema.format !== undefined && (schema.format !== "date-time" || type !== "string")) {
+    throw invalidContract(`Management JSON Schema format is unsupported at ${path}.format`);
+  }
+  if (schema.pattern !== undefined) {
+    if (typeof schema.pattern !== "string" || type !== "string") {
+      throw invalidContract(`Management JSON Schema pattern is invalid at ${path}.pattern`);
+    }
+    try {
+      new RegExp(schema.pattern);
+    } catch (error) {
+      throw invalidContract(`Management JSON Schema pattern is invalid at ${path}.pattern`, error);
+    }
+  }
+
+  const minLength = schema.minLength === undefined ? undefined : assertNonNegativeInteger(schema.minLength, `${path}.minLength`);
+  const maxLength = schema.maxLength === undefined ? undefined : assertNonNegativeInteger(schema.maxLength, `${path}.maxLength`);
+  if ((minLength !== undefined || maxLength !== undefined) && type !== "string") {
+    throw invalidContract(`Management JSON Schema length keyword requires string type at ${path}`);
+  }
+  if (minLength !== undefined && maxLength !== undefined && minLength > maxLength) {
+    throw invalidContract(`Management JSON Schema string bounds are inverted at ${path}`);
+  }
+
+  const minimum = schema.minimum === undefined ? undefined : assertFiniteNumber(schema.minimum, `${path}.minimum`);
+  const maximum = schema.maximum === undefined ? undefined : assertFiniteNumber(schema.maximum, `${path}.maximum`);
+  if ((minimum !== undefined || maximum !== undefined) && type !== "integer") {
+    throw invalidContract(`Management JSON Schema numeric keyword requires integer type at ${path}`);
+  }
+  if (minimum !== undefined && maximum !== undefined && minimum > maximum) {
+    throw invalidContract(`Management JSON Schema numeric bounds are inverted at ${path}`);
+  }
+
+  const minItems = schema.minItems === undefined ? undefined : assertNonNegativeInteger(schema.minItems, `${path}.minItems`);
+  const maxItems = schema.maxItems === undefined ? undefined : assertNonNegativeInteger(schema.maxItems, `${path}.maxItems`);
+  if ((minItems !== undefined || maxItems !== undefined) && type !== "array") {
+    throw invalidContract(`Management JSON Schema item-count keyword requires array type at ${path}`);
+  }
+  if (minItems !== undefined && maxItems !== undefined && minItems > maxItems) {
+    throw invalidContract(`Management JSON Schema array bounds are inverted at ${path}`);
+  }
+
+  let properties: ManagementJsonObject | undefined;
+  if (schema.properties !== undefined) {
+    if (!isJsonObject(schema.properties) || type !== "object") {
+      throw invalidContract(`Management JSON Schema properties map is invalid at ${path}.properties`);
+    }
+    properties = schema.properties;
+    for (const [propertyName, propertySchema] of Object.entries(properties)) {
+      if (!isJsonObject(propertySchema)) {
+        throw invalidContract(`Management JSON Schema property is invalid at ${path}.properties.${propertyName}`);
+      }
+      assertJsonSchemaDialect(propertySchema, `${path}.properties.${propertyName}`, references);
+    }
+  }
+  if (schema.required !== undefined) {
+    if (type !== "object" || !Array.isArray(schema.required) || schema.required.some((name) => typeof name !== "string")) {
+      throw invalidContract(`Management JSON Schema required list is invalid at ${path}.required`);
+    }
+    const required = schema.required as string[];
+    if (new Set(required).size !== required.length || required.some((name) => !properties || !Object.hasOwn(properties, name))) {
+      throw invalidContract(`Management JSON Schema required list is not a unique properties subset at ${path}.required`);
+    }
+  }
+  if (type === "object" && schema.additionalProperties !== false) {
+    throw invalidContract(`Management object schema is not closed at ${path}`);
+  }
+  if (schema.additionalProperties !== undefined && (type !== "object" || schema.additionalProperties !== false)) {
+    throw invalidContract(`Management JSON Schema additionalProperties is invalid at ${path}.additionalProperties`);
+  }
+
+  if (schema.items !== undefined) {
+    if (!isJsonObject(schema.items) || type !== "array") {
+      throw invalidContract(`Management JSON Schema items value is invalid at ${path}.items`);
+    }
+    assertJsonSchemaDialect(schema.items, `${path}.items`, references);
+  } else if (type === "array") {
+    throw invalidContract(`Management array schema has no enforced items schema at ${path}`);
+  }
+
+  for (const combinator of ["oneOf", "anyOf"] as const) {
+    const branches = schema[combinator];
+    if (branches === undefined) continue;
+    if (!Array.isArray(branches) || branches.length < 2 || branches.some((branch) => !isJsonObject(branch))) {
+      throw invalidContract(`Management JSON Schema ${combinator} is invalid at ${path}.${combinator}`);
+    }
+    branches.forEach((branch, index) => assertJsonSchemaDialect(
+      branch as ManagementJsonObject,
+      `${path}.${combinator}[${index}]`,
+      references,
+    ));
+  }
+
+  if (
+    type === undefined && schema.enum === undefined && !Object.hasOwn(schema, "const") &&
+    schema.oneOf === undefined && schema.anyOf === undefined
+  ) {
+    throw invalidContract(`Management JSON Schema has no enforced constraint at ${path}`);
+  }
+}
+
+function assertContractJsonSchemaDialect(contract: ManagementContract): void {
+  const references = new Set([
+    ...Object.keys(contract.idKinds).map((name) => `#/idKinds/${name}`),
+    ...Object.keys(contract.schemas).map((name) => `#/schemas/${name}`),
+  ]);
+  for (const [name, schema] of Object.entries(contract.idKinds)) {
+    assertJsonSchemaDialect(schema as ManagementJsonObject, `idKinds.${name}`, references);
+  }
+  for (const [name, schema] of Object.entries(contract.schemas)) {
+    assertJsonSchemaDialect(schema, `schemas.${name}`, references);
+  }
 }
 
 function buildSchemaDefinitions(contract: ManagementContract): Record<string, ManagementJsonValue> {
@@ -267,7 +460,7 @@ function assertInventories(contract: ManagementContract, lock: ManagementContrac
   if (Object.keys(contract.errors.httpStatusByCode).sort().join("\n") !== [...contract.errors.codes].sort().join("\n")) {
     throw invalidContract("Management error code and HTTP status inventories differ");
   }
-  for (const [name, schema] of Object.entries(contract.schemas)) assertClosedObjectSchemas(schema, `schemas.${name}`);
+  assertContractJsonSchemaDialect(contract);
 }
 
 export function loadManagementContractFromPackageRoot(packageRoot: string): LoadedManagementContract {
