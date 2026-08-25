@@ -1,0 +1,1595 @@
+{
+  "schema": "cl.drwn.management-contract",
+  "schemaVersion": 1,
+  "protocol": "deployed-worker.v1",
+  "authority": {
+    "i336ArchitectureCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
+    "i321CandidateCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
+    "workerArchitectureCommit": "5f07dec423fac4289c3e26cad441e816e8bf1203"
+  },
+  "profiles": {
+    "production": {
+      "profileId": "production",
+      "apiOrigin": "https://api.darwinian.dev",
+      "webOrigin": "https://foundry.darwinian.dev",
+      "authHubOrigin": "https://auth.darwinian.dev",
+      "issuer": "https://auth.darwinian.dev/api/auth",
+      "resource": "https://api.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    },
+    "staging": {
+      "profileId": "staging",
+      "apiOrigin": "https://api-staging-main.darwinian.dev",
+      "webOrigin": "https://foundry-staging-main.darwinian.dev",
+      "authHubOrigin": "https://auth-staging-main.darwinian.dev",
+      "issuer": "https://auth-staging-main.darwinian.dev/api/auth",
+      "resource": "https://api.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  "headers": {
+    "required": [
+      {
+        "name": "Authorization",
+        "semantics": "services-bearer-only"
+      },
+      {
+        "name": "X-Drwn-Protocol",
+        "semantics": "exact-protocol"
+      },
+      {
+        "name": "X-Drwn-Version",
+        "semantics": "client-version"
+      },
+      {
+        "name": "X-Request-Id",
+        "semantics": "lowercase-uuidv4-and-sole-mutation-idempotency-identity"
+      }
+    ],
+    "mutationIdempotencyHeader": "X-Request-Id"
+  },
+  "idKinds": {
+    "OrganizationId": {
+      "title": "OrganizationId",
+      "type": "string",
+      "pattern": "^org_[A-Za-z0-9._:-]+$",
+      "maxLength": 128
+    },
+    "WorkerId": {
+      "title": "WorkerId",
+      "type": "string",
+      "pattern": "^worker_[A-Za-z0-9._:-]+$",
+      "maxLength": 128
+    },
+    "DeployedWorkerId": {
+      "title": "DeployedWorkerId",
+      "type": "string",
+      "pattern": "^deployed_worker_[A-Za-z0-9._:-]+$",
+      "maxLength": 128
+    },
+    "DeploymentId": {
+      "title": "DeploymentId",
+      "type": "string",
+      "pattern": "^deployment_attempt_[A-Za-z0-9._:-]+$",
+      "maxLength": 128
+    },
+    "RunId": {
+      "title": "RunId",
+      "type": "string",
+      "pattern": "^run_[A-Za-z0-9._:-]+$",
+      "maxLength": 128
+    },
+    "RequestId": {
+      "title": "RequestId",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    }
+  },
+  "enums": {
+    "environment": [
+      "development",
+      "staging",
+      "production"
+    ],
+    "runStatus": [
+      "queued",
+      "running",
+      "succeeded",
+      "failed",
+      "cancelled"
+    ],
+    "operationOutcome": [
+      "succeeded",
+      "refused",
+      "indeterminate"
+    ]
+  },
+  "schemas": {
+    "PageLimit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "Cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "PositiveRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "Environment": {
+      "type": "string",
+      "enum": [
+        "development",
+        "staging",
+        "production"
+      ]
+    },
+    "RunStatus": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "OrganizationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "organizationId",
+        "displayName",
+        "revision"
+      ],
+      "properties": {
+        "organizationId": {
+          "$ref": "#/idKinds/OrganizationId"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "revision": {
+          "$ref": "#/schemas/PositiveRevision"
+        }
+      }
+    },
+    "DeployedWorkerSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "organizationId",
+        "workerId",
+        "deployedWorkerId",
+        "name",
+        "environment",
+        "workerRevision",
+        "bindingRevision",
+        "retired"
+      ],
+      "properties": {
+        "organizationId": {
+          "$ref": "#/idKinds/OrganizationId"
+        },
+        "workerId": {
+          "$ref": "#/idKinds/WorkerId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "environment": {
+          "$ref": "#/schemas/Environment"
+        },
+        "workerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "bindingRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "retired": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DeploymentSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deploymentId",
+        "deployedWorkerId",
+        "artifactRef",
+        "status",
+        "createdAt"
+      ],
+      "properties": {
+        "deploymentId": {
+          "$ref": "#/idKinds/DeploymentId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "artifactRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "created",
+            "active",
+            "failed",
+            "retired"
+          ]
+        },
+        "createdAt": {
+          "$ref": "#/schemas/Timestamp"
+        }
+      }
+    },
+    "RunSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runId",
+        "deployedWorkerId",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "runId": {
+          "$ref": "#/idKinds/RunId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "status": {
+          "$ref": "#/schemas/RunStatus"
+        },
+        "output": {
+          "type": "string",
+          "maxLength": 1048576
+        },
+        "createdAt": {
+          "$ref": "#/schemas/Timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/schemas/Timestamp"
+        }
+      }
+    },
+    "OrganizationsListRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "limit": {
+          "$ref": "#/schemas/PageLimit"
+        },
+        "cursor": {
+          "$ref": "#/schemas/Cursor"
+        }
+      }
+    },
+    "OrganizationsListSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "organizations"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "organizations": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/schemas/OrganizationSummary"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/schemas/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "OrganizationsReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "organizationId"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "organizationId": {
+          "$ref": "#/idKinds/OrganizationId"
+        }
+      }
+    },
+    "OrganizationsReadSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "organization"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "organization": {
+          "$ref": "#/schemas/OrganizationSummary"
+        }
+      }
+    },
+    "DeployedWorkersRegisterRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "organizationId",
+        "workerId",
+        "name",
+        "environment"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "organizationId": {
+          "$ref": "#/idKinds/OrganizationId"
+        },
+        "workerId": {
+          "$ref": "#/idKinds/WorkerId"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "environment": {
+          "$ref": "#/schemas/Environment"
+        }
+      }
+    },
+    "DeployedWorkersRegisterSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "organizationId",
+        "workerId",
+        "deployedWorkerId",
+        "workerRevision",
+        "bindingRevision"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "organizationId": {
+          "$ref": "#/idKinds/OrganizationId"
+        },
+        "workerId": {
+          "$ref": "#/idKinds/WorkerId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "workerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "bindingRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        }
+      }
+    },
+    "DeployedWorkersListRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "organizationId"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "organizationId": {
+          "$ref": "#/idKinds/OrganizationId"
+        },
+        "environment": {
+          "$ref": "#/schemas/Environment"
+        },
+        "limit": {
+          "$ref": "#/schemas/PageLimit"
+        },
+        "cursor": {
+          "$ref": "#/schemas/Cursor"
+        }
+      }
+    },
+    "DeployedWorkersListSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "workers"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "workers": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/schemas/DeployedWorkerSummary"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/schemas/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "DeployedWorkersReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        }
+      }
+    },
+    "DeployedWorkersReadSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "worker"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "worker": {
+          "$ref": "#/schemas/DeployedWorkerSummary"
+        }
+      }
+    },
+    "DeploymentsCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "artifactRef",
+        "expectedWorkerRevision"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "artifactRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "expectedWorkerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        }
+      }
+    },
+    "DeploymentsCreateSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "deploymentId",
+        "workerRevision",
+        "createdAt"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "deploymentId": {
+          "$ref": "#/idKinds/DeploymentId"
+        },
+        "workerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "createdAt": {
+          "$ref": "#/schemas/Timestamp"
+        }
+      }
+    },
+    "DeploymentsListRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "limit": {
+          "$ref": "#/schemas/PageLimit"
+        },
+        "cursor": {
+          "$ref": "#/schemas/Cursor"
+        }
+      }
+    },
+    "DeploymentsListSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployments"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployments": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/schemas/DeploymentSummary"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/schemas/Cursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "DeploymentsRollbackRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "deploymentId",
+        "expectedWorkerRevision"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "deploymentId": {
+          "$ref": "#/idKinds/DeploymentId"
+        },
+        "expectedWorkerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        }
+      }
+    },
+    "DeploymentsRollbackSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "deploymentId",
+        "workerRevision",
+        "activatedAt"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "deploymentId": {
+          "$ref": "#/idKinds/DeploymentId"
+        },
+        "workerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "activatedAt": {
+          "$ref": "#/schemas/Timestamp"
+        }
+      }
+    },
+    "SecretsSetRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "name",
+        "value",
+        "expectedWorkerRevision"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "expectedWorkerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        }
+      }
+    },
+    "SecretsSetSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "name",
+        "secretRevision",
+        "workerRevision",
+        "observedAt"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+        },
+        "secretRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "workerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "observedAt": {
+          "$ref": "#/schemas/Timestamp"
+        }
+      }
+    },
+    "RunsCreateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "input"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        }
+      }
+    },
+    "RunsCreateSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "runId",
+        "status",
+        "createdAt"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "runId": {
+          "$ref": "#/idKinds/RunId"
+        },
+        "status": {
+          "type": "string",
+          "const": "queued"
+        },
+        "createdAt": {
+          "$ref": "#/schemas/Timestamp"
+        }
+      }
+    },
+    "RunsReadRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "runId"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "runId": {
+          "$ref": "#/idKinds/RunId"
+        }
+      }
+    },
+    "RunsReadSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "run"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "run": {
+          "$ref": "#/schemas/RunSummary"
+        }
+      }
+    },
+    "DeployedWorkersRetireRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "expectedWorkerRevision",
+        "expectedBindingRevision"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "expectedWorkerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "expectedBindingRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        }
+      }
+    },
+    "DeployedWorkersRetireSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "organizationId",
+        "workerId",
+        "deployedWorkerId",
+        "workerRevision",
+        "bindingRevision",
+        "retiredAt"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "organizationId": {
+          "$ref": "#/idKinds/OrganizationId"
+        },
+        "workerId": {
+          "$ref": "#/idKinds/WorkerId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "workerRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "bindingRevision": {
+          "$ref": "#/schemas/PositiveRevision"
+        },
+        "retiredAt": {
+          "$ref": "#/schemas/Timestamp"
+        }
+      }
+    },
+    "PublicError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "requestId",
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "const": "cl.drwn.error.v1"
+        },
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "code": {
+          "type": "string",
+          "enum": [
+            "CONSENT_REQUIRED",
+            "AUTHORIZATION_DENIED",
+            "RESOURCE_UNAVAILABLE",
+            "VALIDATION_FAILED",
+            "REVISION_CONFLICT",
+            "RATE_LIMITED",
+            "TEMPORARILY_UNAVAILABLE",
+            "MIND_CONTRACT_REMOVED",
+            "UNSUPPORTED_PROTOCOL",
+            "SERVER_RESPONSE_INVALID"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "retryAfterSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        }
+      }
+    }
+  },
+  "errors": {
+    "codes": [
+      "CONSENT_REQUIRED",
+      "AUTHORIZATION_DENIED",
+      "RESOURCE_UNAVAILABLE",
+      "VALIDATION_FAILED",
+      "REVISION_CONFLICT",
+      "RATE_LIMITED",
+      "TEMPORARILY_UNAVAILABLE",
+      "MIND_CONTRACT_REMOVED",
+      "UNSUPPORTED_PROTOCOL",
+      "SERVER_RESPONSE_INVALID"
+    ],
+    "httpStatusByCode": {
+      "CONSENT_REQUIRED": 403,
+      "AUTHORIZATION_DENIED": 403,
+      "RESOURCE_UNAVAILABLE": 404,
+      "VALIDATION_FAILED": 400,
+      "REVISION_CONFLICT": 409,
+      "RATE_LIMITED": 429,
+      "TEMPORARILY_UNAVAILABLE": 503,
+      "MIND_CONTRACT_REMOVED": 410,
+      "UNSUPPORTED_PROTOCOL": 426,
+      "SERVER_RESPONSE_INVALID": 502
+    }
+  },
+  "routes": [
+    {
+      "routeKey": "organizations.list",
+      "method": "GET",
+      "pathTemplate": "/api/organizations",
+      "authority": {
+        "kind": "organization"
+      },
+      "mutation": false,
+      "requestSchema": "#/schemas/OrganizationsListRequest",
+      "successSchema": "#/schemas/OrganizationsListSuccess"
+    },
+    {
+      "routeKey": "organizations.read",
+      "method": "GET",
+      "pathTemplate": "/api/organizations/{organizationId}",
+      "authority": {
+        "kind": "organization"
+      },
+      "mutation": false,
+      "requestSchema": "#/schemas/OrganizationsReadRequest",
+      "successSchema": "#/schemas/OrganizationsReadSuccess"
+    },
+    {
+      "routeKey": "deployed_workers.register",
+      "method": "POST",
+      "pathTemplate": "/api/deployed-workers/register",
+      "authority": {
+        "kind": "registration"
+      },
+      "mutation": true,
+      "requestSchema": "#/schemas/DeployedWorkersRegisterRequest",
+      "successSchema": "#/schemas/DeployedWorkersRegisterSuccess"
+    },
+    {
+      "routeKey": "deployed_workers.list",
+      "method": "GET",
+      "pathTemplate": "/api/deployed-workers",
+      "authority": {
+        "kind": "capability",
+        "capability": "view"
+      },
+      "mutation": false,
+      "requestSchema": "#/schemas/DeployedWorkersListRequest",
+      "successSchema": "#/schemas/DeployedWorkersListSuccess"
+    },
+    {
+      "routeKey": "deployed_workers.read",
+      "method": "GET",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}",
+      "authority": {
+        "kind": "capability",
+        "capability": "view"
+      },
+      "mutation": false,
+      "requestSchema": "#/schemas/DeployedWorkersReadRequest",
+      "successSchema": "#/schemas/DeployedWorkersReadSuccess"
+    },
+    {
+      "routeKey": "deployments.create",
+      "method": "POST",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/deployments",
+      "authority": {
+        "kind": "capability",
+        "capability": "deploy"
+      },
+      "mutation": true,
+      "requestSchema": "#/schemas/DeploymentsCreateRequest",
+      "successSchema": "#/schemas/DeploymentsCreateSuccess"
+    },
+    {
+      "routeKey": "deployments.list",
+      "method": "GET",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/deployments",
+      "authority": {
+        "kind": "capability",
+        "capability": "view"
+      },
+      "mutation": false,
+      "requestSchema": "#/schemas/DeploymentsListRequest",
+      "successSchema": "#/schemas/DeploymentsListSuccess"
+    },
+    {
+      "routeKey": "deployments.rollback",
+      "method": "POST",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/deployments/{deploymentId}/rollback",
+      "authority": {
+        "kind": "capability",
+        "capability": "deploy"
+      },
+      "mutation": true,
+      "requestSchema": "#/schemas/DeploymentsRollbackRequest",
+      "successSchema": "#/schemas/DeploymentsRollbackSuccess"
+    },
+    {
+      "routeKey": "secrets.set",
+      "method": "PUT",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/secrets/{name}",
+      "authority": {
+        "kind": "capability",
+        "capability": "credentials.manage"
+      },
+      "mutation": true,
+      "requestSchema": "#/schemas/SecretsSetRequest",
+      "successSchema": "#/schemas/SecretsSetSuccess"
+    },
+    {
+      "routeKey": "runs.create",
+      "method": "POST",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/runs",
+      "authority": {
+        "kind": "capability",
+        "capability": "invoke"
+      },
+      "mutation": true,
+      "requestSchema": "#/schemas/RunsCreateRequest",
+      "successSchema": "#/schemas/RunsCreateSuccess"
+    },
+    {
+      "routeKey": "runs.read",
+      "method": "GET",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/runs/{runId}",
+      "authority": {
+        "kind": "capability",
+        "capability": "invoke"
+      },
+      "mutation": false,
+      "requestSchema": "#/schemas/RunsReadRequest",
+      "successSchema": "#/schemas/RunsReadSuccess"
+    },
+    {
+      "routeKey": "deployed_workers.retire",
+      "method": "POST",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/retire",
+      "authority": {
+        "kind": "capability",
+        "capability": "worker.retire"
+      },
+      "mutation": true,
+      "requestSchema": "#/schemas/DeployedWorkersRetireRequest",
+      "successSchema": "#/schemas/DeployedWorkersRetireSuccess"
+    }
+  ],
+  "vectors": {
+    "positive": [
+      {
+        "routeKey": "organizations.list",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174000",
+          "limit": 50
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174000",
+          "organizations": [
+            {
+              "organizationId": "org_acme",
+              "displayName": "Acme",
+              "revision": 1
+            }
+          ],
+          "nextCursor": null
+        }
+      },
+      {
+        "routeKey": "organizations.read",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174001",
+          "organizationId": "org_acme"
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174001",
+          "organization": {
+            "organizationId": "org_acme",
+            "displayName": "Acme",
+            "revision": 1
+          }
+        }
+      },
+      {
+        "routeKey": "deployed_workers.register",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174002",
+          "organizationId": "org_acme",
+          "workerId": "worker_alpha",
+          "name": "worker-alpha",
+          "environment": "staging"
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174002",
+          "organizationId": "org_acme",
+          "workerId": "worker_alpha",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "workerRevision": 1,
+          "bindingRevision": 1
+        }
+      },
+      {
+        "routeKey": "deployed_workers.list",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174003",
+          "organizationId": "org_acme",
+          "environment": "staging",
+          "limit": 50
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174003",
+          "workers": [
+            {
+              "organizationId": "org_acme",
+              "workerId": "worker_alpha",
+              "deployedWorkerId": "deployed_worker_alpha",
+              "name": "worker-alpha",
+              "environment": "staging",
+              "workerRevision": 1,
+              "bindingRevision": 1,
+              "retired": false
+            }
+          ],
+          "nextCursor": null
+        }
+      },
+      {
+        "routeKey": "deployed_workers.read",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174004",
+          "deployedWorkerId": "deployed_worker_alpha"
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174004",
+          "worker": {
+            "organizationId": "org_acme",
+            "workerId": "worker_alpha",
+            "deployedWorkerId": "deployed_worker_alpha",
+            "name": "worker-alpha",
+            "environment": "staging",
+            "workerRevision": 1,
+            "bindingRevision": 1,
+            "retired": false
+          }
+        }
+      },
+      {
+        "routeKey": "deployments.create",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174005",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "artifactRef": "card:sha256:abc123",
+          "expectedWorkerRevision": 1
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174005",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "deploymentId": "deployment_attempt_0001",
+          "workerRevision": 2,
+          "createdAt": "2026-08-25T12:00:00Z"
+        }
+      },
+      {
+        "routeKey": "deployments.list",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174006",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "limit": 50
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174006",
+          "deployments": [
+            {
+              "deploymentId": "deployment_attempt_0001",
+              "deployedWorkerId": "deployed_worker_alpha",
+              "artifactRef": "card:sha256:abc123",
+              "status": "active",
+              "createdAt": "2026-08-25T12:00:00Z"
+            }
+          ],
+          "nextCursor": null
+        }
+      },
+      {
+        "routeKey": "deployments.rollback",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174007",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "deploymentId": "deployment_attempt_0001",
+          "expectedWorkerRevision": 2
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174007",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "deploymentId": "deployment_attempt_0001",
+          "workerRevision": 3,
+          "activatedAt": "2026-08-25T12:05:00Z"
+        }
+      },
+      {
+        "routeKey": "secrets.set",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174008",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "name": "PROVIDER_API_KEY",
+          "value": "fixture-secret-value-not-sensitive",
+          "expectedWorkerRevision": 3
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174008",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "name": "PROVIDER_API_KEY",
+          "secretRevision": 1,
+          "workerRevision": 4,
+          "observedAt": "2026-08-25T12:10:00Z"
+        }
+      },
+      {
+        "routeKey": "runs.create",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174009",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "input": "Summarize the release ledger."
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174009",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "runId": "run_0001",
+          "status": "queued",
+          "createdAt": "2026-08-25T12:15:00Z"
+        }
+      },
+      {
+        "routeKey": "runs.read",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-42661417400a",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "runId": "run_0001"
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-42661417400a",
+          "run": {
+            "runId": "run_0001",
+            "deployedWorkerId": "deployed_worker_alpha",
+            "status": "succeeded",
+            "output": "Release ledger summarized.",
+            "createdAt": "2026-08-25T12:15:00Z",
+            "updatedAt": "2026-08-25T12:16:00Z"
+          }
+        }
+      },
+      {
+        "routeKey": "deployed_workers.retire",
+        "request": {
+          "requestId": "123e4567-e89b-42d3-a456-42661417400b",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "expectedWorkerRevision": 4,
+          "expectedBindingRevision": 1
+        },
+        "success": {
+          "requestId": "123e4567-e89b-42d3-a456-42661417400b",
+          "organizationId": "org_acme",
+          "workerId": "worker_alpha",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "workerRevision": 5,
+          "bindingRevision": 2,
+          "retiredAt": "2026-08-25T12:20:00Z"
+        }
+      }
+    ],
+    "negative": [
+      {
+        "caseId": "unknown-request-field",
+        "routeKey": "organizations.list",
+        "surface": "request",
+        "candidate": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174000",
+          "unexpected": true
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "unknown-response-field",
+        "routeKey": "organizations.read",
+        "surface": "response",
+        "candidate": {
+          "requestId": "123e4567-e89b-42d3-a456-426614174001",
+          "unexpected": true
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "organization-worker-id-confusion",
+        "routeKey": "deployed_workers.register",
+        "surface": "request",
+        "candidate": {
+          "organizationId": "worker_alpha",
+          "workerId": "org_acme"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "worker-deployed-worker-id-confusion",
+        "routeKey": "deployed_workers.register",
+        "surface": "response",
+        "candidate": {
+          "workerId": "deployed_worker_alpha",
+          "deployedWorkerId": "worker_alpha"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "deployed-worker-deployment-id-confusion",
+        "routeKey": "deployments.rollback",
+        "surface": "request",
+        "candidate": {
+          "deployedWorkerId": "deployment_attempt_0001",
+          "deploymentId": "deployed_worker_alpha"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-organization-id",
+        "routeKey": "organizations.read",
+        "surface": "request",
+        "candidate": {
+          "organizationId": "org/invalid"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-worker-id",
+        "routeKey": "deployed_workers.register",
+        "surface": "request",
+        "candidate": {
+          "workerId": "wrk invalid"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-deployed-worker-id",
+        "routeKey": "deployed_workers.read",
+        "surface": "request",
+        "candidate": {
+          "deployedWorkerId": "dw/invalid"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-deployment-id",
+        "routeKey": "deployments.rollback",
+        "surface": "request",
+        "candidate": {
+          "deploymentId": "dep invalid"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-run-id",
+        "routeKey": "runs.read",
+        "surface": "request",
+        "candidate": {
+          "runId": "run/invalid"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-request-id",
+        "routeKey": "organizations.list",
+        "surface": "header",
+        "candidate": {
+          "X-Request-Id": "123E4567-E89B-42D3-A456-426614174000"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-cursor",
+        "routeKey": "deployed_workers.list",
+        "surface": "request",
+        "candidate": {
+          "cursor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "revision-zero",
+        "routeKey": "deployed_workers.retire",
+        "surface": "request",
+        "candidate": {
+          "expectedWorkerRevision": 0
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "revision-fractional",
+        "routeKey": "deployed_workers.retire",
+        "surface": "request",
+        "candidate": {
+          "expectedBindingRevision": 1.5
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "unknown-environment",
+        "routeKey": "deployed_workers.register",
+        "surface": "request",
+        "candidate": {
+          "environment": "preview"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "page-limit-overflow",
+        "routeKey": "organizations.list",
+        "surface": "request",
+        "candidate": {
+          "limit": 101
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "credential-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "credential": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "access-token-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "accessToken": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "refresh-token-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "refreshToken": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "authorization-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "authorization": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "cookie-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "cookie": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "management-token-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "managementToken": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "key-ref-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "keyRef": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "private-key-response-key",
+        "routeKey": "deployed_workers.read",
+        "surface": "response",
+        "candidate": {
+          "privateKey": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "secret-value-response-key",
+        "routeKey": "secrets.set",
+        "surface": "response",
+        "candidate": {
+          "secretValue": "present-but-forbidden"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "malformed-timestamp",
+        "routeKey": "secrets.set",
+        "surface": "response",
+        "candidate": {
+          "observedAt": "2026-02-29T12:00:00Z"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "old-mind-path",
+        "routeKey": "organizations.list",
+        "surface": "path",
+        "candidate": {
+          "path": "/api/minds/legacy"
+        },
+        "expectedError": "MIND_CONTRACT_REMOVED"
+      },
+      {
+        "caseId": "arbitrary-route",
+        "routeKey": "organizations.list",
+        "surface": "path",
+        "candidate": {
+          "path": "/api/proxy/https://example.invalid"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "unsupported-protocol",
+        "routeKey": "organizations.list",
+        "surface": "header",
+        "candidate": {
+          "X-Drwn-Protocol": "deployed-worker.v0"
+        },
+        "expectedError": "UNSUPPORTED_PROTOCOL"
+      }
+    ]
+  }
+}

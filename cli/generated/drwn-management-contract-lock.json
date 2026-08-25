@@ -1,0 +1,13 @@
+{
+  "schema": "drwn.management-contract-lock",
+  "schemaVersion": 1,
+  "protocol": "deployed-worker.v1",
+  "servicesRepository": "curation-labs/darwinian-services",
+  "sourceCommit": "97752b0511c1812c2440f794d6d25a21d8371c7e",
+  "sha256": "bbd527bf9818edfeb7f7ffc2e012bd61dc7368e0cfb62b15eea4577e68432da8",
+  "routeCount": 12,
+  "positiveVectorCount": 12,
+  "negativeVectorCount": 29,
+  "schemaCount": 35,
+  "errorCodeCount": 10
+}
