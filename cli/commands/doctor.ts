@@ -5,6 +5,8 @@ import { Option } from "clipanion";
 import { buildDoctorReportWithProject, buildProjectStatusV1 } from "../core/diagnostics";
 import { DrwnError } from "../core/errors";
 import { renderDoctorReport, renderJson } from "../core/output";
+import { resolveProjectRootFromConfigPath } from "../core/project";
+import { listProjectWorkerLaunchContexts } from "../core/worker-launch-context/diagnostics";
 import { BaseCommand } from "./base";
 
 export class DoctorCommand extends BaseCommand {
@@ -59,6 +61,14 @@ export class DoctorCommand extends BaseCommand {
       homeDir: this.context.homeDir,
       projectConfigPath: this.context.projectConfigPath,
     });
+    const launchContexts = this.context.projectConfigPath
+      ? await listProjectWorkerLaunchContexts({
+          projectRoot: resolveProjectRootFromConfigPath(this.context.projectConfigPath),
+          repoRoot: this.context.repoRoot,
+          agentsDir: this.context.agentsDir,
+          homeDir: this.context.homeDir,
+        })
+      : null;
     const unhealthy =
       report.ambientMcpCollisions.some(
         (collision) => collision.disposition === "fatal",
@@ -72,10 +82,10 @@ export class DoctorCommand extends BaseCommand {
         projectStatus?.orgWorkerMaterialization?.issues.some(
           (issue) => issue.severity === "error",
         ),
-      );
+      ) || Boolean(launchContexts && (launchContexts.drifted > 0 || launchContexts.corrupt > 0 || launchContexts.foreign > 0));
 
     if (this.json) {
-      this.context.stdout.write(renderJson({ ...report, ...(projectStatus ?? {}) }));
+      this.context.stdout.write(renderJson({ ...report, ...(projectStatus ?? {}), ...(launchContexts ? { launchContexts } : {}) }));
       return unhealthy ? 1 : 0;
     }
 
@@ -102,6 +112,9 @@ export class DoctorCommand extends BaseCommand {
       for (const issue of deprecations) {
         output += `  - ${issue.code} (${issue.severity}): ${issue.message}\n`;
       }
+    }
+    if (launchContexts) {
+      output += `\nWorker launch contexts: ${launchContexts.count} (${launchContexts.current} current, ${launchContexts.obsolete} obsolete, ${launchContexts.drifted} drifted, ${launchContexts.corrupt} corrupt, ${launchContexts.foreign} foreign)\n`;
     }
     this.context.stdout.write(output);
     return unhealthy ? 1 : 0;

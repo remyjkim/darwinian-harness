@@ -9,6 +9,7 @@ const DETAILS = [
   "",
   "Available commands:",
   "  drwn worker deploy <cardRef> --name <slug>",
+  "  drwn worker launch-context prepare <installed-root> --target claude|codex",
   "  drwn worker list",
   "  drwn worker status <slug>",
   "  drwn worker deployments <slug>",
@@ -27,6 +28,7 @@ export class WorkerCommand extends BaseCommand {
     description: "Deploy and operate one selected project Worker.",
     details: DETAILS,
     examples: [
+      ["Preview a per-agent context", "drwn worker launch-context prepare @team/reviewer --target codex --dry-run"],
       ["List deployed workers", "drwn worker list"],
       ["Check a worker deployment", "drwn worker status harari"],
     ],
