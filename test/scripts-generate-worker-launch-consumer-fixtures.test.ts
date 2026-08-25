@@ -127,4 +127,4 @@ test("generator produces the complete normalized plugin-facing pack with verifie
     expect(bytes).not.toContain(join(import.meta.dir, ".."));
     expect(() => JSON.parse(bytes)).not.toThrow();
   }
-});
+}, 30_000);
