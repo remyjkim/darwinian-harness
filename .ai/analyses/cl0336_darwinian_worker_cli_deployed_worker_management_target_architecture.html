@@ -1,0 +1,512 @@
+<!doctype html>
+<!-- ABOUTME: Worker-owned I336 target architecture for drwn 1.4.2 Deployed Worker management and the coordinated Mind-era hard cut. -->
+<!-- ABOUTME: Freezes client behavior, local state, package qualification, and release boundaries while consuming Services-owned authorization and deployment contracts. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Target architecture for Darwinian Worker CLI 1.4.2: existing DAH authentication, organization-aware Deployed Worker management, strict local state, ACP retirement, provider-neutral Worker Mind placeholder, and candidate-to-latest release coordination.">
+  <title>CL0336 · Darwinian Worker CLI 1.4.2 · Deployed Worker Management Target Architecture</title>
+  <link rel="stylesheet" href="assets/report-system.css">
+  <script type="module" src="assets/report-system.js" defer></script>
+  <style>
+    :root {
+      --worker-blue: #315d8a;
+      --worker-blue-soft: #e4edf5;
+      --control-amber: #9a6c16;
+      --runtime-green: #2f7d55;
+      --state-purple: #654d9b;
+      --removed-red: #b23a36;
+    }
+    .architecture-banner {
+      display: grid;
+      grid-template-columns: minmax(0, 1.8fr) repeat(3, minmax(150px, .55fr));
+      gap: 0;
+      border: 1px solid var(--hair-strong);
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      margin: 24px 0 0;
+    }
+    .architecture-banner > div { padding: 18px 20px; border-left: 1px solid var(--hair); }
+    .architecture-banner > div:first-child { border-left: 0; }
+    .architecture-banner .label { display: block; color: var(--muted-text); font: 700 10px/1.3 "JetBrains Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+    .architecture-banner .value { display: block; margin-top: 8px; font: 700 13px/1.45 "JetBrains Mono", monospace; }
+    .architecture-banner .summary { color: var(--ink-2); font-size: 16px; }
+    .architecture-banner .summary strong { color: var(--ink); }
+    .arch-flow {
+      margin: 18px 0;
+      border: 1px solid var(--hair-strong);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #f8f4ec;
+      box-shadow: var(--shadow);
+    }
+    .arch-flow svg { display: block; width: 100%; min-width: 1050px; height: auto; }
+    .arch-flow figcaption { padding: 12px 16px; border-top: 1px solid var(--hair); color: var(--muted-text); font: 600 11px/1.5 "JetBrains Mono", monospace; }
+    .flow-scroll { overflow-x: auto; }
+    .legend-row { display: flex; flex-wrap: wrap; gap: 14px; padding: 11px 16px; border-top: 1px solid var(--hair); }
+    .legend-row span { display: inline-flex; align-items: center; gap: 7px; color: var(--muted-text); font: 600 10px "JetBrains Mono", monospace; }
+    .legend-row i { width: 22px; border-top: 3px solid; }
+    .legend-row .control { border-color: var(--control-amber); }
+    .legend-row .runtime { border-color: var(--runtime-green); }
+    .legend-row .state { border-color: var(--state-purple); }
+    .legend-row .removed { border-color: var(--removed-red); }
+    .contract-code {
+      background: #181b20;
+      color: #edf2f7;
+      border-radius: 10px;
+      padding: 15px 17px;
+      overflow-x: auto;
+      font: 12px/1.65 "JetBrains Mono", monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .decision-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .decision-card { border: 1px solid var(--hair); border-radius: 12px; background: var(--card); padding: 15px 17px; }
+    .decision-card .id { color: var(--primary); font: 800 10px "JetBrains Mono", monospace; letter-spacing: .08em; }
+    .decision-card h3 { margin: 7px 0; }
+    .decision-card p { margin: 0; color: var(--ink-2); }
+    .state-layout { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .state-layout article { border: 1px solid var(--hair); border-radius: 12px; background: var(--card); padding: 15px; }
+    .state-layout code { overflow-wrap: anywhere; }
+    .status-chip { display: inline-block; border: 1px solid var(--hair-strong); border-radius: 999px; padding: 2px 8px; font: 700 9px "JetBrains Mono", monospace; }
+    .status-chip.keep { color: var(--runtime-green); }
+    .status-chip.change { color: var(--worker-blue); }
+    .status-chip.remove { color: var(--removed-red); }
+    .status-chip.external { color: var(--state-purple); }
+    .release-line { display: grid; grid-template-columns: repeat(7, minmax(130px, 1fr)); gap: 8px; min-width: 1050px; padding: 16px; }
+    .release-step { position: relative; border: 1px solid var(--hair); border-radius: 10px; background: var(--card); padding: 12px; }
+    .release-step:not(:last-child)::after { content: "→"; position: absolute; right: -16px; top: 43%; z-index: 2; color: var(--primary); font: 900 18px "Inter", sans-serif; }
+    .release-step b { display: block; font-family: "Manrope", sans-serif; font-size: 12px; }
+    .release-step span { display: block; margin-top: 5px; color: var(--muted-text); font-size: 12px; }
+    .source-code { font-size: 11px; overflow-wrap: anywhere; }
+    @media (max-width: 920px) {
+      .architecture-banner { grid-template-columns: 1fr 1fr; }
+      .architecture-banner > div:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--hair); }
+      .decision-grid, .state-layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .architecture-banner { grid-template-columns: 1fr; }
+      .architecture-banner > div, .architecture-banner > div:first-child { grid-column: auto; border-left: 0; border-bottom: 1px solid var(--hair); }
+    }
+    @media print {
+      .arch-flow svg { min-width: 0; }
+      .report-toc, .site-nav { display: none !important; }
+      .report-grid { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to report content</a>
+  <nav class="site-nav" aria-label="Architecture navigation"><div class="site-nav__inner">
+    <a class="report-brand" href="#content"><span class="report-brand__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>CL0336 / Worker CLI</span></a>
+    <button class="site-nav__toggle" type="button" aria-expanded="false" aria-controls="site-nav-links">Menu</button>
+    <div class="site-nav__links" id="site-nav-links"><a href="#decision">Decision</a><a href="#target">Target</a><a href="#commands">Commands</a><a href="#release">Release</a><a href="#handoff">Handoff</a></div>
+  </div></nav>
+
+  <main class="report-shell" id="content">
+    <header class="report-mast" data-module="report-masthead" data-report-intent="proposal">
+      <p class="kicker">Target Architecture · Worker-owned I336 sibling · v1.4.2</p>
+      <h1>Darwinian Worker CLI<br>Deployed Worker Management</h1>
+      <p class="report-mast__lede">Preserve the existing DAH device-flow and credential V3 authority, add a strict organization-aware management client over the Services-owned delegation seam, retire ACP and every Foundry Mind/slug cloud contract, keep Worker Mind as a provider-neutral placeholder, and ship the exact 1.4.2 bytes through a candidate-qualified hard cut.</p>
+      <div class="report-meta" role="group" aria-label="Report metadata">
+        <span class="pill" data-report-status>Lifecycle: G1 candidate</span>
+        <span class="pill">Issue authority: I336 sibling</span>
+        <span class="pill evidence">Evidence cut: 25 Aug 2026</span>
+        <span class="pill" data-report-updated>Updated: 25 Aug 2026</span>
+      </div>
+    </header>
+
+    <div class="architecture-banner" aria-label="Architecture summary">
+      <div class="summary"><span class="label">Decision in one sentence</span><span class="value"><strong>One existing auth system, one new private management client layer, zero client-held management credentials.</strong></span></div>
+      <div><span class="label">Baseline</span><span class="value">v1.4 candidate<br><code>1adf7aef…</code></span></div>
+      <div><span class="label">Target</span><span class="value"><code>darwinian@1.4.2</code><br><code>deployed-worker.v1</code></span></div>
+      <div><span class="label">Distribution</span><span class="value">npm · raw TypeScript<br>Bun ≥ 1.2</span></div>
+    </div>
+
+    <section class="report-section" id="reader-action" data-reader-action data-module="reader-action" aria-labelledby="reader-action-title">
+      <div class="reader-action-block"><div><p class="tag">Reader action · GATE 1</p><h2 id="reader-action-title">Approve the Worker-side client, state, removal, qualification, and release boundaries</h2><p>Approval makes this document the Worker implementation authority for I336. It does not approve server implementation, a live database migration, package publication, npm dist-tag mutation, production maintenance, or issue-state mutation. Those remain owned by I321/I336 and their explicit operational gates.</p></div><dl><div><dt>Owner</dt><dd>Darwinian Worker team</dd></div><div><dt>Consumes</dt><dd>I330 · I321 · I336 Services</dd></div></dl></div>
+    </section>
+
+    <div class="report-grid"><article data-numbered-content>
+      <section class="report-section" id="orientation" data-section-number="00" aria-labelledby="orientation-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">00</span><h2 id="orientation-title">Orientation</h2><p>The authentication system is already correct; the missing product is an authorized Deployed Worker management client.</p></header>
+        <div class="grid two">
+          <article class="card"><p class="tag">Situation</p><h3>drwn already authenticates humans through DAH</h3><p>The published CLI owns device flow, PKCE, services-audience access and refresh tokens, credential V3, keychain custody, refresh/revoke/logout and headless <code>DRWN_TOKEN</code>. Those mechanisms remain the sole client authentication authority.</p></article>
+          <article class="card"><p class="tag">Complication</p><h3>Cloud commands still depend on a removed authorization model</h3><p>List, status, deploy, rollback, secrets, chat and related commands address <code>/api/minds</code> by slug. I330/I321 replace deployer snapshots with live DAH Worker authority; a services bearer alone is intentionally insufficient.</p></article>
+          <article class="card"><p class="tag">Question</p><h3>How can one CLI survive the hard cut without receiving confidential authority?</h3><p>The client must gain organization context, stable Deployed Worker selectors, strict wire contracts and idempotent recovery while preserving its existing credential family and never seeing a <code>dah-management</code> token.</p></article>
+          <article class="card primary"><p class="tag">Answer</p><h3>Extend auth readiness; add a private management kernel</h3><p>The existing services bearer carries explicit delegated-management consent. A new internal route-keyed client sends it to the Services broker, which privately obtains request-local management authority and returns only sanitized typed results.</p></article>
+        </div>
+        <div class="callout primary" data-module="callout"><p class="tag">Primary invariant</p><h3>The Worker CLI never owns management authority</h3><p>It stores only the existing public-client credential family. Organization selection and project binding are non-secret hints. Every Worker-bound decision is performed by current DAH authority through Services-owned server contracts.</p></div>
+      </section>
+
+      <section class="report-section" id="authority" data-section-number="01" aria-labelledby="authority-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">01</span><h2 id="authority-title">Authority and reading order</h2><p>This sibling is normative for Worker client behavior and deliberately defers server semantics.</p></header>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Concern</th><th>Sole authority</th><th>This document owns</th><th>Forbidden duplication</th></tr></thead><tbody>
+          <tr><td>Local Card, Blueprint, Worker root and projection</td><td>Worker Analyses 116/117 and Project Worker V1</td><td>Reference only</td><td>Redefining local composition for cloud convenience</td></tr>
+          <tr><td>CLI executable, commands, context, errors and package</td><td>Darwinian Worker</td><td>Complete target contract</td><td>Services-local CLI or public management SDK</td></tr>
+          <tr><td>Human credential</td><td>Existing <code>cli/core/auth</code> + DAH public client</td><td>Delegation-readiness extension only</td><td>Second token store, browser cookie jar or client secret</td></tr>
+          <tr><td>Organization, role, Worker lifecycle and revision</td><td>I321 Auth Hub</td><td>Consume typed receipts</td><td>Local role cache or D1 ownership inference</td></tr>
+          <tr><td>OBO management bearer</td><td>Services Web + Auth Hub private plane</td><td>Non-disclosure invariant</td><td>Client type, parser, state, fixture or log</td></tr>
+          <tr><td>Deployed Worker and deployment attempt</td><td>Foundry deploy-api</td><td>Selectors and display</td><td>Slug mutation, ID reinterpretation or hidden first deploy</td></tr>
+          <tr><td>Custody and signing</td><td>I325</td><td>No surface</td><td><code>keyRef</code>, admin, signer or private key exposure</td></tr>
+          <tr><td>Maintenance hard cut and reopen</td><td>I336 deployment control plane</td><td>Candidate/release participant</td><td>Client compatibility fallback</td></tr>
+        </tbody></table></div>
+        <div class="callout evidence" data-module="callout"><p class="tag">Precedence</p><p>I330 defines the product map and distinct IDs; I321 defines organization and live Worker authority; I336 Services defines the broker/wire/hard-cut seam; this document defines how <code>darwinian@1.4.2</code> consumes those contracts.</p></div>
+      </section>
+
+      <section class="report-section" id="decision" data-section-number="02" aria-labelledby="decision-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">02</span><h2 id="decision-title">Frozen Worker-side decisions</h2><p>These decisions are the implementation boundary for the 1.4.2 line.</p></header>
+        <div class="decision-grid">
+          <article class="decision-card"><span class="id">DWCLI-01</span><h3>Existing auth remains sole authority</h3><p>Device flow, refresh/revoke, credential V3 and keychain envelope are extended for consent readiness, not replaced.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-02</span><h3>Management is one private internal kernel</h3><p>All cloud commands consume route keys, strict schemas, shared selectors and one retry/error implementation.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-03</span><h3>Target is exactly 1.4.2</h3><p>Package semver is independent of the <code>deployed-worker.v1</code> wire protocol.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-04</span><h3>v1.4 launch contexts survive</h3><p>The accepted successor of <code>1adf7aef…</code> is the implementation base; branch names are not release authority.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-05</span><h3>v1.3 additions remain skipped</h3><p>Worker routines and the runtime-admission producer/adapter do not return in 1.4.2.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-06</span><h3>ACP is removed</h3><p>Commands, SDK dependency, session state, tests, docs and release gates are deleted with no local shim.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-07</span><h3>Worker Mind is a provider-neutral placeholder</h3><p>Only <code>drwn worker mind</code> remains; it performs no I/O and refuses with <code>MIND_BACKEND_UNSELECTED</code>.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-08</span><h3>No Foundry Mind compatibility</h3><p>No <code>/api/minds</code>, <code>mindId</code>, slug selector, old route alias or first-deploy identity creation survives.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-09</span><h3>Three OSes are blocking</h3><p>Linux Secret Service, macOS Keychain and Windows DPAPI must pass real credential and staging-management qualification.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-10</span><h3>Candidate then protected latest</h3><p>The exact 1.4.2 tar qualifies under <code>i336-candidate</code> before a separately approved reversible dist-tag transition.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-11</span><h3>JSON is Worker-owned and versioned</h3><p>Raw Services bodies are validated inputs; human and JSON output derive from one <code>drwn.command-result</code> model.</p></article>
+          <article class="decision-card"><span class="id">DWCLI-12</span><h3>Management remains private API</h3><p>No new root package export is added. <code>drwn-command-bridge</code> and extensions remain separate, optional authorities.</p></article>
+        </div>
+      </section>
+
+      <section class="report-section" id="baseline" data-section-number="03" aria-labelledby="baseline-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">03</span><h2 id="baseline-title">Version and feature baseline</h2><p>1.4.2 builds on the coworker v1.4 candidate, not published 1.3.0.</p></header>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Surface</th><th>1.3.0</th><th>v1.4 candidate</th><th>1.4.2 target</th></tr></thead><tbody>
+          <tr><td>Runtime-admission producer/adapter</td><td><span class="status-chip change">introduced</span></td><td><span class="status-chip remove">removed</span></td><td><span class="status-chip remove">absent</span></td></tr>
+          <tr><td>Worker routines</td><td><span class="status-chip change">introduced</span></td><td><span class="status-chip remove">removed</span></td><td><span class="status-chip remove">absent</span></td></tr>
+          <tr><td>Per-agent Worker launch contexts</td><td>absent</td><td><span class="status-chip keep">implemented</span></td><td><span class="status-chip keep">preserved</span></td></tr>
+          <tr><td>ACP</td><td>present</td><td>present</td><td><span class="status-chip remove">removed</span></td></tr>
+          <tr><td>BeginningDB Worker Mind</td><td>active</td><td>active</td><td><span class="status-chip change">placeholder only</span></td></tr>
+          <tr><td>Mind/slug cloud API</td><td>active</td><td>active</td><td><span class="status-chip remove">hard cut</span></td></tr>
+          <tr><td>Organization-aware management</td><td>absent</td><td>absent</td><td><span class="status-chip change">new</span></td></tr>
+          <tr><td>Release identity</td><td>hard-coded 1.3.0</td><td>hard-coded 1.4.0</td><td><span class="status-chip change">reusable exact-version train</span></td></tr>
+        </tbody></table></div>
+        <div class="callout alternative" data-module="callout"><p class="tag">Evidence honesty</p><p><code>codex/worker-launch-context-v14@1adf7aef…</code> is a clean coworker branch and the current architecture baseline, not a published or merged release claim. G2 and G3 must replace the branch reference with the accepted immutable head.</p></div>
+      </section>
+
+      <section class="report-section" id="current" data-section-number="04" aria-labelledby="current-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">04</span><h2 id="current-title">Current contradiction</h2><p>Strong public-client authentication fronts a cloud surface whose identity and authorization model is being deleted.</p></header>
+        <figure class="arch-flow"><div class="flow-scroll"><svg viewBox="0 0 1320 430" role="img" aria-label="Current Worker CLI auth and legacy Mind route architecture">
+          <defs><marker id="arr-current" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2f7d55"/></marker></defs>
+          <style>.bx{fill:#fbf8f1;stroke:#c8bca7;stroke-width:1.4}.bad{fill:#f5e4df;stroke:#b23a36;stroke-width:1.6}.ttl{fill:#1c1813;font:700 13px Inter,sans-serif}.txt{fill:#5f574a;font:11px JetBrains Mono,monospace}.ln{fill:none;stroke:#2f7d55;stroke-width:2;marker-end:url(#arr-current)}.dash{fill:none;stroke:#b23a36;stroke-width:2;stroke-dasharray:7 6;marker-end:url(#arr-current)}</style>
+          <rect class="bx" x="35" y="95" width="250" height="205" rx="12"/><text class="ttl" x="55" y="125">darwinian@1.3.0 / drwn</text><text class="txt" x="55" y="151">DAH device + PKCE</text><text class="txt" x="55" y="171">credential V3 / OS keychain</text><text class="txt" x="55" y="191">services bearer</text><text class="txt" x="55" y="221">worker commands select slug</text><text class="txt" x="55" y="241">ACP persists slug sessions</text><text class="txt" x="55" y="261">Mind binding cache</text>
+          <rect class="bx" x="370" y="60" width="240" height="135" rx="12"/><text class="ttl" x="390" y="90">Auth Hub public OAuth</text><text class="txt" x="390" y="116">azp = drwn-cli</text><text class="txt" x="390" y="136">aud = services API</text><text class="txt" x="390" y="156">scope lacks delegation</text>
+          <rect class="bad" x="370" y="245" width="240" height="135" rx="12"/><text class="ttl" x="390" y="275">Legacy cloud contract</text><text class="txt" x="390" y="301">/api/minds + slug</text><text class="txt" x="390" y="321">/api/deployments first</text><text class="txt" x="390" y="341">mindId + D1 deployer</text>
+          <rect class="bx" x="705" y="95" width="255" height="205" rx="12"/><text class="ttl" x="725" y="125">Deploy API</text><text class="txt" x="725" y="151">services bearer identity</text><text class="txt" x="725" y="171">Mind-era owner/slug reads</text><text class="txt" x="725" y="201">creates deployment + Mind</text><text class="txt" x="725" y="221">later materializes worker</text><text class="txt" x="725" y="251">management bearer absent</text>
+          <rect class="bad" x="1050" y="95" width="235" height="205" rx="12"/><text class="ttl" x="1070" y="125">I330/I321 target</text><text class="txt" x="1070" y="151">DAH Worker Principal</text><text class="txt" x="1070" y="171">Deployed Worker aggregate</text><text class="txt" x="1070" y="191">immutable attempts</text><text class="txt" x="1070" y="221">live role/capability</text><text class="txt" x="1070" y="241">no Mind aggregate</text><text class="txt" x="1070" y="261">no slug mutation</text>
+          <path class="ln" d="M285 145H370"/><path class="dash" d="M285 250H370"/><path class="dash" d="M610 312H705"/><path class="dash" d="M960 198H1050"/>
+          <text class="txt" x="35" y="400">The credential boundary is reusable. The route, ID, local-context and authorization boundaries are not.</text>
+        </svg></div><div class="legend-row"><span><i class="runtime"></i>existing reusable flow</span><span><i class="removed"></i>contract requiring hard cut</span></div><figcaption>Current state: a strong DAH credential reaches legacy routes that cannot satisfy live Worker management after the I330/I321 cut.</figcaption></figure>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Observed current behavior</th><th>Why it cannot survive</th></tr></thead><tbody>
+          <tr><td><code>worker list/status/deployments</code> read <code>/api/minds</code> and select by slug</td><td>Slug is display-only; Deployed Worker ID is the mutation and detail key.</td></tr>
+          <tr><td>First deploy creates hidden identity and captures <code>mindId</code></td><td>Registration must create/attach identity before any immutable deployment attempt.</td></tr>
+          <tr><td>Generic HTTP helper casts raw bodies to caller types</td><td>The hard cut requires strict response/error unions and credential-field rejection.</td></tr>
+          <tr><td>Independent endpoint environment variables may drift</td><td>Issuer, resource, API and web origins must form one reviewed profile.</td></tr>
+          <tr><td>ACP and Mind binding files persist slug context</td><td>ACP is removed; semantic Mind is provider-unselected; no slug context survives.</td></tr>
+          <tr><td>Release files repeat one exact version literal</td><td>1.4.2 needs exactness without another one-release-only implementation.</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <section class="report-section" id="target" data-section-number="05" aria-labelledby="target-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">05</span><h2 id="target-title">Target component and trust-boundary map</h2><p>The client extends token readiness and delegates every management decision to current server authority.</p></header>
+        <figure class="arch-flow"><div class="flow-scroll"><svg viewBox="0 0 1500 650" role="img" aria-label="Target Worker CLI management architecture">
+          <defs><marker id="arr-control" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#9a6c16"/></marker><marker id="arr-runtime" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2f7d55"/></marker><marker id="arr-state" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#654d9b"/></marker></defs>
+          <style>.bx2{fill:#fbf8f1;stroke:#c8bca7;stroke-width:1.4}.blue{fill:#e4edf5;stroke:#315d8a;stroke-width:1.6}.purple{fill:#ebe5f4;stroke:#654d9b;stroke-width:1.6}.ttl2{fill:#1c1813;font:700 12px Inter,sans-serif}.txt2{fill:#5f574a;font:10px JetBrains Mono,monospace}.control2{fill:none;stroke:#9a6c16;stroke-width:2;marker-end:url(#arr-control)}.runtime2{fill:none;stroke:#2f7d55;stroke-width:2;marker-end:url(#arr-runtime)}.state2{fill:none;stroke:#654d9b;stroke-width:2;marker-end:url(#arr-state)}.dash2{stroke-dasharray:7 5}</style>
+          <rect class="blue" x="35" y="55" width="315" height="300" rx="12"/><text class="ttl2" x="55" y="85">darwinian@1.4.2 · one drwn</text><text class="txt2" x="55" y="111">existing cli/core/auth</text><text class="txt2" x="55" y="131">device + refresh + revoke + keychain</text><rect class="bx2" x="55" y="155" width="275" height="75" rx="9"/><text class="ttl2" x="70" y="180">Delegation readiness</text><text class="txt2" x="70" y="201">issuer · audience · azp · scope · sub</text><rect class="bx2" x="55" y="250" width="275" height="85" rx="9"/><text class="ttl2" x="70" y="275">Private management kernel</text><text class="txt2" x="70" y="296">route key · selector · operation</text><text class="txt2" x="70" y="316">strict response · public result</text>
+          <rect class="purple" x="35" y="410" width="315" height="175" rx="12"/><text class="ttl2" x="55" y="440">Non-secret local state</text><text class="txt2" x="55" y="466">machine organization context</text><text class="txt2" x="55" y="486">project Deployed Worker binding</text><text class="txt2" x="55" y="506">client operation journal</text><text class="txt2" x="55" y="536">never role / token / keyRef / secret</text>
+          <rect class="bx2" x="445" y="55" width="250" height="160" rx="12"/><text class="ttl2" x="465" y="85">Auth Hub public OAuth</text><text class="txt2" x="465" y="111">client drwn-cli</text><text class="txt2" x="465" y="131">services access + refresh</text><text class="txt2" x="465" y="151">explicit management.delegate</text><text class="txt2" x="465" y="181">no management resource token</text>
+          <rect class="bx2" x="445" y="305" width="250" height="190" rx="12"/><text class="ttl2" x="465" y="335">API Entry</text><text class="txt2" x="465" y="361">api.darwinian.dev</text><text class="txt2" x="465" y="381">protocol + minimum version</text><text class="txt2" x="465" y="401">strip management header</text><text class="txt2" x="465" y="421">strict route family only</text><text class="txt2" x="465" y="451">old Minds → 410</text><text class="txt2" x="465" y="471">old protocol → 426</text>
+          <rect class="blue" x="795" y="225" width="275" height="260" rx="12"/><text class="ttl2" x="815" y="255">Services Web CLI broker</text><text class="txt2" x="815" y="281">bearer-only · no cookie fallback</text><text class="txt2" x="815" y="301">verify drwn-cli services token</text><text class="txt2" x="815" y="321">classify exact route key</text><rect class="bx2" x="815" y="345" width="235" height="110" rx="9"/><text class="ttl2" x="830" y="370">Private delegation</text><text class="txt2" x="830" y="391">fresh live consent</text><text class="txt2" x="830" y="411">same human sub · ≤60s</text><text class="txt2" x="830" y="431">authorization never returned</text>
+          <rect class="bx2" x="1170" y="55" width="285" height="185" rx="12"/><text class="ttl2" x="1190" y="85">I321 Auth Hub private plane</text><text class="txt2" x="1190" y="111">organizations + Worker Principal</text><text class="txt2" x="1190" y="131">live roles/revisions/capability</text><text class="txt2" x="1190" y="151">OBO management token</text><text class="txt2" x="1190" y="181">reverse binding authorization</text><text class="txt2" x="1190" y="201">I325 remains private</text>
+          <rect class="bx2" x="1170" y="315" width="285" height="220" rx="12"/><text class="ttl2" x="1190" y="345">Foundry deploy-api</text><text class="txt2" x="1190" y="371">stable deployedWorkerId</text><text class="txt2" x="1190" y="391">immutable deploymentId attempts</text><text class="txt2" x="1190" y="421">DAH-first list/detail/mutation</text><text class="txt2" x="1190" y="441">idempotent register/deploy</text><text class="txt2" x="1190" y="471">opaque management bearer pass-through</text><text class="txt2" x="1190" y="491">strict sanitized receipts</text>
+          <path class="control2" d="M350 130H445"/><path class="state2" d="M445 190H380V465H350"/><path class="runtime2" d="M350 292H405V400H445"/><path class="runtime2" d="M695 400H795"/><path class="control2" d="M1070 300H1120V145H1170"/><path class="control2 dash2" d="M1170 205H1120V395H1070"/><path class="runtime2" d="M1070 420H1170"/><path class="state2 dash2" d="M1310 535V595H385V500H350"/>
+        </svg></div><div class="legend-row"><span><i class="control"></i>authentication / authorization</span><span><i class="runtime"></i>management operation</span><span><i class="state"></i>sanitized state / receipt</span></div><figcaption>The only credential leaving the CLI is its existing services bearer. Confidential management authority exists only inside the server request path.</figcaption></figure>
+      </section>
+
+      <section class="report-section" id="components" data-section-number="06" aria-labelledby="components-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">06</span><h2 id="components-title">Worker components and local state</h2><p>One private kernel separates cloud management from command parsing and from settled local project authority.</p></header>
+        <div class="grid two">
+          <article class="card"><p class="tag">Existing authority · retained</p><h3><code>cli/core/auth/</code></h3><p>Device flow, PKCE, credential V3, resolve/refresh/revoke, auth receipts and scoped OS-keychain envelope. New code adds claim readiness; it does not add a token family.</p></article>
+          <article class="card primary"><p class="tag">New private component</p><h3><code>cli/core/management/</code></h3><p>Cloud profile, pinned route contracts, strict transport, selectors, context store, operation journal, error classifier and public command-result projection.</p></article>
+          <article class="card"><p class="tag">Thin commands</p><h3><code>cli/commands/org/</code> + <code>worker/</code></h3><p>Parse intent, call one typed management operation and render its result. Commands do not build URLs, refresh tokens, inspect raw bodies or infer IDs.</p></article>
+          <article class="card alternative"><p class="tag">Removed components</p><h3>ACP · routines · runtime admission · BGDB Mind</h3><p>No stubs except the provider-neutral <code>worker mind</code> parent. Removed code leaves no release member, dependency, state reader or documentation claim.</p></article>
+        </div>
+        <h3>Strict cloud profile</h3>
+        <pre class="contract-code">interface DrwnCloudProfileV1 {
+  schema: "drwn.cloud-profile";
+  schemaVersion: 1;
+  profileId: string;
+  apiOrigin: string;
+  webOrigin: string;
+  authHubOrigin: string;
+  issuer: string;
+  resource: string;
+  clientId: "drwn-cli";
+  requestedScopes: ["openid", "email", "offline_access", "dah:management.delegate"];
+}</pre>
+        <p>Production and staging are complete reviewed tuples. Controlled local tests may load one strict profile file. Independent endpoint overrides cannot create a mixed issuer/resource/API profile.</p>
+        <div class="state-layout">
+          <article><p class="tag">Machine context</p><h3><code>~/.agents/drwn/cloud-context.json</code></h3><p><code>drwn.cloud-context</code> V1, keyed by profile digest. Stores selected <code>organizationId</code> only.</p></article>
+          <article><p class="tag">Project target</p><h3><code>.agents/drwn/cloud.local.json</code></h3><p><code>drwn.project-cloud-context</code> V1. Gitignored, mode 0600. Stores profile, organization and <code>deployedWorkerId</code>.</p></article>
+          <article><p class="tag">Pending operation</p><h3><code>.agents/drwn/.cloud-operations/&lt;id&gt;.json</code></h3><p><code>drwn.client-operation</code> V1. Request fingerprint and non-secret progress; removed after verified receipt + context commit.</p></article>
+        </div>
+        <div class="callout" data-module="callout"><p class="tag">Isolation rule</p><p>Cloud state never enters committed project Worker selection, machine Worker intent, generated projections, credentials or future Mind provider configuration.</p></div>
+      </section>
+
+      <section class="report-section" id="auth" data-section-number="07" aria-labelledby="auth-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">07</span><h2 id="auth-title">Existing authentication, extended consent</h2><p>The client change is a consent and claim-readiness check—not a new authentication system.</p></header>
+        <div class="sequence" data-module="sequence" role="group" aria-label="DAH authentication and management request lifecycle">
+          <div class="sequence-step"><span class="sequence-step__n">1</span><strong class="sequence-step__actor">Login</strong><div class="sequence-step__body"><h3>One visible device ceremony</h3><p><code>drwn login</code> requests services access plus <code>dah:management.delegate</code>. The Auth Hub page displays elevated consent and records a live revocable grant.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">2</span><strong class="sequence-step__actor">Persist</strong><div class="sequence-step__body"><h3>Credential V3 stays exact</h3><p>The same access/refresh payload is encrypted through envelope V2. Scope remains a signed token claim rather than a new stored field.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">3</span><strong class="sequence-step__actor">Preflight</strong><div class="sequence-step__body"><h3>Delegation readiness</h3><p>Before management, verify exact issuer, audience, <code>azp=drwn-cli</code>, human subject, expiry and required scope family.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">4</span><strong class="sequence-step__actor">Operate</strong><div class="sequence-step__body"><h3>Send only services bearer</h3><p>The server privately obtains fresh management authority. The CLI has no management-token parser, field, log or recovery path.</p></div></div>
+        </div>
+        <div class="grid two">
+          <article class="card"><h3>Old credential</h3><p>Readable for <code>whoami</code> and logout. A management command refuses before refresh and requires a fresh interactive login; refresh cannot silently acquire consent.</p></article>
+          <article class="card"><h3>Headless credential</h3><p><code>DRWN_TOKEN</code> must carry the same issuer/audience/client/scope claims. It is never persisted or refreshed.</p></article>
+          <article class="card"><h3>Stored credential 401</h3><p>Refresh once, preserve the exact request bytes and request ID, validate retained scope, persist the next generation, then replay.</p></article>
+          <article class="card"><h3>Credential backend</h3><p>Linux Secret Service, macOS Keychain and Windows DPAPI are all blocking support targets. A packaged test-file backend is removed.</p></article>
+        </div>
+      </section>
+
+      <section class="report-section" id="commands" data-section-number="08" aria-labelledby="commands-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">08</span><h2 id="commands-title">Command and selector contract</h2><p>Local Worker authoring remains intact; remote management becomes explicit, ID-based and route-keyed.</p></header>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Command</th><th>Target semantics</th><th>Selector / receipt</th></tr></thead><tbody>
+          <tr><td><code>drwn org list</code></td><td>DAH-authorized organization discovery, bounded max 100</td><td>opaque cursor; organization receipt</td></tr>
+          <tr><td><code>drwn org use &lt;organizationId&gt;</code></td><td>Verify visibility, then store UX context</td><td>never authority</td></tr>
+          <tr><td><code>drwn worker register --organization … --name … --environment …</code></td><td>Create/resolve DAH Worker, intent and attached Foundry aggregate</td><td>stable client operation ID; distinct IDs</td></tr>
+          <tr><td><code>drwn worker use &lt;deployedWorkerId&gt;</code></td><td>Verify detail/readback, then store project target</td><td>explicit ID only</td></tr>
+          <tr><td><code>drwn worker list|status</code></td><td>DAH-first authorized collection/detail</td><td>organization + deployedWorkerId</td></tr>
+          <tr><td><code>drwn worker deploy &lt;cardRef&gt;</code></td><td>Create immutable attempt under selected aggregate</td><td>deployedWorkerId → deploymentId</td></tr>
+          <tr><td><code>drwn worker deployments</code></td><td>List attempts owned by target</td><td>bounded cursor</td></tr>
+          <tr><td><code>drwn worker rollback --to &lt;deploymentId&gt;</code></td><td>Switch to an explicit owned attempt</td><td>no previous/latest inference</td></tr>
+          <tr><td><code>drwn worker secret set &lt;name&gt;</code></td><td>Request-only stdin secret mutation</td><td>metadata/revision receipt only</td></tr>
+          <tr><td><code>drwn worker chat --message …</code></td><td>Start an authorized run under target</td><td>run receipt; optional wait</td></tr>
+          <tr><td><code>drwn worker run status &lt;runId&gt;</code></td><td>Worker-bound run readback</td><td>no unscoped existence leak</td></tr>
+          <tr><td><code>drwn worker retire --yes</code></td><td>Revisioned DAH lifecycle + Foundry shutdown</td><td>replaces delete</td></tr>
+          <tr><td><code>drwn worker mind</code></td><td>Provider-neutral placeholder</td><td><code>MIND_BACKEND_UNSELECTED</code>; no I/O</td></tr>
+        </tbody></table></div>
+        <h3>Selector precedence</h3>
+        <div class="grid three">
+          <article class="card primary"><p class="tag">1 · explicit</p><h3><code>--deployed-worker &lt;id&gt;</code></h3><p>Highest precedence. Strict ID grammar; server confirms current organization and capability.</p></article>
+          <article class="card"><p class="tag">2 · project</p><h3>Verified local binding</h3><p>Written only from successful <code>register</code> or <code>worker use</code> readback for the active profile.</p></article>
+          <article class="card alternative"><p class="tag">fail closed</p><h3>No implicit target</h3><p>Organization scopes discovery only. Never use slug, name, local root, newest, latest or a single visible row.</p></article>
+        </div>
+        <h3>Removed syntax</h3>
+        <pre class="contract-code">drwn acp …
+drwn worker routine …
+drwn worker delete …
+drwn worker mind provision|status|sync|diff|checkpoint|doctor|pool retire …</pre>
+        <p>Removed commands are ordinary unknown syntax and perform no action. Server 410/426 diagnostics exist for old published clients, not as local command shims.</p>
+      </section>
+
+      <section class="report-section" id="wire" data-section-number="09" aria-labelledby="wire-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">09</span><h2 id="wire-title">Management transport, result and error contracts</h2><p>Commands invoke route keys; the pinned Services artifact owns concrete paths and server schemas.</p></header>
+        <pre class="contract-code">interface DrwnManagementRequestV1 {
+  routeKey: DrwnManagementRouteKeyV1;    // never arbitrary URL
+  protocol: "deployed-worker.v1";       // X-Drwn-Protocol
+  clientVersion: "1.4.2";               // X-Drwn-Version
+  requestId: string;                     // stable UUIDv4
+  authorization: string;                 // services Bearer only
+  bodyBytes?: Uint8Array;                 // serialized exactly once
+}
+
+interface DrwnCommandResultV1&lt;Data&gt; {
+  schema: "drwn.command-result";
+  schemaVersion: 1;
+  command: DrwnManagementCommandV1;
+  outcome: "succeeded" | "refused" | "indeterminate";
+  requestId: string;
+  observedAt: string;
+  data: Data | null;
+  error: DrwnPublicErrorV1 | null;
+  warnings: DrwnWarningV1[];
+}
+
+interface DrwnPublicErrorV1 {
+  code: DrwnErrorCodeV1;
+  retryable: boolean;
+  retryAfterSeconds?: number;
+  requiredProtocol?: "deployed-worker.v1";
+  minimumDrwnVersion?: string;
+  documentation?: string;
+}</pre>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Condition</th><th>Client behavior</th><th>Forbidden behavior</th></tr></thead><tbody>
+          <tr><td>Stored bearer 401</td><td>Refresh once; identical bytes and request ID</td><td>new operation ID or body reserialization</td></tr>
+          <tr><td>Missing consent</td><td>fresh login guidance</td><td>refresh elevation or second login family</td></tr>
+          <tr><td>Typed retryable unavailable</td><td>bounded backoff with same ID</td><td>generic mutation retry</td></tr>
+          <tr><td>Timeout after possible effect</td><td><code>indeterminate</code>; retain journal</td><td>false failure/success or replacement operation</td></tr>
+          <tr><td>Wrong org / not found</td><td>non-enumerating refusal</td><td>candidate existence disclosure</td></tr>
+          <tr><td>410 removed Mind contract</td><td>upgrade guidance</td><td>translation or redirect</td></tr>
+          <tr><td>426 unsupported protocol</td><td>required protocol/minimum version</td><td>fallback</td></tr>
+          <tr><td>Unknown or secret-shaped response</td><td><code>SERVER_RESPONSE_INVALID</code></td><td>raw output or partial acceptance</td></tr>
+        </tbody></table></div>
+        <div class="callout critical" data-module="callout"><p class="tag">Non-disclosure boundary</p><p>The client rejects responses or headers containing access/refresh authorization, management bearer, cookies, private key material, I325 <code>keyRef</code>, provider credentials or hidden cross-organization identifiers.</p></div>
+      </section>
+
+      <section class="report-section" id="registration" data-section-number="10" aria-labelledby="registration-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">10</span><h2 id="registration-title">Registration and crash recovery</h2><p>One command composes external authorities without creating a client-side workflow authority.</p></header>
+        <div class="sequence" data-module="sequence" role="group" aria-label="Registration lifecycle">
+          <div class="sequence-step"><span class="sequence-step__n">1</span><strong class="sequence-step__actor">Persist intent</strong><div class="sequence-step__body"><h3>Operation ID before network</h3><p>Validate profile/org/name/environment; serialize canonical request; persist UUIDv4 + fingerprint under the project owner lock.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">2</span><strong class="sequence-step__actor">DAH</strong><div class="sequence-step__body"><h3>Create/resolve Worker + intent</h3><p>The stateless broker uses the same operation identity. Auth Hub remains organization and Worker writer.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">3</span><strong class="sequence-step__actor">Foundry</strong><div class="sequence-step__body"><h3>Create/resolve aggregate + attach</h3><p>Deploy-api writes D1, consumes the opaque intent through its confidential caller and persists complete binding projection.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">4</span><strong class="sequence-step__actor">Readback</strong><div class="sequence-step__body"><h3>Validate distinct IDs and revisions</h3><p>Receipt must carry organization, Worker, Deployed Worker and authoritative attachment facts—never Mind or credential fields.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">5</span><strong class="sequence-step__actor">Commit context</strong><div class="sequence-step__body"><h3>Binding only after proof</h3><p>Atomically write project target, then remove journal. Lost response/process restart resumes the same bytes and ID.</p></div></div>
+        </div>
+        <pre class="contract-code">type RegistrationReceiptV1 = {
+  schema: "cl.drwn.worker-registration.v1";
+  requestId: string;
+  organizationId: string;
+  workerId: string;
+  deployedWorkerId: string;
+  workerRevision: number;
+  bindingRevision: number;
+  observedAt: string;
+};</pre>
+        <p>Reuse of an operation ID with different bytes fails. The CLI never synthesizes a replacement Worker/Deployed Worker, infers an ID from name or stores server phase internals.</p>
+      </section>
+
+      <section class="report-section" id="failure" data-section-number="11" aria-labelledby="failure-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">11</span><h2 id="failure-title">Failure, recovery and security policy</h2><p>Uncertainty is retained as uncertainty; local hints never compensate for missing authority.</p></header>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Failure</th><th>Durable protection</th><th>Recovery</th></tr></thead><tbody>
+          <tr><td>Invalid or mixed profile</td><td>strict whole-tuple validation</td><td>select a reviewed profile before credential access</td></tr>
+          <tr><td>Credential lacks delegation scope</td><td>claim readiness before refresh/request</td><td>fresh interactive login</td></tr>
+          <tr><td>No OS keychain</td><td>no plaintext persistence</td><td>repair backend or use ephemeral <code>DRWN_TOKEN</code></td></tr>
+          <tr><td>Selected org no longer visible</td><td>server reauthorization</td><td>clear only org selection; explicit list/use</td></tr>
+          <tr><td>Project target retired/wrong org</td><td>binding non-authoritative</td><td>explicit list/use; no silent replacement</td></tr>
+          <tr><td>Delegation unavailable</td><td>no cached management token</td><td>typed bounded retry only</td></tr>
+          <tr><td>Registration response lost</td><td>operation journal + server idempotency</td><td>resume exact request ID/fingerprint</td></tr>
+          <tr><td>Malformed/secret response</td><td>strict union + secret scan</td><td>server remediation; no raw reflection</td></tr>
+          <tr><td>Candidate staging failure</td><td><code>latest</code> unchanged</td><td>fix and qualify exact new candidate</td></tr>
+          <tr><td>Cutover failure while frozen</td><td>old pair + snapshot + prior dist-tag receipt</td><td>restore all before reopen</td></tr>
+        </tbody></table></div>
+        <div class="grid two">
+          <article class="card"><h3>Allowed diagnostics</h3><p>Command/route key, request ID, profile ID, safe error code, retry count and duration.</p></article>
+          <article class="card alternative"><h3>Forbidden diagnostics</h3><p>Authorization, secret-bearing body, raw upstream response, consent row, OBO token, private/custody material or hidden identifiers.</p></article>
+        </div>
+      </section>
+
+      <section class="report-section" id="release" data-section-number="12" aria-labelledby="release-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">12</span><h2 id="release-title">Package qualification and release state machine</h2><p>Exact package bytes qualify before the server cut; publication and <code>latest</code> promotion are separate authorities.</p></header>
+        <div class="arch-flow"><div class="flow-scroll"><div class="release-line">
+          <div class="release-step"><b>Accepted source</b><span>clean exact v1.4 successor</span></div>
+          <div class="release-step"><b>Build identity</b><span>version 1.4.2 + commit</span></div>
+          <div class="release-step"><b>Pack once</b><span>one measured immutable tgz</span></div>
+          <div class="release-step"><b>Candidate publish</b><span><code>i336-candidate</code></span></div>
+          <div class="release-step"><b>Staging E2E</b><span>3 OS + 2 humans/orgs</span></div>
+          <div class="release-step"><b>Hard cut</b><span>exact Services manifest</span></div>
+          <div class="release-step"><b>Promote latest</b><span>protected reversible tag</span></div>
+        </div></div><figcaption>Package semver and wire protocol remain independent. Dist-tag movement changes routing, never immutable package bytes.</figcaption></div>
+        <div class="grid two">
+          <article class="card"><p class="tag">Artifact qualification</p><h3>Installability and static contract</h3><p>Clean prefix, version, safe help, command presence/absence, fixture loading and zero state mutation.</p></article>
+          <article class="card"><p class="tag">Operational qualification</p><h3>Live staging behavior</h3><p>Consent, organization, registration replay, deploy/redeploy, rollback, secret, run, demotion, revocation, retirement and negative controls.</p></article>
+        </div>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Platform</th><th>Package</th><th>Real credential backend</th><th>Staging management</th></tr></thead><tbody>
+          <tr><td>Linux</td><td>blocking install/help</td><td>blocking Secret Service</td><td>blocking</td></tr>
+          <tr><td>macOS</td><td>blocking install/help</td><td>blocking Keychain</td><td>blocking</td></tr>
+          <tr><td>Windows</td><td>blocking install/help</td><td>blocking DPAPI</td><td>blocking</td></tr>
+        </tbody></table></div>
+        <h3>Rollback boundary</h3>
+        <p>Before reopen, failure restores the exact old Services pair/database snapshot and the prior <code>latest</code> dist-tag while maintenance remains closed. The immutable 1.4.2 candidate remains evidence. After reopen, ordinary defects use reviewed patch roll-forward; old routes are not restored merely for client compatibility.</p>
+      </section>
+
+      <section class="report-section" id="verification" data-section-number="13" aria-labelledby="verification-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">13</span><h2 id="verification-title">TDD and success contract</h2><p>Source green, package green, staging green and cutover green are distinct evidence layers.</p></header>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Layer</th><th>Required proof</th><th>Blocking evidence</th></tr></thead><tbody>
+          <tr><td>Unit</td><td>profile, claim readiness, route transport, IDs, selector, contexts, journal, schemas, renderer, removals</td><td>red→green focused suites</td></tr>
+          <tr><td>Cross-repo contract</td><td>same artifact digest; every route key and vector; adversarial unknown/secret responses</td><td>both repositories’ conformance receipts</td></tr>
+          <tr><td>Filesystem/OS</td><td>atomicity, mode/ACL, locks, interruption, real keychains and isolation</td><td>three-platform required checks</td></tr>
+          <tr><td>Installed artifact</td><td>exact tar contents, version, safe help, removed syntax, no state mutation</td><td>candidate tar receipt</td></tr>
+          <tr><td>Staging E2E</td><td>two humans/orgs; register replay; deploy twice; secret/run/retire; demotion/revocation</td><td>exact environment + package ledger</td></tr>
+          <tr><td>Hard cut</td><td>new succeeds; old package/protocol/Mind fail before effects; no duplicate CLI</td><td>maintenance/reopen receipt</td></tr>
+        </tbody></table></div>
+        <div class="grid three">
+          <article class="card"><p class="tag">Positive</p><h3>One stable aggregate</h3><p>Register once, deploy twice, keep one Deployed Worker and observe two distinct deployment attempts under live DAH authority.</p></article>
+          <article class="card"><p class="tag">Negative</p><h3>No bypass or leakage</h3><p>Old scope, wrong org, slug, ID mismatch, caller management header, secret-shaped response and custody field all refuse.</p></article>
+          <article class="card"><p class="tag">Operational</p><h3>Exact pair or no reopen</h3><p>Candidate tar, Services manifest, snapshot/restore, negative old-contract receipts and npm transition all agree.</p></article>
+        </div>
+      </section>
+
+      <section class="report-section" id="migration" data-section-number="14" aria-labelledby="migration-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">14</span><h2 id="migration-title">Implementation and hard-cut sequence</h2><p>Build additively against staging; contract source and state only inside the coordinated maintenance release.</p></header>
+        <div class="sequence" data-module="sequence" role="group" aria-label="Implementation and cutover sequence">
+          <div class="sequence-step"><span class="sequence-step__n">1</span><strong class="sequence-step__actor">Freeze</strong><div class="sequence-step__body"><h3>Immutable external contract</h3><p>Services owns route/ID/schema vectors; Worker pins artifact digest and makes conformance red before implementation.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">2</span><strong class="sequence-step__actor">Foundation</strong><div class="sequence-step__body"><h3>Auth readiness + management kernel + state</h3><p>Profiles, strict transport, result/error, selector, context, operation journal and removed-surface gates.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">3</span><strong class="sequence-step__actor">Read paths</strong><div class="sequence-step__body"><h3>Organization and Worker discovery</h3><p>List/use/status proves profiles, consent, IDs, pagination and context before complex mutation.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">4</span><strong class="sequence-step__actor">Mutations</strong><div class="sequence-step__body"><h3>Register → deploy → secret → run → retire</h3><p>Each command reuses the same selector, journal, transport and typed result.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">5</span><strong class="sequence-step__actor">Remove</strong><div class="sequence-step__body"><h3>ACP, routines, runtime admission, BGDB, Mind/slug cloud</h3><p>Residue tests classify settled local vocabulary separately from retired cloud authority.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">6</span><strong class="sequence-step__actor">Qualify</strong><div class="sequence-step__body"><h3>Candidate package + staging</h3><p>Pack/publish exact 1.4.2 candidate; run three-OS and joint Services E2E.</p></div></div>
+          <div class="sequence-step"><span class="sequence-step__n">7</span><strong class="sequence-step__actor">Cut</strong><div class="sequence-step__body"><h3>Freeze, migrate, deploy, promote, reopen</h3><p>I336 owns maintenance and rollback; Worker supplies exact artifact and closed-set client proofs.</p></div></div>
+        </div>
+      </section>
+
+      <section class="report-section" id="handoff" data-section-number="15" aria-labelledby="handoff-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">15</span><h2 id="handoff-title">Cross-repository implementation handoff</h2><p>Each owner supplies one bounded authority and immutable exit evidence.</p></header>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>Owner</th><th>Delivers</th><th>Consumes</th><th>Exit evidence</th></tr></thead><tbody>
+          <tr><td>Darwinian Worker</td><td>auth readiness, management kernel, commands, contexts/journal, removals, package and release transition</td><td>Services contract artifact + staging endpoints</td><td>source CI, three OS, candidate tar, joint E2E</td></tr>
+          <tr><td>I321 Auth Hub</td><td>visible consent, immutable schemas, OBO and live organization/Worker authority</td><td>public services bearer</td><td>consent/revocation/demotion and secret-sentinel proof</td></tr>
+          <tr><td>Services Web/API Entry</td><td>bearer-only broker, protocol gate, header stripping and sanitized response</td><td>I321 bindings + deploy-api</td><td>binding topology and old/new route tests</td></tr>
+          <tr><td>Foundry deploy-api</td><td>native Deployed Worker operations, idempotent continuation, reverse binding authorization</td><td>I321 authority and intent</td><td>D1/PostgreSQL joined tests and distinct-ID receipts</td></tr>
+          <tr><td>I336 deployment</td><td>candidate pin, maintenance, snapshot/restore, exact pair, negative proof and reopen</td><td>Worker tar + Services artifacts</td><td>environment release manifest</td></tr>
+          <tr><td>I330/I325</td><td>product ID and custody boundaries</td><td>this sibling as client seam</td><td>no duplicate identity/token/custody manager</td></tr>
+        </tbody></table></div>
+        <div class="callout primary" data-module="callout"><p class="tag">Worker handoff stop</p><p>A green Worker package does not authorize Services deployment or npm promotion. A green Services deployment does not authorize package publication. I336 reopens only when both immutable identities and every positive/negative receipt converge.</p></div>
+      </section>
+
+      <section class="report-section" id="external" data-section-number="16" aria-labelledby="external-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">16</span><h2 id="external-title">External contract obligations</h2><p>These are not Worker design choices; they must be frozen before G2 where they affect client-visible bytes.</p></header>
+        <div class="grid two">
+          <article class="card"><h3>Services contract artifact</h3><p>Versioned language-neutral schemas, route key → method/template/capability, ID grammar, response/error vectors, secret negatives, manifest digest and source commit.</p></article>
+          <article class="card"><h3>Organization authority union</h3><p>Organization discovery cannot be forced into <code>WorkerCapabilityV1</code>; delegation classification must distinguish organization and Worker-bound authority.</p></article>
+          <article class="card"><h3>DAH reverse binding authorization</h3><p>Detail/mutation must authorize by <code>deployedWorkerId</code> and reveal <code>workerId</code> only on allow, avoiding D1-first existence lookup.</p></article>
+          <article class="card"><h3>Direct deploy-api ingress</h3><p>The legacy public origin must close or independently prove private broker provenance; caller-supplied management headers cannot bypass edge stripping.</p></article>
+          <article class="card"><h3>Strict run route family</h3><p>Start/status must stay Worker-bound and define polling/streaming bytes without placing ACP or raw server events in the CLI public contract.</p></article>
+          <article class="card"><h3>Hard-cut minimum version</h3><p>I336 config and 410/426 fixtures pin <code>1.4.2</code> from the exact release receipt; no package semver inference at runtime.</p></article>
+        </div>
+      </section>
+
+      <section class="report-section" id="evidence" data-section-number="17" aria-labelledby="evidence-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">17</span><h2 id="evidence-title">Evidence ledger</h2><p>Current facts, target inputs and future qualification are labeled separately.</p></header>
+        <div class="table-scroll" tabindex="0"><table class="evidence-table"><thead><tr><th>ID</th><th>Exact locator</th><th>Establishes</th></tr></thead><tbody>
+          <tr><td>E-WORKER-13</td><td class="source-code"><code>v1.3.0@cef3090c013134b578d87fd938a6741fd288d36a</code></td><td>Published current baseline, existing auth and Mind/slug cloud surface.</td></tr>
+          <tr><td>E-WORKER-14</td><td class="source-code"><code>codex/worker-launch-context-v14@1adf7aef1396024e8ac877e0fae86dd682647771</code></td><td>Clean coworker candidate: launch contexts, v1.3 additions removed, 1.4.0 release identity prepared.</td></tr>
+          <tr><td>E-WORKER-AUTH</td><td class="source-code"><code>cli/core/auth/*</code>, <code>cli/core/secret-store.ts</code></td><td>Existing device/refresh/revoke, strict V3, scoped envelope and three OS backends.</td></tr>
+          <tr><td>E-WORKER-CLOUD</td><td class="source-code"><code>cli/commands/worker/*</code>, <code>cli/core/worker-http.ts</code></td><td>Current route/slug/raw-response gaps requiring the management kernel.</td></tr>
+          <tr><td>E-WORKER-LOCAL</td><td class="source-code">Analyses 116/117, <code>docs/contracts/project-worker-v1.md</code></td><td>Settled Card/Blueprint/project/machine/Mind boundaries consumed by reference.</td></tr>
+          <tr><td>E-WORKER-RELEASE</td><td class="source-code"><code>.github/workflows/release*.yml</code>, <code>scripts/release/*</code></td><td>Exact-artifact provenance and current one-version-only limitation.</td></tr>
+          <tr><td>E-I330</td><td class="source-code"><code>d4b48979c731…</code> + approved v1.3 successor</td><td>Distinct human, Worker, Deployed Worker, deployment and custody authorities.</td></tr>
+          <tr><td>E-I321</td><td class="source-code"><code>3a690760ad30…</code> implementation + approved architecture head</td><td>Browser two-token/live authorization building blocks; OBO/full routes still gaps.</td></tr>
+          <tr><td>E-I336-CLI</td><td class="source-code"><code>cl0336_drwn_cli_management_and_deployed_worker_hard_cut_target_architecture.html</code></td><td>Services-side broker, wire, ID, command and hard-cut handoff.</td></tr>
+          <tr><td>E-I336-DEPLOY</td><td class="source-code"><code>cl0336_darwinian_services_deployment_control_plane_target_architecture.html</code></td><td>Manifest planning, maintenance, database leases, ledger, restore and reopen authority.</td></tr>
+          <tr><td>E-FRESH-VERIFY</td><td class="source-code">v1.4 isolated worktree · 25 Aug 2026</td><td>Typecheck and release-readiness green before this documentation change; full-suite result recorded separately.</td></tr>
+        </tbody></table></div>
+        <h3>Required future receipts</h3>
+        <div class="source-register" data-source-register data-module="source-register"><p class="tag">G2/G3/cutover evidence</p><div class="source-row">
+          <span class="source">Shared protocol artifact digest</span><span class="source">Visible consent + revocation</span><span class="source">Registration replay</span><span class="source">DAH-first demotion</span><span class="source">Three-OS credential suite</span><span class="source">Candidate tar identity</span><span class="source">Joint staging ledger</span><span class="source">Snapshot restore</span><span class="source">410/426 negatives</span><span class="source">npm dist-tag transition</span>
+        </div></div>
+      </section>
+
+      <section class="report-section" id="final-decision" data-section-number="18" data-final-action aria-labelledby="final-decision-title">
+        <header class="section-head"><span class="section-head__n" aria-hidden="true">18</span><h2 id="final-decision-title">GATE 1 decision and next move</h2><p>Approval freezes the Worker client plane; exact server fixtures and execution planning follow.</p></header>
+        <div class="decision-block" data-module="decision-block"><p class="tag">Reader move</p><h3>Approve the 1.4.2 Worker-side I336 sibling</h3><p>Approval adopts the existing-auth boundary, private management kernel, strict local state, ID-based command grammar, ACP/v1.3/BGDB removals, provider-neutral Mind placeholder, three-OS support and candidate-to-latest release state machine. It does not authorize code, publication or production operations.</p></div>
+        <div class="responsive-table action-list" data-module="action-table" role="group" aria-label="Follow-on actions">
+          <div class="responsive-table__head" aria-hidden="true"><span>Action</span><span>Owner</span><span>Evidence</span><span>Gate</span><span>State</span></div>
+          <div class="responsive-row"><div data-field="action"><span class="mobile-label">Action</span><strong>Freeze and publish the Services contract artifact</strong></div><div data-field="owner"><span class="mobile-label">Owner</span>I321/I336 Services</div><div data-field="evidence"><span class="mobile-label">Evidence</span>version, digest, vectors, source head</div><div data-field="due"><span class="mobile-label">Gate</span>before Worker G2</div><div data-field="state"><span class="mobile-label">State</span><span class="pill">external prerequisite</span></div></div>
+          <div class="responsive-row"><div data-field="action"><span class="mobile-label">Action</span><strong>Draft the Worker G2 execution plan against immutable heads</strong></div><div data-field="owner"><span class="mobile-label">Owner</span>Worker team</div><div data-field="evidence"><span class="mobile-label">Evidence</span>task graph, TDD cases, package/release stops</div><div data-field="due"><span class="mobile-label">Gate</span>after G1 approval</div><div data-field="state"><span class="mobile-label">State</span><span class="pill">pending</span></div></div>
+          <div class="responsive-row"><div data-field="action"><span class="mobile-label">Action</span><strong>Qualify the exact Worker/Services pair and perform I336 cut</strong></div><div data-field="owner"><span class="mobile-label">Owner</span>I336 coordinator</div><div data-field="evidence"><span class="mobile-label">Evidence</span>candidate, staging, restore, release and reopen receipts</div><div data-field="due"><span class="mobile-label">Gate</span>after G3 + operations approval</div><div data-field="state"><span class="mobile-label">State</span><span class="pill">not authorized</span></div></div>
+        </div>
+      </section>
+    </article>
+    <aside class="report-toc" aria-label="On this page"><strong>Report path</strong>
+      <a href="#orientation">00 · Orientation</a><a href="#authority">01 · Authority</a><a href="#decision">02 · Decisions</a><a href="#baseline">03 · Baseline</a><a href="#current">04 · Current</a><a href="#target">05 · Target</a><a href="#components">06 · Components</a><a href="#auth">07 · Auth</a><a href="#commands">08 · Commands</a><a href="#wire">09 · Wire</a><a href="#registration">10 · Registration</a><a href="#failure">11 · Failure</a><a href="#release">12 · Release</a><a href="#verification">13 · Verification</a><a href="#migration">14 · Migration</a><a href="#handoff">15 · Handoff</a><a href="#external">16 · External</a><a href="#evidence">17 · Evidence</a><a href="#final-decision">18 · Decision</a>
+    </aside></div>
+    <footer class="report-footer"><strong>CL0336 · Darwinian Worker CLI 1.4.2</strong><p>Worker-owned Deployed Worker management target architecture · G1 candidate</p><p>Baseline: <code>1adf7aef…</code> · Target: <code>darwinian@1.4.2</code> · Protocol: <code>deployed-worker.v1</code></p></footer>
+  </main>
+</body>
+</html>
