@@ -26,7 +26,7 @@ import {
 const FIXED_TIMESTAMP = "2000-01-01T00:00:00.000Z";
 const GENERATOR_PATH = "scripts/generate-worker-launch-consumer-fixtures.ts";
 const OUTPUT_PATH = "test/fixtures/worker-launch-consumer-v1";
-const VOLATILE_TIMESTAMP_KEYS = new Set(["createdAt", "generatedAt", "lastModifiedAt", "lastReconciledAt", "updatedAt"]);
+const VOLATILE_TIMESTAMP_KEYS = new Set(["createdAt", "generatedAt", "lastModifiedAt", "lastReconciledAt", "lastWriteAt", "updatedAt"]);
 
 const REQUIRED_FILES = [
   "status/project.json",
@@ -47,6 +47,7 @@ const REQUIRED_FILES = [
 interface NormalizationPaths {
   fixtureRoot: string;
   projectRoot: string;
+  repoRoot: string;
 }
 
 interface GenerateOptions {
@@ -72,6 +73,9 @@ function normalizeString(value: string, key: string | undefined, paths: Normaliz
   }
   if (value === paths.fixtureRoot || value.startsWith(`${paths.fixtureRoot}/`)) {
     return `/fixture${value.slice(paths.fixtureRoot.length)}`;
+  }
+  if (value === paths.repoRoot || value.startsWith(`${paths.repoRoot}/`)) {
+    return `/fixture/repository${value.slice(paths.repoRoot.length)}`;
   }
   return value;
 }
@@ -192,7 +196,7 @@ export async function generateWorkerLaunchConsumerFixtures(options: GenerateOpti
   try {
     fixture = await createLiveWorkerLaunchFixture();
     await scaffoldFakeTargets(fixture);
-    const normalization = { fixtureRoot: fixture.root, projectRoot: fixture.projectRoot };
+    const normalization = { fixtureRoot: fixture.root, projectRoot: fixture.projectRoot, repoRoot };
     const captures = new Map<string, unknown>();
     const prepareArgs = (root: string, target: "claude" | "codex", dryRun: boolean, extra: string[] = []) => [
       "worker", "launch-context", "prepare", root, "--target", target,
@@ -236,6 +240,7 @@ export async function generateWorkerLaunchConsumerFixtures(options: GenerateOpti
       normalization: {
         projectRoot: "/fixture/project",
         fixtureRoot: "/fixture",
+        repoRoot: "/fixture/repository",
         timestamp: FIXED_TIMESTAMP,
         timestampKeys: [...VOLATILE_TIMESTAMP_KEYS].sort(),
         objectKeys: "utf16-ascending",

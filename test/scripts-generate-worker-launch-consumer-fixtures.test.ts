@@ -24,12 +24,14 @@ test("consumer fixture normalization replaces only declared volatile values and 
     nested: {
       projectRoot: "/private/tmp/drwn-consumer-abcd/project",
       artifactDir: "/private/tmp/drwn-consumer-abcd/project/.agents/drwn/generated/launch-contexts/sha256-a",
+      repoRoot: "/Users/example/darwinian-worker",
       stable: "2026-08-25T12:34:56.000Z",
     },
     a: true,
   }, {
     fixtureRoot: "/private/tmp/drwn-consumer-abcd",
     projectRoot: "/private/tmp/drwn-consumer-abcd/project",
+    repoRoot: "/Users/example/darwinian-worker",
   });
 
   expect(Object.keys(normalized)).toEqual(["a", "createdAt", "nested", "z"]);
@@ -39,6 +41,7 @@ test("consumer fixture normalization replaces only declared volatile values and 
     nested: {
       artifactDir: "/fixture/project/.agents/drwn/generated/launch-contexts/sha256-a",
       projectRoot: "/fixture/project",
+      repoRoot: "/fixture/repository",
       stable: "2026-08-25T12:34:56.000Z",
     },
     z: ["second", "first"],
@@ -93,6 +96,7 @@ test("generator produces the complete normalized plugin-facing pack with verifie
     expect(bytes.endsWith("\n")).toBe(true);
     expect(bytes).not.toContain(outputDir);
     expect(bytes).not.toContain("/private/tmp/");
+    expect(bytes).not.toContain(join(import.meta.dir, ".."));
     expect(() => JSON.parse(bytes)).not.toThrow();
   }
 });
