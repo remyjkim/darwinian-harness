@@ -2,6 +2,7 @@
 // ABOUTME: Proves volatile paths/timestamps normalize without changing ordered semantic arrays.
 
 import { afterEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ import {
 } from "../scripts/generate-worker-launch-consumer-fixtures";
 
 const roots: string[] = [];
+const fixtureDigest = (label: string) => `sha256-${createHash("sha256").update(`fixture:${label}`).digest("hex")}`;
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -20,11 +22,17 @@ afterEach(async () => {
 test("consumer fixture normalization replaces only declared volatile values and sorts object keys", () => {
   const normalized = normalizeConsumerFixture({
     z: ["second", "first"],
+    contexts: [
+      { contextId: `sha256-${"b".repeat(64)}` },
+      { contextId: `sha256-${"a".repeat(64)}` },
+    ],
     createdAt: "2026-08-25T12:34:56.000Z",
     nested: {
       projectRoot: "/private/tmp/drwn-consumer-abcd/project",
       artifactDir: "/private/tmp/drwn-consumer-abcd/project/.agents/drwn/generated/launch-contexts/sha256-a",
       repoRoot: "/Users/example/darwinian-worker",
+      projectRootHash: `sha256-${"c".repeat(64)}`,
+      sourceProjectLockDigest: `sha256-${"d".repeat(64)}`,
       stable: "2026-08-25T12:34:56.000Z",
     },
     a: true,
@@ -34,14 +42,20 @@ test("consumer fixture normalization replaces only declared volatile values and 
     repoRoot: "/Users/example/darwinian-worker",
   });
 
-  expect(Object.keys(normalized)).toEqual(["a", "createdAt", "nested", "z"]);
+  expect(Object.keys(normalized)).toEqual(["a", "contexts", "createdAt", "nested", "z"]);
   expect(normalized).toEqual({
     a: true,
+    contexts: [
+      { contextId: `sha256-${"a".repeat(64)}` },
+      { contextId: `sha256-${"b".repeat(64)}` },
+    ],
     createdAt: "2000-01-01T00:00:00.000Z",
     nested: {
       artifactDir: "/fixture/project/.agents/drwn/generated/launch-contexts/sha256-a",
       projectRoot: "/fixture/project",
       repoRoot: "/fixture/repository",
+      projectRootHash: fixtureDigest("project-root"),
+      sourceProjectLockDigest: fixtureDigest("source-project-lock"),
       stable: "2026-08-25T12:34:56.000Z",
     },
     z: ["second", "first"],
@@ -91,8 +105,22 @@ test("generator produces the complete normalized plugin-facing pack with verifie
   expect(Object.keys(provenance.files)).toEqual(required);
   expect(provenance.files).toEqual(result.hashes);
 
+  const secondOutputDir = await mkdtemp(join(tmpdir(), "drwn-consumer-pack-test-second-"));
+  roots.push(secondOutputDir);
+  const second = await generateWorkerLaunchConsumerFixtures({
+    repoRoot: join(import.meta.dir, ".."),
+    outputDir: secondOutputDir,
+    requireCleanSource: false,
+    sourceCommit: provenance.source.commit,
+  });
+  expect(second.hashes).toEqual(result.hashes);
+
   for (const path of required) {
-    const bytes = await readFile(join(outputDir, path), "utf8");
+    const [bytes, secondBytes] = await Promise.all([
+      readFile(join(outputDir, path), "utf8"),
+      readFile(join(secondOutputDir, path), "utf8"),
+    ]);
+    expect(secondBytes).toBe(bytes);
     expect(bytes.endsWith("\n")).toBe(true);
     expect(bytes).not.toContain(outputDir);
     expect(bytes).not.toContain("/private/tmp/");

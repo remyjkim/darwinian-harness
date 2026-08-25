@@ -112,24 +112,35 @@ async function makeBlueprint(
   };
 }
 
-export async function createLiveWorkerLaunchFixture(): Promise<LiveWorkerLaunchFixture> {
+export async function createLiveWorkerLaunchFixture(
+  options: { deterministicHookPaths?: boolean } = {},
+): Promise<LiveWorkerLaunchFixture> {
   const root = await realpath(await mkdtemp(join(tmpdir(), "drwn-launch-live-")));
   const projectRoot = join(root, "project");
   const homeDir = join(root, "home");
   const agentsDir = join(homeDir, ".agents");
   const stateDir = join(projectRoot, ".agents", "drwn");
   const sources = join(root, "cards");
-  const hookLogs = {
-    base: join(root, "base-hooks.log"),
-    reviewer: join(root, "reviewer-hooks.log"),
-    implementation: join(root, "implementation-hooks.log"),
-  };
+  const hookLogs = options.deterministicHookPaths
+    ? {
+        base: "/fixture/hooks/base.log",
+        reviewer: "/fixture/hooks/reviewer.log",
+        implementation: "/fixture/hooks/implementation.log",
+      }
+    : {
+        base: join(root, "base-hooks.log"),
+        reviewer: join(root, "reviewer-hooks.log"),
+        implementation: join(root, "implementation-hooks.log"),
+      };
+  const sharedHookLog = options.deterministicHookPaths
+    ? "/fixture/hooks/shared.log"
+    : join(root, "shared-hooks.log");
   await mkdir(stateDir, { recursive: true });
   if ((await runGit(["init", "-q"], { cwd: projectRoot })).exitCode !== 0) throw new Error("Unable to initialize live fixture Git worktree");
 
   const shared = await makeCapabilityCard({
     sources, name: "@live/shared", char: "a", skill: "shared-live", mcp: "shared_live_mcp",
-    instruction: "SHARED_LIVE_INSTRUCTION", hookLog: join(root, "shared-hooks.log"),
+    instruction: "SHARED_LIVE_INSTRUCTION", hookLog: sharedHookLog,
   });
   const baseOnly = await makeCapabilityCard({
     sources, name: "@live/base-only", char: "b", skill: "base-live", mcp: "base_live_mcp",

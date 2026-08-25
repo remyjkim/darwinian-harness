@@ -48,6 +48,7 @@ interface NormalizationPaths {
   fixtureRoot: string;
   projectRoot: string;
   repoRoot: string;
+  replacements?: ReadonlyMap<string, string>;
 }
 
 interface GenerateOptions {
@@ -68,16 +69,18 @@ function sha256(bytes: string | Uint8Array): string {
 
 function normalizeString(value: string, key: string | undefined, paths: NormalizationPaths): string {
   if (key && VOLATILE_TIMESTAMP_KEYS.has(key)) return FIXED_TIMESTAMP;
+  if (key === "projectRootHash") return sha256("fixture:project-root");
+  if (key === "sourceProjectLockDigest") return sha256("fixture:source-project-lock");
+  let normalized = value;
   if (value === paths.projectRoot || value.startsWith(`${paths.projectRoot}/`)) {
-    return `/fixture/project${value.slice(paths.projectRoot.length)}`;
+    normalized = `/fixture/project${value.slice(paths.projectRoot.length)}`;
+  } else if (value === paths.fixtureRoot || value.startsWith(`${paths.fixtureRoot}/`)) {
+    normalized = `/fixture${value.slice(paths.fixtureRoot.length)}`;
+  } else if (value === paths.repoRoot || value.startsWith(`${paths.repoRoot}/`)) {
+    normalized = `/fixture/repository${value.slice(paths.repoRoot.length)}`;
   }
-  if (value === paths.fixtureRoot || value.startsWith(`${paths.fixtureRoot}/`)) {
-    return `/fixture${value.slice(paths.fixtureRoot.length)}`;
-  }
-  if (value === paths.repoRoot || value.startsWith(`${paths.repoRoot}/`)) {
-    return `/fixture/repository${value.slice(paths.repoRoot.length)}`;
-  }
-  return value;
+  for (const [from, to] of paths.replacements ?? []) normalized = normalized.replaceAll(from, to);
+  return normalized;
 }
 
 export function normalizeConsumerFixture<T>(
@@ -86,7 +89,17 @@ export function normalizeConsumerFixture<T>(
   key?: string,
 ): T {
   if (typeof value === "string") return normalizeString(value, key, paths) as T;
-  if (Array.isArray(value)) return value.map((item) => normalizeConsumerFixture(item, paths)) as T;
+  if (Array.isArray(value)) {
+    const normalized = value.map((item) => normalizeConsumerFixture(item, paths));
+    if (key === "contexts" && normalized.every((item) => item && typeof item === "object" && "contextId" in item)) {
+      normalized.sort((a, b) => {
+        const left = String(a.contextId);
+        const right = String(b.contextId);
+        return left < right ? -1 : left > right ? 1 : 0;
+      });
+    }
+    return normalized as T;
+  }
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value as Record<string, unknown>)
       .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
@@ -194,9 +207,9 @@ export async function generateWorkerLaunchConsumerFixtures(options: GenerateOpti
   const staging = await mkdtemp(join(dirname(outputDir), ".worker-launch-consumer-stage-"));
   let fixture: LiveWorkerLaunchFixture | undefined;
   try {
-    fixture = await createLiveWorkerLaunchFixture();
+    fixture = await createLiveWorkerLaunchFixture({ deterministicHookPaths: true });
     await scaffoldFakeTargets(fixture);
-    const normalization = { fixtureRoot: fixture.root, projectRoot: fixture.projectRoot, repoRoot };
+    const normalization: NormalizationPaths = { fixtureRoot: fixture.root, projectRoot: fixture.projectRoot, repoRoot };
     const captures = new Map<string, unknown>();
     const prepareArgs = (root: string, target: "claude" | "codex", dryRun: boolean, extra: string[] = []) => [
       "worker", "launch-context", "prepare", root, "--target", target,
@@ -216,6 +229,18 @@ export async function generateWorkerLaunchConsumerFixtures(options: GenerateOpti
     captures.set("doctor/healthy.json", await runJson(fixture, ["doctor", "--json"], [0, 1]));
     captures.set("errors/missing-root.json", await runJson(fixture, prepareArgs("@live/missing", "codex", false), [1]));
     captures.set("errors/unsupported-target.json", await runJson(fixture, ["worker", "launch-context", "prepare", fixture.roots.reviewer, "--target", "cursor", "--json"], [1]));
+
+    const plannedContextId = (path: string): string => {
+      const value = captures.get(path) as { plannedContextId?: unknown } | undefined;
+      if (typeof value?.plannedContextId !== "string") throw new Error(`Generated plan omitted its context ID: ${path}`);
+      return value.plannedContextId;
+    };
+    normalization.replacements = new Map([
+      [plannedContextId("no-op/plan.codex.json"), sha256("fixture-context:no-op:codex")],
+      [plannedContextId("claude/plan.json"), sha256("fixture-context:reviewer:claude")],
+      [plannedContextId("codex/plan.json"), sha256("fixture-context:reviewer:codex")],
+      [plannedContextId("optional-mcp/plan.codex.json"), sha256("fixture-context:reviewer:codex:review_optional_mcp")],
+    ]);
 
     const hashes: Record<string, string> = {};
     for (const path of REQUIRED_FILES) {
@@ -245,6 +270,9 @@ export async function generateWorkerLaunchConsumerFixtures(options: GenerateOpti
         timestampKeys: [...VOLATILE_TIMESTAMP_KEYS].sort(),
         objectKeys: "utf16-ascending",
         arrays: "preserved",
+        contextIds: "sha256(fixture-context:<semantic-label>)",
+        derivedDigests: ["projectRootHash", "sourceProjectLockDigest"],
+        contextArrays: "normalized-context-id-ascending",
       },
       files: hashes,
     };
