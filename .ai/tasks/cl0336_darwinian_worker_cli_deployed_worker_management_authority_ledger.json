@@ -1,8 +1,8 @@
 {
   "schema": "cl.drwn.worker-management-authority-ledger",
   "schemaVersion": 1,
-  "status": "source_blocked",
-  "observedAt": "2026-08-25T22:12:57Z",
+  "status": "source_ready",
+  "observedAt": "2026-08-25T22:39:27Z",
   "worker": {
     "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-architecture",
     "branch": "codex/i336-worker-cli-architecture",
@@ -24,26 +24,56 @@
   "services": {
     "i336CandidateCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
     "i336AuthorizedStartingCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
-    "i336AcceptedCommit": null,
+    "i336AcceptedCommit": "97752b0511c1812c2440f794d6d25a21d8371c7e",
     "i321CandidateCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
     "i321AuthorizedStartingCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
-    "i321AcceptedCommit": null
+    "i321AcceptedCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929"
   },
   "protocol": {
     "name": "deployed-worker.v1",
-    "artifactPath": null,
-    "artifactVersion": null,
-    "sourceCommit": null,
-    "sha256": null,
-    "routeCount": null,
-    "positiveVectorCount": null,
-    "negativeVectorCount": null,
-    "status": "missing"
+    "artifactPath": "ops/deploy/contracts/drwn-management/v1/contract.json",
+    "artifactVersion": 1,
+    "sourceCommit": "97752b0511c1812c2440f794d6d25a21d8371c7e",
+    "sha256": "bbd527bf9818edfeb7f7ffc2e012bd61dc7368e0cfb62b15eea4577e68432da8",
+    "routeCount": 12,
+    "positiveVectorCount": 12,
+    "negativeVectorCount": 29,
+    "schemaCount": 35,
+    "errorCodeCount": 10,
+    "status": "accepted"
   },
   "profiles": {
-    "production": null,
-    "staging": null,
-    "status": "not_frozen"
+    "production": {
+      "profileId": "production",
+      "apiOrigin": "https://api.darwinian.dev",
+      "webOrigin": "https://foundry.darwinian.dev",
+      "authHubOrigin": "https://auth.darwinian.dev",
+      "issuer": "https://auth.darwinian.dev/api/auth",
+      "resource": "https://api.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    },
+    "staging": {
+      "profileId": "staging",
+      "apiOrigin": "https://api-staging-main.darwinian.dev",
+      "webOrigin": "https://foundry-staging-main.darwinian.dev",
+      "authHubOrigin": "https://auth-staging-main.darwinian.dev",
+      "issuer": "https://auth-staging-main.darwinian.dev/api/auth",
+      "resource": "https://api.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    },
+    "status": "frozen"
   },
   "decisions": [
     {
@@ -114,11 +144,7 @@
     "typecheck": "passed",
     "releaseReadiness": "passed"
   },
-  "sourceBlockers": [
-    "accepted I336 protocol-artifact successor commit",
-    "immutable deployed-worker.v1 artifact and vectors",
-    "exact production and staging profiles"
-  ],
+  "sourceBlockers": [],
   "operationalBlockers": [
     "protected npm promotion authority",
     "staging identity authority and receipt sink"
