@@ -48,6 +48,7 @@ import type { ResolvedCardMode } from "./mode-resolution";
 export interface EffectiveState {
   normalized: NormalizedSyncOptions;
   repoConfig: CanonicalConfig;
+  repoRegistry: CanonicalRegistry;
   effectiveConfig: CanonicalConfig;
   effectiveRegistry: CanonicalRegistry;
   activeServers: Record<string, RegistryServer>;
@@ -91,6 +92,15 @@ export interface EffectiveWorkerSelection {
     sourceOverrides: string[];
   };
   localCardNames: Set<string>;
+}
+
+export interface ProjectClosureCapabilityState {
+  projectConfigWithCards: ProjectConfig;
+  effectiveConfig: CanonicalConfig;
+  effectiveRegistry: CanonicalRegistry;
+  activeServers: Record<string, RegistryServer>;
+  skillSelection: SkillSyncOverrides;
+  cardServerDefinitions: CardServerDefinition[];
 }
 
 interface SelectProjectWorkerOptions {
@@ -143,6 +153,44 @@ function projectBaseRegistry(
         .filter((name) => Boolean(builtInRegistry.servers[name]))
         .map((name) => [name, builtInRegistry.servers[name]!]),
     ),
+  };
+}
+
+export function buildProjectClosureCapabilityState(input: {
+  repoConfig: CanonicalConfig;
+  repoRegistry: CanonicalRegistry;
+  projectConfig: ProjectConfig;
+  cards: CardLockEntry[];
+}): ProjectClosureCapabilityState {
+  assertWorkerCapabilityCompatibility(input.cards);
+  const projectConfigWithCards = mergeCardManifestsIntoProjectConfig(
+    input.projectConfig,
+    input.cards.map((card) => card.manifest),
+  );
+  const cardServerDefinitions = collectCardServerDefinitions(input.cards);
+  const registryWithCards = mergeCardServerDefinitionsIntoRegistry(
+    projectBaseRegistry(input.repoRegistry, input.projectConfig),
+    cardServerDefinitions,
+  );
+  const projectOverlay: ProjectConfig = {
+    ...projectConfigWithCards,
+    mcpServers: input.projectConfig.mcpServers,
+  };
+  const merged = mergeProjectConfig(
+    projectBaseConfig(input.repoConfig),
+    registryWithCards,
+    projectOverlay,
+  );
+  return {
+    projectConfigWithCards,
+    effectiveConfig: merged.config,
+    effectiveRegistry: merged.registry,
+    activeServers: buildActiveServers(merged.registry, merged.config),
+    skillSelection: {
+      include: [...(merged.skills?.include ?? [])],
+      exclude: merged.skills?.exclude,
+    },
+    cardServerDefinitions,
   };
 }
 
@@ -368,7 +416,6 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
     projectConfig = mergeProjectWithLocal(projectConfig, configLocal);
     lockedCards = workerSelection.installedCards;
     activeCards = workerSelection.activeCards;
-    assertWorkerCapabilityCompatibility(activeCards);
     skillApplyOrderCards = activeCards;
     for (const card of lockedCards) {
       cardLanes[card.name] = workerSelection.localCardNames.has(card.name) ? "localOverlay" : "committed";
@@ -414,32 +461,21 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
         }
       }
     }
-    projectConfigWithCards = mergeCardManifestsIntoProjectConfig(
+    const closureCapabilities = buildProjectClosureCapabilityState({
+      repoConfig,
+      repoRegistry: builtInRegistry,
       projectConfig,
-      activeCards.map((card) => card.manifest),
-    );
-    cardServerDefinitions = collectCardServerDefinitions(activeCards);
+      cards: activeCards,
+    });
+    projectConfigWithCards = closureCapabilities.projectConfigWithCards;
+    cardServerDefinitions = closureCapabilities.cardServerDefinitions;
     const activeNames = new Set(activeCards.map((card) => card.name));
     inactiveCardServerDefinitions = collectCardServerDefinitions(
       lockedCards.filter((card) => !activeNames.has(card.name)),
     );
-    const registryWithCards = mergeCardServerDefinitionsIntoRegistry(
-      projectBaseRegistry(builtInRegistry, projectConfig),
-      cardServerDefinitions,
-    );
-    const projectOverlay: ProjectConfig = {
-      ...projectConfigWithCards,
-      mcpServers: projectConfig.mcpServers,
-    };
-    const merged = mergeProjectConfig(baseConfig, registryWithCards, projectOverlay);
-    effectiveConfig = merged.config;
-    effectiveRegistry = merged.registry;
-    skillSelection = {
-      include: [
-        ...(merged.skills?.include ?? []),
-      ],
-      exclude: merged.skills?.exclude,
-    };
+    effectiveConfig = closureCapabilities.effectiveConfig;
+    effectiveRegistry = closureCapabilities.effectiveRegistry;
+    skillSelection = closureCapabilities.skillSelection;
   }
 
   const scopeRoot = projectRoot ?? normalized.homeDir;
@@ -489,6 +525,7 @@ export async function buildEffectiveState(options: SyncOptions = {}): Promise<Ef
   return {
     normalized,
     repoConfig,
+    repoRegistry: builtInRegistry,
     effectiveConfig,
     effectiveRegistry,
     activeServers,

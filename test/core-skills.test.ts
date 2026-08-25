@@ -140,4 +140,35 @@ describe("core skills", () => {
 
     await expect(access(join(homeDir, ".claude", "skills", "target-skill"))).rejects.toThrow();
   });
+
+  test("one read-only skill planner resolves target-specific capability bytes before materialization", async () => {
+    const root = await createTempRoot();
+    const homeDir = join(root, "home");
+    const agentsDir = join(homeDir, ".agents");
+    const alpha = join(root, "skills", "shared", "alpha");
+    await mkdir(alpha, { recursive: true });
+    await writeFile(join(alpha, "SKILL.md"), "repo-alpha\n");
+    const skills = await import("../cli/core/skills") as typeof import("../cli/core/skills") & {
+      planSkillCapabilities?: (...args: any[]) => Promise<{
+        capabilities: Array<{ id: string; sourcePath: string; contentHash: string; targets: string[] }>;
+        warnings: string[];
+      }>;
+    };
+    expect(typeof skills.planSkillCapabilities).toBe("function");
+
+    const plan = await skills.planSkillCapabilities!(
+      { ...machineSkillOptions(root, agentsDir, homeDir), target: "codex" },
+      { include: ["alpha"] },
+    );
+
+    expect(plan.warnings).toEqual([]);
+    expect(plan.capabilities).toHaveLength(1);
+    expect(plan.capabilities[0]).toMatchObject({
+      id: "alpha",
+      sourcePath: alpha,
+      contentHash: expect.stringMatching(/^sha256-[a-f0-9]{64}$/),
+      targets: ["codex"],
+    });
+    await expect(access(join(homeDir, ".codex", "skills", "alpha"))).rejects.toThrow();
+  });
 });

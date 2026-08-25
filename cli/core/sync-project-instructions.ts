@@ -26,11 +26,17 @@ const MACHINE_INSTRUCTION_ADAPTERS = [
 export function instructionCompositionForState(
   state: EffectiveState,
 ): InstructionComposition {
-  return composeConsentedInstructions({
+  return instructionCompositionForCards({
     cards: state.activeCards,
     contentRootsByCard: state.contentRootsByCard,
     organizationConsent: state.organizationInstructionConsent,
   });
+}
+
+export function instructionCompositionForCards(
+  input: Parameters<typeof composeConsentedInstructions>[0],
+): InstructionComposition {
+  return composeConsentedInstructions(input);
 }
 
 function instructionWarnings(composition: InstructionComposition) {

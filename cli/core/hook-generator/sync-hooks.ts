@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { CardLockEntry } from "../card-lock";
 import type { EffectiveState } from "../effective-state";
 import { isHookConsentValid } from "../hook-consent";
+import { writeAtomically } from "../fs";
 import { expandHomePath, resolveToolPaths } from "../paths";
 import {
   hashDesiredClaudeHookFields,
@@ -17,7 +18,7 @@ import { writeManagedFile } from "../managed-file";
 import { assertStoreWritable, resolveGeneratedHooksDir, resolveStoreGeneratedDir } from "../store-paths";
 import type { SyncResult, TargetName } from "../types";
 import { hashManagedContent, ownManagedPath, type ManagedPath, type ProjectionTarget } from "../write-record";
-import { bundleHookComposer, type HookPolicyBundleInput } from "./bundle-composer";
+import { renderBundledHookComposer, type HookPolicyBundleInput } from "./bundle-composer";
 import { emitMastraComposer } from "./emit-mastra-composer";
 import { resolveHookRuntimes } from "./runtime-selection";
 import { resolveDrwnHookCommand, signalHooksConfig } from "./sync-signals";
@@ -66,18 +67,22 @@ function hookConsentWarning(card: CardLockEntry) {
   return `Skipping hooks for ${card.name}@${card.version}: missing or out-of-range hook consent. Run drwn card trust ${card.name} --hooks to materialize them.`;
 }
 
-function collectPolicies(
-  cards: CardLockEntry[],
-  exclusions: Set<string>,
-  result: SyncResult,
-  strictHooks: boolean,
-  contentRoots?: Record<string, string>,
-): HookPolicyBundleInput[] {
+export interface HookPolicyPlan {
+  policies: HookPolicyBundleInput[];
+  warnings: string[];
+}
+
+export function planHookPolicies(input: {
+  cards: CardLockEntry[];
+  exclusions: Set<string>;
+  strictHooks: boolean;
+  contentRootsByCard?: Record<string, string>;
+}): HookPolicyPlan {
   const policies: HookPolicyBundleInput[] = [];
   const consentWarnings: string[] = [];
 
-  for (const card of cards) {
-    const activeHooks = card.hooks.filter((policyName) => !isPolicyExcluded(card.name, policyName, exclusions));
+  for (const card of input.cards) {
+    const activeHooks = card.hooks.filter((policyName) => !isPolicyExcluded(card.name, policyName, input.exclusions));
     if (activeHooks.length === 0) {
       continue;
     }
@@ -86,7 +91,7 @@ function collectPolicies(
       continue;
     }
     for (const policyName of activeHooks) {
-      const root = contentRoots?.[card.name] ?? card.path;
+      const root = input.contentRootsByCard?.[card.name] ?? card.path;
       policies.push({
         cardName: card.name,
         policyName,
@@ -96,16 +101,31 @@ function collectPolicies(
   }
 
   if (consentWarnings.length > 0) {
-    if (strictHooks) {
+    if (input.strictHooks) {
       throw new Error(consentWarnings.join("\n"));
     }
-    result.warnings.push(...consentWarnings);
   }
-
-  return policies;
+  return { policies, warnings: consentWarnings };
 }
 
-function claudeHooksConfig(composerPath: string): ClaudeHooksConfig {
+function collectPolicies(
+  cards: CardLockEntry[],
+  exclusions: Set<string>,
+  result: SyncResult,
+  strictHooks: boolean,
+  contentRoots?: Record<string, string>,
+): HookPolicyBundleInput[] {
+  const plan = planHookPolicies({
+    cards,
+    exclusions,
+    strictHooks,
+    contentRootsByCard: contentRoots,
+  });
+  result.warnings.push(...plan.warnings);
+  return plan.policies;
+}
+
+export function renderClaudeHookConfig(composerPath: string): ClaudeHooksConfig {
   const hook = { type: "command" as const, command: "node", args: [composerPath], timeout: COMMAND_TIMEOUT_SECONDS };
   return {
     PreToolUse: [{ matcher: ".*", hooks: [hook] }],
@@ -137,7 +157,7 @@ function cursorHooksConfig(composerPath: string) {
   };
 }
 
-function codexHooksConfig(composerPath: string) {
+export function renderCodexHookConfig(composerPath: string) {
   const hook = {
     type: "command",
     command: `node ${JSON.stringify(composerPath)}`,
@@ -169,20 +189,32 @@ function recordComposer(
   state: EffectiveState,
   composerPath: string,
   beforeContent: string | null,
-  dryRun: boolean,
+  nextContent: string,
   target: ProjectionTarget,
 ) {
-  if (dryRun) {
-    result.changes.push(`write ${composerPath}`);
-    result.managedPaths?.push(recordManagedContent(state, composerPath, "sha256-dry-run", target));
-    return;
-  }
-
-  const nextContent = readFileSync(composerPath);
   if (!beforeContent || hashManagedContent(beforeContent) !== hashManagedContent(nextContent)) {
     result.changes.push(`write ${composerPath}`);
   }
   result.managedPaths?.push(recordManagedContent(state, composerPath, hashManagedContent(nextContent), target));
+}
+
+async function renderAndMaybeWriteComposer(input: {
+  result: SyncResult;
+  state: EffectiveState;
+  runtime: Extract<Parameters<typeof renderBundledHookComposer>[0]["runtime"], "claude-code" | "codex" | "cursor" | "opencode">;
+  outputDir: string;
+  composerPath: string;
+  policies: HookPolicyBundleInput[];
+  target: ProjectionTarget;
+}) {
+  const beforeContent = readExistingContent(input.composerPath);
+  const nextContent = await renderBundledHookComposer({
+    runtime: input.runtime,
+    outputDir: input.outputDir,
+    policies: input.policies,
+  });
+  if (!input.state.scopedOptions.dryRun) await writeAtomically(input.composerPath, nextContent);
+  recordComposer(input.result, input.state, input.composerPath, beforeContent, nextContent, input.target);
 }
 
 function readExistingContent(pathValue: string) {
@@ -252,7 +284,7 @@ export function planMachineHookManagedPaths(state: EffectiveState): ManagedPath[
     if (runtime === "claude-code") {
       const desiredHooks = mergeClaudeHookConfigs(
         hasPolicies
-          ? claudeHooksConfig(join(outputDir, "composer.mjs"))
+          ? renderClaudeHookConfig(join(outputDir, "composer.mjs"))
           : {},
         signalsEnabled ? signalHooksConfig(resolveDrwnHookCommand()) : {},
       );
@@ -320,16 +352,7 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
     if (runtime === "claude-code") {
       const composerPath = join(outputDir, "composer.mjs");
       if (hasPolicies) {
-        const beforeContent = readExistingContent(composerPath);
-        if (!state.scopedOptions.dryRun) {
-          await bundleHookComposer({ runtime, outputDir, policies });
-        } else {
-          result.changes.push(`write ${composerPath}`);
-          result.managedPaths?.push(recordManagedContent(state, composerPath, "sha256-dry-run", "claude"));
-        }
-        if (!state.scopedOptions.dryRun) {
-          recordComposer(result, state, composerPath, beforeContent, state.scopedOptions.dryRun, "claude");
-        }
+        await renderAndMaybeWriteComposer({ result, state, runtime, outputDir, composerPath, policies, target: "claude" });
       }
 
       const settingsPath = targetConfigPath(state, "claude", state.effectiveConfig.targets.claude.configPath);
@@ -338,7 +361,7 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
         continue;
       }
       const desiredHooks = mergeClaudeHookConfigs(
-        hasPolicies ? claudeHooksConfig(composerPath) : {},
+        hasPolicies ? renderClaudeHookConfig(composerPath) : {},
         signalsEnabled ? signalHooksConfig(resolveDrwnHookCommand()) : {},
       );
       const next = mergeClaudeSettingsText(current, state.activeServers, {
@@ -367,19 +390,10 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
 
     if (runtime === "codex") {
       const composerPath = join(outputDir, "composer.mjs");
-      const beforeContent = readExistingContent(composerPath);
-      if (!state.scopedOptions.dryRun) {
-        await bundleHookComposer({ runtime, outputDir, policies });
-      } else {
-        result.changes.push(`write ${composerPath}`);
-        result.managedPaths?.push(recordManagedContent(state, composerPath, "sha256-dry-run", "codex"));
-      }
-      if (!state.scopedOptions.dryRun) {
-        recordComposer(result, state, composerPath, beforeContent, state.scopedOptions.dryRun, "codex");
-      }
+      await renderAndMaybeWriteComposer({ result, state, runtime, outputDir, composerPath, policies, target: "codex" });
 
       const codexHooksPath = join(state.scopeRoot, ".codex", "hooks.json");
-      const content = `${JSON.stringify(codexHooksConfig(composerPath), null, 2)}\n`;
+      const content = `${JSON.stringify(renderCodexHookConfig(composerPath), null, 2)}\n`;
       writeManagedFile(codexHooksPath, content, state.scopedOptions.dryRun, result);
       result.managedPaths?.push(recordManagedContent(state, codexHooksPath, hashManagedContent(content), "codex"));
       if (state.scopedOptions.writeScope === "project") {
@@ -392,7 +406,6 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
 
     if (runtime === "cursor") {
       const composerPath = join(outputDir, "composer.mjs");
-      const beforeContent = readExistingContent(composerPath);
 
       const cursorHooksPath = join(state.scopeRoot, ".cursor", "hooks.json");
       const cursorHooksRelPath = managedPath(state, cursorHooksPath);
@@ -407,15 +420,7 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
         continue;
       }
 
-      if (!state.scopedOptions.dryRun) {
-        await bundleHookComposer({ runtime, outputDir, policies });
-      } else {
-        result.changes.push(`write ${composerPath}`);
-        result.managedPaths?.push(recordManagedContent(state, composerPath, "sha256-dry-run", "cursor"));
-      }
-      if (!state.scopedOptions.dryRun) {
-        recordComposer(result, state, composerPath, beforeContent, state.scopedOptions.dryRun, "cursor");
-      }
+      await renderAndMaybeWriteComposer({ result, state, runtime, outputDir, composerPath, policies, target: "cursor" });
 
       const content = `${JSON.stringify(cursorHooksConfig(composerPath), null, 2)}\n`;
       writeManagedFile(cursorHooksPath, content, state.scopedOptions.dryRun, result);
@@ -425,16 +430,7 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
 
     if (runtime === "opencode") {
       const composerPath = join(outputDir, "composer.mjs");
-      const beforeContent = readExistingContent(composerPath);
-      if (!state.scopedOptions.dryRun) {
-        await bundleHookComposer({ runtime, outputDir, policies });
-      } else {
-        result.changes.push(`write ${composerPath}`);
-        result.managedPaths?.push(recordManagedContent(state, composerPath, "sha256-dry-run", "opencode"));
-      }
-      if (!state.scopedOptions.dryRun) {
-        recordComposer(result, state, composerPath, beforeContent, state.scopedOptions.dryRun, "opencode");
-      }
+      await renderAndMaybeWriteComposer({ result, state, runtime, outputDir, composerPath, policies, target: "opencode" });
 
       const pluginPath = state.scopedOptions.writeScope === "machine"
         ? join(state.scopeRoot, ".config", "opencode", "plugins", "drwn-hooks.js")
@@ -455,7 +451,7 @@ export async function syncHooks(state: EffectiveState, previousManagedPaths: Man
         result.managedPaths?.push(recordManagedContent(state, composerPath, "sha256-dry-run", "mastra"));
       }
       if (!state.scopedOptions.dryRun) {
-        recordComposer(result, state, composerPath, beforeContent, state.scopedOptions.dryRun, "mastra");
+        recordComposer(result, state, composerPath, beforeContent, readFileSync(composerPath, "utf8"), "mastra");
       }
     }
   }
