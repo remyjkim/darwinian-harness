@@ -318,7 +318,7 @@
         <article class="task-card" id="task-00">
           <div class="task-card__head"><span class="task-card__id">T00</span><div><h3>Freeze authority, protocol decisions and baseline evidence</h3><p>Turn every current candidate or prose gap into one immutable, reviewable input ledger.</p></div><span class="gate-chip blocked">hard start gate</span></div>
           <div class="task-card__body">
-            <dl class="task-meta"><div><dt>Depends on</dt><dd>G1 approval</dd></div><div><dt>Blocks</dt><dd>T01–T17</dd></div><div><dt>Mode</dt><dd>evidence only</dd></div><div><dt>Commit</dt><dd><code>[docs] freeze CL0336 Worker authority</code> · only if explicitly authorized</dd></div></dl>
+            <dl class="task-meta"><div><dt>Depends on</dt><dd>G1 approval</dd></div><div><dt>Blocks</dt><dd>T01–T15; T16/T17 have additional operational gates</dd></div><div><dt>Mode</dt><dd>evidence only</dd></div><div><dt>Commit</dt><dd><code>[docs] freeze CL0336 Worker authority</code> · only if explicitly authorized</dd></div></dl>
             <div class="task-columns">
               <div class="task-panel"><h4>Required immutable inputs</h4><ul><li>Accepted successor of Worker <code>1adf7aef…</code>.</li><li>Committed G1 architecture and this G2 plan with full Git SHAs.</li><li>Accepted Services I336 and I321 successor SHAs.</li><li>Protocol artifact version, source commit, byte digest and closed vector counts.</li><li>Exact production/staging profile tuples.</li><li>Recorded answers for GAP-03 through GAP-08.</li><li>One strict <code>cl.drwn.worker-management-authority-ledger.v1</code> document at <code>.ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_authority_ledger.json</code>, containing only the preceding identities, decisions, safe owners and timestamps.</li></ul></div>
               <div class="task-panel"><h4>Baseline proof</h4><ul><li>Clean status except explicitly authorized <code>.ai</code> documents.</li><li>Record Bun, OS and Git identity.</li><li>Run one bounded canonical suite and capture duration, pass/fail/skip counts.</li><li>Confirm the three real keychain skips are named target gaps.</li><li>Record current npm dist-tags read-only; do not mutate.</li></ul></div>
@@ -330,7 +330,7 @@ bun run typecheck
 bun run test:gate
 bun run verify:release
 bun run verify:worker-launch-targets
-bun run verify:bridge</pre><p><strong>Exit:</strong> the ledger contains full immutable identities; protocol bytes are locally available; all eight gaps have approved values; the source gate is reproducible. If <code>test:gate</code> does not terminate, investigate and repair that baseline before feature implementation.</p></div>
+bun run verify:bridge</pre><p><strong>Source exit:</strong> the ledger contains accepted Worker/Services inputs; protocol and profile bytes are locally immutable; GAP-02–GAP-06 answers are approved; GAP-07/GAP-08 decisions are frozen; and the source gate is reproducible. The named npm promotion and staging identity authorities may remain null until T17 and T16 respectively. If <code>test:gate</code> does not terminate, investigate and repair that baseline before feature implementation.</p></div>
             </div>
           </div>
         </article>
