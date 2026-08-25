@@ -118,8 +118,35 @@ drwn doctor
 drwn write
 ```
 
+## Multiple Agent Profiles In One Worktree
+
+Keep the capabilities shared by every agent in the active Worker, then install
+role-specific alternatives without selecting them project-wide:
+
+```bash
+drwn apply @team/base@^1 @team/reviewer@^1 @team/implementation@^1 \
+  --active @team/base
+drwn write
+
+drwn worker launch-context prepare @team/reviewer --target claude --json
+drwn worker launch-context prepare @team/reviewer --target codex --json
+drwn worker launch-context prepare @team/implementation --target codex --json
+```
+
+An orchestrator passes each returned `context.launch.args` and
+`context.launch.env` unchanged to the matching target executable. It owns agent
+roles, panes, prompts, and live bindings; it does not read Card manifests or
+generated target files. Several agents may reuse one context when their target,
+assigned root, optional MCP selection, and effective materialization inputs are
+identical.
+
+The project must remain coordinated like any shared worktree: launch contexts
+separate capabilities, not filesystem writes. Use explicit writer roles and
+review Git diffs before combining concurrent agent changes.
+
 ## See Also
 
 - [init CLI reference](../reference/cli/init)
 - [Project config schema](../reference/schemas/project-config-json)
 - [Layered model](../concepts/layered-model)
+- [Per-agent Worker launch contexts](../concepts/per-agent-worker-launch-contexts)

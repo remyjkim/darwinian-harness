@@ -10,6 +10,7 @@ commands:
 ```bash
 drwn worker status <slug> --json
 drwn worker materialize --payload payload.json --project-root /srv/worker
+drwn worker launch-context prepare <installed-root> --target codex --dry-run --json
 drwn worker buzz-tools
 printf '%s' "$WORKER_SECRET" | drwn worker secret set <slug> <name>
 ```
@@ -44,6 +45,38 @@ frozen, and runs the normal write projection. Required inputs are `--payload`
 and `--project-root`. `--store-export` supplies external store bytes;
 `--emit-store-tar` and `--emit-project-tar` produce bounded snapshots. This is a
 filesystem-mutating operator command.
+
+## Per-agent launch contexts
+
+`drwn worker launch-context` is separate from deployment `materialize`. It
+derives process-local additions for an already-installed project Worker root;
+it never constructs a new project, resolves a remote ref, changes
+`activeWorker`, or starts an agent.
+
+```bash
+drwn worker launch-context prepare @team/reviewer --target codex --dry-run --json
+drwn worker launch-context prepare @team/reviewer --target claude --enable-mcp context7 --json
+drwn worker launch-context list --json
+drwn worker launch-context prune --older-than 7d
+drwn worker launch-context prune --older-than 7d --execute --json
+```
+
+Prepare supports only `claude` and `codex`. `--enable-mcp` is repeatable and
+accepts only optional servers declared by the assigned closure. `--strict`
+turns missing selected hook/instruction consent into an error. `--dry-run`
+returns `drwn.worker-launch-plan` and performs no target execution or writes.
+Normal JSON output is a `drwn.worker-launch-prepare-result` containing the
+strict `drwn.worker-launch-context` descriptor and a verified-reuse flag.
+
+Claude Code 2.1.212 and Codex CLI 0.149.0 are the conservative first supported
+versions. Target-native trust prompts remain active. Codex uses a nested project
+layer selected with `-C` and `--add-dir`; Claude uses a validated directory
+plugin and optional append-system-prompt file.
+
+List and doctor verify the bounded context store without a mutable index. Prune
+is report-only by default; `--execute` requires `--older-than`. Darwinian Worker
+does not know whether Herdr still has a live process attached. Cold resume is
+out of scope and restored agents remain `relaunch_required` until relaunched.
 
 ## Buzz tools
 

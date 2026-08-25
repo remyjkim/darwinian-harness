@@ -466,11 +466,15 @@ drwn acp serve --help
 drwn worker materialize --help
 drwn worker buzz-tools --help
 drwn worker secret set --help
+drwn worker launch-context --help
+drwn worker launch-context prepare --help
+drwn worker launch-context list --help
+drwn worker launch-context prune --help
 drwn analyze sessions --help
 ```
 
-`drwn --version` plus the seven login/refresh/logout/ACP/Worker help invocations
-above are the eight safe installed-package release smokes. `analyze sessions`
+`drwn --version` plus the eleven login/refresh/logout/ACP/Worker/launch-context
+help invocations above are the twelve safe installed-package release smokes. `analyze sessions`
 help remains documented but is not one of the release smokes. The safe set does
 not authenticate, contact Buzz, read credential bytes, use the keychain, or
 mutate a project. Running the commands without `--help` is operational and is

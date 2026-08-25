@@ -42,6 +42,22 @@ Worker roots but selects at most one; `drwn write` projects only the selected
 root closure plus explicit project overlays. Project declarations do not inherit
 the machine Worker.
 
+Run several Claude or Codex processes in the same Git worktree with different
+installed Worker profiles without changing the active shared base:
+
+```bash
+drwn worker launch-context prepare <installed-root> --target claude --json
+drwn worker launch-context prepare <installed-root> --target codex --json
+drwn worker launch-context list --json
+```
+
+Preparation is additive and content-addressed. Dry-run returns a strict plan;
+normal mode returns opaque argv/env, writes only under
+`.agents/drwn/generated/launch-contexts/`, and does not write to user home.
+Claude Code 2.1.212 and Codex CLI 0.149.0 are the conservative first supported
+targets. Context pruning is report-only unless `--execute --older-than` is
+explicit. Cold-restored orchestrator bindings remain `relaunch_required`.
+
 The installed CLI also exposes the operational ACP, deployed-Worker, and DAH
 authentication surfaces:
 
@@ -50,6 +66,7 @@ drwn acp serve <slug>
 drwn worker status <slug> --json
 drwn worker materialize --payload payload.json --project-root /srv/worker
 drwn worker buzz-tools
+drwn worker launch-context prepare <installed-root> --target codex --dry-run --json
 printf '%s' "$WORKER_SECRET" | drwn worker secret set <slug> <name>
 drwn login --json
 drwn refresh --json
@@ -58,8 +75,8 @@ drwn analyze sessions --dry-run
 ```
 
 `drwn analyze sessions` remains the Foundry/Analyzer-linked session-upload
-feature; it is separate from ACP serving. `drwn --version` and seven documented
-auth/ACP/Worker `--help` commands form the eight safe installed-package release
+feature; it is separate from ACP serving. `drwn --version` and eleven documented
+auth/ACP/Worker/launch-context `--help` commands form the twelve safe installed-package release
 smokes. Actual login, logout, refresh, ACP serving, materialization, Buzz
 delivery, secret mutation, and analysis upload are operational actions, not
 release smokes.
