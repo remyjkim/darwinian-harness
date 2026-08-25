@@ -345,6 +345,30 @@ test("strict admission treats property names as data rather than schema keywords
   })).toBeUndefined();
 });
 
+test("strict admission rejects a behavioral sibling ignored by enum compilation", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.Environment = { type: "string", enum: ["ok"], minLength: 10 };
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
+test("strict admission rejects a behavioral sibling ignored by const compilation", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.RunStatus = { type: "string", const: "ok", pattern: "^never$" };
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
+test("strict admission rejects enum literals that contradict their declared type", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.Environment = { type: "string", enum: [1] };
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
+test("strict admission rejects a const literal that contradicts its declared type", () => {
+  expect(admissionCodeForMutatedContract((contract) => {
+    contract.schemas.RunStatus = { type: "string", const: false };
+  })).toBe("MANAGEMENT_CONTRACT_INVALID");
+});
+
 test("fails closed with a stable error when packaged bytes pass the lock but violate strict admission", () => {
   const packageRoot = mkdtempSync(join(tmpdir(), "drwn-management-invalid-"));
   try {

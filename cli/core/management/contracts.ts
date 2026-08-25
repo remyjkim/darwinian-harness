@@ -223,6 +223,8 @@ const supportedSchemaKeywords = new Set([
   "anyOf",
 ]);
 const supportedSchemaTypes = new Set(["array", "boolean", "integer", "null", "object", "string"]);
+const enumSchemaKeywords = new Set(["enum", "type", "title", "description"]);
+const constSchemaKeywords = new Set(["const", "type", "title", "description"]);
 
 function isJsonObject(value: ManagementJsonValue | undefined): value is ManagementJsonObject {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -240,6 +242,12 @@ function assertFiniteNumber(value: ManagementJsonValue | undefined, path: string
     throw invalidContract(`Management JSON Schema keyword ${path} must be a finite number`);
   }
   return value;
+}
+
+function literalMatchesSchemaType(value: JsonPrimitive, type: string): boolean {
+  if (type === "null") return value === null;
+  if (type === "integer") return typeof value === "number" && Number.isInteger(value);
+  return typeof value === type;
 }
 
 function assertJsonSchemaDialect(
@@ -279,6 +287,12 @@ function assertJsonSchemaDialect(
     if (schema.const !== null && !["boolean", "number", "string"].includes(typeof schema.const)) {
       throw invalidContract(`Management JSON Schema const is not a supported literal at ${path}.const`);
     }
+    if (keys.some((keyword) => !constSchemaKeywords.has(keyword))) {
+      throw invalidContract(`Management JSON Schema const has an ignored behavioral sibling at ${path}`);
+    }
+    if (type !== undefined && !literalMatchesSchemaType(schema.const as JsonPrimitive, type)) {
+      throw invalidContract(`Management JSON Schema const contradicts its declared type at ${path}`);
+    }
   }
   if (schema.enum !== undefined) {
     if (!Array.isArray(schema.enum) || schema.enum.length === 0 || schema.enum.some((value) =>
@@ -289,6 +303,15 @@ function assertJsonSchemaDialect(
     const identities = schema.enum.map((value) => JSON.stringify(value));
     if (new Set(identities).size !== identities.length) {
       throw invalidContract(`Management JSON Schema enum contains duplicate literals at ${path}.enum`);
+    }
+    if (keys.some((keyword) => !enumSchemaKeywords.has(keyword))) {
+      throw invalidContract(`Management JSON Schema enum has an ignored behavioral sibling at ${path}`);
+    }
+    if (
+      type !== undefined &&
+      schema.enum.some((value) => !literalMatchesSchemaType(value as JsonPrimitive, type))
+    ) {
+      throw invalidContract(`Management JSON Schema enum contradicts its declared type at ${path}`);
     }
   }
 
