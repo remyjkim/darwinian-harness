@@ -30,6 +30,31 @@ function mockRunProcess(result: { exitCode: number; stdout?: string; stderr?: st
   });
 }
 
+async function captureStoreFailure(operation: () => Promise<void>): Promise<unknown> {
+  try {
+    await operation();
+    throw new Error("store unexpectedly succeeded");
+  } catch (error) {
+    return error;
+  }
+}
+
+function expectRedactedStoreFailure(failure: unknown, sentinels: string[]): void {
+  expect(failure).toBeInstanceOf(CredentialIntegrityError);
+  expect(failure).toMatchObject({
+    code: "CREDENTIAL_INTEGRITY",
+    message: "Scoped key storage failed.",
+  });
+  expect((failure as Error & { cause?: unknown }).cause).toBeUndefined();
+  const exposed = [
+    String(failure),
+    (failure as Error).message,
+    JSON.stringify(failure),
+    String((failure as Error & { cause?: unknown }).cause ?? ""),
+  ].join("\n");
+  for (const sentinel of sentinels) expect(exposed).not.toContain(sentinel);
+}
+
 describe("keychain backend selection", () => {
   test("production custody has no file-backend or environment escape", () => {
     const source = readFileSync(new URL("../cli/core/secret-store.ts", import.meta.url), "utf8");
@@ -108,6 +133,22 @@ describe("macOS security backend argv", () => {
     }
   });
 
+  test("storeKey fails closed without retaining process, account, service, or key material", async () => {
+    const stderr = "SENTINEL_MAC_STORE_STDERR_336";
+    const account = "SENTINEL_MAC_STORE_ACCOUNT_336";
+    const service = "SENTINEL_MAC_STORE_SERVICE_336";
+    const keyText = "SENTINEL_MAC_STORE_KEY_336";
+    const spy = mockRunProcess({ exitCode: 1, stderr });
+    try {
+      const failure = await captureStoreFailure(
+        () => new MacKeychainBackend(account, service).storeKey(Buffer.from(keyText)),
+      );
+      expectRedactedStoreFailure(failure, [stderr, account, service, keyText, Buffer.from(keyText).toString("base64")]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("loadKey returns null when security reports not-found", async () => {
     const spy = mockRunProcess({ exitCode: 44 });
     try {
@@ -157,6 +198,26 @@ describe("linux secret-tool backend", () => {
       const [argv, options] = spy.mock.calls[0] ?? [];
       expect(argv).toEqual(["secret-tool", "store", "--label=label", "service", "svc", "account", "acct"]);
       expect((options as { stdin?: string }).stdin).toBe(Buffer.from("key-bytes").toString("base64"));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("storeKey fails closed without retaining process, attribute, label, or key material", async () => {
+    const stderr = "SENTINEL_LINUX_STORE_STDERR_336";
+    const account = "SENTINEL_LINUX_STORE_ACCOUNT_336";
+    const label = "SENTINEL_LINUX_STORE_LABEL_336";
+    const service = "SENTINEL_LINUX_STORE_SERVICE_336";
+    const keyText = "SENTINEL_LINUX_STORE_KEY_336";
+    const spy = mockRunProcess({ exitCode: 1, stderr });
+    try {
+      const failure = await captureStoreFailure(
+        () => new SecretToolBackend(account, label, service).storeKey(Buffer.from(keyText)),
+      );
+      expectRedactedStoreFailure(
+        failure,
+        [stderr, account, label, service, keyText, Buffer.from(keyText).toString("base64")],
+      );
     } finally {
       spy.mockRestore();
     }
@@ -227,6 +288,32 @@ describe("real macOS keychain round-trip", () => {
 });
 
 describe("real Windows DPAPI backend", () => {
+  test("storeKey fails closed without retaining process, path, or key material", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "drwn-dpapi-store-failure-"));
+    const savedPath = process.env.PATH;
+    const pathSentinel = "SENTINEL_DPAPI_STORE_PATH_336";
+    const keyPath = join(dir, pathSentinel);
+    const stderr = "SENTINEL_DPAPI_STORE_STDERR_336";
+    const keyText = "SENTINEL_DPAPI_STORE_KEY_336";
+    writeFileSync(join(dir, "pwsh"), "fixture");
+    process.env.PATH = dir;
+    const spy = mockRunProcess({ exitCode: 1, stderr });
+    try {
+      const failure = await captureStoreFailure(
+        () => new DpapiBackend(keyPath).storeKey(Buffer.from(keyText)),
+      );
+      expectRedactedStoreFailure(
+        failure,
+        [stderr, pathSentinel, keyPath, keyText, Buffer.from(keyText).toString("base64")],
+      );
+    } finally {
+      spy.mockRestore();
+      if (savedPath === undefined) delete process.env.PATH;
+      else process.env.PATH = savedPath;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("fails closed when an existing protected key cannot be unprotected", async () => {
     const dir = mkdtempSync(join(tmpdir(), "drwn-dpapi-failure-"));
     const savedPath = process.env.PATH;

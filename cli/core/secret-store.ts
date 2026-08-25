@@ -234,7 +234,7 @@ export class MacKeychainBackend implements KeychainBackend {
       "security", "add-generic-password", "-U", "-a", this.account, "-s", this.service, "-w", key.toString("base64"),
     ]);
     if (result.exitCode !== 0) {
-      throw new Error(`security add-generic-password failed: ${result.stderr.trim()}`);
+      throw new CredentialIntegrityError("Scoped key storage failed.");
     }
   }
   async deleteKey(): Promise<void> {
@@ -268,7 +268,7 @@ export class SecretToolBackend implements KeychainBackend {
       { stdin: key.toString("base64") },
     );
     if (result.exitCode !== 0) {
-      throw new Error(`secret-tool store failed: ${result.stderr.trim()}`);
+      throw new CredentialIntegrityError("Scoped key storage failed.");
     }
   }
   async deleteKey(): Promise<void> {
@@ -316,7 +316,7 @@ export class DpapiBackend implements KeychainBackend {
       `[IO.File]::WriteAllBytes(${psLiteral(this.keyPath)},$p)`;
     const result = await runProcess([exe, "-NoProfile", "-NonInteractive", "-Command", script]);
     if (result.exitCode !== 0) {
-      throw new Error(`DPAPI protect failed: ${result.stderr.trim()}`);
+      throw new CredentialIntegrityError("Scoped key storage failed.");
     }
     await restrictFile(this.keyPath);
   }
