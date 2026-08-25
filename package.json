@@ -56,6 +56,7 @@
     "typecheck": "tsc --noEmit",
     "verify:release": "bun run scripts/verify-release-readiness.ts",
     "verify:worker-launch-targets": "bun run scripts/verify-worker-launch-targets.ts --json",
+    "generate:worker-launch-consumer-fixtures": "bun run scripts/generate-worker-launch-consumer-fixtures.ts",
     "verify:bridge": "bun run --cwd drwn-command-bridge verify",
     "docs:dev": "cd docs-docusaurus && bun run start",
     "docs:build": "cd docs-docusaurus && bun run build",

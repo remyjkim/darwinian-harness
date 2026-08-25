@@ -32,6 +32,7 @@ async function makeCapabilityCard(input: {
   char: string;
   skill: string;
   mcp: string;
+  optionalMcp?: string;
   instruction: string;
   hookLog: string;
 }): Promise<CardLockEntry> {
@@ -67,6 +68,9 @@ async function makeCapabilityCard(input: {
       skills: { include: [input.skill] },
       servers: {
         [input.mcp]: { description: input.mcp, transport: "stdio", command: "/usr/bin/true", optional: false },
+        ...(input.optionalMcp
+          ? { [input.optionalMcp]: { description: input.optionalMcp, transport: "stdio" as const, command: "/usr/bin/true", optional: true } }
+          : {}),
       },
       instructions: { text: input.instruction },
     },
@@ -133,7 +137,7 @@ export async function createLiveWorkerLaunchFixture(): Promise<LiveWorkerLaunchF
   });
   const reviewOnly = await makeCapabilityCard({
     sources, name: "@live/review-only", char: "c", skill: "review-live", mcp: "review_live_mcp",
-    instruction: "REVIEW_LIVE_INSTRUCTION", hookLog: hookLogs.reviewer,
+    optionalMcp: "review_optional_mcp", instruction: "REVIEW_LIVE_INSTRUCTION", hookLog: hookLogs.reviewer,
   });
   const implementationOnly = await makeCapabilityCard({
     sources, name: "@live/implementation-only", char: "d", skill: "implementation-live", mcp: "implementation_live_mcp",
