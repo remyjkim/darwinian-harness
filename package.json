@@ -52,7 +52,7 @@
   "scripts": {
     "drwn": "bun run cli/index.ts",
     "test": "bun test ./test/",
-    "test:gate": "bun test --timeout 30000 ./test/",
+    "test:gate": "bun test --timeout 30000 --max-concurrency 2 ./test/",
     "typecheck": "tsc --noEmit",
     "verify:release": "bun run scripts/verify-release-readiness.ts",
     "verify:worker-launch-targets": "bun run scripts/verify-worker-launch-targets.ts --json",

@@ -25,7 +25,7 @@ describe("Worker release dry-run workflow", () => {
     );
     const releaseValidation = job("validate", "dry_run_complete");
 
-    expect(pkg.scripts["test:gate"]).toBe("bun test --timeout 30000 ./test/");
+    expect(pkg.scripts["test:gate"]).toBe("bun test --timeout 30000 --max-concurrency 2 ./test/");
     expect(ciValidation.match(/run: bun run test:gate/g)).toHaveLength(1);
     expect(releaseValidation.match(/run: bun run test:gate/g)).toHaveLength(1);
     expect(ciValidation).not.toContain("run: bun test --timeout 30000 ./test/");
