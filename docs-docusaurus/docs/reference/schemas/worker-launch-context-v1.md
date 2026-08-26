@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # Worker Launch Context V1 Schemas
 
-Darwinian Worker 1.4.0 exposes four strict JSON schemas. Unknown fields,
+Darwinian Worker 1.4.2 exposes four strict JSON schemas. Unknown fields,
 unsupported versions, unsafe paths, duplicate set identities, noncanonical
 ordering, and documents larger than 64 KiB fail closed.
 

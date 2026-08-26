@@ -201,7 +201,7 @@ export async function generateWorkerLaunchConsumerFixtures(options: GenerateOpti
   await git(repoRoot, ["cat-file", "-e", `${sourceCommit}^{commit}`]);
   const sourceTree = await git(repoRoot, ["rev-parse", `${sourceCommit}^{tree}`]);
   const packageJson = JSON.parse(await readFile(join(repoRoot, "package.json"), "utf8")) as { version?: unknown };
-  if (packageJson.version !== "1.4.0") throw new Error("Worker launch consumer fixtures require package version 1.4.0");
+  if (packageJson.version !== "1.4.2") throw new Error("Worker launch consumer fixtures require package version 1.4.2");
 
   await mkdir(dirname(outputDir), { recursive: true });
   const staging = await mkdtemp(join(dirname(outputDir), ".worker-launch-consumer-stage-"));

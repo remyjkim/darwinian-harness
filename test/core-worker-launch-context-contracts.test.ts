@@ -67,7 +67,7 @@ function validContext() {
       projectOverlayDigest: digest("5"),
     },
     targetCompatibility: { minimumVersion: "0.149.0", probed: true, observedVersion: "0.149.0" },
-    provenance: { drwnVersion: "1.4.0", sourceProjectLockDigest: digest("6"), localOnly: false },
+    provenance: { drwnVersion: "1.4.2", sourceProjectLockDigest: digest("6"), localOnly: false },
     warnings: [],
   };
 }

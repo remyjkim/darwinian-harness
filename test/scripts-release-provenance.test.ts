@@ -31,10 +31,10 @@ function receiptObject(): ReleaseCandidateReceiptV1 {
       ref: "refs/heads/main",
       sourceCommit: COMMIT,
     },
-    package: { name: "darwinian", version: "1.4.0" },
-    build: { version: "1.4.0", sourceCommit: COMMIT },
+    package: { name: "darwinian", version: "1.4.2" },
+    build: { version: "1.4.2", sourceCommit: COMMIT },
     tar: {
-      filename: "darwinian-1.4.0.tgz",
+      filename: "darwinian-1.4.2.tgz",
       byteLength: 12345,
       sha1: "c".repeat(40),
       sha256: "d".repeat(64),
@@ -47,7 +47,7 @@ function annotation(overrides: Record<string, string | number> = {}): string {
   const values = {
     schema: "darwinian.worker.release-authorization",
     schema_version: 1,
-    version: "1.4.0",
+    version: "1.4.2",
     dry_run_run_id: 123,
     dry_run_run_attempt: 1,
     artifact_id: 456,
@@ -55,7 +55,7 @@ function annotation(overrides: Record<string, string | number> = {}): string {
     ...overrides,
   };
   return [
-    "Darwinian Worker CLI v1.4.0",
+    "Darwinian Worker CLI v1.4.2",
     "",
     "-----BEGIN DARWINIAN WORKER RELEASE AUTHORIZATION-----",
     ...Object.entries(values).map(([key, value]) => `${key}=${value}`),
@@ -67,7 +67,7 @@ function validInput() {
   return {
     receiptText: JSON.stringify(receiptObject()),
     tagAnnotation: annotation(),
-    tag: { name: "v1.4.0", type: "tag" as const, peeledCommit: COMMIT },
+    tag: { name: "v1.4.2", type: "tag" as const, peeledCommit: COMMIT },
     checkoutCommit: COMMIT,
     originMainCommit: COMMIT,
     run: {
@@ -89,9 +89,9 @@ function validInput() {
     artifacts: [{ id: 456, name: RELEASE_ARTIFACT_NAME, digest: DIGEST, expired: false, runId: 123 }],
     artifact: {
       packageName: "darwinian",
-      version: "1.4.0",
+      version: "1.4.2",
       sourceCommit: COMMIT,
-      filename: "darwinian-1.4.0.tgz",
+      filename: "darwinian-1.4.2.tgz",
       byteLength: 12345,
       sha1: "c".repeat(40),
       sha256: "d".repeat(64),
@@ -134,7 +134,7 @@ describe("release candidate receipt parser", () => {
     ["unknown root key", () => JSON.stringify({ ...receiptObject(), extra: true })],
     ["unknown nested key", () => JSON.stringify({ ...receiptObject(), tar: { ...receiptObject().tar, extra: true } })],
     ["duplicate key", () => JSON.stringify(receiptObject()).replace('"schemaVersion":1', '"schemaVersion":1,"schemaVersion":1')],
-    ["bad SHA", () => JSON.stringify({ ...receiptObject(), build: { version: "1.4.0", sourceCommit: "A".repeat(40) } })],
+    ["bad SHA", () => JSON.stringify({ ...receiptObject(), build: { version: "1.4.2", sourceCommit: "A".repeat(40) } })],
     ["bad digest", () => JSON.stringify({ ...receiptObject(), tar: { ...receiptObject().tar, sha256: "d".repeat(63) } })],
     ["bad timestamp", () => JSON.stringify({ ...receiptObject(), createdAt: "2026-08-08" })],
     ["bad URL", () => JSON.stringify({ ...receiptObject(), workflow: { ...receiptObject().workflow, runUrl: "https://example.test/?token=SECRET" } })],
@@ -148,7 +148,7 @@ describe("annotated tag authorization parser", () => {
     expect(parseReleaseTagAuthorization(annotation())).toEqual({
       schema: "darwinian.worker.release-authorization",
       schemaVersion: 1,
-      version: "1.4.0",
+      version: "1.4.2",
       dryRunRunId: 123,
       dryRunRunAttempt: 1,
       artifactId: 456,
@@ -173,7 +173,7 @@ describe("release recovery authorization parser", () => {
     schema: "darwinian.worker.release-recovery-authorization",
     schemaVersion: 1,
     authorizedAt: "2026-08-08T00:00:00.000Z",
-    tag: "v1.4.0",
+    tag: "v1.4.2",
     failedRunId: 789,
     action: "verify_and_repair_metadata",
   } as const;
@@ -195,14 +195,14 @@ describe("release recovery authorization parser", () => {
 describe("exact release provenance join", () => {
   test("accepts one immutable dry-run/tag/run/artifact/tar tuple", () => {
     const result = verifyReleaseProvenance(validInput());
-    expect(result).toEqual({ version: "1.4.0", sourceCommit: COMMIT, runId: 123, artifactId: 456, artifactDigest: DIGEST });
+    expect(result).toEqual({ version: "1.4.2", sourceCommit: COMMIT, runId: 123, artifactId: 456, artifactDigest: DIGEST });
   });
 
   test("recovery observes but does not fabricate equality with a later origin/main", () => {
     const input = validInput();
     input.originMainCommit = "e".repeat(40);
     expect(verifyRecoveryReleaseProvenance(input)).toEqual({
-      version: "1.4.0",
+      version: "1.4.2",
       sourceCommit: COMMIT,
       runId: 123,
       artifactId: 456,

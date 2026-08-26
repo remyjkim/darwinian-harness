@@ -2,7 +2,7 @@
   "schema": "drwn.worker-launch-consumer-fixtures",
   "schemaVersion": 1,
   "source": {
-    "version": "1.4.0",
+    "version": "1.4.2",
     "commit": "539ed0c4e59dbf1b92a20b40d4a4c01038cb7e0a",
     "tree": "5c24c49012b9093453491fbc6a70fcc8f5f7e254"
   },

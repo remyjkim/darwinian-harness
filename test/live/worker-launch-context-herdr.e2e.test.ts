@@ -29,10 +29,10 @@ liveTest("Herdr runs Claude reviewer, Codex reviewer, and Codex implementer with
   let server: ChildProcess | undefined;
   const session = `drwn-v14-live-${process.pid}-${Date.now()}`;
   try {
-    if (!process.env.DRWN_LIVE_DRWN_BIN) throw new Error("Herdr release qualification requires DRWN_LIVE_DRWN_BIN for the packed v1.4.0 candidate");
+    if (!process.env.DRWN_LIVE_DRWN_BIN) throw new Error("Herdr release qualification requires DRWN_LIVE_DRWN_BIN for the packed v1.4.2 candidate");
     const candidateVersion = await runProcess([process.env.DRWN_LIVE_DRWN_BIN, "--version"], { timeoutMs: 5_000 });
     expect(candidateVersion.exitCode, candidateVersion.stderr).toBe(0);
-    expect(candidateVersion.stdout.trim()).toBe("1.4.0");
+    expect(candidateVersion.stdout.trim()).toBe("1.4.2");
     fixture = await createLiveWorkerLaunchFixture();
     const [claudeReview, codexReview, codexImplementation] = await Promise.all([
       prepareLiveContext(fixture, fixture.roots.reviewer, "claude"),

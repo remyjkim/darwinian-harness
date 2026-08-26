@@ -56,7 +56,7 @@
       "observedVersion": "0.149.0"
     },
     "provenance": {
-      "drwnVersion": "1.4.0",
+      "drwnVersion": "1.4.2",
       "sourceProjectLockDigest": "sha256-6666666666666666666666666666666666666666666666666666666666666666",
       "localOnly": false
     },

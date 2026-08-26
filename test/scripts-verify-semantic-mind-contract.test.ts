@@ -26,7 +26,7 @@ describe("provider-neutral Worker Mind release gate", () => {
       "cli/index.ts": `${index}\nconst AcpCommand = true;\n`,
     });
     expect(result.ok).toBe(false);
-    expect(result.details).toContain("package version must be at least 1.4.0");
+    expect(result.details).toContain("package version must be at least 1.4.2");
     expect(result.details).toContain("ACP SDK dependency remains");
     expect(result.details).toContain("Worker Mind placeholder refusal is missing");
     expect(result.details).toContain("retired command registration remains: AcpCommand");

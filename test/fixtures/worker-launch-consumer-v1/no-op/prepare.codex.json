@@ -28,7 +28,7 @@
       "env": {}
     },
     "provenance": {
-      "drwnVersion": "1.4.0",
+      "drwnVersion": "1.4.2",
       "localOnly": false,
       "sourceProjectLockDigest": "sha256-78d558c342e96acea8de7a0ddd53e41b2020403d8c25d27473051691af08e844"
     },

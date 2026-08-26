@@ -317,13 +317,13 @@
     },
     "versionFloor": {
       "required": "0.8.0",
-      "running": "1.4.0",
+      "running": "1.4.2",
       "satisfied": true
     },
     "writeRecord": {
       "corrupt": false,
       "lastWriteAt": "2000-01-01T00:00:00.000Z",
-      "lastWriteHarnessVersion": "1.4.0",
+      "lastWriteHarnessVersion": "1.4.2",
       "managedPathCount": 39,
       "path": "/fixture/project/.agents/drwn/write-record.json",
       "present": true

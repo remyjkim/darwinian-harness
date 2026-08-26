@@ -6,7 +6,7 @@ sidebar_position: 9
 
 A project may keep several Worker roots installed while selecting at most one
 `activeWorker`. The active Worker remains the shared project base written by
-`drwn write`. Darwinian Worker 1.4.0 can prepare an additional installed root
+`drwn write`. Darwinian Worker 1.4.2 can prepare an additional installed root
 for one Claude or Codex process without changing that shared selection.
 
 ```text
@@ -152,13 +152,13 @@ RUN_DRWN_REAL_HERDR=1 bun test --timeout 600000 test/live/worker-launch-context-
 ```
 
 The three-agent Herdr drill requires `DRWN_LIVE_DRWN_BIN` to name the installed
-v1.4.0 candidate binary, and verifies its version before setup. The tests use isolated Worker
+v1.4.2 candidate binary, and verifies its version before setup. The tests use isolated Worker
 state and Git projects but deliberately do not copy or manufacture target
 credentials or trust decisions.
 
 ## Resume boundary
 
-Cold process reconstruction is not part of 1.4.0. Orchestrators should record
+Cold process reconstruction is not part of 1.4.2. Orchestrators should record
 the context ID for diagnostics, but restored agents are `relaunch_required`
 until explicitly started again with a newly verified descriptor. There is no
 resume command in this release.

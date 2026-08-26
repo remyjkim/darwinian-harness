@@ -38,7 +38,7 @@ function githubReceipt(): GitHubPublicationControlsV1 {
       preventSelfReview: false,
       canAdminsBypass: false,
       customDeploymentPolicies: true,
-      deploymentPolicies: [{ type: "tag", pattern: "v1.4.0" }],
+      deploymentPolicies: [{ type: "tag", pattern: "v1.4.2" }],
     },
   };
 }
@@ -76,7 +76,7 @@ describe("publication control receipts", () => {
       environment: "darwinian-npm-publish",
       approval: { requiredReviewers: ["remyjkim"], preventSelfReview: false },
       package: "darwinian",
-      versionTag: "v1.4.0",
+      versionTag: "v1.4.2",
     });
   });
 
@@ -92,7 +92,7 @@ describe("publication control receipts", () => {
       environment: "darwinian-npm-publish",
       approval: { requiredReviewers: ["leeminseung"], preventSelfReview: true },
       package: "darwinian",
-      versionTag: "v1.4.0",
+      versionTag: "v1.4.2",
     });
   });
 
@@ -169,7 +169,7 @@ describe("publication control receipts", () => {
         preventSelfReview: declared.preventSelfReview,
       },
       package: "darwinian",
-      versionTag: "v1.4.0",
+      versionTag: "v1.4.2",
     });
   });
 

@@ -98,7 +98,7 @@ test("generator produces the complete normalized plugin-facing pack with verifie
   expect(provenance).toMatchObject({
     schema: "drwn.worker-launch-consumer-fixtures",
     schemaVersion: 1,
-    source: { version: "1.4.0" },
+    source: { version: "1.4.2" },
     generator: { path: "scripts/generate-worker-launch-consumer-fixtures.ts", version: 1 },
   });
   expect(provenance.source.commit).toMatch(/^[a-f0-9]{40}$/);

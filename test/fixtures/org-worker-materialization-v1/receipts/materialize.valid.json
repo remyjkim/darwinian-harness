@@ -15,7 +15,7 @@
   },
   "consumer": {
     "name": "darwinian",
-    "version": "1.4.0",
+    "version": "1.4.2",
     "compatibilityProfile": "drwn-org-worker-materialization@1"
   },
   "artifactVerification": {

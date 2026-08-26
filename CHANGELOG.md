@@ -34,6 +34,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registry default for the cursor target is now off — enable it explicitly
   via machine policy or a project override to keep projecting.
 
+## [1.4.2] - 2026-08-24
+
+### Added
+
+- Strict DAH-consented Deployed Worker management for organizations, registration,
+  immutable deployment artifacts and attempts, explicit rollback, stdin-only secrets,
+  bounded runs, and revisioned retirement.
+- Profile-isolated organization context, verified project target binding, resumable
+  non-secret mutation journals, and a language-neutral pinned Services contract.
+
+### Changed
+
+- Active product naming is Foundry-only. Cloud commands use typed IDs and the private
+  management kernel; slug/Mind routes and direct arbitrary Deploy API calls are removed.
+- ACP and provider-backed Mind runtime features are removed. `worker mind` remains a
+  provider-neutral no-I/O placeholder while the persistence backend is undecided.
+
 ## [1.4.0] - 2026-08-24
 
 ### Added
