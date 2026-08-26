@@ -14,6 +14,9 @@ const ALWAYS_IGNORED_ENTRIES = [
   ".agents/drwn/write-record.json",
   ".agents/drwn/org-worker-materialization.json",
   ".agents/drwn/.org-worker-materialization-journal.json",
+  ".agents/drwn/cloud.local.json",
+  ".agents/drwn/.cloud-operations/",
+  ".agents/drwn/.cloud-state.lock",
   ".agents/drwn/receipts/",
   ".agents/drwn/generated/",
 ];
