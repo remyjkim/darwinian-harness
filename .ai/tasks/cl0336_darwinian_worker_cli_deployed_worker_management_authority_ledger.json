@@ -202,7 +202,7 @@
       "passed": 2205,
       "skipped": 7,
       "failed": 0,
-      "durationSeconds": 687.09
+      "durationSeconds": 674.16
     },
     "typecheck": "passed",
     "hardCutResidue": "passed"
