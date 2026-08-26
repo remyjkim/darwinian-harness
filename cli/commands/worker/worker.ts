@@ -4,17 +4,17 @@
 import { BaseCommand } from "../base";
 
 const DETAILS = [
-  "Cards compose capabilities into one Blueprint. A project selects one Worker root with drwn use;",
-  "worker deploy sends that root and its pinned Card closure to the remote runtime.",
+  "Cards compose one selected project Worker with drwn use; Deployed Worker management uses explicit organization and Deployed Worker IDs.",
   "",
   "Available commands:",
-  "  drwn worker deploy <cardRef> --name <slug>",
+  "  drwn worker use <deployedWorkerId>",
+  "  drwn worker deploy <cardRef>",
   "  drwn worker launch-context prepare <installed-root> --target claude|codex",
   "  drwn worker list",
-  "  drwn worker status <slug>",
-  "  drwn worker deployments <slug>",
-  "  drwn worker chat <slug> --message <text>",
-  "  drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var NAME]",
+  "  drwn worker status [deployedWorkerId]",
+  "  drwn worker deployments [deployedWorkerId]",
+  "  drwn worker chat [deployedWorkerId] --message <text>",
+  "  drwn worker secret set [deployedWorkerId] <name>",
   "  drwn worker buzz-tools",
   "  drwn worker rollback <slug>",
   "  drwn worker delete <slug> --force",
@@ -30,7 +30,7 @@ export class WorkerCommand extends BaseCommand {
     examples: [
       ["Preview a per-agent context", "drwn worker launch-context prepare @team/reviewer --target codex --dry-run"],
       ["List deployed workers", "drwn worker list"],
-      ["Check a worker deployment", "drwn worker status harari"],
+      ["Check a deployed Worker", "drwn worker status deployed_worker_alpha"],
     ],
   });
 
