@@ -5,6 +5,7 @@
   "observedAt": "2026-08-26T00:44:55Z",
   "worker": {
     "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-architecture",
+    "documentationRoot": "/Users/pureicis/dev/darwinian-minds",
     "branch": "codex/i336-worker-cli-architecture",
     "candidateBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
     "acceptedBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
@@ -116,6 +117,12 @@
       "status": "approved",
       "answer": "Foundry naming is exclusive across active product surfaces; immutable historical evidence remains unchanged",
       "approvedAt": "2026-08-26T00:44:55Z"
+    },
+    {
+      "id": "DOCS-01",
+      "status": "approved",
+      "answer": "I336 HTML architecture and task-plan artifacts live only in each repository's primary checkout .ai directory; isolated worktrees contain implementation and non-HTML authority metadata only",
+      "approvedAt": "2026-08-26T01:48:53Z"
     }
   ],
   "operationalAuthorities": {
