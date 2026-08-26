@@ -1,0 +1,60 @@
+{
+  "schema": "drwn.worker-launch-context",
+  "schemaVersion": 1,
+  "contextId": "sha256-3333333333333333333333333333333333333333333333333333333333333333",
+  "target": "codex",
+  "kind": "codex",
+  "baseRoot": {
+    "name": "@fixture/base",
+    "requested": "@fixture/base@1.0.0",
+    "kind": "card",
+    "closureDigest": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "localOnly": false
+  },
+  "assignedRoot": {
+    "name": "@fixture/reviewer",
+    "requested": "@fixture/reviewer@1.0.0",
+    "kind": "card",
+    "closureDigest": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "localOnly": false
+  },
+  "artifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-3333333333333333333333333333333333333333333333333333333333333333",
+  "request": {
+    "enabledOptionalMcp": [],
+    "strict": false
+  },
+  "launch": {
+    "args": [
+      "-C",
+      "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-3333333333333333333333333333333333333333333333333333333333333333/codex/workspace",
+      "--add-dir",
+      "/fixture/project"
+    ],
+    "env": {}
+  },
+  "capabilities": {
+    "skills": [
+      "review"
+    ],
+    "mcpServers": [],
+    "hooks": [],
+    "instructions": false
+  },
+  "sourceState": {
+    "projectRootHash": "sha256-4444444444444444444444444444444444444444444444444444444444444444",
+    "baseClosureDigest": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "assignedClosureDigest": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "projectOverlayDigest": "sha256-5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "targetCompatibility": {
+    "minimumVersion": "0.149.0",
+    "probed": true,
+    "observedVersion": "0.149.0"
+  },
+  "provenance": {
+    "drwnVersion": "1.4.2",
+    "sourceProjectLockDigest": "sha256-6666666666666666666666666666666666666666666666666666666666666666",
+    "localOnly": false
+  },
+  "warnings": []
+}

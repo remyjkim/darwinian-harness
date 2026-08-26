@@ -1,0 +1,74 @@
+{
+  "schema": "drwn.worker-launch-plan",
+  "schemaVersion": 1,
+  "target": "codex",
+  "projectRoot": "/fixture/project",
+  "baseRoot": {
+    "name": "@fixture/base",
+    "requested": "@fixture/base@1.0.0",
+    "kind": "card",
+    "closureDigest": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "localOnly": false
+  },
+  "assignedRoot": {
+    "name": "@fixture/reviewer",
+    "requested": "@fixture/reviewer@1.0.0",
+    "kind": "card",
+    "closureDigest": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "localOnly": false
+  },
+  "baseClosure": [
+    {
+      "name": "@fixture/base",
+      "version": "1.0.0",
+      "integrity": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "local": false
+    }
+  ],
+  "assignedClosure": [
+    {
+      "name": "@fixture/reviewer",
+      "version": "1.0.0",
+      "integrity": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "local": false
+    }
+  ],
+  "deltaClosure": [
+    {
+      "name": "@fixture/reviewer",
+      "version": "1.0.0",
+      "integrity": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "local": false
+    }
+  ],
+  "capabilities": {
+    "skills": [
+      {
+        "id": "review",
+        "contentHash": "sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
+    "mcpServers": [],
+    "hooks": [],
+    "instructions": {
+      "present": false
+    }
+  },
+  "optionalMcp": {
+    "requested": [],
+    "enabled": [],
+    "rejected": []
+  },
+  "consent": {
+    "strict": false,
+    "included": [],
+    "excluded": []
+  },
+  "targetCompatibility": {
+    "minimumVersion": "0.149.0",
+    "probed": false
+  },
+  "warnings": [],
+  "plannedContextId": "sha256-3333333333333333333333333333333333333333333333333333333333333333",
+  "plannedArtifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-3333333333333333333333333333333333333333333333333333333333333333"
+}

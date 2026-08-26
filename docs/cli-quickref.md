@@ -292,43 +292,25 @@ Worker Blueprint authoring and remote operations:
 - `drwn worker new <name> [--into <collection>]`
 - `drwn worker compose <path-or-name> --add <cardRef>`
 - `drwn worker publish [name] [--from <source-path>]`
-- `drwn worker deploy <rootRef> --name <slug>`
+- `drwn org list [--limit 1-100] [--cursor <opaque>] [--json]`
+- `drwn org use <organizationId> [--json]`
+- `drwn worker register --organization <organizationId> --name <name> --environment development|staging|production [--json]`
+- `drwn worker use <deployedWorkerId> [--json]`
+- `drwn worker deploy <rootRef> [--deployed-worker <id>] [--json]`
 - `drwn worker list`
-- `drwn worker status <slug> --json`
+- `drwn worker status [deployedWorkerId] [--json]`
+- `drwn worker deployments [--deployed-worker <id>] [--limit 1-100] [--cursor <opaque>] [--json]`
+- `drwn worker rollback [--deployed-worker <id>] --to <deploymentId> [--json]`
+- `drwn worker chat [--deployed-worker <id>] --message <text> [--no-wait] [--json]`
+- `drwn worker run status <runId> [--deployed-worker <id>] [--json]`
+- `drwn worker retire [--deployed-worker <id>] --yes [--json]`
 - `drwn worker materialize --payload <payload.json> --project-root <path> [--store-export <tar>] [--emit-store-tar <tar>] [--emit-project-tar <tar>] [--json]`
 - `drwn worker buzz-tools`
-- `drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var <NAME>]` (secret bytes come from stdin)
-- `drwn acp serve <slug>` (the slug may instead come from `DRWN_ACP_SLUG` or one unambiguous local binding)
-- `drwn worker routine create <slug> --name <name> --cron <expression> [--timezone <IANA-zone>] [--prompt <text> | --payload <json-file>]`
-- `drwn worker routine list <slug> [--json]`
-- `drwn worker routine update <slug> <routineId> [--name <name>] [--cron <expression>] [--timezone <IANA-zone>] [--prompt <text> | --payload <json-file>]`
-- `drwn worker routine enable <slug> <routineId>`
-- `drwn worker routine disable <slug> <routineId>`
-- `drwn worker routine runs <slug> <routineId> [--limit <1-100>] [--cursor <cursor>] [--json]`
-- `drwn worker routine rm <slug> <routineId> --force`
+- `drwn worker secret set <name> [--deployed-worker <id>] [--kind mcp|env] [--env-var <NAME>] [--json]` (secret bytes come from stdin)
+- `drwn worker mind` (provider-neutral placeholder; returns `MIND_BACKEND_UNSELECTED` without I/O)
 
 Cards compose capabilities into one Blueprint. Installed Worker roots are
 alternatives; `drwn use` selects at most one root for project projection.
-
-Routines schedule recurring, cron-triggered runs of an already deployed Worker.
-Creation requires a display name and schedule; the timezone defaults to UTC and
-the server enforces a minimum five-minute interval. Use `--prompt` for the common
-message payload, or `--payload` for an arbitrary JSON object. Repeat
-`--account app=accountId` to pin connected-account selections, and use
-`--jitter false` only when an exact slot is required. Removing a definition does
-not immediately remove its retained run history.
-
-```bash
-drwn worker routine create research-worker \
-  --name "Weekday digest" \
-  --cron "0 9 * * 1-5" \
-  --timezone "America/Los_Angeles" \
-  --prompt "Summarize new research and open decisions" \
-  --account slack=acct_123
-
-drwn worker routine list research-worker
-drwn worker routine runs research-worker <routineId> --limit 20
-```
 
 Card hooks:
 
@@ -489,15 +471,19 @@ drwn machine skill install --help
 drwn login --help
 drwn refresh --help
 drwn logout --help
-drwn acp serve --help
+drwn worker mind --help
 drwn worker materialize --help
 drwn worker buzz-tools --help
 drwn worker secret set --help
+drwn worker launch-context --help
+drwn worker launch-context prepare --help
+drwn worker launch-context list --help
+drwn worker launch-context prune --help
 drwn analyze sessions --help
 ```
 
-`drwn --version` plus the seven login/refresh/logout/ACP/Worker help invocations
-above are the eight safe installed-package release smokes. `analyze sessions`
+`drwn --version` plus the eleven login/refresh/logout/Worker/launch-context
+help invocations above are the twelve safe installed-package release smokes. `analyze sessions`
 help remains documented but is not one of the release smokes. The safe set does
 not authenticate, contact Buzz, read credential bytes, use the keychain, or
 mutate a project. Running the commands without `--help` is operational and is
@@ -676,19 +662,12 @@ claim already-issued access tokens are invalidated. Qualification uses
 confirmed 2xx revoke, and both the remote confirmation and local deletion must
 succeed.
 
-## How ACP and deployed Worker operations work
+## Worker Mind placeholder and deployed Worker operations
 
-`drwn acp serve <slug>` speaks ACP JSON-RPC/NDJSON on stdio. Stdout is protocol
-only; diagnostics and DAH device-flow instructions go to stderr. When no slug is
-passed, resolution uses `DRWN_ACP_SLUG` and then one unambiguous deployed binding.
-The command bridges ACP sessions to the selected deployed Worker; it does not
-replace the Foundry-linked `drwn analyze sessions` upload path.
-
-Cancellation is two-track. HTTP 202 from the Worker cancel endpoint means only
-that cancellation was accepted or was already in progress. It is not terminal
-cancellation evidence. ACP continues polling until it observes an
-`agent.cancelled` event or the run-status endpoint reports `cancelled` (or
-another terminal state).
+`drwn worker mind` is provider-neutral in 1.4.2. It returns
+`MIND_BACKEND_UNSELECTED` and performs no filesystem, network, BeginningDB, R2,
+S3, or provider discovery. Local Card persona, belief, and memory authoring
+remains available independently of a persistence backend.
 
 `drwn worker materialize --payload ...` validates the V1 deploy payload and
 store digest, stages a V2 project, performs a frozen install, and projects it.
@@ -697,21 +676,11 @@ governed Buzz message tools over MCP stdio. `drwn worker secret set` accepts
 secret bytes only on non-interactive stdin and never accepts or renders them as
 an argument.
 
-`drwn worker status <slug> --json` constructs one governance model for human and
-JSON output. Declaration evidence comes only from an exact matching local
-project lock and reports real `tools.allow`/`tools.deny` counts, including zero.
-Unavailable declaration reasons are `LOCAL_PROJECT_UNAVAILABLE`,
-`LOCAL_TARGET_UNAVAILABLE`, and `LOCAL_CARD_REF_MISMATCH`. Declaration does not
-prove deployment enforcement. For an active deployment the Deploy API currently
-does not report that capability, so enforcement is `unknown` with
-`CAPABILITY_NOT_REPORTED`; with no active deployment it is `not_applicable` with
-`NO_ACTIVE_DEPLOYMENT`. The CLI never substitutes another Card's rules or prints
-an `enforced`/`not enforced` guess.
-
-These commands establish local source capability only until a particular
-artifact and environment are qualified. I236/I238 own separate staging and live
-evidence; Worker source availability is not Services adoption or operational
-success.
+`drwn worker status [deployedWorkerId] --json` reads one strict typed management
+resource by immutable ID. It never joins a local Card slug to a deployed Worker,
+and it rejects malformed or secret-shaped server responses before rendering.
+Deployment history, rollback, runs, secrets, and retirement use the same
+target-bound management contract.
 
 ## How analyze works
 

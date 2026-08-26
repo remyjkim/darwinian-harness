@@ -252,7 +252,7 @@ export function parseAuthOperationReceipt(value: unknown): AuthOperationReceiptV
   const local = exactObject(input.local, LOCAL_KEYS);
 
   if (input.schema !== "darwinian.worker.auth-operation" || input.schemaVersion !== 1) fail();
-  if (worker.version !== "1.3.0") fail();
+  if (worker.version !== "1.4.2") fail();
   if (typeof worker.sourceCommit !== "string" || !FULL_LOWERCASE_GIT_SHA.test(worker.sourceCommit)) fail();
   if (typeof input.qualificationNamespaceDigest !== "string" || !SHA256.test(input.qualificationNamespaceDigest)) fail();
   if (typeof credential.credentialId !== "string" || !UUID_V4.test(credential.credentialId)) fail();
@@ -309,7 +309,7 @@ export function parseAuthOperationReceipt(value: unknown): AuthOperationReceiptV
 
 function assertRuntimeIdentity(identity: RuntimeBuildIdentity): void {
   if (
-    identity.version !== "1.3.0" ||
+    identity.version !== "1.4.2" ||
     !FULL_LOWERCASE_GIT_SHA.test(identity.sourceCommit) ||
     (identity.kind === "development" &&
       (identity.sourceCommit !== DEVELOPMENT_SOURCE_COMMIT || identity.qualificationEligible)) ||

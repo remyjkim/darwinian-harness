@@ -1,18 +1,12 @@
 # I105 Buzz delivery rollout runbook
 
-Status: HISTORICAL — non-actionable. This runbook described a packaged reference
-Blueprint that the Worker no longer ships. Its Card was removed from this
-repository and no replacement Card is published here; the actual Finch tools and
-root Cards are owned by I268. Nothing below is a current instruction, and no
-verifier consumes it. Retained only as a record of the I105 contract.
-
-Original status at authoring time: code-level contract only; no release, secret installation, deployment, or live relay proof was performed.
+Status: code-level contract only; no release, secret installation, deployment, or live relay proof has been performed.
 
 ## Runtime and Card contract
 
 - Install a Darwinian release satisfying the reference Blueprint's `harness.minVersion: 1.2.0`.
 - Install the pinned Buzz `desktop-v0.5.5` binary in the mind-runtime image using the separately reviewed Services Dockerfile checksum.
-- The reference declaration was a packaged Blueprint Card under the Worker registry; that file no longer exists in this repository.
+- Use [`registry/cards/buzz-delivery-worker/card.json`](../../registry/cards/buzz-delivery-worker/card.json) as the reference declaration.
 - Keep the MCP server key exactly `buzz-tools`.
 - Keep the only governed selectors exactly:
   - `mcp:buzz-tools/buzz_messages_send`

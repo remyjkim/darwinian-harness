@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       failed_run_id:
-        description: 'Exact failed CLI Release run ID after npm publication.'
+        description: 'Exact failed CLI Release run ID after I336 candidate publication.'
         required: true
         type: string
       authorization_receipt:
@@ -13,7 +13,7 @@ on:
         type: string
 
 concurrency:
-  group: cli-release-recovery-v1.3.0
+  group: cli-release-recovery-v1.4.2
   cancel-in-progress: false
 
 permissions:
@@ -24,7 +24,7 @@ env:
 
 jobs:
   verify_ubuntu:
-    name: Verify published release (ubuntu)
+    name: Verify published I336 candidate (ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/v1.3.0
+          ref: refs/tags/v1.4.2
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
@@ -62,8 +62,8 @@ jobs:
           FAILED_RUN_ID: ${{ inputs.failed_run_id }}
           RECOVERY_AUTHORIZATION: ${{ inputs.authorization_receipt }}
         run: |
-          if [ "$GITHUB_REF" != "refs/tags/v1.3.0" ]; then
-            echo "Recovery must be dispatched with refs/tags/v1.3.0 selected." >&2
+          if [ "$GITHUB_REF" != "refs/tags/v1.4.2" ]; then
+            echo "Recovery must be dispatched with refs/tags/v1.4.2 selected." >&2
             exit 1
           fi
           if ! [[ "$FAILED_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
@@ -78,17 +78,17 @@ jobs:
             --arg failedRunId "$FAILED_RUN_ID" \
             '.failedRunId | tostring == $failedRunId' \
             "$RUNNER_TEMP/parsed-recovery-authorization.json" > /dev/null
-          TAG_TYPE="$(git cat-file -t "refs/tags/v1.3.0")"
+          TAG_TYPE="$(git cat-file -t "refs/tags/v1.4.2")"
           if [ "$TAG_TYPE" != "tag" ]; then
             echo "Recovery requires the existing annotated release tag." >&2
             exit 1
           fi
-          SOURCE_COMMIT="$(git rev-parse 'refs/tags/v1.3.0^{}')"
+          SOURCE_COMMIT="$(git rev-parse 'refs/tags/v1.4.2^{}')"
           if [ "$(git rev-parse HEAD)" != "$SOURCE_COMMIT" ] || [ "$GITHUB_SHA" != "$SOURCE_COMMIT" ]; then
             echo "Recovery checkout does not equal the tagged source." >&2
             exit 1
           fi
-          git for-each-ref --format='%(contents)' refs/tags/v1.3.0 \
+          git for-each-ref --format='%(contents)' refs/tags/v1.4.2 \
             > "$RUNNER_TEMP/tag-annotation.txt"
           bun scripts/release-cli.ts parse-tag-authorization \
             "$RUNNER_TEMP/tag-annotation.txt" \
@@ -112,13 +112,13 @@ jobs:
               (.id | tostring) == $runId and
               .path == ".github/workflows/release.yml" and
               .event == "push" and
-              .head_branch == "v1.3.0" and
+              .head_branch == "v1.4.2" and
               .head_sha == $commit and
               .conclusion == "failure"
             ' "$RUNNER_TEMP/failed-run.json" > /dev/null
           jq -e '
             ([.jobs[] | select(.name == "Validate authorized tag" and .conclusion == "success")] | length) == 1 and
-            ([.jobs[] | select(.name == "Publish to npm" and (.conclusion == "success" or .conclusion == "failure"))] | length) == 1
+            ([.jobs[] | select(.name == "Publish I336 candidate to npm" and (.conclusion == "success" or .conclusion == "failure"))] | length) == 1
           ' "$RUNNER_TEMP/failed-run-jobs.json" > /dev/null
 
       - name: Rejoin the exact dry-run provenance
@@ -154,7 +154,7 @@ jobs:
           mkdir "$RUNNER_TEMP/candidate"
           unzip -q "$RUNNER_TEMP/candidate.zip" -d "$RUNNER_TEMP/candidate"
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/candidate/darwinian-1.3.0.tgz" \
+            "$RUNNER_TEMP/candidate/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/candidate-artifact.json"
           git fetch --no-tags origin main
@@ -172,7 +172,7 @@ jobs:
             '{
               receiptText: $receipt,
               tagAnnotation: $annotation,
-              tag: {name: "v1.3.0", type: "tag", peeledCommit: $commit},
+              tag: {name: "v1.4.2", type: "tag", peeledCommit: $commit},
               checkoutCommit: $commit,
               originMainCommit: $originMain,
               run: {
@@ -202,7 +202,9 @@ jobs:
 
       - name: Verify registry identity and Ubuntu installed behavior
         run: |
-          npm view darwinian@1.3.0 version gitHead dist.shasum dist.integrity dist.tarball --json \
+          npm view darwinian dist-tags --json > "$RUNNER_TEMP/dist-tags.json"
+          jq -e '.["i336-candidate"] == "1.4.2"' "$RUNNER_TEMP/dist-tags.json" > /dev/null
+          npm view darwinian@1.4.2 version gitHead dist.shasum dist.integrity dist.tarball --json \
             > "$RUNNER_TEMP/registry-raw.json"
           jq '{
             version,
@@ -217,24 +219,24 @@ jobs:
             "$RUNNER_TEMP/candidate-artifact.json" \
             --require-git-head
           TARBALL_URL="$(jq -r '.["dist.tarball"]' "$RUNNER_TEMP/registry-raw.json")"
-          if [ "$TARBALL_URL" != "https://registry.npmjs.org/darwinian/-/darwinian-1.3.0.tgz" ]; then
+          if [ "$TARBALL_URL" != "https://registry.npmjs.org/darwinian/-/darwinian-1.4.2.tgz" ]; then
             echo "Registry tarball URL is not the exact expected package resource." >&2
             exit 1
           fi
           mkdir "$RUNNER_TEMP/published"
           curl --fail --location --proto '=https' --tlsv1.2 \
             "$TARBALL_URL" \
-            --output "$RUNNER_TEMP/published/darwinian-1.3.0.tgz"
+            --output "$RUNNER_TEMP/published/darwinian-1.4.2.tgz"
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/published-artifact.json"
           bun scripts/release-cli.ts smoke-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/published-smoke"
 
   smoke_macos:
-    name: Verify published release (macos)
+    name: Verify published I336 candidate (macos)
     needs: [verify_ubuntu]
     runs-on: macos-latest
     timeout-minutes: 20
@@ -245,7 +247,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: refs/tags/v1.3.0
+          ref: refs/tags/v1.4.2
           fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
@@ -275,10 +277,10 @@ jobs:
           mkdir "$RUNNER_TEMP/candidate" "$RUNNER_TEMP/published"
           unzip -q "$RUNNER_TEMP/candidate.zip" -d "$RUNNER_TEMP/candidate"
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/candidate/darwinian-1.3.0.tgz" \
+            "$RUNNER_TEMP/candidate/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/candidate-artifact.json"
-          npm view darwinian@1.3.0 version gitHead dist.shasum dist.integrity dist.tarball --json \
+          npm view darwinian@1.4.2 version gitHead dist.shasum dist.integrity dist.tarball --json \
             > "$RUNNER_TEMP/registry-raw.json"
           jq '{
             version,
@@ -293,55 +295,17 @@ jobs:
             "$RUNNER_TEMP/candidate-artifact.json" \
             --require-git-head
           TARBALL_URL="$(jq -r '.["dist.tarball"]' "$RUNNER_TEMP/registry-raw.json")"
-          if [ "$TARBALL_URL" != "https://registry.npmjs.org/darwinian/-/darwinian-1.3.0.tgz" ]; then
+          if [ "$TARBALL_URL" != "https://registry.npmjs.org/darwinian/-/darwinian-1.4.2.tgz" ]; then
             echo "Registry tarball URL is not the exact expected package resource." >&2
             exit 1
           fi
           curl --fail --location --proto '=https' --tlsv1.2 \
             "$TARBALL_URL" \
-            --output "$RUNNER_TEMP/published/darwinian-1.3.0.tgz"
+            --output "$RUNNER_TEMP/published/darwinian-1.4.2.tgz"
           bun scripts/release-cli.ts requalify-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/candidate/release-candidate.json" \
             > "$RUNNER_TEMP/published-artifact.json"
           bun scripts/release-cli.ts smoke-artifact \
-            "$RUNNER_TEMP/published/darwinian-1.3.0.tgz" \
+            "$RUNNER_TEMP/published/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/published-smoke"
-
-  github_release:
-    name: Repair GitHub Release metadata
-    needs: [verify_ubuntu, smoke_macos]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/v1.3.0
-          fetch-depth: 0
-
-      - name: Create or verify metadata at the existing tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v1.3.0
-          SOURCE_COMMIT: ${{ needs.verify_ubuntu.outputs.source_commit }}
-        run: |
-          git for-each-ref --format='%(contents)' "refs/tags/$TAG" > "$RUNNER_TEMP/tag-annotation.txt"
-          TAG_BODY="$(cat "$RUNNER_TEMP/tag-annotation.txt")"
-          if gh release view "$TAG" --json tagName,targetCommitish,name,body,url \
-            > "$RUNNER_TEMP/release.json" 2>/dev/null; then
-            jq -e \
-              --arg tag "$TAG" \
-              --arg target "$SOURCE_COMMIT" \
-              --arg body "$TAG_BODY" \
-              '.tagName == $tag and .targetCommitish == $target and .name == $tag and .body == $body' \
-              "$RUNNER_TEMP/release.json" > /dev/null
-          else
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --notes-file "$RUNNER_TEMP/tag-annotation.txt" \
-              --target "$SOURCE_COMMIT" \
-              --verify-tag
-          fi

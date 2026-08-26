@@ -13,7 +13,7 @@ import { materializeDir } from "./materialize";
 import { mergeOpencodeSkillsPathsText } from "./mcp";
 import { ALL_TARGET_NAMES, DESCRIPTORS, descriptorsFor, type SkillSurfaceDir } from "./targets";
 import type { CanonicalConfig, NormalizedSyncOptions, SyncResult, TargetName } from "./types";
-import { ownManagedPath, type ManagedPath, type ProjectionTarget } from "./write-record";
+import { hashManagedDirectory, ownManagedPath, type ManagedPath, type ProjectionTarget } from "./write-record";
 import { listInstalledSkillBundles } from "./skill-packages";
 
 export type SkillScope = "shared" | "claude-only" | "codex-only" | "experimental";
@@ -49,6 +49,20 @@ export interface SkillInventoryItem extends RepoSkill {
 export interface SkillSyncOverrides {
   include?: string[];
   exclude?: string[];
+}
+
+export interface PlannedSkillCapability {
+  id: string;
+  sourcePath: string;
+  contentHash: `sha256-${string}`;
+  targets: Array<Extract<ProjectionTarget, "claude" | "codex" | "opencode">>;
+  layerLabel: string;
+}
+
+export interface SkillCapabilityPlan {
+  capabilities: PlannedSkillCapability[];
+  selectedTargets: Array<Extract<ProjectionTarget, "claude" | "codex" | "opencode">>;
+  warnings: string[];
 }
 
 interface MaterializeIntent {
@@ -243,6 +257,80 @@ export async function findStaleManagedEntries(dirPath: string, desiredNames: Set
     .map((entry) => join(dirPath, entry.name));
 }
 
+export async function planSkillCapabilities(
+  options: NormalizedSyncOptions,
+  overrides?: SkillSyncOverrides,
+  lockedCards: CardLockEntry[] = [],
+  contentRoots?: Record<string, string>,
+  machineSources?: Record<string, import("./defaults").ResolvedMachineSkill>,
+  targetsConfig?: Pick<CanonicalConfig, "targets">,
+): Promise<SkillCapabilityPlan> {
+  const selectedSurfaces = new Set<SkillSurfaceDir>(
+    (targetsConfig
+      ? descriptorsFor(targetsConfig, options.target)
+      : ALL_TARGET_NAMES
+          .filter((name) => (options.target ? name === options.target : true))
+          .map((name) => DESCRIPTORS[name])
+    ).flatMap((descriptor) => descriptor.skillSurfaces),
+  );
+  const selectedTargets: SkillCapabilityPlan["selectedTargets"] = [
+    ...(selectedSurfaces.has("claude") ? ["claude" as const] : []),
+    ...(selectedSurfaces.has("codex") ? ["codex" as const] : []),
+    ...(selectedSurfaces.has("opencode") && options.writeScope !== "machine" ? ["opencode" as const] : []),
+  ];
+  const warnings = collectDuplicateSkillWarnings(lockedCards);
+  const excluded = new Set(overrides?.exclude ?? []);
+  for (const skill of excluded) {
+    if (lockedCards.some((card) => card.skills.includes(skill))) {
+      warnings.push(`excluded skill ${skill}: omitted from materialization`);
+    }
+  }
+  type NonMissingResolvedSkillSource = Exclude<Awaited<ReturnType<typeof resolveSkillSource>>, { layer: "missing" }>;
+  const resolvedIncludes: Array<{ name: string; source: NonMissingResolvedSkillSource }> = [];
+  const errors: string[] = [];
+  for (const name of (overrides?.include ?? []).filter((entry) => !excluded.has(entry))) {
+    const source = await resolveSkillSource(
+      name,
+      lockedCards,
+      options.repoRoot,
+      options.agentsDir,
+      contentRoots,
+      machineSources,
+    );
+    if (source.layer === "missing") {
+      errors.push(source.reason);
+    } else {
+      resolvedIncludes.push({ name, source });
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`drwn write cannot resolve all skills:\n  - ${errors.join("\n  - ")}`);
+  }
+
+  const capabilities: PlannedSkillCapability[] = [];
+  for (const { name, source } of resolvedIncludes) {
+    const scope = source.layer === "card" ? "shared" : source.scope;
+    const targets = selectedTargets.filter((target) => {
+      if (target === "claude") return scope === "shared" || scope === "claude-only";
+      if (target === "codex") return scope === "shared" || scope === "codex-only";
+      return isOpencodeProjectedScope(scope);
+    });
+    if (targets.length === 0) continue;
+    capabilities.push({
+      id: name,
+      sourcePath: source.path,
+      contentHash: hashManagedDirectory(source.path) as `sha256-${string}`,
+      targets,
+      layerLabel: source.layer === "card"
+        ? `card ${source.cardName}@${source.cardVersion}`
+        : source.layer === "machine-worker"
+          ? `machine Worker Card ${source.cardName}@${source.cardVersion}`
+          : "user-default",
+    });
+  }
+  return { capabilities, selectedTargets, warnings };
+}
+
 export async function syncSkills(
   options: NormalizedSyncOptions,
   overrides?: SkillSyncOverrides,
@@ -254,39 +342,15 @@ export async function syncSkills(
   const managedPaths: ManagedPath[] = [];
   const result: SyncResult = { changes: [], warnings: [], managedPaths };
   const toolPaths = resolveToolPaths(options.toolRoot ?? options.homeDir);
-  const selectedSurfaces = new Set<SkillSurfaceDir>(
-    (targetsConfig
-      ? descriptorsFor(targetsConfig, options.target)
-      : ALL_TARGET_NAMES
-          .filter((name) => (options.target ? name === options.target : true))
-          .map((name) => DESCRIPTORS[name])
-    ).flatMap((descriptor) => descriptor.skillSurfaces),
+  const plan = await planSkillCapabilities(
+    options,
+    overrides,
+    lockedCards,
+    contentRoots,
+    machineSources,
+    targetsConfig,
   );
-  const excluded = new Set(overrides?.exclude ?? []);
-  result.warnings.push(...collectDuplicateSkillWarnings(lockedCards));
-  for (const skill of excluded) {
-    if (lockedCards.some((card) => card.skills.includes(skill))) {
-      result.warnings.push(`excluded skill ${skill}: omitted from materialization`);
-    }
-  }
-  type NonMissingResolvedSkillSource = Exclude<Awaited<ReturnType<typeof resolveSkillSource>>, { layer: "missing" }>;
-  const includes = (overrides?.include ?? []).filter((name) => !excluded.has(name));
-  const resolvedIncludes: Array<{
-    name: string;
-    source: NonMissingResolvedSkillSource;
-  }> = [];
-  const errors: string[] = [];
-  for (const name of includes) {
-    const source = await resolveSkillSource(name, lockedCards, options.repoRoot, options.agentsDir, contentRoots, machineSources);
-    if (source.layer === "missing") {
-      errors.push(source.reason);
-      continue;
-    }
-    resolvedIncludes.push({ name, source });
-  }
-  if (errors.length > 0) {
-    throw new Error(`drwn write cannot resolve all skills:\n  - ${errors.join("\n  - ")}`);
-  }
+  result.warnings.push(...plan.warnings);
 
   const desiredClaude = new Set<string>();
   const desiredCodex = new Set<string>();
@@ -296,18 +360,11 @@ export async function syncSkills(
   const opencodeIntents = new Map<string, MaterializeIntent>();
   // The dedicated OpenCode dir is a project-scope projection only; machine writes keep
   // the I177 machine surface set unchanged.
-  const opencodeSurfaceSelected = selectedSurfaces.has("opencode") && options.writeScope !== "machine";
+  const opencodeSurfaceSelected = plan.selectedTargets.includes("opencode");
 
-  for (const { name, source } of resolvedIncludes) {
-    const targetPath = source.path;
-    const scope = source.layer === "card" ? "shared" : source.scope;
-    const layerLabel = source.layer === "card"
-      ? `card ${source.cardName}@${source.cardVersion}`
-      : source.layer === "machine-worker"
-        ? `machine Worker Card ${source.cardName}@${source.cardVersion}`
-          : "user-default";
-    if (selectedSurfaces.has("claude")) {
-      if (scope === "shared" || scope === "claude-only") {
+  for (const capability of plan.capabilities) {
+    const { id: name, sourcePath: targetPath, layerLabel } = capability;
+    if (capability.targets.includes("claude")) {
         desiredClaude.add(name);
         recordIntent(claudeIntents, {
           linkPath: join(toolPaths.claudeSkills, name),
@@ -316,10 +373,8 @@ export async function syncSkills(
           layerLabel,
           target: "claude",
         });
-      }
     }
-    if (selectedSurfaces.has("codex")) {
-      if (scope === "shared" || scope === "codex-only") {
+    if (capability.targets.includes("codex")) {
         desiredCodex.add(name);
         recordIntent(codexIntents, {
           linkPath: join(toolPaths.codexSkills, name),
@@ -328,11 +383,8 @@ export async function syncSkills(
           layerLabel,
           target: "codex",
         });
-      }
     }
-    if (opencodeSurfaceSelected) {
-      // The dedicated dir is a projection of the composed set, never a second source of truth.
-      if (isOpencodeProjectedScope(scope)) {
+    if (capability.targets.includes("opencode")) {
         desiredOpencode.add(name);
         recordIntent(opencodeIntents, {
           linkPath: join(toolPaths.opencodeSkills, name),
@@ -341,7 +393,6 @@ export async function syncSkills(
           layerLabel,
           target: "opencode",
         });
-      }
     }
   }
 
@@ -382,10 +433,10 @@ export async function syncSkills(
     }
   }
 
-  const staleClaude = selectedSurfaces.has("claude")
+  const staleClaude = plan.selectedTargets.includes("claude")
     ? await findStaleManagedEntries(toolPaths.claudeSkills, desiredClaude)
     : [];
-  const staleCodex = selectedSurfaces.has("codex")
+  const staleCodex = plan.selectedTargets.includes("codex")
     ? await findStaleManagedEntries(toolPaths.codexSkills, desiredCodex)
     : [];
   const staleOpencode = opencodeSurfaceSelected

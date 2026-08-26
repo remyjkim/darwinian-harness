@@ -99,10 +99,10 @@ export interface ReleaseCandidateReceiptV1 {
     ref: "refs/heads/main";
     sourceCommit: string;
   };
-  package: { name: "darwinian"; version: "1.3.0" };
-  build: { version: "1.3.0"; sourceCommit: string };
+  package: { name: "darwinian"; version: "1.4.2" };
+  build: { version: "1.4.2"; sourceCommit: string };
   tar: {
-    filename: "darwinian-1.3.0.tgz";
+    filename: "darwinian-1.4.2.tgz";
     byteLength: number;
     sha1: string;
     sha256: string;
@@ -135,17 +135,17 @@ export function parseReleaseCandidateReceipt(text: string): ReleaseCandidateRece
 
   const packageIdentity = value.package;
   if (!isObject(packageIdentity) || !hasExactKeys(packageIdentity, ["name", "version"]) ||
-    packageIdentity.name !== "darwinian" || packageIdentity.version !== "1.3.0") fail();
+    packageIdentity.name !== "darwinian" || packageIdentity.version !== "1.4.2") fail();
 
   const build = value.build;
   if (!isObject(build) || !hasExactKeys(build, ["version", "sourceCommit"]) ||
-    build.version !== "1.3.0" || typeof build.sourceCommit !== "string" || !FULL_SHA.test(build.sourceCommit)) fail();
+    build.version !== "1.4.2" || typeof build.sourceCommit !== "string" || !FULL_SHA.test(build.sourceCommit)) fail();
   if (build.sourceCommit !== workflow.sourceCommit) fail();
 
   const tarball = value.tar;
   if (!isObject(tarball) || !hasExactKeys(tarball, ["filename", "byteLength", "sha1", "sha256", "integrity"])) fail();
   if (
-    tarball.filename !== "darwinian-1.3.0.tgz" ||
+    tarball.filename !== "darwinian-1.4.2.tgz" ||
     !isPositiveInteger(tarball.byteLength) ||
     typeof tarball.sha1 !== "string" || !SHA1.test(tarball.sha1) ||
     typeof tarball.sha256 !== "string" || !SHA256.test(tarball.sha256) ||
@@ -165,7 +165,7 @@ export function createReleaseCandidateReceipt(input: {
 }): string {
   if (
     input.artifact.packageName !== "darwinian" ||
-    input.artifact.version !== "1.3.0" ||
+    input.artifact.version !== "1.4.2" ||
     input.artifact.sourceCommit !== input.sourceCommit
   ) fail();
   const receipt: ReleaseCandidateReceiptV1 = {
@@ -181,10 +181,10 @@ export function createReleaseCandidateReceipt(input: {
       ref: input.ref as "refs/heads/main",
       sourceCommit: input.sourceCommit,
     },
-    package: { name: "darwinian", version: "1.3.0" },
-    build: { version: "1.3.0", sourceCommit: input.sourceCommit },
+    package: { name: "darwinian", version: "1.4.2" },
+    build: { version: "1.4.2", sourceCommit: input.sourceCommit },
     tar: {
-      filename: input.artifact.filename as "darwinian-1.3.0.tgz",
+      filename: input.artifact.filename as "darwinian-1.4.2.tgz",
       byteLength: input.artifact.byteLength,
       sha1: input.artifact.sha1,
       sha256: input.artifact.sha256,
@@ -196,10 +196,132 @@ export function createReleaseCandidateReceipt(input: {
   return `${text}\n`;
 }
 
+export interface CandidatePublicationReceiptV1 {
+  schema: "darwinian.worker.i336-candidate";
+  schemaVersion: 1;
+  createdAt: string;
+  workflow: {
+    path: ".github/workflows/release.yml";
+    event: "push";
+    ref: "refs/tags/v1.4.2";
+    runId: number;
+    runAttempt: number;
+    runUrl: string;
+    sourceCommit: string;
+  };
+  package: { name: "darwinian"; version: "1.4.2" };
+  artifact: {
+    filename: "darwinian-1.4.2.tgz";
+    byteLength: number;
+    sha256: string;
+    integrity: string;
+  };
+  protocol: { name: "deployed-worker.v1"; sha256: string };
+  registry: {
+    candidateTag: "i336-candidate";
+    candidateVersion: "1.4.2";
+    priorLatest: string;
+    resultingLatest: string;
+    observedAt: string;
+  };
+}
+
+function isSemver(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(value);
+}
+
+export function parseCandidatePublicationReceipt(text: string): CandidatePublicationReceiptV1 {
+  rejectDuplicateJsonKeys(text);
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    fail();
+  }
+  if (!isObject(value) || !hasExactKeys(value, ["schema", "schemaVersion", "createdAt", "workflow", "package", "artifact", "protocol", "registry"])) fail();
+  if (value.schema !== "darwinian.worker.i336-candidate" || value.schemaVersion !== 1 || !isCanonicalTimestamp(value.createdAt)) fail();
+  const workflow = value.workflow;
+  if (!isObject(workflow) || !hasExactKeys(workflow, ["path", "event", "ref", "runId", "runAttempt", "runUrl", "sourceCommit"])) fail();
+  if (
+    workflow.path !== ".github/workflows/release.yml" || workflow.event !== "push" || workflow.ref !== "refs/tags/v1.4.2" ||
+    !isPositiveInteger(workflow.runId) || !isPositiveInteger(workflow.runAttempt) ||
+    workflow.runUrl !== `https://github.com/remyjkim/darwinian-worker/actions/runs/${workflow.runId}` ||
+    typeof workflow.sourceCommit !== "string" || !FULL_SHA.test(workflow.sourceCommit)
+  ) fail();
+  if (!isObject(value.package) || !hasExactKeys(value.package, ["name", "version"]) || value.package.name !== "darwinian" || value.package.version !== "1.4.2") fail();
+  const artifact = value.artifact;
+  if (!isObject(artifact) || !hasExactKeys(artifact, ["filename", "byteLength", "sha256", "integrity"]) ||
+    artifact.filename !== "darwinian-1.4.2.tgz" || !isPositiveInteger(artifact.byteLength) ||
+    typeof artifact.sha256 !== "string" || !SHA256.test(artifact.sha256) || !isCanonicalIntegrity(artifact.integrity)) fail();
+  const protocol = value.protocol;
+  if (!isObject(protocol) || !hasExactKeys(protocol, ["name", "sha256"]) || protocol.name !== "deployed-worker.v1" ||
+    typeof protocol.sha256 !== "string" || !SHA256.test(protocol.sha256)) fail();
+  const registry = value.registry;
+  if (!isObject(registry) || !hasExactKeys(registry, ["candidateTag", "candidateVersion", "priorLatest", "resultingLatest", "observedAt"]) ||
+    registry.candidateTag !== "i336-candidate" || registry.candidateVersion !== "1.4.2" ||
+    !isSemver(registry.priorLatest) || registry.priorLatest === "1.4.2" ||
+    registry.resultingLatest !== registry.priorLatest || !isCanonicalTimestamp(registry.observedAt) ||
+    new Date(registry.observedAt).valueOf() > new Date(value.createdAt).valueOf()) fail();
+  return value as unknown as CandidatePublicationReceiptV1;
+}
+
+export function createCandidatePublicationReceipt(input: {
+  artifact: QualifiedPackedArtifact;
+  protocolDigest: string;
+  candidateVersion: string;
+  priorLatest: string;
+  resultingLatest: string;
+  createdAt: string;
+  observedAt: string;
+  runId: number;
+  runAttempt: number;
+  runUrl: string;
+  ref: string;
+  sourceCommit: string;
+}): string {
+  if (
+    input.artifact.packageName !== "darwinian" || input.artifact.version !== "1.4.2" ||
+    input.artifact.sourceCommit !== input.sourceCommit || input.candidateVersion !== "1.4.2" ||
+    input.resultingLatest !== input.priorLatest
+  ) fail();
+  const receipt: CandidatePublicationReceiptV1 = {
+    schema: "darwinian.worker.i336-candidate",
+    schemaVersion: 1,
+    createdAt: input.createdAt,
+    workflow: {
+      path: ".github/workflows/release.yml",
+      event: "push",
+      ref: input.ref as "refs/tags/v1.4.2",
+      runId: input.runId,
+      runAttempt: input.runAttempt,
+      runUrl: input.runUrl,
+      sourceCommit: input.sourceCommit,
+    },
+    package: { name: "darwinian", version: "1.4.2" },
+    artifact: {
+      filename: input.artifact.filename as "darwinian-1.4.2.tgz",
+      byteLength: input.artifact.byteLength,
+      sha256: input.artifact.sha256,
+      integrity: input.artifact.integrity,
+    },
+    protocol: { name: "deployed-worker.v1", sha256: input.protocolDigest },
+    registry: {
+      candidateTag: "i336-candidate",
+      candidateVersion: input.candidateVersion as "1.4.2",
+      priorLatest: input.priorLatest,
+      resultingLatest: input.resultingLatest,
+      observedAt: input.observedAt,
+    },
+  };
+  const text = JSON.stringify(receipt);
+  parseCandidatePublicationReceipt(text);
+  return `${text}\n`;
+}
+
 export interface ReleaseTagAuthorizationV1 {
   schema: "darwinian.worker.release-authorization";
   schemaVersion: 1;
-  version: "1.3.0";
+  version: "1.4.2";
   dryRunRunId: number;
   dryRunRunAttempt: number;
   artifactId: number;
@@ -238,13 +360,13 @@ export function parseReleaseTagAuthorization(message: string): ReleaseTagAuthori
   if (
     entries.get("schema") !== "darwinian.worker.release-authorization" ||
     entries.get("schema_version") !== "1" ||
-    entries.get("version") !== "1.3.0" ||
+    entries.get("version") !== "1.4.2" ||
     !ARTIFACT_DIGEST.test(artifactDigest)
   ) fail();
   return {
     schema: "darwinian.worker.release-authorization",
     schemaVersion: 1,
-    version: "1.3.0",
+    version: "1.4.2",
     dryRunRunId: number("dry_run_run_id"),
     dryRunRunAttempt: number("dry_run_run_attempt"),
     artifactId: number("artifact_id"),
@@ -256,9 +378,9 @@ export interface ReleaseRecoveryAuthorizationV1 {
   schema: "darwinian.worker.release-recovery-authorization";
   schemaVersion: 1;
   authorizedAt: string;
-  tag: "v1.3.0";
+  tag: "v1.4.2";
   failedRunId: number;
-  action: "verify_and_repair_metadata";
+  action: "verify_candidate";
 }
 
 export function parseRecoveryAuthorizationReceipt(text: string): ReleaseRecoveryAuthorizationV1 {
@@ -274,9 +396,9 @@ export function parseRecoveryAuthorizationReceipt(text: string): ReleaseRecovery
     value.schema !== "darwinian.worker.release-recovery-authorization" ||
     value.schemaVersion !== 1 ||
     !isCanonicalTimestamp(value.authorizedAt) ||
-    value.tag !== "v1.3.0" ||
+    value.tag !== "v1.4.2" ||
     !isPositiveInteger(value.failedRunId) ||
-    value.action !== "verify_and_repair_metadata"
+    value.action !== "verify_candidate"
   ) fail();
   return value as unknown as ReleaseRecoveryAuthorizationV1;
 }
@@ -307,7 +429,7 @@ function oneJob(jobs: ProvenanceInput["jobs"], name: string, conclusion: string)
 }
 
 function verifyReleaseProvenanceWithPolicy(input: ProvenanceInput, requireCurrentMain: boolean): {
-  version: "1.3.0";
+  version: "1.4.2";
   sourceCommit: string;
   runId: number;
   artifactId: number;
@@ -340,9 +462,8 @@ function verifyReleaseProvenanceWithPolicy(input: ProvenanceInput, requireCurren
 
   oneJob(input.jobs, "Validate release commit", "success");
   oneJob(input.jobs, "Dry run complete", "success");
-  oneJob(input.jobs, "Publish to npm", "skipped");
+  oneJob(input.jobs, "Publish I336 candidate to npm", "skipped");
   oneJob(input.jobs, "Smoke install (macos)", "skipped");
-  oneJob(input.jobs, "GitHub Release", "skipped");
 
   if (input.artifacts.length !== 1) fail();
   const artifactMetadata = input.artifacts[0]!;
@@ -365,7 +486,7 @@ function verifyReleaseProvenanceWithPolicy(input: ProvenanceInput, requireCurren
   ) fail();
 
   return {
-    version: "1.3.0",
+    version: "1.4.2",
     sourceCommit: receipt.workflow.sourceCommit,
     runId: receipt.workflow.runId,
     artifactId: artifactMetadata.id,

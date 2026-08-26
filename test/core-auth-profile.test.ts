@@ -1,44 +1,38 @@
-// ABOUTME: Verifies the drwn CLI Auth Hub profile during the I80 migration.
-// ABOUTME: Keeps API routing independent from explicit Auth Hub resource selection.
+// ABOUTME: Verifies drwn auth derives from one strict deployed Worker cloud profile tuple.
+// ABOUTME: Keeps the exact DAH delegation request scope centralized and non-overridable.
 
 import { describe, expect, test } from "bun:test";
 import { drwnCliProfile } from "../cli/core/auth/profile";
 
 describe("drwnCliProfile", () => {
-  test("defaults to the darwinian.dev hub and services audience (old hub retired at I80 Phase 4)", () => {
-    expect(drwnCliProfile({})).toMatchObject({
+  test("defaults to the complete production tuple and exact delegation scope", () => {
+    expect(drwnCliProfile({})).toEqual(expect.objectContaining({
       hubOrigin: "https://auth.darwinian.dev",
       issuer: "https://auth.darwinian.dev/api/auth",
       resource: "https://api.darwinian.dev",
-    });
+      scope: "openid email offline_access dah:management.delegate",
+      apiOrigin: "https://api.darwinian.dev",
+      webOrigin: "https://foundry.darwinian.dev",
+      cloudProfileId: "production",
+      profileDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }));
   });
 
-  test("honors and normalizes explicit hub and resource overrides", () => {
-    expect(drwnCliProfile({
-      DRWN_DAH_HUB_URL: "https://darwinian-auth-hub-staging.dev-726.workers.dev/",
-      DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev/",
-    })).toMatchObject({
-      hubOrigin: "https://darwinian-auth-hub-staging.dev-726.workers.dev",
-      issuer: "https://darwinian-auth-hub-staging.dev-726.workers.dev/api/auth",
-      resource: "https://api-staging-main.darwinian.dev",
-    });
-  });
-
-  test("does not infer a token resource from the API routing override", () => {
-    expect(drwnCliProfile({
-      DRWN_STUDIO_API_URL: "https://studio.example/",
-    })).toMatchObject({
-      hubOrigin: "https://auth.darwinian.dev",
+  test("selects staging as a whole tuple", () => {
+    expect(drwnCliProfile({ DRWN_CLOUD_PROFILE: "staging" })).toEqual(expect.objectContaining({
+      hubOrigin: "https://auth-staging-main.darwinian.dev",
+      issuer: "https://auth-staging-main.darwinian.dev/api/auth",
       resource: "https://api.darwinian.dev",
-    });
+      apiOrigin: "https://api-staging-main.darwinian.dev",
+      webOrigin: "https://foundry-staging-main.darwinian.dev",
+      cloudProfileId: "staging",
+    }));
   });
 
-  test("honors an explicit resource independently of the API routing override", () => {
-    expect(drwnCliProfile({
-      DRWN_STUDIO_API_URL: "https://api-staging-main.darwinian.dev",
-      DRWN_DAH_RESOURCE: "https://custom-resource.example/",
-    })).toMatchObject({
-      resource: "https://custom-resource.example",
-    });
+  test("rejects retired partial Auth Hub and API overrides", () => {
+    for (const key of ["DRWN_DAH_HUB_URL", "DRWN_DAH_RESOURCE"]) {
+      expect(() => drwnCliProfile({ [key]: "https://partial.example" }))
+        .toThrow(expect.objectContaining({ code: "CLOUD_PROFILE_INVALID" }));
+    }
   });
 });

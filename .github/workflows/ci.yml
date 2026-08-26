@@ -26,12 +26,12 @@ jobs:
     # Individual Linux tests still fail at 30s through test:gate; this outer bound
     # protects the complete matrix job from normal hosted-runner variance.
     timeout-minutes: 60
-    # Linux stays the full required gate. Windows keeps install, typecheck, and
-    # targeted smoke coverage until the full suite's platform assumptions are fixed.
+    # Linux owns the canonical full suite. macOS and Windows execute the strict
+    # management/auth subset plus the shared immutable-artifact qualification below.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -54,11 +54,9 @@ jobs:
         # suite always completes (and reports the culprit) instead of burning the job timeout.
         run: bun run test:gate
 
-      - name: Windows smoke tests
-        if: runner.os == 'Windows'
-        # The derivation adapter's Windows outcome is a designed fail-closed result, so
-        # it is asserted positively here rather than left to an unexercised code path.
-        run: bun test --timeout 30000 test/core-auth-device-flow.test.ts test/core-auth-resolve-token.test.ts test/core-cloud-http.test.ts test/scripts-runtime-admission-derive.test.ts
+      - name: Non-Linux management and auth tests
+        if: runner.os != 'Linux'
+        run: bun test --timeout 30000 test/management-contract-conformance.test.ts test/core-management-transport.test.ts test/core-auth-device-flow.test.ts test/core-auth-resolve-token.test.ts
 
       - name: Release-readiness gate
         if: runner.os == 'Linux'
@@ -99,14 +97,15 @@ jobs:
       - name: Verify bridge package
         run: bun run verify:bridge
 
-  linux-secret-tool:
-    name: Linux secret-tool backend
+  management-artifact:
+    name: Pack immutable management artifact
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: false
+          fetch-depth: 0
+          submodules: true
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -115,19 +114,110 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install the Secret Service stack
+      - name: Generate exact build identity and pack once
+        shell: bash
+        run: |
+          bun scripts/release/build-identity.ts
+          mkdir -p "$RUNNER_TEMP/management-artifact"
+          npm pack --ignore-scripts --json \
+            --pack-destination "$RUNNER_TEMP/management-artifact" \
+            --cache "$RUNNER_TEMP/npm-pack-cache" \
+            > "$RUNNER_TEMP/management-artifact/npm-pack.json"
+          bun scripts/release-cli.ts qualify-artifact \
+            "$RUNNER_TEMP/management-artifact/npm-pack.json" \
+            "$RUNNER_TEMP/management-artifact" \
+            > "$RUNNER_TEMP/management-artifact/artifact.json"
+          shasum -a 256 "$RUNNER_TEMP/management-artifact/darwinian-1.4.2.tgz" | awk '{print $1}' \
+            > "$RUNNER_TEMP/management-artifact/artifact-sha256"
+
+      - name: Upload exact tar and digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: management-artifact
+          path: |
+            ${{ runner.temp }}/management-artifact/darwinian-1.4.2.tgz
+            ${{ runner.temp }}/management-artifact/artifact.json
+            ${{ runner.temp }}/management-artifact/artifact-sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  management-three-os:
+    name: Management artifact and keychain (${{ matrix.os }})
+    needs: [management-artifact]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install source test dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download the one immutable candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: management-artifact
+          path: ${{ runner.temp }}/management-artifact
+
+      - name: Verify artifact SHA-256 and install cleanly
+        shell: bash
+        run: |
+          TARBALL="$RUNNER_TEMP/management-artifact/darwinian-1.4.2.tgz"
+          EXPECTED_SHA="$(tr -d '[:space:]' < "$RUNNER_TEMP/management-artifact/artifact-sha256")"
+          ACTUAL_SHA="$(bun -e 'const p=process.argv[1]; const h=new Bun.CryptoHasher("sha256"); h.update(await Bun.file(p).arrayBuffer()); console.log(h.digest("hex"));' "$TARBALL")"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          npm install --global "$TARBALL" --prefix "$RUNNER_TEMP/drwn-prefix" --cache "$RUNNER_TEMP/npm-cache"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            DRWN_E2E_BIN="$RUNNER_TEMP/drwn-prefix/drwn"
+          else
+            DRWN_E2E_BIN="$RUNNER_TEMP/drwn-prefix/bin/drwn"
+          fi
+          test -x "$DRWN_E2E_BIN"
+          test "$("$DRWN_E2E_BIN" --version)" = "1.4.2"
+          printf 'DRWN_E2E_BIN=%s\n' "$DRWN_E2E_BIN" >> "$GITHUB_ENV"
+          printf 'ARTIFACT_SHA256=%s\n' "$ACTUAL_SHA" >> "$GITHUB_ENV"
+
+      - name: Shellcheck strict management journeys
+        if: runner.os == 'Linux'
+        run: shellcheck test/e2e/drwn-management-cli.sh test/e2e/drwn-management-cli-live.sh test/e2e/lib/assertions.sh test/e2e/lib/linux-secret-service.sh
+
+      - name: Run installed hermetic management Bash journey
+        shell: bash
+        run: bun run test:e2e:management:bash
+
+      - name: Install Linux Secret Service stack
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libsecret-tools gnome-keyring dbus-x11
 
-      # Best-effort: a headless gnome-keyring is finicky to initialize, so this job is
-      # non-blocking. When the keyring comes up cleanly it provides real secret-tool coverage.
-      - name: Exercise the real secret-tool backend under an unlocked keyring
-        continue-on-error: true
+      - name: Exercise required Linux Secret Service custody
+        if: runner.os == 'Linux'
+        shell: bash
         env:
           DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'
-        run: |
-          dbus-run-session -- bash -c '
-            rm -rf "$HOME/.local/share/keyrings"
-            eval "$(printf "\n" | gnome-keyring-daemon --unlock --components=secrets,pkcs11)"
-            export GNOME_KEYRING_CONTROL
-            bun test test/core-secret-store-backends.test.ts
-          '
+        run: dbus-run-session -- bash test/e2e/lib/linux-secret-service.sh
+
+      - name: Exercise required macOS Keychain custody
+        if: runner.os == 'macOS'
+        env:
+          DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'
+        run: bun test test/core-secret-store-backends.test.ts
+
+      - name: Exercise required Windows DPAPI custody
+        if: runner.os == 'Windows'
+        env:
+          DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'
+        run: bun test test/core-secret-store-backends.test.ts

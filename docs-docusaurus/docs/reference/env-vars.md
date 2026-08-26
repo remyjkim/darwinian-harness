@@ -45,51 +45,42 @@ Path to a pre-seeded credential archive. When set, `drwn` initializes the creden
 
 ## Network and concurrency
 
-### `DRWN_STUDIO_API_URL`
+### `DRWN_CLOUD_PROFILE`
 
-Overrides the Deploy API origin used by `drwn worker` commands. The default is
-`https://api.darwinian.dev`.
+Selects one complete cloud tuple. The accepted selectors are `production` (the
+default), `staging`, and `local`. A tuple contains the API, web and Auth Hub origins,
+issuer, audience, OAuth client and requested scope set.
 
-Use this only for an explicitly provisioned staging, development, or custom Deploy API:
-
-```bash
-DRWN_STUDIO_API_URL=https://api-staging-main.darwinian.dev \
-DRWN_DAH_RESOURCE=https://api-staging-main.darwinian.dev \
-drwn worker status <slug>
-```
-
-The API override and token-resource override are separate by design. The retired
-production endpoint `https://studio.darwiniantools.com` is not a supported compatibility
-route.
-
-### `DRWN_STUDIO_WEB_URL`
-
-Overrides the browser origin printed for asynchronous worker runs. The default is
-`https://foundry.darwinian.dev`. API requests never use this value.
+Use the admitted staging tuple without independent endpoint overrides:
 
 ```bash
-export DRWN_STUDIO_WEB_URL=https://foundry-staging-main.darwinian.dev
-drwn worker chat <slug> --message "hello"
+DRWN_CLOUD_PROFILE=staging drwn login
 ```
 
-### `DRWN_DAH_HUB_URL`
+### `DRWN_CLOUD_PROFILE_FILE`
 
-Overrides the Auth Hub origin used by `drwn login`, token refresh, and logout. The
-default is `https://auth.darwinian.dev`; local and staging environments must name their
-intended hub explicitly. Credentials issued by a different hub are rejected with
-instructions to run `drwn login` again under the intended setting.
+Required only when `DRWN_CLOUD_PROFILE=local`. It must be an absolute path to a
+bounded, regular, non-symlink JSON file matching the exact local profile schema. All
+origins must use HTTPS, and the issuer must match the Auth Hub origin.
 
-### `DRWN_DAH_RESOURCE`
+The file is rejected for production and staging. Unknown fields, partial tuples and
+relative paths fail with `CLOUD_PROFILE_INVALID` before credential access.
 
-Overrides the OAuth resource/audience requested and validated by the CLI. The default
-is `https://api.darwinian.dev`. Set it only when an explicitly provisioned non-production
-environment uses a different resource. If stored credentials target a different resource,
-sign in again with `drwn login` under the intended setting.
+```bash
+DRWN_CLOUD_PROFILE=local \
+DRWN_CLOUD_PROFILE_FILE=/absolute/path/to/drwn-cloud-profile.json \
+drwn login
+```
+
+Independent endpoint overrides are not compatibility aliases. Select the bundled
+production/staging tuple or one reviewed strict local profile instead.
 
 ### `DRWN_TOKEN`
 
 Provides a services-audience JWT for headless execution. The CLI validates it against
-`DRWN_DAH_RESOURCE` (or the new default) before sending it.
+the selected whole profile before sending it. Deployed Worker management additionally
+requires the exact delegation-ready issuer, audience, authorized party, subject, expiry,
+and scope claims. The token is never persisted or refreshed.
 
 ### `DRWN_POLL_MS`
 

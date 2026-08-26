@@ -11,16 +11,16 @@
     "lockfile": {
       "lockfileVersion": 5,
       "store": {
-        "minDrwnVersion": "1.3.0"
+        "minDrwnVersion": "0.8.0"
       },
       "cards": [
         {
           "name": "@me/plain",
           "requested": "@me/plain@^1.0.0",
           "version": "1.0.0",
-          "path": "drwn/extracted/19ec83646c84ff0a597173e489604cdbb709a176",
-          "integrity": "sha256-6a315b32d3d41485eb3a41bda70f9ce1f177182e83577a80f8daa8ce699e8506",
-          "treeSha": "19ec83646c84ff0a597173e489604cdbb709a176",
+          "path": "drwn/extracted/7f974905df76c6e6c9db3c53eef6e252e6139692",
+          "integrity": "sha256-cec33e719ab588bbd0ccec13dfc12248e1106ff721b59426ed7c5fa0decad54d",
+          "treeSha": "7f974905df76c6e6c9db3c53eef6e252e6139692",
           "manifest": {
             "name": "@me/plain",
             "version": "1.0.0",
@@ -29,15 +29,6 @@
               "include": [
                 "plain"
               ]
-            },
-            "runtimeAdmission": {
-              "version": 1,
-              "servers": {},
-              "requirements": []
-            },
-            "applicationRequirements": {
-              "version": 1,
-              "apps": []
             }
           },
           "skills": [
@@ -59,24 +50,6 @@
       ]
     },
     "governance": null,
-    "runtimeAdmission": {
-      "schema": "darwinian.worker-runtime-admission",
-      "schemaVersion": 1,
-      "derivationVersion": "worker-runtime-admission-v1",
-      "closureHash": "23e6aebaba884cd26be56e405d033a8d954e2527f2499c6edb39b2a9c52f9cd4",
-      "activation": {
-        "schema": "darwinian.effective-mcp-activation",
-        "schemaVersion": 1,
-        "servers": [],
-        "activationHash": "2f3effaf6de99f1a826f2b39fd7227f246b70841d8117989a96654921f418021"
-      },
-      "runtimeRequirements": {
-        "schema": "darwinian.runtime-requirements",
-        "schemaVersion": 1,
-        "requirements": [],
-        "manifestHash": "d17ee7cfb4821770966dca00fbe1485b291e693203be8255c51781bb0b24d706"
-      }
-    },
     "storeExport": {
       "kind": "drwn-store-export-tar",
       "compression": "none",
@@ -97,16 +70,16 @@
     "lockfile": {
       "lockfileVersion": 5,
       "store": {
-        "minDrwnVersion": "1.3.0"
+        "minDrwnVersion": "0.8.0"
       },
       "cards": [
         {
           "name": "@me/frontend-eng",
           "requested": "@me/frontend-eng@^1.0.0",
           "version": "1.0.0",
-          "path": "drwn/extracted/de3113ae939963422a50b77d6f999309bcfb0d2b",
-          "integrity": "sha256-76c2487813f762749595fd780fd38aaf8196fa812b06741ac695f55644b80a8b",
-          "treeSha": "de3113ae939963422a50b77d6f999309bcfb0d2b",
+          "path": "drwn/extracted/1c7db5312ea2786aa33ed5dd9c7f8bb3acc974b7",
+          "integrity": "sha256-9582b626dc187aa4ccb58862681b77a5c56b4ec4fef9ca38e63c28c5a7e0b630",
+          "treeSha": "1c7db5312ea2786aa33ed5dd9c7f8bb3acc974b7",
           "manifest": {
             "name": "@me/frontend-eng",
             "version": "1.0.0",
@@ -120,15 +93,6 @@
             ],
             "identity": {
               "instructions": "Blueprint identity."
-            },
-            "runtimeAdmission": {
-              "version": 1,
-              "servers": {},
-              "requirements": []
-            },
-            "applicationRequirements": {
-              "version": 1,
-              "apps": []
             }
           },
           "skills": [],
@@ -143,9 +107,9 @@
           "name": "@me/react-builder",
           "requested": "@me/react-builder@^1.0.0",
           "version": "1.0.0",
-          "path": "drwn/extracted/3ae48377cd36e1970d22b0dc72e07e977c471c1a",
-          "integrity": "sha256-d9cb679d2d6ebcb718e5817e570eb77184381fe4d1bf9c0718c270d762b2eff4",
-          "treeSha": "3ae48377cd36e1970d22b0dc72e07e977c471c1a",
+          "path": "drwn/extracted/8cf8a7492ec48f2967320a005efc2f712bccb236",
+          "integrity": "sha256-235150bace8d68c0082103677dca42835939afde330d6d0ef548f6a6090ce01d",
+          "treeSha": "8cf8a7492ec48f2967320a005efc2f712bccb236",
           "manifest": {
             "name": "@me/react-builder",
             "version": "1.0.0",
@@ -154,15 +118,6 @@
               "include": [
                 "react"
               ]
-            },
-            "runtimeAdmission": {
-              "version": 1,
-              "servers": {},
-              "requirements": []
-            },
-            "applicationRequirements": {
-              "version": 1,
-              "apps": []
             }
           },
           "skills": [
@@ -192,24 +147,6 @@
       ],
       "identity": {
         "instructions": "Blueprint identity."
-      }
-    },
-    "runtimeAdmission": {
-      "schema": "darwinian.worker-runtime-admission",
-      "schemaVersion": 1,
-      "derivationVersion": "worker-runtime-admission-v1",
-      "closureHash": "2bfe4f24292eba515302a7ba13e7d21cc9c89272b4cafcc2191502a72aa704c5",
-      "activation": {
-        "schema": "darwinian.effective-mcp-activation",
-        "schemaVersion": 1,
-        "servers": [],
-        "activationHash": "2f3effaf6de99f1a826f2b39fd7227f246b70841d8117989a96654921f418021"
-      },
-      "runtimeRequirements": {
-        "schema": "darwinian.runtime-requirements",
-        "schemaVersion": 1,
-        "requirements": [],
-        "manifestHash": "d17ee7cfb4821770966dca00fbe1485b291e693203be8255c51781bb0b24d706"
       }
     },
     "storeExport": {

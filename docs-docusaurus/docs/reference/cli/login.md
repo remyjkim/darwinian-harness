@@ -7,24 +7,29 @@ sidebar_position: 15
 `drwn login` authenticates the CLI with Darwinian Auth Hub (DAH) through the
 native OAuth device flow.
 
-The command uses the production Auth Hub and requests the
-`https://api.darwinian.dev` services resource by default. To test against another
-Auth Hub, set `DRWN_DAH_HUB_URL`:
+The command uses the complete production cloud profile by default. It requests the
+exact scopes `openid email offline_access dah:management.delegate`; the final access
+token must contain that exact scope set plus the approved issuer, audience, authorized
+party, human subject, and expiry before anything is persisted.
+
+Select the complete admitted staging tuple with one variable:
 
 ```bash
-DRWN_DAH_HUB_URL=https://darwinian-auth-hub-staging.dev-726.workers.dev drwn login
+DRWN_CLOUD_PROFILE=staging drwn login
 ```
 
-Use `DRWN_DAH_RESOURCE` when the target environment requires a different services
-audience. For example, an explicitly provisioned staging environment can request its
-matching resource:
+Local development requires a reviewed strict profile file:
 
 ```bash
-DRWN_DAH_RESOURCE=https://api-staging-main.darwinian.dev drwn login
+DRWN_CLOUD_PROFILE=local \
+DRWN_CLOUD_PROFILE_FILE=/absolute/path/to/drwn-cloud-profile.json \
+drwn login
 ```
 
-Changing the resource intentionally invalidates a stored credential for the other
-resource; the CLI asks you to sign in again instead of silently discarding it.
+API, web, Auth Hub, issuer, audience, client, and scope fields cannot be overridden
+independently. Old-scope stored credentials remain available to `drwn whoami` and
+`drwn logout`, but deployed Worker management requires a fresh interactive login. An
+old credential is refused before refresh so consent cannot be silently elevated.
 
 Emit machine-readable output:
 

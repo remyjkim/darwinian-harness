@@ -13,7 +13,7 @@
   },
   "type": "module",
   "description": "Local Darwinian Worker CLI for composing Cards, selecting one project Worker, and managing machine capabilities.",
-  "version": "1.3.0",
+  "version": "1.4.2",
   "license": "Apache-2.0",
   "author": "remyjkim <jkkim123@gmail.com>",
   "homepage": "https://github.com/remyjkim/darwinian-worker",
@@ -52,10 +52,13 @@
   "scripts": {
     "drwn": "bun run cli/index.ts",
     "test": "bun test ./test/",
-    "test:gate": "bun test --timeout 30000 ./test/",
+    "test:gate": "bun test --timeout 30000 --max-concurrency 2 ./test/",
+    "test:e2e:management:bash": "bash test/e2e/drwn-management-cli.sh",
+    "test:e2e:management:live": "bash test/e2e/drwn-management-cli-live.sh",
     "typecheck": "tsc --noEmit",
-    "runtime-admission:derive:v2": "bun run cli/tools/runtime-admission-derive.ts",
     "verify:release": "bun run scripts/verify-release-readiness.ts",
+    "verify:worker-launch-targets": "bun run scripts/verify-worker-launch-targets.ts --json",
+    "generate:worker-launch-consumer-fixtures": "bun run scripts/generate-worker-launch-consumer-fixtures.ts",
     "verify:bridge": "bun run --cwd drwn-command-bridge verify",
     "docs:dev": "cd docs-docusaurus && bun run start",
     "docs:build": "cd docs-docusaurus && bun run build",
@@ -67,14 +70,12 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.3.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "clipanion": "4.0.0-rc.4",
     "drwn-catalog-schema": "^0.1.0",
     "semver": "^7.8.0",
     "smol-toml": "^1.6.1",
     "tar": "^7.5.19",
-    "ulid": "^3.0.2",
     "zod": "^4.4.3"
   }
 }

@@ -3,8 +3,11 @@
 
 import { describe, expect, test } from "bun:test";
 import { readFile, readdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 async function readDocsTree(relativeRoot: string) {
   const root = fileURLToPath(new URL(relativeRoot, import.meta.url));
@@ -14,11 +17,24 @@ async function readDocsTree(relativeRoot: string) {
 }
 
 describe("documentation readiness", () => {
-  test("I239 publishes the auth, ACP, Worker, and exact release boundaries without claiming live qualification", async () => {
+  test("current docs publish the ID-based Deployed Worker management hard cut", () => {
+    const readme = readFileSync(join(root, "README.md"), "utf8");
+    const quickref = readFileSync(join(root, "docs", "cli-quickref.md"), "utf8");
+    const worker = readFileSync(join(root, "docs-docusaurus", "docs", "reference", "cli", "worker.md"), "utf8");
+    for (const source of [readme, quickref, worker]) {
+      expect(source).toContain("drwn org list");
+      expect(source).toContain("drwn worker register");
+      expect(source).toContain("drwn worker retire");
+      expect(source).not.toContain("worker status <slug>");
+      expect(source).not.toContain("worker deploy <rootRef> --name");
+      expect(source).not.toContain("worker secret set <slug>");
+    }
+  });
+  test("publishes auth, Worker, provider-neutral Mind, and exact release boundaries without claiming live qualification", async () => {
     const [
       readme,
       quickref,
-      acp,
+      mind,
       worker,
       login,
       refresh,
@@ -32,7 +48,7 @@ describe("documentation readiness", () => {
     ] = await Promise.all([
       readFile(new URL("../README.md", import.meta.url), "utf8"),
       readFile(new URL("../docs/cli-quickref.md", import.meta.url), "utf8"),
-      readFile(new URL("../docs-docusaurus/docs/reference/cli/acp.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/mind.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/worker.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/login.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/refresh.md", import.meta.url), "utf8"),
@@ -47,8 +63,8 @@ describe("documentation readiness", () => {
 
     const commandOverview = `${readme}\n${quickref}`;
     for (const command of [
-      "drwn acp serve <slug>",
-      "drwn worker status <slug> --json",
+      "drwn worker mind",
+      "drwn worker status [deployedWorkerId] [--json]",
       "drwn worker materialize --payload",
       "drwn worker buzz-tools",
       "drwn worker secret set",
@@ -72,16 +88,14 @@ describe("documentation readiness", () => {
       expect(authDocs).toContain(forbidden);
     }
 
-    const workerDocs = `${quickref}\n${acp}\n${worker}`;
+    const workerDocs = `${quickref}\n${mind}\n${worker}`;
     for (const token of [
-      "LOCAL_PROJECT_UNAVAILABLE",
-      "LOCAL_TARGET_UNAVAILABLE",
-      "LOCAL_CARD_REF_MISMATCH",
-      "CAPABILITY_NOT_REPORTED",
-      "NO_ACTIVE_DEPLOYMENT",
-      "HTTP 202",
-      "terminal cancellation",
-      "zero",
+      "deployed-worker.v1",
+      "UNSUPPORTED_PROTOCOL",
+      "SERVER_RESPONSE_INVALID",
+      "deployedWorkerId",
+      "MIND_BACKEND_UNSELECTED",
+      "provider-neutral",
     ]) expect(workerDocs).toContain(token);
     expect(analyze).toContain("Foundry");
     expect(analyze).toContain("DRWN_ANALYZER_URL");
@@ -89,7 +103,8 @@ describe("documentation readiness", () => {
     expect(whoami).toContain("DRWN_TOKEN");
     expect(whoami).not.toContain("Analyzer");
     expect(whoami).not.toContain("DRWN_ANALYZER_URL");
-    expect(sidebars).toContain("reference/cli/acp");
+    expect(sidebars).not.toContain("reference/cli/acp");
+    expect(sidebars).toContain("reference/cli/mind");
     expect(sidebars).toContain("reference/cli/worker");
     expect(sidebars).toContain("reference/cli/refresh");
 
@@ -99,7 +114,7 @@ describe("documentation readiness", () => {
       "build identity",
       "dry-run run ID and attempt",
       "artifact ID and digest",
-      "annotated `v1.3.0` tag",
+      "annotated `v1.4.2` tag",
       "exact tarball",
       "release-recovery.yml",
       "source availability",
@@ -122,9 +137,6 @@ describe("documentation readiness", () => {
     expect(cliPublishing).not.toContain("--userconfig");
     expect(cliPublishing).toContain("No local token fallback");
 
-    expect(changelog).toContain("## [1.3.0]");
-    expect(changelog).toContain("**Breaking hard cut.**");
-    expect(changelog).toContain("must be deliberately recreated");
     expect(changelog).toContain("## [1.2.0] - 2026-08-07");
     expect(changelog).toContain("## [1.1.0] - 2026-08-05");
     expect(changelog).toContain("## [1.0.0] - 2026-08-03");
@@ -533,5 +545,41 @@ describe("documentation readiness", () => {
     ]) {
       expect(forwardDocs).not.toMatch(stale);
     }
+  });
+
+  test("v1.4 docs explain per-agent launch contexts, Codex nesting, trust, pruning, and resume limits", async () => {
+    const [concept, worker, schema, patterns, doctor, readme, changelog] = await Promise.all([
+      readFile(new URL("../docs-docusaurus/docs/concepts/per-agent-worker-launch-contexts.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/worker.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/schemas/worker-launch-context-v1.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/guides/per-project-patterns.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/guides/doctor-in-ci.md", import.meta.url), "utf8"),
+      readFile(new URL("../README.md", import.meta.url), "utf8"),
+      readFile(new URL("../CHANGELOG.md", import.meta.url), "utf8"),
+    ]);
+    const all = [concept, worker, schema, patterns, doctor, readme, changelog].join("\n");
+    for (const token of [
+      "drwn worker launch-context prepare",
+      "drwn.worker-launch-plan",
+      "drwn.worker-launch-context",
+      "drwn.worker-launch-receipt",
+      "--enable-mcp",
+      "--execute",
+      "2.1.212",
+      "0.149.0",
+      "-C",
+      "--add-dir",
+      "relaunch_required",
+      "RUN_DRWN_REAL_CLAUDE",
+      "RUN_DRWN_REAL_CODEX",
+      "RUN_DRWN_REAL_HERDR",
+      "DRWN_LIVE_DRWN_BIN",
+      "LAUNCH_CONTEXT_STORE_INVALID",
+    ]) expect(all).toContain(token);
+    expect(concept).toContain("active Worker");
+    expect(concept).toContain("content-addressed");
+    expect(concept).toContain("does not write to user home");
+    expect(doctor).toContain("launchContexts");
+    expect(changelog).toContain("## [1.4.2]");
   });
 });

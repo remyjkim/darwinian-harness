@@ -37,6 +37,21 @@ function card(name: string, text: string, consented: boolean): CardLockEntry {
 }
 
 describe("instruction composition and projection", () => {
+  test("state-independent closure wrapper composes the selected Card list without reading project state", async () => {
+    const projectInstructions = await import("../cli/core/sync-project-instructions") as typeof import("../cli/core/sync-project-instructions") & {
+      instructionCompositionForCards?: typeof composeConsentedInstructions;
+    };
+    expect(typeof projectInstructions.instructionCompositionForCards).toBe("function");
+
+    const composition = projectInstructions.instructionCompositionForCards!({
+      cards: [card("@test/delta", "delta only", true)],
+      contentRootsByCard: {},
+    });
+
+    expect(new TextDecoder().decode(composition.bytes!)).toBe("delta only\n");
+    expect(composition.included.map((entry) => entry.card)).toEqual(["@test/delta"]);
+  });
+
   test("uses only explicit consented bytes and reports excluded Card IDs", () => {
     const composition = composeConsentedInstructions({
       cards: [

@@ -1,14 +1,14 @@
 // ABOUTME: Materializes installed cards as isolated generated worker bundles.
 // ABOUTME: Writes workers.json plus per-worker skills, hooks, and MCP indexes.
 
-import { existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { CardLockEntry, WorkerRootLockEntry } from "../card-lock";
 import { isRegistryServerDefinition } from "../card-mcp";
 import type { EffectiveState } from "../effective-state";
-import { ensureParentDir, lstatSafe, realpathSafe } from "../fs";
+import { ensureParentDir, lstatSafe, realpathSafe, writeAtomically } from "../fs";
 import { materializeDir } from "../materialize";
-import { bundleHookComposer, type HookPolicyBundleInput } from "../hook-generator/bundle-composer";
+import { renderBundledHookComposer, type HookPolicyBundleInput } from "../hook-generator/bundle-composer";
 import { resolveHookRuntimes } from "../hook-generator/runtime-selection";
 import { isHookConsentValid } from "../hook-consent";
 import { renderJsonMcpConfig } from "../mcp";
@@ -214,15 +214,16 @@ async function materializeWorkerHooks(
     const runtimeDir = runtime === "claude-code" ? "claude" : runtime;
     const outputDir = join(workerDir, "hooks", runtimeDir);
     const composerPath = join(outputDir, "composer.mjs");
-    if (!state.scopedOptions.dryRun) {
-      await bundleHookComposer({ runtime, outputDir, policies });
-    } else {
+    const nextContent = await renderBundledHookComposer({ runtime, outputDir, policies });
+    const previousContent = existsSync(composerPath) ? readFileSync(composerPath, "utf8") : null;
+    if (previousContent === null || hashManagedContent(previousContent) !== hashManagedContent(nextContent)) {
       result.changes.push(`write ${composerPath}`);
-      result.managedPaths?.push(ownManagedPath(
-        { path: managedPath(state, composerPath), kind: "managed-content", contentHash: "sha256-dry-run" },
-        { surface: "worker" },
-      ));
     }
+    if (!state.scopedOptions.dryRun) await writeAtomically(composerPath, nextContent);
+    result.managedPaths?.push(ownManagedPath(
+      { path: managedPath(state, composerPath), kind: "managed-content", contentHash: hashManagedContent(nextContent) },
+      { surface: "worker" },
+    ));
   }
 }
 

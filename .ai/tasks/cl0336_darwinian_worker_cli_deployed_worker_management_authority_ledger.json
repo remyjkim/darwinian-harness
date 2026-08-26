@@ -1,0 +1,223 @@
+{
+  "schema": "cl.drwn.worker-management-authority-ledger",
+  "schemaVersion": 1,
+  "status": "integration_green",
+  "observedAt": "2026-08-26T06:33:22Z",
+  "worker": {
+    "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-integration",
+    "documentationRoot": "/Users/pureicis/dev/darwinian-minds",
+    "branch": "codex/i336-worker-cli-integration",
+    "candidateBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
+    "acceptedBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
+    "architecture": {
+      "path": ".ai/analyses/cl0336_darwinian_worker_cli_deployed_worker_management_target_architecture.html",
+      "sha256": "0cd0079821126c0b8d9a3db104c05d49eb05344190322e49f5c9ad0fbc855746",
+      "authority": "primary-checkout",
+      "historicalGitBlob": "d2b94ca8cf418fb2f176cc10a2755b3e1609f1ed",
+      "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
+    },
+    "taskPlan": {
+      "path": ".ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_task_plan.html",
+      "sha256": "c8af8776e870ede7375d5d2cdb99bbd522fd7629645cca9d5d73429a3eeda4ff",
+      "authority": "primary-checkout",
+      "historicalGitBlob": "453bae3b2717ccfc172b598b9924d937e01736a0",
+      "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
+    }
+  },
+  "services": {
+    "i336CandidateCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
+    "i336AuthorizedStartingCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
+    "i336AcceptedCommit": "5920f2c763f6afae3768286692df75489274006f",
+    "i321CandidateCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
+    "i321AuthorizedStartingCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
+    "i321AcceptedCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929"
+  },
+  "protocol": {
+    "name": "deployed-worker.v1",
+    "artifactPath": "ops/deploy/contracts/drwn-management/v1/contract.json",
+    "artifactVersion": 1,
+    "sourceCommit": "5920f2c763f6afae3768286692df75489274006f",
+    "sha256": "1534f85fe8d9079eb1c6c3cc9cf34477fb7cd19973247f31f4b98df0ed9bc3b2",
+    "routeCount": 13,
+    "positiveVectorCount": 13,
+    "negativeVectorCount": 32,
+    "semanticVectorCount": 3,
+    "schemaCount": 63,
+    "wireErrorCodeCount": 9,
+    "clientErrorCodeCount": 10,
+    "status": "accepted"
+  },
+  "profiles": {
+    "production": {
+      "profileId": "production",
+      "apiOrigin": "https://api.darwinian.dev",
+      "webOrigin": "https://foundry.darwinian.dev",
+      "authHubOrigin": "https://auth.darwinian.dev",
+      "issuer": "https://auth.darwinian.dev/api/auth",
+      "resource": "https://api.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    },
+    "staging": {
+      "profileId": "staging",
+      "apiOrigin": "https://api-staging-main.darwinian.dev",
+      "webOrigin": "https://foundry-staging-main.darwinian.dev",
+      "authHubOrigin": "https://auth-staging-main.darwinian.dev",
+      "issuer": "https://auth-staging-main.darwinian.dev/api/auth",
+      "resource": "https://api.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    },
+    "status": "frozen"
+  },
+  "decisions": [
+    {
+      "id": "GAP-02",
+      "status": "approved",
+      "answer": "whole reviewed profile tuples only; production default, staging selection, strict local file only in local mode"
+    },
+    {
+      "id": "GAP-03",
+      "status": "approved",
+      "answer": "exact public claim readiness checks only; Services retains cryptographic verification"
+    },
+    {
+      "id": "GAP-04",
+      "status": "approved",
+      "answer": "zero-one-many lookup by exact non-secret command and request fingerprint; no public resume flag"
+    },
+    {
+      "id": "GAP-05",
+      "status": "approved",
+      "answer": "no cold-process secret replay and no persisted secret-derived fingerprint"
+    },
+    {
+      "id": "GAP-06",
+      "status": "approved",
+      "answer": "closed organization detail, deploy receipt, bounded run polling, revisioned retirement, environment enum and request identity contract"
+    },
+    {
+      "id": "GAP-07",
+      "status": "approved",
+      "answer": "candidate publisher cannot move latest; npm trusted-publishing OIDC cannot authenticate dist-tag mutation, so promotion requires an external interactive npm-2FA ceremony or a separately reviewed non-OIDC credential authority"
+    },
+    {
+      "id": "GAP-08",
+      "status": "approved",
+      "answer": "Services-issued staging profile and two-human two-organization identity manifest"
+    },
+    {
+      "id": "NAMING-01",
+      "status": "approved",
+      "answer": "Foundry naming is exclusive across active product surfaces; immutable historical evidence remains unchanged",
+      "approvedAt": "2026-08-26T00:44:55Z"
+    },
+    {
+      "id": "DOCS-01",
+      "status": "approved",
+      "answer": "I336 HTML architecture and task-plan artifacts live only in each repository's primary checkout .ai directory; isolated worktrees contain implementation and non-HTML authority metadata only",
+      "approvedAt": "2026-08-26T01:48:53Z"
+    },
+    {
+      "id": "ARTIFACT-01",
+      "status": "approved",
+      "answer": "portable deployment bytes use a target-scoped content-addressed create-if-absent R2 PUT with digest-derived UUIDv4 replay identity; only the verified artifactRef enters the bounded deployment journal and aggregate mutation",
+      "approvedAt": "2026-08-26T01:48:53Z"
+    },
+    {
+      "id": "CONTRACT-02",
+      "status": "approved",
+      "answer": "the final 13-route artifact restores I330 opaque domain IDs, separates three semantic authority vectors from lexical negatives, and maps lower-case route-specific Services failures into Worker-owned uppercase command-result codes; SERVER_RESPONSE_INVALID remains client-local",
+      "approvedAt": "2026-08-26T04:15:20Z"
+    },
+    {
+      "id": "PROMOTION-01",
+      "status": "blocked_external",
+      "answer": "do not create an automated latest-mutation workflow that claims OIDC authority; official npm trusted-publishing support is limited to publish and stage publish",
+      "approvedAt": "2026-08-26T04:25:28Z"
+    },
+    {
+      "id": "LINEAGE-01",
+      "status": "approved",
+      "answer": "darwinian 1.4.2 is based directly on 1.2.0 semantics and selectively carries forward only explicitly reviewed later components; published 1.3.0 and the v1.4 branch are predecessor/comparison and implementation-seed evidence, not blanket feature bases",
+      "approvedAt": "2026-08-26T04:38:48Z"
+    },
+    {
+      "id": "INTEGRATION-01",
+      "status": "passed",
+      "answer": "remote main cef3090c is contained by merge 001908e1; all I265 runtime-admission and routine surfaces remain excluded, the 1.2 release-completion record is retained, and the clean Services contract authority is repinned",
+      "approvedAt": "2026-08-26T05:34:47Z"
+    },
+    {
+      "id": "RESPONSE-BINDING-01",
+      "status": "passed",
+      "answer": "all thirteen success routes bind request identity and every applicable organization, target, environment, artifact, deployment, secret name, run and monotonic revision before output or state mutation; deployment and retirement mismatches retain replay/context evidence",
+      "approvedAt": "2026-08-26T06:33:22Z"
+    }
+  ],
+  "operationalAuthorities": {
+    "npmPromotionEnvironment": null,
+    "npmPromotionApprover": null,
+    "stagingIdentityAuthority": null,
+    "stagingReceiptSink": null
+  },
+  "bashE2E": {
+    "planAmended": true,
+    "hermeticScript": "test/e2e/drwn-management-cli.sh",
+    "liveScript": "test/e2e/drwn-management-cli-live.sh",
+    "assertionLibrary": "test/e2e/lib/assertions.sh",
+    "fixtureServer": "test/fixtures/drwn-management-e2e-server.ts",
+    "contractTest": "test/scripts-management-bash-e2e-contract.test.ts",
+    "hermeticCommand": "bun run test:e2e:management:bash",
+    "liveCommand": "bun run test:e2e:management:live",
+    "shellcheckCommand": "shellcheck test/e2e/drwn-management-cli.sh test/e2e/drwn-management-cli-live.sh test/e2e/lib/assertions.sh"
+  },
+  "baseline": {
+    "sourceCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
+    "bunVersion": "1.3.11",
+    "platform": "darwin-arm64",
+    "fullSuite": {
+      "command": "bun test --timeout 30000 --max-concurrency 4 ./test/",
+      "files": 370,
+      "passed": 2261,
+      "skipped": 13,
+      "failed": 0,
+      "durationSeconds": 641.46
+    },
+    "typecheck": "passed",
+    "releaseReadiness": "passed"
+  },
+  "integration": {
+    "remoteMainCommit": "cef3090c013134b578d87fd938a6741fd288d36a",
+    "mergeCommit": "001908e1ba6fc280ae4a1c6efe0492c2dc7083fd",
+    "qualifiedSourceCommit": "8a6e575c75c4fe377dc38c8ffafcf8ee55f78cce",
+    "contractAuthorityCommit": "5920f2c763f6afae3768286692df75489274006f",
+    "contractPinCommit": "5ae5090",
+    "fullSuite": {
+      "command": "bun test --timeout 30000 --max-concurrency 2 ./test/",
+      "files": 371,
+      "passed": 2208,
+      "skipped": 7,
+      "failed": 0,
+      "durationSeconds": 626.7
+    },
+    "typecheck": "passed",
+    "hardCutResidue": "passed",
+    "responseIdentityBinding": "passed"
+  },
+  "sourceBlockers": [],
+  "operationalBlockers": [
+    "interactive npm-2FA or separately reviewed non-OIDC latest-promotion authority",
+    "staging identity authority and receipt sink"
+  ]
+}

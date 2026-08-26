@@ -23,7 +23,9 @@ function fakeJwt(issuer: string, overrides: Record<string, unknown> = {}): strin
   return `${b64({ alg: "none" })}.${b64({
     iss: issuer,
     aud: "https://api.darwinian.dev",
+    azp: "drwn-cli",
     sub: "user_123",
+    scope: "openid email offline_access dah:management.delegate",
     email: "device@example.test",
     iat: IAT,
     exp: EXP,
@@ -116,6 +118,53 @@ describe("runDeviceFlow", () => {
       "/api/auth/oauth2/authorize",
       "/api/auth/oauth2/token",
     ]);
+    expect(JSON.parse(requests[0]!.body)).toEqual({
+      client_id: "drwn-cli",
+      scope: "openid email offline_access dah:management.delegate",
+    });
+    const authorize = new URL(requests[3]!.url);
+    expect(authorize.searchParams.get("scope")).toBe("openid email offline_access dah:management.delegate");
+  });
+
+  test("rejects a successful final token without exact delegation readiness before credential creation", async () => {
+    const profile = drwnCliProfile({});
+    const invalidClaims = [
+      { scope: "openid email offline_access" },
+      { scope: "openid email offline_access dah:management.delegate extra:scope" },
+      { azp: "other-client" },
+      { sub: "" },
+      { aud: [profile.resource, "https://other.test"] },
+    ];
+
+    for (const overrides of invalidClaims) {
+      const fetcher = (async (input: string | URL | Request) => {
+        const path = new URL(String(input)).pathname;
+        if (path === "/api/auth/device/code") return Response.json({
+          device_code: "device-code",
+          user_code: "ABCD",
+          verification_uri: "https://app.test/device",
+          expires_in: 600,
+          interval: 1,
+        });
+        if (path === "/api/auth/device/token") return Response.json({ access_token: "opaque" });
+        if (path === "/api/auth/oauth2/authorize") return Response.json({ code: "code" });
+        if (path === "/api/auth/oauth2/token") return Response.json({
+          access_token: fakeJwt(profile.issuer, overrides),
+          refresh_token: "must-not-persist",
+          expires_in: 900,
+        });
+        throw new Error(`unexpected ${String(input)}`);
+      }) as unknown as typeof fetch;
+
+      await expect(runDeviceFlow({
+        profile,
+        fetcher,
+        sleep: async () => {},
+        now: () => (IAT + 1) * 1000,
+        randomUUID: () => UUID,
+        onUserAction: () => {},
+      })).rejects.toMatchObject({ code: "AUTH_RESPONSE_INVALID" });
+    }
   });
 
   test("fails when the final JWT omits a signed iat or coherent expiry", async () => {
@@ -151,7 +200,7 @@ describe("runDeviceFlow", () => {
         now: () => (IAT + 1) * 1000,
         randomUUID: () => UUID,
         onUserAction: () => {},
-      })).rejects.toThrow("DAH access token is missing coherent iat/exp claims.");
+      })).rejects.toMatchObject({ code: "AUTH_RESPONSE_INVALID" });
     }
   });
 
@@ -191,7 +240,7 @@ describe("runDeviceFlow", () => {
     await expect(run(IAT + 60)).resolves.toMatchObject({
       issuedAt: new Date((IAT + 60) * 1000).toISOString(),
     });
-    await expect(run(IAT + 61)).rejects.toThrow("outside the accepted clock window");
+    await expect(run(IAT + 61)).rejects.toMatchObject({ code: "AUTH_RESPONSE_INVALID" });
   });
 
   test("preserves native device authorization terminal errors", async () => {

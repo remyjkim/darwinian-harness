@@ -23,21 +23,11 @@ async function publishBlueprint(
   expect((await runAgentsCli(["card", "publish", name], envFor(fixture))).exitCode).toBe(0);
 }
 
-const emptyDeclarations = {
-  runtimeAdmission: { version: 1, servers: {}, requirements: [] },
-  applicationRequirements: { version: 1, apps: [] },
-};
-
 export async function goldenPayload() {
   const fixture = await scaffoldCliFixture();
-  await publishCardWithSkills(fixture, {
-    name: "@me/react-builder",
-    skills: ["react"],
-    manifestExtra: emptyDeclarations,
-  });
+  await publishCardWithSkills(fixture, { name: "@me/react-builder", skills: ["react"] });
   await publishBlueprint(fixture, "@me/frontend-eng", ["@me/react-builder@^1.0.0"], {
     evals: ["passes_tests"],
-    ...emptyDeclarations,
   });
   const payload = await buildWorkerDeployPayload({
     agentsDir: fixture.agentsDir,

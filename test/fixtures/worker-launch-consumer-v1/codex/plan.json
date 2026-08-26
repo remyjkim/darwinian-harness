@@ -1,0 +1,121 @@
+{
+  "assignedClosure": [
+    {
+      "integrity": "sha256-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "local": false,
+      "name": "@live/reviewer",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "local": false,
+      "name": "@live/shared",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "local": false,
+      "name": "@live/review-only",
+      "version": "1.0.0"
+    }
+  ],
+  "assignedRoot": {
+    "closureDigest": "sha256-1a63df5449859f3271bd14a333316c024cc2badc2f89cc384e6d91233510904c",
+    "kind": "blueprint",
+    "localOnly": false,
+    "name": "@live/reviewer",
+    "requested": "@live/reviewer@1.0.0"
+  },
+  "baseClosure": [
+    {
+      "integrity": "sha256-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "local": false,
+      "name": "@live/base",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "local": false,
+      "name": "@live/shared",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "local": false,
+      "name": "@live/base-only",
+      "version": "1.0.0"
+    }
+  ],
+  "baseRoot": {
+    "closureDigest": "sha256-02b684ed69db3334ee841501ef2a5740a5e0bacc77fbfdb5f97ac27a5a80d2dc",
+    "kind": "blueprint",
+    "localOnly": false,
+    "name": "@live/base",
+    "requested": "@live/base@1.0.0"
+  },
+  "capabilities": {
+    "hooks": [
+      {
+        "consentHash": "sha256-0759ecd05f630d31b1e2237598b394bfce62b9c1b95cf038c42b306e8d562497",
+        "contentHash": "sha256-89b1e74bd2d071f26b1ffa7477a1c291e67870036bfc7184d0f9402c28352057",
+        "id": "@live/review-only:sentinel"
+      }
+    ],
+    "instructions": {
+      "consentHash": "sha256-a51f0e2e304614a6393627389919acbe7dcd1a848f83d9392160acbd800e860d",
+      "contentHash": "sha256-ea4fdd7340ea545e9d87ffe496285927528e9a231657dd88ccc6e927df8e05ea",
+      "present": true
+    },
+    "mcpServers": [
+      {
+        "definitionHash": "sha256-32037c01587b39cd2dba696405971c4b2061de86364393fb25bf0026a9fbb8c9",
+        "id": "review_live_mcp",
+        "optional": false
+      }
+    ],
+    "skills": [
+      {
+        "contentHash": "sha256-3692bb4108678d314ea1858a1c2c58995e88675d8e2804567cac1baa2292f396",
+        "id": "review-live"
+      }
+    ]
+  },
+  "consent": {
+    "excluded": [],
+    "included": [
+      "@live/review-only",
+      "@live/review-only:sentinel"
+    ],
+    "strict": true
+  },
+  "deltaClosure": [
+    {
+      "integrity": "sha256-ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "local": false,
+      "name": "@live/reviewer",
+      "version": "1.0.0"
+    },
+    {
+      "integrity": "sha256-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "local": false,
+      "name": "@live/review-only",
+      "version": "1.0.0"
+    }
+  ],
+  "optionalMcp": {
+    "enabled": [],
+    "rejected": [],
+    "requested": []
+  },
+  "plannedArtifactDir": "/fixture/project/.agents/drwn/generated/launch-contexts/v1/codex/sha256-a457252fefae7846e13e1ac9008b5859bc90bf26a6dcd0f72004b6a6ab8554d7",
+  "plannedContextId": "sha256-a457252fefae7846e13e1ac9008b5859bc90bf26a6dcd0f72004b6a6ab8554d7",
+  "projectRoot": "/fixture/project",
+  "schema": "drwn.worker-launch-plan",
+  "schemaVersion": 1,
+  "target": "codex",
+  "targetCompatibility": {
+    "minimumVersion": "0.149.0",
+    "probed": false
+  },
+  "warnings": []
+}

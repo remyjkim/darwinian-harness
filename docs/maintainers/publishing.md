@@ -5,17 +5,17 @@ This is the maintainer boundary for npm publication. The `darwinian` CLI and
 
 ## Publishing `darwinian`
 
-Publish `darwinian@1.3.0` only through `.github/workflows/release.yml`, following
+Publish `darwinian@1.4.2` only through `.github/workflows/release.yml`, following
 `docs/release-process.md`. Manual dispatch is qualification-only. The exact
 annotated tag joins one successful main-only dry run to one immutable uploaded
-tarball; only the protected `Publish to npm` job receives OIDC.
+tarball; only the protected `Publish I336 candidate to npm` job receives OIDC.
 
 The external preconditions must be freshly read back before the tag is created:
 
 - dedicated environment `darwinian-npm-publish`;
 - required reviewers and self-review exactly as declared in
   `scripts/release/release-policy.json`, admin bypass disabled, and one exact
-  `v1.3.0` tag policy;
+  `v1.4.2` tag policy;
 - the environment-scoped variables `DARWINIAN_GITHUB_PUBLICATION_CONTROLS_JSON`
   and `DARWINIAN_NPM_PUBLICATION_CONTROLS_JSON` rewritten from that same
   readback. The protected job re-reads them and rejects any receipt observed
@@ -27,9 +27,10 @@ The external preconditions must be freshly read back before the tag is created:
 - npm access `require_2fa_disallow_tokens`.
 
 The workflow repeats those normalized control checks after approval, confirms
-`1.3.0` is still unpublished, downloads the authorized artifact by exact ID,
+`1.4.2` is still unpublished, downloads the authorized artifact by exact ID,
 verifies the archive digest before extraction, requalifies its receipt/build/tar
-identity, and publishes that relative tar path. It never repacks the checkout.
+identity, records the current `latest`, and publishes that relative tar path only
+with `--tag i336-candidate`. It never repacks the checkout.
 
 No local token fallback is supported for the `darwinian` CLI. Do not use ambient
 `.npmrc`, a maintainer token, a copied one-time password, or a local publish
@@ -38,15 +39,19 @@ trusted-publishing path instead. This avoids qualifying one artifact while
 publishing different local bytes.
 
 After publication, require npm shasum/integrity equality before installed smokes
-on Ubuntu and macOS. A GitHub Release is created or verified only after those
-checks and must exactly match the existing annotated tag and source commit.
+on Ubuntu and macOS. Require `i336-candidate == 1.4.2` and prove `latest` is
+unchanged. Candidate publication has no `npm dist-tag` or GitHub Release path;
+`latest` remains behind a separately approved interactive npm-2FA ceremony (or
+a future reviewed non-OIDC credential authority). Trusted-publishing OIDC does
+not authenticate `npm dist-tag`, so a GitHub protected environment alone is not
+promotion authority.
 
 If publication has already succeeded and a later step fails, use
 `.github/workflows/release-recovery.yml` with the exact failed run ID and an
 policy-approved closed-schema recovery receipt. Recovery has no OIDC,
 token, publish, repack, retag, dist-tag, or unpublish path. It may verify npm
-bytes, run installed smokes, and create or verify missing GitHub Release
-metadata at the existing tag only.
+candidate bytes/tag and run installed smokes only. It cannot create or repair a
+GitHub Release.
 
 ## Publishing `drwn-command-bridge`
 

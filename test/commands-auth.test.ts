@@ -1,7 +1,7 @@
 // ABOUTME: Command-level tests for drwn login/logout/whoami.
 // ABOUTME: Exercises Clipanion command wiring with injected network and browser dependencies.
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
 import { PassThrough, Writable } from "node:stream";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -11,13 +11,36 @@ import { LogoutCommand } from "../cli/commands/auth/logout";
 import { RefreshCommand } from "../cli/commands/auth/refresh";
 import { WhoamiCommand } from "../cli/commands/auth/whoami";
 import type { AgentsContext } from "../cli/context";
-import { deleteCredentials, readCredentials, writeCredentials } from "../cli/core/auth/credentials";
+import {
+  deleteCredentials as deleteCredentialsFromStore,
+  readCredentials as readCredentialsFromStore,
+  writeCredentials as writeCredentialsToStore,
+  type CliDahCredentialFileV3,
+} from "../cli/core/auth/credentials";
 import { deriveCredentialScope } from "../cli/core/auth/credential-scope";
 import { parseAuthOperationReceipt } from "../cli/core/auth/receipt";
 import { resolveCredentialsPath } from "../cli/core/paths";
 import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 const tempRoots: string[] = [];
+let keychainBackend: InMemoryKeychainBackend;
+
+beforeEach(() => {
+  keychainBackend = new InMemoryKeychainBackend();
+});
+
+function readCredentials(path: string) {
+  return readCredentialsFromStore(path, keychainBackend);
+}
+
+function writeCredentials(path: string, credential: CliDahCredentialFileV3) {
+  return writeCredentialsToStore(path, credential, keychainBackend);
+}
+
+function deleteCredentials(path: string) {
+  return deleteCredentialsFromStore(path, keychainBackend);
+}
 
 function b64(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -32,7 +55,9 @@ function fakeJwt(
   return `${b64({ alg: "none" })}.${b64({
     iss: options.issuer ?? "https://auth.darwinian.dev/api/auth",
     aud: options.resource ?? "https://api.darwinian.dev",
+    azp: "drwn-cli",
     sub: "user_123",
+    scope: "openid email offline_access dah:management.delegate",
     email,
     iat,
     exp,
@@ -68,7 +93,7 @@ function developmentBuildIdentity() {
     kind: "development",
     schema: "darwinian.worker.build-identity",
     schemaVersion: 1,
-    version: "1.3.0",
+    version: "1.4.2",
     sourceCommit: "0".repeat(40),
     qualificationEligible: false,
   } as const);
@@ -136,6 +161,10 @@ async function runAuthCommand(
   cli.register(LogoutCommand);
   cli.register(RefreshCommand);
   cli.register(WhoamiCommand);
+  LoginCommand.testDeps = { ...LoginCommand.testDeps, keychainBackend };
+  LogoutCommand.testDeps = { ...LogoutCommand.testDeps, keychainBackend };
+  RefreshCommand.testDeps = { ...RefreshCommand.testDeps, keychainBackend };
+  WhoamiCommand.testDeps = { ...WhoamiCommand.testDeps, keychainBackend };
   const exitCode = await cli.run(args, context);
   return { fixture, stdout: stdout.text(), stderr: stderr.text(), exitCode };
 }
@@ -176,6 +205,25 @@ function deviceFlowFetch(): typeof fetch {
 }
 
 describe("auth commands", () => {
+  test("retired partial cloud overrides fail before refresh or logout reads credential custody", async () => {
+    for (const Command of [RefreshCommand, LogoutCommand]) {
+      let reads = 0;
+      Command.testDeps = {
+        env: { DRWN_DAH_HUB_URL: "https://partial.example" },
+        readCredentials: async () => {
+          reads += 1;
+          return null;
+        },
+      };
+
+      const result = await runAuthCommand(Command === RefreshCommand ? ["refresh"] : ["logout"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe("CLOUD_PROFILE_INVALID\n");
+      expect(reads).toBe(0);
+      Command.testDeps = undefined;
+    }
+  });
+
   test("login does not require Analyzer transport configuration", async () => {
     LoginCommand.testDeps = {
       env: {},
@@ -237,7 +285,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -259,7 +307,7 @@ describe("auth commands", () => {
     expect(result.stdout).not.toContain("x@y.z");
     expect(result.stdout).not.toContain("https://app.test/device");
     expect(receipt).toMatchObject({
-      worker: { version: "1.3.0", sourceCommit: "0".repeat(40) },
+      worker: { version: "1.4.2", sourceCommit: "0".repeat(40) },
       qualificationNamespaceDigest: expectedScope.qualificationNamespaceDigest,
       credential: {
         credentialId: "88888888-8888-4888-8888-888888888888",
@@ -325,7 +373,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -360,7 +408,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -392,7 +440,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -423,7 +471,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -482,7 +530,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -495,7 +543,7 @@ describe("auth commands", () => {
     expect(requestBodies).toHaveLength(1);
     expect(requestBodies[0]).toContain("grant_type=refresh_token");
     expect(receipt).toMatchObject({
-      worker: { version: "1.3.0", sourceCommit: "0".repeat(40) },
+      worker: { version: "1.4.2", sourceCommit: "0".repeat(40) },
       credential: { credentialId: current.credentialId, generation: 2 },
       action: "refresh",
       mode: "ordinary",
@@ -521,7 +569,7 @@ describe("auth commands", () => {
     await writeCredentials(credentialsPath, current);
     let requests = 0;
     RefreshCommand.testDeps = {
-      env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+      env: { DRWN_CLOUD_PROFILE: "staging" },
       fetch: (async () => {
         requests += 1;
         return Response.json({});
@@ -530,7 +578,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -571,7 +619,7 @@ describe("auth commands", () => {
         kind: "development",
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       }),
@@ -750,7 +798,7 @@ describe("auth commands", () => {
       await writeCredentials(credentialsPath, current);
       let requests = 0;
       LogoutCommand.testDeps = {
-        env: { DRWN_DAH_RESOURCE: "https://api-staging-main.darwinian.dev" },
+        env: { DRWN_CLOUD_PROFILE: "staging" },
         fetch: (async () => {
           requests += 1;
           return new Response(null, { status: 204 });

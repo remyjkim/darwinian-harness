@@ -1,146 +1,75 @@
-// ABOUTME: Command-level tests for drwn worker run status (I65 Fix 4).
-// ABOUTME: Fakes the runId-addressed poll route; asserts status reporting per lifecycle state.
+// ABOUTME: Proves run status requires both target and run IDs and exposes only the strict summary.
+// ABOUTME: Wrong-target or unavailable runs remain non-enumerating public refusals.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
-import { Writable } from "node:stream";
+import { rm } from "node:fs/promises";
 import { WorkerRunStatusCommand } from "../cli/commands/worker/run-status";
-import type { AgentsContext } from "../cli/context";
-import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
+import { createManagementCommandFixture, managementToken } from "./management-command-helpers";
 
-const tempRoots: string[] = [];
-const originalFetch = globalThis.fetch;
-const originalEnv = { ...process.env };
+const roots: string[] = [];
+const requestId = "123e4567-e89b-42d3-a456-42661417400a";
 
-function b64(value: unknown): string {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
-}
-
-function fakeJwt(): string {
-  return `${b64({ alg: "none" })}.${b64({
-    iss: "https://auth.darwinian.dev/api/auth",
-    aud: "https://api.darwinian.dev",
-    sub: "user_123",
-    email: "worker@example.com",
-    exp: Math.floor(Date.now() / 1000) + 900,
-  })}.sig`;
-}
-
-class CaptureStream extends Writable {
-  chunks: Buffer[] = [];
-
-  override _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
-    this.chunks.push(Buffer.from(chunk));
-    callback();
-  }
-
-  text() {
-    return Buffer.concat(this.chunks).toString("utf8");
-  }
+async function run(args: string[], fetcher: typeof fetch) {
+  const f = await createManagementCommandFixture(); roots.push(f.fixture.root);
+  WorkerRunStatusCommand.testDeps = {
+    env: { DRWN_TOKEN: managementToken() }, fetcher,
+    requestId: () => requestId, now: () => "2026-08-25T12:16:00.000Z",
+  };
+  const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0", enableColors: false });
+  cli.register(WorkerRunStatusCommand);
+  const exitCode = await cli.run(args, f.context);
+  return { ...f, exitCode, stdout: f.stdout.text(), stderr: f.stderr.text() };
 }
 
 afterEach(async () => {
-  globalThis.fetch = originalFetch;
-  process.env = { ...originalEnv };
-  await cleanupTempRoots(tempRoots);
+  WorkerRunStatusCommand.testDeps = undefined;
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function runStatus(args: string[]) {
-  process.env.DRWN_TOKEN = process.env.DRWN_TOKEN ?? fakeJwt();
-  const fixture = await scaffoldCliFixture();
-  tempRoots.push(fixture.root);
-  const stdout = new CaptureStream();
-  const stderr = new CaptureStream();
-  const context: AgentsContext = {
-    repoRoot: fixture.repoRoot,
-    agentsDir: fixture.agentsDir,
-    homeDir: fixture.homeDir,
-    cwd: process.cwd(),
-    projectConfigPath: null,
-    stdin: process.stdin,
-    stdout,
-    stderr,
-    env: {},
-    colorDepth: 1,
-  };
-  const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0" });
-  cli.register(WorkerRunStatusCommand);
-  const exitCode = await cli.run(args, context);
-  return { stdout: stdout.text(), stderr: stderr.text(), exitCode };
+function response(status: string, target = "deployed_worker_alpha"): typeof fetch {
+  return (async (input, init) => {
+    expect(new URL(String(input)).pathname).toBe("/api/deployed-workers/deployed_worker_alpha/runs/run_0001");
+    const observedRequestId = new Headers(init?.headers).get("x-request-id")!;
+    return Response.json({ requestId: observedRequestId, run: {
+      runId: "run_0001", deployedWorkerId: target, status,
+      ...(status === "succeeded" ? { output: "answer" } : {}),
+      createdAt: "2026-08-25T12:15:00.000Z", updatedAt: "2026-08-25T12:16:00.000Z",
+    } });
+  }) as typeof fetch;
 }
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-}
-
-function stubPoll(body: unknown) {
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const path = new URL(String(input instanceof Request ? input.url : input)).pathname;
-    if (path === "/api/chat/run_42/poll") return json(body);
-    return json({ error: `unexpected path ${path}` }, 404);
-  }) as unknown as typeof fetch;
-}
-
-describe("worker run status (I65 Fix 4)", () => {
-  test("reports a running run", async () => {
-    stubPoll({ status: "running", result: null, lastSeq: 0, events: [] });
-
-    const result = await runStatus(["worker", "run", "status", "run_42"]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("running");
+describe("worker run status", () => {
+  test("reads one target-bound run in human and strict JSON form", async () => {
+    const human = await run(["worker", "run", "status", "run_0001"], response("succeeded"));
+    expect(human.exitCode).toBe(0);
+    expect(human.stdout).toContain("Status: succeeded");
+    expect(human.stdout).toContain("answer");
+    const machine = await run(["worker", "run", "status", "run_0001", "--json"], response("succeeded"));
+    expect(machine.exitCode).toBe(0);
+    expect(JSON.parse(machine.stdout)).toMatchObject({ command: "runs.read", data: { run: { runId: "run_0001", status: "succeeded" } } });
   });
 
-  test("prints the reply for a yielded run", async () => {
-    stubPoll({
-      status: "yielded",
-      result: null,
-      lastSeq: 2,
-      events: [{ seq: 2, kind: "orchestrator_turn", turn: 1, thought: "the answer", actions: [] }],
-    });
-
-    const result = await runStatus(["worker", "run", "status", "run_42"]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("yielded");
-    expect(result.stdout).toContain("the answer");
-  });
-
-  test("reports a failed run on stderr with exit 1", async () => {
-    stubPoll({ status: "failed", result: { error: "model exploded" }, lastSeq: 0, events: [] });
-
-    const result = await runStatus(["worker", "run", "status", "run_42"]);
-
+  test("wrong-target server success is invalid without existence detail", async () => {
+    const result = await run(["worker", "run", "status", "run_0001"], response("succeeded", "deployed_worker_other"));
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("model exploded");
+    expect(result.stderr).toContain("SERVER_RESPONSE_INVALID");
+    expect(result.stderr).not.toContain("deployed_worker_other");
   });
 
-  test("unknown runId exits 1", async () => {
-    stubPoll({ status: "not_found", result: null, lastSeq: 0, events: [] });
-
-    const result = await runStatus(["worker", "run", "status", "run_42"]);
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("not found");
+  test("failed and cancelled runs exit nonzero with closed status only", async () => {
+    for (const status of ["failed", "cancelled"]) {
+      const result = await run(["worker", "run", "status", "run_0001"], response(status));
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(status.toUpperCase());
+    }
   });
 
-  test("--json prints the raw poll body", async () => {
-    stubPoll({ status: "done", result: { ok: true }, lastSeq: 3, events: [] });
-
-    const result = await runStatus(["worker", "run", "status", "run_42", "--json"]);
-
+  test("help performs no profile, custody, context, or network work", async () => {
+    let calls = 0;
+    const result = await run(["worker", "run", "status", "--help"], (async () => { calls += 1; throw new Error("must not fetch"); }) as unknown as typeof fetch);
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({ status: "done", result: { ok: true } });
-  });
-
-  test("auth errors read as auth, not connectivity (Fix 3 helper reused)", async () => {
-    process.env.DRWN_TOKEN = "";
-    stubPoll({ status: "running", result: null, lastSeq: 0, events: [] });
-
-    const result = await runStatus(["worker", "run", "status", "run_42"]);
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("Not authenticated");
-    expect(result.stderr).not.toContain("Cannot reach Deploy API");
+    expect(calls).toBe(0);
+    expect(result.stdout).toContain("--deployed-worker");
   });
 });

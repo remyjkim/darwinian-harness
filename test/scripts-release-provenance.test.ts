@@ -4,7 +4,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   RELEASE_ARTIFACT_NAME,
+  createCandidatePublicationReceipt,
   createReleaseCandidateReceipt,
+  parseCandidatePublicationReceipt,
   parseReleaseCandidateReceipt,
   parseRecoveryAuthorizationReceipt,
   parseReleaseTagAuthorization,
@@ -31,10 +33,10 @@ function receiptObject(): ReleaseCandidateReceiptV1 {
       ref: "refs/heads/main",
       sourceCommit: COMMIT,
     },
-    package: { name: "darwinian", version: "1.3.0" },
-    build: { version: "1.3.0", sourceCommit: COMMIT },
+    package: { name: "darwinian", version: "1.4.2" },
+    build: { version: "1.4.2", sourceCommit: COMMIT },
     tar: {
-      filename: "darwinian-1.3.0.tgz",
+      filename: "darwinian-1.4.2.tgz",
       byteLength: 12345,
       sha1: "c".repeat(40),
       sha256: "d".repeat(64),
@@ -47,7 +49,7 @@ function annotation(overrides: Record<string, string | number> = {}): string {
   const values = {
     schema: "darwinian.worker.release-authorization",
     schema_version: 1,
-    version: "1.3.0",
+    version: "1.4.2",
     dry_run_run_id: 123,
     dry_run_run_attempt: 1,
     artifact_id: 456,
@@ -55,7 +57,7 @@ function annotation(overrides: Record<string, string | number> = {}): string {
     ...overrides,
   };
   return [
-    "Darwinian Worker CLI v1.3.0",
+    "Darwinian Worker CLI v1.4.2",
     "",
     "-----BEGIN DARWINIAN WORKER RELEASE AUTHORIZATION-----",
     ...Object.entries(values).map(([key, value]) => `${key}=${value}`),
@@ -67,7 +69,7 @@ function validInput() {
   return {
     receiptText: JSON.stringify(receiptObject()),
     tagAnnotation: annotation(),
-    tag: { name: "v1.3.0", type: "tag" as const, peeledCommit: COMMIT },
+    tag: { name: "v1.4.2", type: "tag" as const, peeledCommit: COMMIT },
     checkoutCommit: COMMIT,
     originMainCommit: COMMIT,
     run: {
@@ -82,16 +84,15 @@ function validInput() {
     jobs: [
       { name: "Validate release commit", conclusion: "success" },
       { name: "Dry run complete", conclusion: "success" },
-      { name: "Publish to npm", conclusion: "skipped" },
+      { name: "Publish I336 candidate to npm", conclusion: "skipped" },
       { name: "Smoke install (macos)", conclusion: "skipped" },
-      { name: "GitHub Release", conclusion: "skipped" },
     ],
     artifacts: [{ id: 456, name: RELEASE_ARTIFACT_NAME, digest: DIGEST, expired: false, runId: 123 }],
     artifact: {
       packageName: "darwinian",
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: COMMIT,
-      filename: "darwinian-1.3.0.tgz",
+      filename: "darwinian-1.4.2.tgz",
       byteLength: 12345,
       sha1: "c".repeat(40),
       sha256: "d".repeat(64),
@@ -134,7 +135,7 @@ describe("release candidate receipt parser", () => {
     ["unknown root key", () => JSON.stringify({ ...receiptObject(), extra: true })],
     ["unknown nested key", () => JSON.stringify({ ...receiptObject(), tar: { ...receiptObject().tar, extra: true } })],
     ["duplicate key", () => JSON.stringify(receiptObject()).replace('"schemaVersion":1', '"schemaVersion":1,"schemaVersion":1')],
-    ["bad SHA", () => JSON.stringify({ ...receiptObject(), build: { version: "1.3.0", sourceCommit: "A".repeat(40) } })],
+    ["bad SHA", () => JSON.stringify({ ...receiptObject(), build: { version: "1.4.2", sourceCommit: "A".repeat(40) } })],
     ["bad digest", () => JSON.stringify({ ...receiptObject(), tar: { ...receiptObject().tar, sha256: "d".repeat(63) } })],
     ["bad timestamp", () => JSON.stringify({ ...receiptObject(), createdAt: "2026-08-08" })],
     ["bad URL", () => JSON.stringify({ ...receiptObject(), workflow: { ...receiptObject().workflow, runUrl: "https://example.test/?token=SECRET" } })],
@@ -143,12 +144,86 @@ describe("release candidate receipt parser", () => {
   });
 });
 
+describe("I336 candidate publication receipt", () => {
+  test("binds exact registry candidate bytes and protocol while proving latest did not move", () => {
+    const artifact = validInput().artifact;
+    const text = createCandidatePublicationReceipt({
+      artifact,
+      protocolDigest: "e".repeat(64),
+      candidateVersion: "1.4.2",
+      priorLatest: "1.4.0",
+      resultingLatest: "1.4.0",
+      createdAt: "2026-08-08T00:20:00.000Z",
+      observedAt: "2026-08-08T00:19:00.000Z",
+      runId: 789,
+      runAttempt: 1,
+      runUrl: "https://github.com/remyjkim/darwinian-worker/actions/runs/789",
+      ref: "refs/tags/v1.4.2",
+      sourceCommit: COMMIT,
+    });
+    expect(parseCandidatePublicationReceipt(text)).toEqual({
+      schema: "darwinian.worker.i336-candidate",
+      schemaVersion: 1,
+      createdAt: "2026-08-08T00:20:00.000Z",
+      workflow: {
+        path: ".github/workflows/release.yml",
+        event: "push",
+        ref: "refs/tags/v1.4.2",
+        runId: 789,
+        runAttempt: 1,
+        runUrl: "https://github.com/remyjkim/darwinian-worker/actions/runs/789",
+        sourceCommit: COMMIT,
+      },
+      package: { name: "darwinian", version: "1.4.2" },
+      artifact: {
+        filename: "darwinian-1.4.2.tgz",
+        byteLength: 12345,
+        sha256: "d".repeat(64),
+        integrity: INTEGRITY,
+      },
+      protocol: { name: "deployed-worker.v1", sha256: "e".repeat(64) },
+      registry: {
+        candidateTag: "i336-candidate",
+        candidateVersion: "1.4.2",
+        priorLatest: "1.4.0",
+        resultingLatest: "1.4.0",
+        observedAt: "2026-08-08T00:19:00.000Z",
+      },
+    });
+  });
+
+  test("rejects candidate drift, latest movement, tuple mismatch, and secret-shaped fields", () => {
+    const base = {
+      artifact: validInput().artifact,
+      protocolDigest: "e".repeat(64),
+      candidateVersion: "1.4.2",
+      priorLatest: "1.4.0",
+      resultingLatest: "1.4.0",
+      createdAt: "2026-08-08T00:20:00.000Z",
+      observedAt: "2026-08-08T00:19:00.000Z",
+      runId: 789,
+      runAttempt: 1,
+      runUrl: "https://github.com/remyjkim/darwinian-worker/actions/runs/789",
+      ref: "refs/tags/v1.4.2",
+      sourceCommit: COMMIT,
+    };
+    for (const override of [
+      { candidateVersion: "1.4.1" },
+      { resultingLatest: "1.4.2" },
+      { sourceCommit: "f".repeat(40) },
+      { protocolDigest: "bad" },
+    ]) expect(() => createCandidatePublicationReceipt({ ...base, ...override })).toThrow();
+    const valid = JSON.parse(createCandidatePublicationReceipt(base));
+    expect(() => parseCandidatePublicationReceipt(JSON.stringify({ ...valid, authorization: "Bearer SECRET" }))).toThrow();
+  });
+});
+
 describe("annotated tag authorization parser", () => {
   test("accepts the exact closed machine block", () => {
     expect(parseReleaseTagAuthorization(annotation())).toEqual({
       schema: "darwinian.worker.release-authorization",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       dryRunRunId: 123,
       dryRunRunAttempt: 1,
       artifactId: 456,
@@ -173,9 +248,9 @@ describe("release recovery authorization parser", () => {
     schema: "darwinian.worker.release-recovery-authorization",
     schemaVersion: 1,
     authorizedAt: "2026-08-08T00:00:00.000Z",
-    tag: "v1.3.0",
+    tag: "v1.4.2",
     failedRunId: 789,
-    action: "verify_and_repair_metadata",
+    action: "verify_candidate",
   } as const;
 
   test("accepts only the exact non-publishing recovery authority", () => {
@@ -195,14 +270,14 @@ describe("release recovery authorization parser", () => {
 describe("exact release provenance join", () => {
   test("accepts one immutable dry-run/tag/run/artifact/tar tuple", () => {
     const result = verifyReleaseProvenance(validInput());
-    expect(result).toEqual({ version: "1.3.0", sourceCommit: COMMIT, runId: 123, artifactId: 456, artifactDigest: DIGEST });
+    expect(result).toEqual({ version: "1.4.2", sourceCommit: COMMIT, runId: 123, artifactId: 456, artifactDigest: DIGEST });
   });
 
   test("recovery observes but does not fabricate equality with a later origin/main", () => {
     const input = validInput();
     input.originMainCommit = "e".repeat(40);
     expect(verifyRecoveryReleaseProvenance(input)).toEqual({
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: COMMIT,
       runId: 123,
       artifactId: 456,
@@ -226,7 +301,7 @@ describe("exact release provenance join", () => {
     ["failed run", (input: ReturnType<typeof validInput>) => { input.run.conclusion = "failure"; }],
     ["missing exact job", (input: ReturnType<typeof validInput>) => { input.jobs = input.jobs.filter((job) => job.name !== "Dry run complete"); }],
     ["failed exact job", (input: ReturnType<typeof validInput>) => { input.jobs.find((job) => job.name === "Dry run complete")!.conclusion = "failure"; }],
-    ["mutation job ran", (input: ReturnType<typeof validInput>) => { input.jobs.find((job) => job.name === "Publish to npm")!.conclusion = "success"; }],
+    ["mutation job ran", (input: ReturnType<typeof validInput>) => { input.jobs.find((job) => job.name === "Publish I336 candidate to npm")!.conclusion = "success"; }],
     ["expired artifact", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.expired = true; }],
     ["renamed artifact", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.name = "renamed"; }],
     ["multiple artifacts", (input: ReturnType<typeof validInput>) => { input.artifacts.push({ ...input.artifacts[0]!, id: 457 }); }],

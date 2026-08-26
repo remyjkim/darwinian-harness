@@ -7,7 +7,7 @@ import {
   type RegistryCommandResult,
 } from "../scripts/release/registry-probe";
 
-const input = { packageName: "darwinian", version: "1.3.0" };
+const input = { packageName: "darwinian", version: "1.4.2" };
 
 async function classify(result: RegistryCommandResult) {
   const calls: string[][] = [];
@@ -19,7 +19,7 @@ async function classify(result: RegistryCommandResult) {
   });
   expect(calls).toEqual([[
     "view",
-    "darwinian@1.3.0",
+    "darwinian@1.4.2",
     "version",
     "--json",
     "--prefer-online",
@@ -30,8 +30,8 @@ async function classify(result: RegistryCommandResult) {
 
 describe("release registry probe", () => {
   test("classifies only the exact successful version as published", async () => {
-    expect(await classify({ exitCode: 0, stdout: '"1.3.0"\n', stderr: "" })).toEqual({ state: "published" });
-    expect(await classify({ exitCode: 0, stdout: "1.3.0\n", stderr: "" })).toEqual({ state: "indeterminate" });
+    expect(await classify({ exitCode: 0, stdout: '"1.4.2"\n', stderr: "" })).toEqual({ state: "published" });
+    expect(await classify({ exitCode: 0, stdout: "1.4.2\n", stderr: "" })).toEqual({ state: "indeterminate" });
     expect(await classify({ exitCode: 0, stdout: '"1.2.1"\n', stderr: "" })).toEqual({ state: "indeterminate" });
     expect(await classify({ exitCode: 0, stdout: "", stderr: "" })).toEqual({ state: "indeterminate" });
     expect(await classify({ exitCode: 0, stdout: "not-json", stderr: "" })).toEqual({ state: "indeterminate" });
@@ -43,8 +43,8 @@ describe("release registry probe", () => {
       stdout: JSON.stringify({
         error: {
           code: "E404",
-          summary: "No match found for version 1.3.0",
-          detail: "darwinian@1.3.0 is not in this registry.",
+          summary: "No match found for version 1.4.2",
+          detail: "darwinian@1.4.2 is not in this registry.",
         },
       }),
       stderr: "",

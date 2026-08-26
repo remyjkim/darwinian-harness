@@ -74,10 +74,11 @@ async function verifyPackageContents() {
     "cli/index.ts",
     "cli/commands/write.ts",
     "cli/commands/mcp/write.ts",
-    "cli/commands/acp/serve.ts",
+    "cli/commands/worker/mind/mind.ts",
     "cli/commands/worker/materialize.ts",
     "cli/commands/worker/buzz-tools.ts",
     "cli/commands/worker/secret-set.ts",
+    "registry/cards/buzz-delivery-worker/card.json",
     "registry/config.json",
     "registry/mcp-servers.json",
     "skills/shared/frontend-design/SKILL.md",
@@ -194,20 +195,20 @@ function verifyDocsPresence() {
     ".ai/knowledges/05_npm-publishing-analysis-and-manual.md",
     "docs/release-process.md",
     "docs/maintainers/publishing.md",
-    "docs-docusaurus/docs/reference/cli/acp.md",
+    "docs-docusaurus/docs/reference/cli/mind.md",
     "docs-docusaurus/docs/reference/cli/worker.md",
     "docs-docusaurus/docs/reference/cli/refresh.md",
   ];
   const missing = requiredFiles.filter((file) => !existsSync(join(repoRoot, file)));
   const requiredTokens: Array<[string, string[]]> = [
-    ["README.md", ["drwn acp serve <slug>", "drwn refresh --json", "Foundry/Analyzer-linked"]],
-    ["docs/cli-quickref.md", ["payload v3", "envelope v2", "CAPABILITY_NOT_REPORTED", "HTTP 202"]],
-    ["docs-docusaurus/docs/reference/cli/acp.md", ["terminal cancellation", "I236/I238"]],
-    ["docs-docusaurus/docs/reference/cli/worker.md", ["LOCAL_CARD_REF_MISMATCH", "NO_ACTIVE_DEPLOYMENT"]],
+    ["README.md", ["drwn worker mind", "provider-neutral placeholder", "drwn refresh --json", "Foundry/Analyzer-linked"]],
+    ["docs/cli-quickref.md", ["payload v3", "envelope v2", "deployedWorkerId", "MIND_BACKEND_UNSELECTED"]],
+    ["docs-docusaurus/docs/reference/cli/mind.md", ["MIND_BACKEND_UNSELECTED", "provider-neutral"]],
+    ["docs-docusaurus/docs/reference/cli/worker.md", ["drwn org list", "drwn worker retire", "strict typed"]],
     ["docs-docusaurus/docs/reference/cli/refresh.md", ["CREDENTIAL_SCHEMA_UNSUPPORTED", "never persisted"]],
     ["docs/release-process.md", ["dry-run run ID and attempt", "artifact ID and digest", "release-recovery.yml"]],
     ["docs/maintainers/publishing.md", ["No local token fallback", "darwinian-npm-publish"]],
-    ["CHANGELOG.md", ["## [1.3.0]", "## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
+    ["CHANGELOG.md", ["## [1.4.2] - 2026-08-24", "## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
   ];
   const drift: string[] = [];
   for (const [file, tokens] of requiredTokens) {
@@ -237,7 +238,8 @@ function verifyDocsPresence() {
 
 type SourceOverrides = Record<string, string>;
 
-const TARGET_RELEASE_VERSION = "1.3.0";
+const TARGET_RELEASE_VERSION = "1.4.2";
+const BUZZ_DELIVERY_MIN_VERSION = "1.2.0";
 const FIRST_SUPPORTED_WORKER_VERSION = "1.1.0";
 
 function runtimeVersionFromSource(
@@ -1055,8 +1057,11 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
     }
   }
   requireTokens("cli/core/effective-state.ts", [
-    "projectBaseConfig(repoConfig)",
-    "projectBaseRegistry(builtInRegistry, projectConfig)",
+    "buildProjectClosureCapabilityState({",
+    "projectBaseConfig(input.repoConfig)",
+    "projectBaseRegistry(input.repoRegistry, input.projectConfig)",
+    "repoRegistry: builtInRegistry",
+    "cards: activeCards",
   ]);
 
   for (const pathValue of [
@@ -1130,6 +1135,17 @@ export function verifyWorkerContract(root = repoRoot, overrides: SourceOverrides
   }
   if (runtimeVersion !== pkg.version) issues.push("runtime version must match package version");
 
+  try {
+    const buzz = JSON.parse(source("registry/cards/buzz-delivery-worker/card.json")) as {
+      harness?: { minVersion?: string };
+    };
+    if (buzz.harness?.minVersion !== BUZZ_DELIVERY_MIN_VERSION) {
+      issues.push(`Buzz delivery Card harness.minVersion must be ${BUZZ_DELIVERY_MIN_VERSION}`);
+    }
+  } catch {
+    issues.push("Buzz delivery Card metadata must be valid JSON");
+  }
+
   return {
     name: "project Worker contract",
     ok: issues.length === 0,
@@ -1156,59 +1172,51 @@ export function verifySemanticMindContract(root = repoRoot, overrides: SourceOve
   };
 
   let packageVersion: string | undefined;
+  let dependencies: Record<string, unknown> = {};
   try {
-    packageVersion = (JSON.parse(source("package.json")) as { version?: string }).version;
+    const pkg = JSON.parse(source("package.json")) as { version?: string; dependencies?: Record<string, unknown> };
+    packageVersion = pkg.version;
+    dependencies = pkg.dependencies ?? {};
   } catch {
     issues.push("package.json must be valid JSON");
   }
   const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), packageVersion, issues);
-  if (!packageVersion || !gte(packageVersion, "0.9.0")) {
-    issues.push("package version must be at least 0.9.0");
-  }
+  if (!packageVersion || !gte(packageVersion, "1.4.2")) issues.push("package version must be at least 1.4.2");
   if (runtimeVersion !== packageVersion) issues.push("runtime version must match package version");
+  if (Object.hasOwn(dependencies, "@agentclientprotocol/sdk")) issues.push("ACP SDK dependency remains");
+  if (Object.hasOwn(dependencies, "ulid")) issues.push("retired Mind backend ULID dependency remains");
 
   requireTokens("cli/core/mind-capability.ts", [
-    ['PROJECT_WORKER_MIN_DRWN_VERSION = "0.8.0"', "base project Worker floor must remain 0.8.0"],
-    ['WORKER_MIND_MIN_DRWN_VERSION = "0.9.0"', "semantic Worker Mind floor must be 0.9.0"],
-    ["minimumDrwnVersionForManifests", "lock-wide semantic Mind floor selection is missing"],
+    ["minimumDrwnVersionForManifests", "provider-independent Mind capability floor selection is missing"],
   ]);
   requireTokens("cli/core/card-manifest.ts", [
     ['MemoryKind = "observations" | "insights"', "semantic memory kind union is missing"],
-    ['["observations", "insights"]', "closed semantic memory kind inventory is missing"],
-    ['observations?: { format: "jsonl" }', "observations JSONL manifest contract is missing"],
-    ['insights?: { format: "md" }', "insights Markdown manifest contract is missing"],
-    ['memory kind raw_data is reserved but unsupported', "raw_data reservation is missing"],
+    ['observations?: { format: "jsonl" }', "observations manifest contract is missing"],
+    ['insights?: { format: "md" }', "insights manifest contract is missing"],
   ]);
-  requireTokens("cli/core/mind-store/mind-index.ts", [
-    ['z.literal("drwn.mind-index")', "strict mind index schema is missing"],
-    ["schemaVersion: z.literal(1)", "strict mind index version is missing"],
-    ["MIND_INDEX_INVALID", "invalid mind index diagnostic is missing"],
-    ["MIND_INDEX_UNSUPPORTED", "unsupported mind index diagnostic is missing"],
-  ]);
-  requireTokens("cli/core/mind-store/paths.ts", [
-    ["/pool/observations", "canonical observations pool path is missing"],
-    ["/pool/insights", "canonical insights pool path is missing"],
-    ["parseCanonicalPoolPath", "strict canonical pool parser is missing"],
+  requireTokens("cli/commands/worker/mind/mind.ts", [
+    ["MIND_BACKEND_UNSELECTED", "Worker Mind placeholder refusal is missing"],
+    ["provider-neutral", "Worker Mind placeholder must remain provider-neutral"],
   ]);
   requireTokens("test/worker-mind-semantic-residue.test.ts", [
-    ["numbered contract residue", "numbered-memory residue gate is missing"],
+    ["provider-neutral", "provider-neutral Mind residue gate is missing"],
   ]);
-  requireTokens("test/e2e-mind-journey.test.ts", [
-    ["semantic observations and insights preserve inode identity", "real semantic placement E2E coverage is missing"],
-  ]);
-  requireTokens("CHANGELOG.md", [
-    ["## [0.9.0]", "0.9.0 changelog entry is missing"],
-    ["no migration", "0.9.0 changelog must state the no migration policy"],
+  requireTokens("test/removed-acp-mind-surfaces.test.ts", [
+    ["active provider-backed Mind code", "provider-backed Mind removal gate is missing"],
   ]);
 
-  const hardCutSources = [
-    "cli/core/card-manifest.ts",
-    "cli/core/mind-capability.ts",
-    "cli/core/mind-store/mind-index.ts",
-    "cli/core/mind-store/paths.ts",
-  ].map(source).join("\n");
-  if (/MemoryLayerName|MEMORY_LAYER_NAMES|memoryLayerRoot|\b[lL][456]\b/.test(hardCutSources)) {
-    issues.push("numbered-memory reader or symbol remains in the supported runtime");
+  for (const removed of ["cli/core/mind-store", "cli/core/acp", "cli/commands/acp"]) {
+    if (existsSync(join(root, removed)) || Object.hasOwn(overrides, removed)) {
+      issues.push(`retired runtime surface remains: ${removed}`);
+    }
+  }
+  const index = source("cli/index.ts");
+  for (const retired of ["AcpCommand", "AcpServeCommand", "WorkerMindProvisionCommand", "WorkerMindStatusCommand"]) {
+    if (index.includes(retired)) issues.push(`retired command registration remains: ${retired}`);
+  }
+  const retained = [source("cli/core/card-manifest.ts"), source("cli/core/mind-capability.ts"), source("cli/commands/worker/mind/mind.ts")].join("\n");
+  if (/BGDB_|@agentclientprotocol|MemoryLayerName|MEMORY_LAYER_NAMES|memoryLayerRoot|\b[lL][456]\b/.test(retained)) {
+    issues.push("retired provider or numbered-memory residue remains in retained Mind sources");
   }
 
   return {

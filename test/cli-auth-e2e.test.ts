@@ -1,14 +1,22 @@
-// ABOUTME: Subprocess E2E tests for drwn auth commands against a fake Auth Hub backend.
-// ABOUTME: Exercises the real CLI entrypoint, process env, HTTP boundaries, and credential files.
+// ABOUTME: Auth E2E tests against a real fake-DAH HTTP server and explicit credential custody.
+// ABOUTME: Keeps storage journeys in-process while preserving storage-free env-token subprocess coverage.
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { Cli } from "clipanion";
 import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { PassThrough, Writable } from "node:stream";
+import { LoginCommand } from "../cli/commands/auth/login";
+import { LogoutCommand } from "../cli/commands/auth/logout";
+import { RefreshCommand } from "../cli/commands/auth/refresh";
+import { WhoamiCommand } from "../cli/commands/auth/whoami";
+import type { AgentsContext } from "../cli/context";
 import { readCredentials, writeCredentials } from "../cli/core/auth/credentials";
-import { drwnCliProfile } from "../cli/core/auth/profile";
+import { drwnCliProfile, type CliAuthProfile } from "../cli/core/auth/profile";
 import { parseAuthOperationReceipt } from "../cli/core/auth/receipt";
 import { resolveCredentialsPath } from "../cli/core/paths";
 import { cleanupTempRoots, envFor, runAgentsCli, scaffoldCliFixture } from "./helpers";
+import { InMemoryKeychainBackend } from "./helpers/keychain-backend";
 
 const tempRoots: string[] = [];
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -20,6 +28,19 @@ interface AuthServerState {
   oauthTokenRequests: string[];
   sessionAuthHeaders: string[];
   revokeRequests: string[];
+}
+
+class CaptureStream extends Writable {
+  private readonly chunks: Buffer[] = [];
+
+  override _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
+    this.chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    callback();
+  }
+
+  text(): string {
+    return Buffer.concat(this.chunks).toString("utf8");
+  }
 }
 
 function b64(value: unknown): string {
@@ -36,7 +57,9 @@ function fakeJwt(
   return `${b64({ alg: "none" })}.${b64({
     iss: options.iss ?? profile.issuer,
     aud: options.aud ?? profile.resource,
+    azp: "drwn-cli",
     sub: "user_123",
+    scope: "openid email offline_access dah:management.delegate",
     email,
     iat,
     exp,
@@ -44,11 +67,74 @@ function fakeJwt(
 }
 
 afterEach(async () => {
+  LoginCommand.testDeps = undefined;
+  LogoutCommand.testDeps = undefined;
+  RefreshCommand.testDeps = undefined;
+  WhoamiCommand.testDeps = undefined;
   for (const server of servers.splice(0)) {
     server.stop(true);
   }
   await cleanupTempRoots(tempRoots);
 });
+
+async function runStoredAuthCommand(
+  args: string[],
+  fixture: Awaited<ReturnType<typeof scaffoldCliFixture>>,
+  env: Record<string, string | undefined>,
+  keychainBackend: InMemoryKeychainBackend,
+  profile: CliAuthProfile = drwnCliProfile({}),
+) {
+  LoginCommand.testDeps = {
+    env,
+    fetch,
+    sleep: async () => {},
+    openBrowser: () => {},
+    keychainBackend,
+    profile,
+  };
+  LogoutCommand.testDeps = { env, fetch, keychainBackend, profile };
+  RefreshCommand.testDeps = { env, fetch, keychainBackend, profile };
+  WhoamiCommand.testDeps = { env, fetch, keychainBackend, profile };
+
+  const stdout = new CaptureStream();
+  const stderr = new CaptureStream();
+  const stdin = new PassThrough() as PassThrough & { isTTY?: boolean };
+  stdin.isTTY = false;
+  const context: AgentsContext = {
+    repoRoot: fixture.repoRoot,
+    agentsDir: fixture.agentsDir,
+    homeDir: fixture.homeDir,
+    cwd: fixture.repoRoot,
+    projectConfigPath: null,
+    stdin,
+    stdout,
+    stderr,
+    env,
+    colorDepth: 1,
+  };
+  const cli = new Cli({
+    binaryName: "drwn",
+    binaryLabel: "drwn",
+    binaryVersion: "0.0.0",
+    enableColors: false,
+  });
+  cli.register(LoginCommand);
+  cli.register(LogoutCommand);
+  cli.register(RefreshCommand);
+  cli.register(WhoamiCommand);
+  const exitCode = await cli.run(args, context);
+  return { exitCode, stdout: stdout.text(), stderr: stderr.text() };
+}
+
+function testAuthProfile(authHubOrigin: string): CliAuthProfile {
+  return {
+    ...drwnCliProfile({}),
+    hubOrigin: authHubOrigin,
+    issuer: new URL("/api/auth", authHubOrigin).href,
+    cloudProfileId: "local",
+    profileDigest: "f".repeat(64),
+  };
+}
 
 function startAuthServer(options: { pendingPolls?: number } = {}) {
   const pendingPolls = options.pendingPolls ?? 0;
@@ -126,13 +212,15 @@ function startAuthServer(options: { pendingPolls?: number } = {}) {
 }
 
 describe("auth CLI E2E", () => {
-  test("login --json, stored whoami, and logout work through the real CLI process", async () => {
+  test("login --json, stored whoami, refresh, and logout use one explicitly injected backend", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     const { apiUrl, state } = startAuthServer({ pendingPolls: 1 });
-    const env = { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl };
+    const env = envFor(fixture);
+    const profile = testAuthProfile(apiUrl);
+    const keychainBackend = new InMemoryKeychainBackend();
 
-    const login = await runAgentsCli(["login", "--json"], env);
+    const login = await runStoredAuthCommand(["login", "--json"], fixture, env, keychainBackend, profile);
 
     expect(login.exitCode).toBe(0);
     expect(login.stderr).toContain("Log in to your Darwinian account:");
@@ -155,7 +243,10 @@ describe("auth CLI E2E", () => {
     });
     expect(login.stdout).not.toContain("cli-e2e@example.com");
     expect(login.stdout.trim().split("\n")).toHaveLength(1);
-    expect(state.deviceCodeRequests).toEqual([{ client_id: "drwn-cli", scope: "openid email offline_access" }]);
+    expect(state.deviceCodeRequests).toEqual([{
+      client_id: "drwn-cli",
+      scope: "openid email offline_access dah:management.delegate",
+    }]);
     expect(state.tokenRequests).toHaveLength(2);
     expect(state.tokenRequests.at(-1)).toMatchObject({
       device_code: "device-code",
@@ -168,7 +259,7 @@ describe("auth CLI E2E", () => {
     const onDisk = await Bun.file(credentialsPath).text();
     expect(onDisk).not.toContain("cli-e2e@example.com");
     expect(JSON.parse(onDisk).algo).toBe("aes-256-gcm");
-    const credentials = await readCredentials(credentialsPath);
+    const credentials = await readCredentials(credentialsPath, keychainBackend);
     expect(credentials).toMatchObject({
       version: 3,
       generation: 1,
@@ -179,7 +270,7 @@ describe("auth CLI E2E", () => {
     expect(credentials && "version" in credentials ? credentials.accessToken : "").toContain(".");
     expect(Date.parse(credentials!.savedAt)).not.toBeNaN();
 
-    const whoami = await runAgentsCli(["whoami", "--json"], env);
+    const whoami = await runStoredAuthCommand(["whoami", "--json"], fixture, env, keychainBackend, profile);
     expect(whoami.exitCode).toBe(0);
     expect(JSON.parse(whoami.stdout)).toMatchObject({
       email: "cli-e2e@example.com",
@@ -192,7 +283,7 @@ describe("auth CLI E2E", () => {
     expect(state.authorizeAuthHeaders).toEqual(["Bearer device-session-token"]);
     expect(state.sessionAuthHeaders).toEqual([]);
 
-    const refresh = await runAgentsCli(["refresh", "--json"], env);
+    const refresh = await runStoredAuthCommand(["refresh", "--json"], fixture, env, keychainBackend, profile);
     expect(refresh.exitCode).toBe(0);
     const refreshReceipt = parseAuthOperationReceipt(JSON.parse(refresh.stdout));
     expect(refreshReceipt).toMatchObject({
@@ -210,13 +301,19 @@ describe("auth CLI E2E", () => {
     expect(state.oauthTokenRequests).toHaveLength(2);
     expect(state.oauthTokenRequests[1]).toContain("grant_type=refresh_token");
 
-    const logout = await runAgentsCli(["logout"], { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl });
+    const logout = await runStoredAuthCommand(
+      ["logout"],
+      fixture,
+      envFor(fixture),
+      keychainBackend,
+      profile,
+    );
     expect(logout.exitCode).toBe(0);
     expect(logout.stdout).toContain("Logged out. Credentials removed.");
     expect(state.revokeRequests).toEqual(["token=refresh-token&client_id=drwn-cli&token_type_hint=refresh_token"]);
     expect(await Bun.file(credentialsPath).exists()).toBe(false);
 
-    const afterLogout = await runAgentsCli(["whoami"], envFor(fixture));
+    const afterLogout = await runStoredAuthCommand(["whoami"], fixture, envFor(fixture), keychainBackend);
     expect(afterLogout.exitCode).toBe(1);
     expect(afterLogout.stderr).toContain("Not authenticated. Run `drwn login` first");
   });
@@ -224,21 +321,18 @@ describe("auth CLI E2E", () => {
   test("whoami env-token path bypasses credentials and validates JWT claims", async () => {
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
-    const { apiUrl, state } = startAuthServer();
+    const { state } = startAuthServer();
     const baseEnv = envFor(fixture);
 
     const valid = await runAgentsCli(["whoami", "--json"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("env-e2e@example.com", Math.floor(Date.now() / 1000) + 900, {
-        iss: `${apiUrl}/api/auth`,
-      }),
-      DRWN_DAH_HUB_URL: apiUrl,
+      DRWN_TOKEN: fakeJwt("env-e2e@example.com", Math.floor(Date.now() / 1000) + 900),
     });
 
     expect(valid.exitCode).toBe(0);
     expect(JSON.parse(valid.stdout)).toMatchObject({
       email: "env-e2e@example.com",
-      issuer: `${apiUrl}/api/auth`,
+      issuer: "https://auth.darwinian.dev/api/auth",
       source: "env",
     });
     expect(await Bun.file(resolveCredentialsPath(fixture.agentsDir)).exists()).toBe(false);
@@ -247,19 +341,14 @@ describe("auth CLI E2E", () => {
       ...baseEnv,
       DRWN_TOKEN: fakeJwt("bad@example.com", Math.floor(Date.now() / 1000) + 900, {
         aud: "https://wrong.example",
-        iss: `${apiUrl}/api/auth`,
       }),
-      DRWN_DAH_HUB_URL: apiUrl,
     });
     expect(wrongAudience.exitCode).toBe(1);
     expect(wrongAudience.stderr).toContain("Token audience does not include https://api.darwinian.dev.");
 
     const expired = await runAgentsCli(["whoami"], {
       ...baseEnv,
-      DRWN_TOKEN: fakeJwt("expired@example.com", Math.floor(Date.now() / 1000) - 60, {
-        iss: `${apiUrl}/api/auth`,
-      }),
-      DRWN_DAH_HUB_URL: apiUrl,
+      DRWN_TOKEN: fakeJwt("expired@example.com", Math.floor(Date.now() / 1000) - 60),
     });
     expect(expired.exitCode).toBe(1);
     expect(expired.stderr).toContain("Token is expired.");
@@ -277,10 +366,15 @@ describe("auth CLI E2E", () => {
     });
     servers.push(server);
 
-    const result = await runAgentsCli(["login"], {
-      ...envFor(fixture),
-      DRWN_DAH_HUB_URL: `http://127.0.0.1:${server.port}`,
-    });
+    const keychainBackend = new InMemoryKeychainBackend();
+    const apiUrl = `http://127.0.0.1:${server.port}`;
+    const result = await runStoredAuthCommand(
+      ["login"],
+      fixture,
+      envFor(fixture),
+      keychainBackend,
+      testAuthProfile(apiUrl),
+    );
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("DAH device request failed (500).");
@@ -292,8 +386,9 @@ describe("auth CLI E2E", () => {
     tempRoots.push(fixture.root);
     const { apiUrl } = startAuthServer();
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const keychainBackend = new InMemoryKeychainBackend();
     await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
-    const profile = drwnCliProfile({ DRWN_DAH_HUB_URL: apiUrl });
+    const profile = testAuthProfile(apiUrl);
     const accessToken = fakeJwt("cli-e2e@example.com", undefined, {
       iss: profile.issuer,
       aud: profile.resource,
@@ -315,9 +410,15 @@ describe("auth CLI E2E", () => {
       expiresAt: new Date(claims.exp * 1000).toISOString(),
       savedAt: "2026-08-08T00:00:00.000Z",
       userEmail: "cli-e2e@example.com",
-    });
+    }, keychainBackend);
 
-    const result = await runAgentsCli(["logout"], { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl });
+    const result = await runStoredAuthCommand(
+      ["logout"],
+      fixture,
+      envFor(fixture),
+      keychainBackend,
+      profile,
+    );
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Logged out. Credentials removed.");
@@ -329,8 +430,9 @@ describe("auth CLI E2E", () => {
     tempRoots.push(fixture.root);
     const { apiUrl, state } = startAuthServer();
     const credentialsPath = resolveCredentialsPath(fixture.agentsDir);
+    const keychainBackend = new InMemoryKeychainBackend();
     await mkdir(join(fixture.agentsDir, "drwn"), { recursive: true });
-    const profile = drwnCliProfile({ DRWN_DAH_HUB_URL: apiUrl });
+    const profile = testAuthProfile(apiUrl);
     const accessToken = fakeJwt("cli-e2e@example.com", undefined, {
       iss: profile.issuer,
       aud: profile.resource,
@@ -352,11 +454,14 @@ describe("auth CLI E2E", () => {
       expiresAt: new Date(claims.exp * 1000).toISOString(),
       savedAt: "2026-08-08T00:00:00.000Z",
       userEmail: "cli-e2e@example.com",
-    });
+    }, keychainBackend);
 
-    const result = await runAgentsCli(
+    const result = await runStoredAuthCommand(
       ["logout", "--json", "--require-remote-revoke"],
-      { ...envFor(fixture), DRWN_DAH_HUB_URL: apiUrl },
+      fixture,
+      envFor(fixture),
+      keychainBackend,
+      profile,
     );
     const receipt = parseAuthOperationReceipt(JSON.parse(result.stdout));
 

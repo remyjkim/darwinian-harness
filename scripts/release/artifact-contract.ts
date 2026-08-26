@@ -13,19 +13,65 @@ import {
 } from "../../cli/core/build-identity";
 
 export const REQUIRED_RELEASE_MEMBERS = [
-  "cli/commands/acp/serve.ts",
+  "cli/commands/org/org.ts",
+  "cli/commands/org/list.ts",
+  "cli/commands/org/use.ts",
+  "cli/commands/worker/register.ts",
+  "cli/commands/worker/use.ts",
+  "cli/commands/worker/list.ts",
+  "cli/commands/worker/status.ts",
+  "cli/commands/worker/deploy.ts",
+  "cli/commands/worker/deployments.ts",
+  "cli/commands/worker/rollback.ts",
+  "cli/commands/worker/chat.ts",
+  "cli/commands/worker/run-status.ts",
+  "cli/commands/worker/retire.ts",
   "cli/commands/worker/materialize.ts",
   "cli/commands/worker/buzz-tools.ts",
   "cli/commands/worker/secret-set.ts",
+  "cli/commands/worker/mind/mind.ts",
+  "cli/commands/worker/launch-context/launch-context.ts",
+  "cli/commands/worker/launch-context/prepare.ts",
+  "cli/commands/worker/launch-context/list.ts",
+  "cli/commands/worker/launch-context/prune.ts",
+  "cli/core/worker-launch-context/contracts.ts",
+  "cli/core/worker-launch-context/service.ts",
+  "cli/core/management/contracts.ts",
+  "cli/core/management/routes.ts",
+  "cli/core/management/transport.ts",
+  "cli/core/management/results.ts",
+  "cli/core/management/context-store.ts",
+  "cli/core/management/operation-journal.ts",
+  "cli/core/management/deployment-artifacts.ts",
+  "cli/generated/drwn-management-contract-lock.json",
+  "registry/contracts/deployed-worker.v1/contract.json",
+  "registry/cards/buzz-delivery-worker/card.json",
   "cli/generated/build-identity.json",
 ] as const;
 
 export const SAFE_INSTALLED_SMOKES = [
   ["--version"],
-  ["acp", "serve", "--help"],
+  ["org", "--help"],
+  ["org", "list", "--help"],
+  ["org", "use", "--help"],
+  ["worker", "register", "--help"],
+  ["worker", "use", "--help"],
+  ["worker", "list", "--help"],
+  ["worker", "status", "--help"],
+  ["worker", "deploy", "--help"],
+  ["worker", "deployments", "--help"],
+  ["worker", "rollback", "--help"],
+  ["worker", "chat", "--help"],
+  ["worker", "run", "status", "--help"],
+  ["worker", "retire", "--help"],
   ["worker", "materialize", "--help"],
   ["worker", "buzz-tools", "--help"],
   ["worker", "secret", "set", "--help"],
+  ["worker", "launch-context", "--help"],
+  ["worker", "launch-context", "prepare", "--help"],
+  ["worker", "launch-context", "list", "--help"],
+  ["worker", "launch-context", "prune", "--help"],
+  ["worker", "mind", "--help"],
   ["login", "--help"],
   ["refresh", "--help"],
   ["logout", "--help"],
@@ -400,15 +446,12 @@ export async function runInstalledArtifactSmokes(
   const project = join(workspaceRoot, "project");
   const userHome = join(workspaceRoot, "user-home");
   const agentsDir = join(workspaceRoot, "agents");
-  const keychainDir = join(workspaceRoot, "keychain");
-  await Promise.all([prefix, cache, project, userHome, agentsDir, keychainDir].map((path) => mkdir(path)));
+  await Promise.all([prefix, cache, project, userHome, agentsDir].map((path) => mkdir(path)));
 
   const env: Record<string, string | undefined> = {
     ...process.env,
     AGENTS_HOME_DIR: userHome,
     AGENTS_DIR: agentsDir,
-    DRWN_TEST_KEYCHAIN_DIR: keychainDir,
-    DRWN_STUDIO_API_URL: "http://127.0.0.1:9",
   };
   delete env.DRWN_TOKEN;
   const run = deps.run ?? defaultCommandRunner;
@@ -434,7 +477,7 @@ export async function runInstalledArtifactSmokes(
     throw new ReleaseArtifactError("installed bin resolves outside the clean prefix");
   }
 
-  const quarantine = [project, userHome, agentsDir, keychainDir];
+  const quarantine = [project, userHome, agentsDir];
   const passed: string[] = [];
   for (const smoke of SAFE_INSTALLED_SMOKES) {
     const result = await run([bin, ...smoke], { cwd: project, env });

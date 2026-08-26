@@ -5,11 +5,12 @@ import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { deriveCredentialScope } from "../../core/auth/credential-scope";
 import { readCredentials, writeCredentials } from "../../core/auth/credentials";
-import { drwnCliProfile } from "../../core/auth/profile";
+import { drwnCliProfile, type CliAuthProfile } from "../../core/auth/profile";
 import { createAuthOperationReceipt, serializeAuthOperationReceipt } from "../../core/auth/receipt";
 import { refreshStoredCredentialTransaction } from "../../core/auth/resolve-token";
 import { loadBuildIdentity } from "../../core/build-identity";
 import { resolveCredentialsPath } from "../../core/paths";
+import type { KeychainBackend } from "../../core/secret-store";
 
 type RefreshDeps = {
   env?: Record<string, string | undefined>;
@@ -19,6 +20,8 @@ type RefreshDeps = {
   deriveCredentialScope?: typeof deriveCredentialScope;
   readCredentials?: typeof readCredentials;
   writeCredentials?: typeof writeCredentials;
+  keychainBackend?: KeychainBackend;
+  profile?: CliAuthProfile;
 };
 
 function diagnosticCode(error: unknown): string {
@@ -59,7 +62,8 @@ export class RefreshCommand extends BaseCommand {
     const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
 
     try {
-      const credential = await (deps.readCredentials ?? readCredentials)(credentialsPath);
+      const profile = deps.profile ?? drwnCliProfile(deps.env ?? process.env);
+      const credential = await (deps.readCredentials ?? readCredentials)(credentialsPath, deps.keychainBackend);
       if (!credential) {
         this.context.stderr.write("CREDENTIAL_ABSENT\n");
         return 1;
@@ -70,10 +74,11 @@ export class RefreshCommand extends BaseCommand {
       const result = await refreshStoredCredentialTransaction({
         credentialsPath,
         credential,
-        profile: drwnCliProfile(deps.env ?? process.env),
+        profile,
         fetcher: deps.fetch ?? fetch,
         now: deps.now,
         writeCredential: deps.writeCredentials ?? writeCredentials,
+        keychainBackend: deps.keychainBackend,
       });
       const actionAtMillis = Math.max(
         (deps.now ?? Date.now)(),

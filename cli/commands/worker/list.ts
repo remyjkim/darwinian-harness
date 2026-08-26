@@ -1,75 +1,48 @@
-// ABOUTME: Implements drwn worker list for deployed workers.
-// ABOUTME: Supports both human table output and stable JSON for scripts.
+// ABOUTME: Lists Deployed Workers for the selected organization through the strict management kernel.
+// ABOUTME: Collection authority uses organization IDs and never the retired Mind or slug routes.
 
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
-import { resolveWorkerConfig } from "../../core/worker-config";
-import { describeWorkerError } from "../../core/worker-error";
-import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
-import { renderJson, renderTable } from "../../core/output";
-import type { WorkerSummary } from "./types";
-import { displayModel, displayValue } from "./types";
+import { resolveCredentialsPath } from "../../core/paths";
+import { resolveCloudProfile } from "../../core/management/profile";
+import { renderManagementCommandFailure, type ManagementReadDependencies } from "../../core/management/organizations";
+import { renderManagementResultJson } from "../../core/management/results";
+import { listSelectedOrganizationWorkers, renderWorkerResultHuman } from "../../core/management/workers";
+
+type WorkerListDeps = ManagementReadDependencies & { env?: Record<string, string | undefined> };
 
 export class WorkerListCommand extends BaseCommand {
   static override paths = [["worker", "list"]];
-
+  static testDeps: WorkerListDeps | undefined;
   static override usage = BaseCommand.Usage({
     category: "Worker",
-    description: "List your deployed workers.",
-    details: `
-      Calls the Deploy API and shows each worker slug, latest status,
-      active deployment id, resolved model, and update timestamp. Use --json for
-      a direct API-shaped response that is easier to consume from automation.
-    `,
-    examples: [
-      ["List deployed workers", "drwn worker list"],
-      ["List deployed workers as JSON", "drwn worker list --json"],
-    ],
+    description: "List Deployed Workers in the selected organization.",
+    details: "Uses the DAH-authorized deployed Worker collection with bounded pagination and optional environment filtering.",
+    examples: [["List selected-organization Workers", "drwn worker list"], ["List production Workers as JSON", "drwn worker list --environment production --json"]],
   });
-
-  json = Option.Boolean("--json", false, {
-    description: "Emit machine-readable JSON.",
-  });
+  environment = Option.String("--environment", { description: "Filter by development, staging, or production." });
+  limit = Option.String("--limit", { description: "Page size from 1 through 100." });
+  cursor = Option.String("--cursor", { description: "Opaque continuation cursor (maximum 512 characters)." });
+  json = Option.Boolean("--json", false, { description: "Emit the strict command-result JSON envelope." });
 
   async execute(): Promise<number> {
-    const { apiBaseUrl } = resolveWorkerConfig();
-    let workers: WorkerSummary[];
+    const deps = WorkerListCommand.testDeps ?? {};
+    const env = deps.env ?? process.env;
     try {
-      // external contract: /api/minds response key `minds`
-      const { response: res, body } = await fetchJsonWithWorkerAuth<{ minds: WorkerSummary[] }>(
-        this.context,
-        `${apiBaseUrl}/api/minds`,
-      );
-      if (!res.ok) {
-        this.context.stderr.write(`List failed (${res.status}).\n`);
-        return 1;
-      }
-      workers = body.minds;
+      const profile = resolveCloudProfile(env);
+      const result = await listSelectedOrganizationWorkers({
+        credentialsPath: resolveCredentialsPath(this.context.agentsDir), env, keychainBackend: deps.keychainBackend,
+        homeDir: this.context.homeDir, profileDigest: profile.profileDigest,
+        ...(this.environment === undefined ? {} : { environment: this.environment }),
+        ...(this.limit === undefined ? {} : { limit: Number(this.limit) }),
+        ...(this.cursor === undefined ? {} : { cursor: this.cursor }),
+      }, deps);
+      const output = this.json ? renderManagementResultJson(result) : renderWorkerResultHuman(result);
+      (result.outcome === "succeeded" ? this.context.stdout : this.context.stderr).write(output);
+      return result.outcome === "succeeded" ? 0 : 1;
     } catch (error) {
-      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
+      this.context.stderr.write(renderManagementCommandFailure(error));
       return 1;
     }
-
-    if (this.json) {
-      this.context.stdout.write(renderJson(workers));
-      return 0;
-    }
-    if (workers.length === 0) {
-      this.context.stdout.write("No workers deployed.\n");
-      return 0;
-    }
-    this.context.stdout.write(
-      renderTable(
-        ["slug", "status", "active_deployment", "model", "updated"],
-        workers.map((worker) => [
-          worker.slug,
-          worker.status,
-          displayValue(worker.active_deployment_id),
-          displayModel(worker.model),
-          displayValue(worker.updated_at),
-        ]),
-      ),
-    );
-    return 0;
   }
 }

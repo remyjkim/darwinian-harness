@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import type { CardLockEntry, ProjectLockV1, WorkerRootLockEntry } from "../cli/core/card-lock";
 import type { ConfigLocal } from "../cli/core/config-local";
 import { selectProjectWorker } from "../cli/core/effective-state";
-import type { ProjectConfig } from "../cli/core/types";
+import type { CanonicalConfig, CanonicalRegistry, ProjectConfig } from "../cli/core/types";
 
 function card(name: string, skills: string[] = [], kind: "card" | "blueprint" = "card"): CardLockEntry {
   return {
@@ -52,6 +52,25 @@ function project(workers: string[], activeWorker: string | null): ProjectConfig 
 
 function local(overrides: Partial<ConfigLocal>): ConfigLocal {
   return { schema: "drwn.project-local", schemaVersion: 1, ...overrides };
+}
+
+function repoConfig(): CanonicalConfig {
+  return {
+    version: 1,
+    targets: {
+      claude: { enabled: true, configPath: "~/.claude.json", format: "json-merge", mcpKey: "mcpServers" },
+      codex: { enabled: true, configPath: "~/.codex/config.toml", format: "toml-merge", mcpKey: "mcp_servers" },
+      cursor: { enabled: false, configPath: "~/.cursor/mcp.json", format: "json-standalone", mcpKey: "mcpServers" },
+      opencode: { enabled: false, configPath: "~/.config/opencode/opencode.json", format: "json-merge", mcpKey: "mcp" },
+    },
+    catalogs: { npmSkills: { enabled: false, searchLimit: 20 }, mcp: { enabled: false, sources: [] } },
+    optional: {},
+    parallel: { cli: { enabled: false }, mcp: { enabled: false } },
+  };
+}
+
+function repoRegistry(): CanonicalRegistry {
+  return { version: 1, servers: {} };
 }
 
 test("one selected plain root activates only that Card", () => {
@@ -181,4 +200,49 @@ test("project requirements and the committed lock root registry must agree", () 
     configLocal: null,
     localLock: null,
   })).toThrow(expect.objectContaining({ code: "PROJECT_LOCK_INVALID" }));
+});
+
+test("one pure capability-state helper derives active or alternative installed closures with the same project overlays", async () => {
+  const effectiveState = await import("../cli/core/effective-state") as typeof import("../cli/core/effective-state") & {
+    buildProjectClosureCapabilityState?: (input: {
+      repoConfig: CanonicalConfig;
+      repoRegistry: CanonicalRegistry;
+      projectConfig: ProjectConfig;
+      cards: CardLockEntry[];
+    }) => {
+      skillSelection: { include?: string[]; exclude?: string[] };
+      activeServers: Record<string, unknown>;
+    };
+  };
+  expect(typeof effectiveState.buildProjectClosureCapabilityState).toBe("function");
+  const buildProjectClosureCapabilityState = effectiveState.buildProjectClosureCapabilityState!;
+  const alpha = card("@me/alpha", ["alpha-skill"]);
+  alpha.manifest.servers = {
+    alpha_mcp: { description: "Alpha", transport: "stdio", command: "alpha", optional: false },
+  };
+  const beta = card("@me/beta", ["beta-skill"]);
+  beta.manifest.servers = {
+    beta_mcp: { description: "Beta", transport: "stdio", command: "beta", optional: false },
+  };
+  const projectConfig = project([alpha.requested, beta.requested], alpha.name);
+  projectConfig.skills = { include: ["project-skill"], exclude: ["blocked-skill"] };
+
+  const active = buildProjectClosureCapabilityState({
+    repoConfig: repoConfig(),
+    repoRegistry: repoRegistry(),
+    projectConfig,
+    cards: [alpha],
+  });
+  const alternative = buildProjectClosureCapabilityState({
+    repoConfig: repoConfig(),
+    repoRegistry: repoRegistry(),
+    projectConfig,
+    cards: [beta],
+  });
+
+  expect(active.skillSelection).toEqual({ include: ["alpha-skill", "project-skill"], exclude: ["blocked-skill"] });
+  expect(Object.keys(active.activeServers)).toEqual(["alpha_mcp"]);
+  expect(alternative.skillSelection).toEqual({ include: ["beta-skill", "project-skill"], exclude: ["blocked-skill"] });
+  expect(Object.keys(alternative.activeServers)).toEqual(["beta_mcp"]);
+  expect(projectConfig.activeWorker).toBe(alpha.name);
 });

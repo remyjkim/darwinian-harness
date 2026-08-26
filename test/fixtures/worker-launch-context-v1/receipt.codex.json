@@ -1,0 +1,19 @@
+{
+  "schema": "drwn.worker-launch-receipt",
+  "schemaVersion": 1,
+  "contextId": "sha256-3333333333333333333333333333333333333333333333333333333333333333",
+  "createdAt": "2026-08-24T00:00:00.000Z",
+  "rendererVersion": "worker-launch-context@1",
+  "files": [
+    {
+      "path": "codex",
+      "kind": "directory",
+      "contentHash": "sha256-7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    {
+      "path": "manifest.json",
+      "kind": "file",
+      "contentHash": "sha256-8888888888888888888888888888888888888888888888888888888888888888"
+    }
+  ]
+}

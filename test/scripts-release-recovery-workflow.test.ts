@@ -1,5 +1,5 @@
 // ABOUTME: Proves release recovery is exact-tag, policy-gated, and structurally unable to publish.
-// ABOUTME: Allows only registry/artifact verification, installed smokes, and missing GitHub Release repair.
+// ABOUTME: Allows only candidate registry/artifact verification and installed smokes.
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -12,12 +12,8 @@ describe("Worker release recovery workflow", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("failed_run_id:");
     expect(workflow).toContain("authorization_receipt:");
-    expect(workflow).toContain('GITHUB_REF" != "refs/tags/v1.3.0"');
-    expect(workflow).toContain('git cat-file -t "refs/tags/v1.3.0"');
-    // The recovery lane serialises per released version, and every job checks out that
-    // same tag by name rather than whatever the dispatch happened to select.
-    expect(workflow).toContain("group: cli-release-recovery-v1.3.0");
-    expect(workflow.match(/ref: refs\/tags\/v1\.3\.0/g)).toHaveLength(3);
+    expect(workflow).toContain('GITHUB_REF" != "refs/tags/v1.4.2"');
+    expect(workflow).toContain('git cat-file -t "refs/tags/v1.4.2"');
     expect(workflow).toContain('FAILED_RUN_ID: ${{ inputs.failed_run_id }}');
     expect(workflow).toContain('[[ "$FAILED_RUN_ID" =~ ^[1-9][0-9]*$ ]]');
     expect(workflow).toContain('actions/runs/$FAILED_RUN_ID');
@@ -40,16 +36,17 @@ describe("Worker release recovery workflow", () => {
     expect(workflow).not.toMatch(/npm publish/);
     expect(workflow).not.toMatch(/npm pack/);
     expect(workflow).not.toMatch(/git (?:tag|push)/);
-    expect(workflow).not.toContain("dist-tag");
+    expect(workflow).not.toContain("npm dist-tag");
     expect(workflow).not.toContain("unpublish");
   });
 
-  test("limits recovery to registry smokes and create-or-verify release metadata at the existing tag", () => {
+  test("limits recovery to candidate registry verification and installed smokes", () => {
     expect(workflow).toContain("runs-on: ubuntu-latest");
     expect(workflow).toContain("runs-on: macos-latest");
     expect(workflow).toContain("release-cli.ts smoke-artifact");
-    expect(workflow).toContain("gh release view");
-    expect(workflow).toContain("gh release create");
-    expect(workflow).toContain("--verify-tag");
+    expect(workflow).toContain("i336-candidate");
+    expect(workflow).not.toContain("gh release view");
+    expect(workflow).not.toContain("gh release create");
+    expect(workflow).not.toContain("contents: write");
   });
 });

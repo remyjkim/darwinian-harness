@@ -30,6 +30,9 @@ test("ensureGitignoreEntries appends drwn block once and preserves user lines", 
   expect(first).toContain(
     ".agents/drwn/.org-worker-materialization-journal.json",
   );
+  expect(first).toContain(".agents/drwn/cloud.local.json");
+  expect(first).toContain(".agents/drwn/.cloud-operations/");
+  expect(first).toContain(".agents/drwn/.cloud-state.lock");
   expect(first).toContain(".claude/skills/");
 
   await ensureGitignoreEntries(root);

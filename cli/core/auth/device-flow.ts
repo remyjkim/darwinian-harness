@@ -4,6 +4,7 @@
 import type { CliAuthProfile } from "./profile";
 import { assertJwtAudience, type JwtClaims } from "./jwt";
 import { assertCredentialV3, type CliDahCredentialFileV3 } from "./credentials";
+import { assertDelegationReadyClaims } from "./delegation-readiness";
 
 const DEVICE_CODE_PATH = "/api/auth/device/code";
 const DEVICE_TOKEN_PATH = "/api/auth/device/token";
@@ -14,6 +15,8 @@ const MAX_DEVICE_FLOW_SECONDS = 3_600;
 const MAX_DEVICE_POLL_INTERVAL_SECONDS = 60;
 
 export class AuthRemoteOperationError extends Error {
+  readonly code: "AUTH_REMOTE_REJECTED" | "AUTH_REMOTE_INDETERMINATE" | "AUTH_RESPONSE_INVALID";
+
   constructor(
     public readonly reason: "AUTH_REMOTE_REJECTED" | "AUTH_REMOTE_INDETERMINATE" | "AUTH_RESPONSE_INVALID",
     public readonly result: "rejected" | "indeterminate",
@@ -21,6 +24,7 @@ export class AuthRemoteOperationError extends Error {
   ) {
     super(reason);
     this.name = "AuthRemoteOperationError";
+    this.code = reason;
   }
 }
 
@@ -365,9 +369,14 @@ export async function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCr
   });
   const opaque = await pollDeviceToken(input.profile, fetcher, device, sleep, now);
   const tokens = await exchangeDeviceSession(input.profile, opaque, fetcher);
-  return credentialFromTokens(input.profile, tokens, {
-    credentialId: (input.randomUUID ?? (() => crypto.randomUUID()))(),
-    generation: 1,
-    now,
-  });
+  assertDelegationReadyClaims(tokens.claims, input.profile, { nowSeconds: Math.floor(now() / 1000) });
+  try {
+    return credentialFromTokens(input.profile, tokens, {
+      credentialId: (input.randomUUID ?? (() => crypto.randomUUID()))(),
+      generation: 1,
+      now,
+    });
+  } catch {
+    throw new AuthRemoteOperationError("AUTH_RESPONSE_INVALID", "rejected", "2xx");
+  }
 }

@@ -6,7 +6,7 @@ sidebar_position: 18
 
 `drwn analyze sessions` is the retained Foundry/Analyzer-linked feature for
 uploading a session-log archive and printing where to watch the job. It is not
-implemented by the ACP serving path, and the auth hard cut did not remove it.
+part of Deployed Worker management; it remains a separate Analyzer upload client.
 
 Preview without auth or network:
 

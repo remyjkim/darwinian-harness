@@ -4,35 +4,21 @@ sidebar_position: 13
 
 # Worker Mind
 
-`drwn worker mind` manages DB-backed Mind content for the selected project Worker closure.
-
-## Commands
-
 ```bash
-drwn worker mind provision [--mind-id <id>] [--json]
-drwn worker mind status [--mind-id <id>] [--json]
-drwn worker mind doctor [--mind-id <id>] [--json]
-drwn worker mind sync [--mind-id <id>] [--dry-run] [--force] [--json]
-drwn worker mind diff [--mind-id <id>] [--json]
-drwn worker mind checkpoint [--mind-id <id>] [--json]
-drwn worker mind pool retire <path> --yes
+drwn worker mind
+drwn worker mind --json
 ```
 
-The Mind ID comes from `--mind-id` or `BGDB_PATH_PREFIX=minds/<id>`.
+Darwinian 1.4.2 has not selected a Worker Mind persistence backend. The command
+performs no I/O and refuses with `MIND_BACKEND_UNSELECTED`.
 
-## Source Order
+The JSON form emits one closed provider-neutral refusal. BeginningDB, R2, S3,
+automatic deployment binding, provider probing, and nested backend verbs are
+not part of this release.
 
-The adapter loads the selected root then its ordered member Cards. Provisioned `mind.json` records one `worker` and ordered `cards`, each with version/integrity provenance.
-
-## Safety
-
-- Provision is create-once and idempotent.
-- Sync preserves DB edits unless `--force` is explicit.
-- Checkpoint requires provenance and local Card sources.
-- Tokens remain in runtime environment/bindings, not project state.
-- No selected Worker fails before DB writes.
+Local Card persona, belief, and memory authoring remains available through the
+Card source commands and is independent of this placeholder.
 
 ## Related
 
 - [Minds](../../concepts/minds)
-- [Managing Minds](../../guides/managing-minds)

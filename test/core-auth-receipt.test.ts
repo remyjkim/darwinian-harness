@@ -21,7 +21,7 @@ function baseReceipt(): AuthOperationReceiptV1 {
   return {
     schema: "darwinian.worker.auth-operation",
     schemaVersion: 1,
-    worker: { version: "1.3.0", sourceCommit: SOURCE_COMMIT },
+    worker: { version: "1.4.2", sourceCommit: SOURCE_COMMIT },
     qualificationNamespaceDigest: NAMESPACE,
     credential: {
       credentialId: "77777777-7777-4777-8777-777777777777",
@@ -212,11 +212,11 @@ describe("AuthOperationReceiptV1", () => {
     }
   });
 
-  test("binds qualification eligibility to the exact packaged 1.3.0 identity", () => {
+  test("binds qualification eligibility to the exact packaged 1.4.2 identity", () => {
     const valid = baseReceipt();
     const development = {
       ...valid,
-      worker: { version: "1.3.0", sourceCommit: "0".repeat(40) },
+      worker: { version: "1.4.2", sourceCommit: "0".repeat(40) },
       qualificationEligible: false,
       reason: "BUILD_IDENTITY_UNQUALIFIED" as const,
     };
@@ -236,7 +236,7 @@ describe("AuthOperationReceiptV1", () => {
       kind: "packaged",
       schema: "darwinian.worker.build-identity",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: SOURCE_COMMIT,
       qualificationEligible: true,
     };
@@ -264,12 +264,12 @@ describe("AuthOperationReceiptV1", () => {
     expect(createAuthOperationReceipt(input)).toMatchObject({
       qualificationEligible: true,
       reason: null,
-      worker: { version: "1.3.0", sourceCommit: SOURCE_COMMIT },
+      worker: { version: "1.4.2", sourceCommit: SOURCE_COMMIT },
     });
     expect(createAuthOperationReceipt({ ...input, buildIdentity: development })).toMatchObject({
       qualificationEligible: false,
       reason: "BUILD_IDENTITY_UNQUALIFIED",
-      worker: { version: "1.3.0", sourceCommit: "0".repeat(40) },
+      worker: { version: "1.4.2", sourceCommit: "0".repeat(40) },
     });
   });
 
@@ -305,7 +305,7 @@ describe("AuthOperationReceiptV1", () => {
         kind: "development" as const,
         schema: "darwinian.worker.build-identity" as const,
         schemaVersion: 1 as const,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: "0".repeat(40),
         qualificationEligible: false,
       },

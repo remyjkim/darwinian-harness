@@ -15,6 +15,7 @@ import {
 } from "./release/artifact-contract";
 import { validatePublicationControls } from "./release/publication-controls";
 import {
+  createCandidatePublicationReceipt,
   createReleaseCandidateReceipt,
   parseReleaseCandidateReceipt,
   parseRecoveryAuthorizationReceipt,
@@ -105,7 +106,28 @@ export async function runReleaseCli(args: string[]): Promise<string> {
       runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
       runUrl: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
       ref: process.env.GITHUB_REF ?? "",
-      sourceCommit: process.env.GITHUB_SHA ?? "",
+      sourceCommit: process.env.RELEASE_SOURCE_COMMIT ?? process.env.GITHUB_SHA ?? "",
+    });
+  }
+  if (command === "create-candidate-receipt") {
+    if (args.length !== 3) throw new Error();
+    const artifact = JSON.parse(await readFile(requiredArg(args, 1), "utf8")) as QualifiedPackedArtifact;
+    const registry = JSON.parse(await readFile(requiredArg(args, 2), "utf8")) as Record<string, unknown>;
+    if (Object.keys(registry).sort().join("\0") !== ["candidateVersion", "observedAt", "priorLatest", "resultingLatest"].sort().join("\0")) throw new Error();
+    const lock = JSON.parse(await readFile(join(repoRoot, "cli", "generated", "drwn-management-contract-lock.json"), "utf8")) as Record<string, unknown>;
+    return createCandidatePublicationReceipt({
+      artifact,
+      protocolDigest: String(lock.sha256),
+      candidateVersion: String(registry.candidateVersion),
+      priorLatest: String(registry.priorLatest),
+      resultingLatest: String(registry.resultingLatest),
+      observedAt: String(registry.observedAt),
+      createdAt: new Date().toISOString(),
+      runId: Number(process.env.GITHUB_RUN_ID),
+      runAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+      runUrl: `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`,
+      ref: process.env.GITHUB_REF ?? "",
+      sourceCommit: process.env.RELEASE_SOURCE_COMMIT ?? process.env.GITHUB_SHA ?? "",
     });
   }
   if (command === "verify-controls") {

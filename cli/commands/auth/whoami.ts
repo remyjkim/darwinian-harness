@@ -5,13 +5,16 @@ import { Option } from "clipanion";
 import { BaseCommand } from "../base";
 import { readCredentials } from "../../core/auth/credentials";
 import { resolveToken } from "../../core/auth/resolve-token";
-import { drwnCliProfile } from "../../core/auth/profile";
+import { drwnCliProfile, type CliAuthProfile } from "../../core/auth/profile";
 import { assertJwtAudience } from "../../core/auth/jwt";
 import { resolveCredentialsPath } from "../../core/paths";
+import type { KeychainBackend } from "../../core/secret-store";
 
 type WhoamiDeps = {
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
+  keychainBackend?: KeychainBackend;
+  profile?: CliAuthProfile;
 };
 
 export class WhoamiCommand extends BaseCommand {
@@ -45,8 +48,14 @@ export class WhoamiCommand extends BaseCommand {
     const env = deps.env ?? process.env as NonNullable<WhoamiDeps["env"]>;
     const credentialsPath = resolveCredentialsPath(this.context.agentsDir);
     try {
-      const profile = drwnCliProfile(env);
-      const auth = await resolveToken({ credentialsPath, env, fetcher: deps.fetch ?? fetch, profile });
+      const profile = deps.profile ?? drwnCliProfile(env);
+      const auth = await resolveToken({
+        credentialsPath,
+        env,
+        fetcher: deps.fetch ?? fetch,
+        profile,
+        keychainBackend: deps.keychainBackend,
+      });
       if (!auth) {
         this.context.stderr.write("Not authenticated. Run `drwn login` first, or set DRWN_TOKEN.\n");
         return 1;
@@ -54,7 +63,7 @@ export class WhoamiCommand extends BaseCommand {
       const claims = assertJwtAudience(auth.token, profile.resource, { requireUnexpired: true });
       const email = typeof claims.email === "string" ? claims.email : auth.credential?.userEmail ?? "";
       if (this.json) {
-        const stored = auth.source === "env" ? null : await readCredentials(credentialsPath);
+        const stored = auth.source === "env" ? null : await readCredentials(credentialsPath, deps.keychainBackend);
         const expiresAt = stored?.expiresAt;
         this.context.stdout.write(
           JSON.stringify({

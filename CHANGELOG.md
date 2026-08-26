@@ -34,51 +34,61 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   registry default for the cursor target is now off — enable it explicitly
   via machine policy or a project override to keep projecting.
 
-## [1.3.0] - Unreleased
+## [1.4.2] - 2026-08-24
 
 ### Added
 
-- Runtime-admission declarations on Card manifests. A Card may declare
-  `runtimeAdmission` (local stdio servers with `authMode: none` and their
-  requirement probes) and `applicationRequirements` (the apps it needs). Both
-  survive the lock, and the presence of either raises the emitted
-  `store.minDrwnVersion` floor to `1.3.0`.
-- A required runtime-admission envelope on every deploy payload. The Worker
-  derives canonical activation and requirement manifests from the exact locked
-  closure and emits them before it builds a store archive. The materializer
-  rederives and byte-compares that envelope before its first filesystem effect,
-  so a tampered payload is rejected before any directory, archive, or artifact
-  exists.
+- Strict DAH-consented Deployed Worker management for organizations, registration,
+  immutable deployment artifacts and attempts, explicit rollback, stdin-only secrets,
+  bounded runs, and revisioned retirement.
+- Profile-isolated organization context, verified project target binding, resumable
+  non-secret mutation journals, and a language-neutral pinned Services contract.
 
 ### Changed
 
-- **Breaking hard cut.** Runtime admission is all-or-nothing: every deployable
-  Card must declare both `runtimeAdmission` and `applicationRequirements`.
-  Closures where every Card omits them, where some declare and others omit,
-  where either is `null`, or where the declaration version is unknown are
-  rejected in every runtime-admission mode, including `off`. Explicit empty
-  intent (`{"version": 1, "servers": {}, "requirements": []}`) is valid;
-  absence is not. There is no compatibility reader and no shared-state
-  fallback.
-- Existing deployments are not migrated. They must be deliberately recreated
-  from a fully declared closure, or handled by a separately reviewed offline
-  migration. Upgrading the Worker alone does not convert them.
-- The package/runtime candidate identity is `1.3.0`; the first-supported Worker
-  compatibility floor remains `1.1.0`, while project and semantic Mind floors
-  remain `0.8.0` and `0.9.0`.
+- Active product naming is Foundry-only. Cloud commands use typed IDs and the private
+  management kernel; slug/Mind routes and direct arbitrary Deploy API calls are removed.
+- ACP and provider-backed Mind runtime features are removed. `worker mind` remains a
+  provider-neutral no-I/O placeholder while the persistence backend is undecided.
+- The release workflow publishes the exact tar only under `i336-candidate`; it records
+  the prior `latest` value and cannot move it or create a final GitHub Release.
 
-### Removed
+## [1.4.0] - 2026-08-24
 
-- The packaged `buzz-delivery-worker` registry Card. It was never the actual
-  Finch Card, and the Worker no longer ships a Card of its own or requires one
-  as a release member.
+### Added
 
-### Qualification boundary
+- Per-agent Worker launch contexts for already-installed project roots through
+  `drwn worker launch-context prepare`, `list`, and report-only/explicit
+  `prune`. The active Worker remains the shared base; identical capabilities
+  deduplicate and divergent skill/MCP identities fail before writes.
+- Strict bounded `drwn.worker-launch-plan`, `drwn.worker-launch-context`,
+  `drwn.worker-launch-receipt`, and `drwn.worker-launch-prepare-result` JSON
+  contracts with content-addressed concrete context trees, atomic publication,
+  verified concurrent reuse, drift refusal, doctor health, and Rust-consumer
+  fixtures.
+- Claude directory-plugin rendering and Codex nested launch-workspace rendering.
+  Codex uses `-C` plus `--add-dir`; no synthetic `CODEX_HOME`, user-home profile,
+  shared target rewrite, resolved secret, or content-bearing config argv is
+  introduced.
+- Concrete ancestor/source checks, frozen hook-source bundling, descriptor-aware
+  reuse, a cross-process prepare/prune mutation lock, and hard-kill escalation
+  keep store publication, pruning, and two-second target probes fail-closed.
+- Credential-free target compatibility is release-gated at the exact supported
+  floors. Explicit opt-in Claude, Codex, and three-agent Herdr drills cover hook
+  layering, MCP/profile isolation, and real-worktree edit landing without
+  silently assuming target credentials or trust.
+- Packed-artifact qualification requires the launch-context command/core
+  members and adds four side-effect-free launch-context help smokes, bringing
+  the v1.4 installed smoke set to twelve.
 
-- This source release does not create or qualify a release. No tag, candidate,
-  package publication, registry reconciliation, image adoption, or Card
-  publication is performed or implied here, and no successor release identity
-  is recorded until it is independently qualified.
+### Compatibility
+
+- Ships directly from the v1.2.0 contract line; v1.3.0 is intentionally not a
+  migration source or compatibility dependency.
+- Conservative target floors are Claude Code 2.1.212 and Codex CLI 0.149.0.
+- Project config/lock schemas are unchanged. Cold resume is not supported;
+  reconstructed orchestrator bindings are `relaunch_required` until explicit
+  relaunch.
 
 ## [1.2.0] - 2026-08-07
 

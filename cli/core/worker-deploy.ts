@@ -17,17 +17,11 @@ import { minimumDrwnVersionForManifests } from "./mind-capability";
 import { parseCardRef, type ResolveCardOptions } from "./card-store";
 import { DrwnError } from "./errors";
 import { readProjectConfigForWrite } from "./project-writes";
-import {
-  deriveRuntimeAdmissionForClosure,
-  type RuntimeAdmissionClosureCard,
-  type WorkerRuntimeAdmissionProducerEnvelopeV1,
-} from "./runtime-admission-manifest";
 import { resolveCardBareRepoPath, resolveExtractedPath } from "./store-paths";
 import { resolveWorkerGraph } from "./worker-graph";
 
 export const WORKER_DEPLOY_CONTRACT_VERSION = 1;
 export const DEFAULT_STORE_EXPORT_LIMIT_BYTES = 25 * 1024 * 1024;
-export const WORKER_RUNTIME_ADMISSION_ENVELOPE_LIMIT_BYTES = 65536;
 
 export type WorkerDeployMaterialization = "lockfile-store-export";
 
@@ -70,7 +64,6 @@ export interface WorkerDeployPayload {
   };
   config: WorkerDeployRemoteConfig;
   governance: WorkerDeployGovernance | null;
-  runtimeAdmission: WorkerRuntimeAdmissionProducerEnvelopeV1;
   storeExport: WorkerDeployStoreExport;
 }
 
@@ -80,6 +73,21 @@ export interface BuildWorkerDeployPayloadOptions {
   projectRoot?: string | null;
   resolveOptions?: ResolveCardOptions;
   maxStoreExportBytes?: number;
+}
+
+function canonicalizeDeployValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeDeployValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [
+      key,
+      canonicalizeDeployValue((value as Record<string, unknown>)[key]),
+    ]));
+  }
+  return value;
+}
+
+export function canonicalWorkerDeployPayloadBytes(payload: WorkerDeployPayload): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(canonicalizeDeployValue(payload)));
 }
 
 function posixRelative(from: string, to: string) {
@@ -288,37 +296,11 @@ async function buildStoreExport(agentsDir: string, cards: CardLockEntry[], maxBy
   }
 }
 
-/**
- * Derives the required producer envelope from the exact portable closure and enforces
- * its canonical byte cap. Runs before any store-export effect; the materializer
- * rederives from the same entries for canonical parity.
- */
-export function deriveDeployRuntimeAdmission(cards: readonly CardLockEntry[]): WorkerRuntimeAdmissionProducerEnvelopeV1 {
-  const closureCards: RuntimeAdmissionClosureCard[] = cards.map((card) => ({
-    name: card.name,
-    requested: card.requested,
-    version: card.version,
-    integrity: card.integrity,
-    treeSha: card.treeSha,
-    manifest: card.manifest as RuntimeAdmissionClosureCard["manifest"],
-  }));
-  const derivation = deriveRuntimeAdmissionForClosure(closureCards);
-  const canonicalBytes = Buffer.byteLength(derivation.canonicalEnvelope, "utf8");
-  if (canonicalBytes > WORKER_RUNTIME_ADMISSION_ENVELOPE_LIMIT_BYTES) {
-    throw new DrwnError(
-      "WORKER_DEPLOY_RUNTIME_ADMISSION_TOO_LARGE",
-      `worker runtime-admission envelope is ${canonicalBytes} bytes; limit is ${WORKER_RUNTIME_ADMISSION_ENVELOPE_LIMIT_BYTES} bytes`,
-    );
-  }
-  return derivation.envelope;
-}
-
 export async function buildWorkerDeployPayload(options: BuildWorkerDeployPayloadOptions): Promise<WorkerDeployPayload> {
   const closure = await resolveDeployClosure(options);
   const top = closure.cards[0]!;
 
   const portableCards = closure.cards.map(portableCardEntry);
-  const runtimeAdmission = deriveDeployRuntimeAdmission(portableCards);
   return {
     contractVersion: WORKER_DEPLOY_CONTRACT_VERSION,
     materialization: "lockfile-store-export",
@@ -334,7 +316,6 @@ export async function buildWorkerDeployPayload(options: BuildWorkerDeployPayload
     },
     config: deployRemoteConfig(closure.requested),
     governance: governanceFromEntry(top),
-    runtimeAdmission,
     storeExport: await buildStoreExport(
       options.agentsDir,
       closure.cards,

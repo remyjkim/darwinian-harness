@@ -1,0 +1,51 @@
+{
+  "schema": "drwn.worker-launch-consumer-fixtures",
+  "schemaVersion": 1,
+  "source": {
+    "version": "1.4.2",
+    "commit": "539ed0c4e59dbf1b92a20b40d4a4c01038cb7e0a",
+    "tree": "5c24c49012b9093453491fbc6a70fcc8f5f7e254"
+  },
+  "generator": {
+    "path": "scripts/generate-worker-launch-consumer-fixtures.ts",
+    "version": 1,
+    "sha256": "sha256-307326edbabf348e91272436860805280ba5a8c5039a9fcad8f95f9c16c0f12e"
+  },
+  "normalization": {
+    "projectRoot": "/fixture/project",
+    "fixtureRoot": "/fixture",
+    "repoRoot": "/fixture/repository",
+    "timestamp": "2000-01-01T00:00:00.000Z",
+    "timestampKeys": [
+      "createdAt",
+      "generatedAt",
+      "lastModifiedAt",
+      "lastReconciledAt",
+      "lastWriteAt",
+      "updatedAt"
+    ],
+    "objectKeys": "utf16-ascending",
+    "arrays": "preserved",
+    "contextIds": "sha256(fixture-context:<semantic-label>)",
+    "derivedDigests": [
+      "projectRootHash",
+      "sourceProjectLockDigest"
+    ],
+    "contextArrays": "normalized-context-id-ascending"
+  },
+  "files": {
+    "status/project.json": "sha256-ea2df25c6d76f6e91b32e793c511fc749a15726f1ca415defe918a79a3d747db",
+    "no-op/plan.codex.json": "sha256-6526b699cdaf0597726057d28ac21a97e96a143b6ae26b0f4f8ee2cbd41f264b",
+    "no-op/prepare.codex.json": "sha256-5dc892f380ea3107cee81db21c8a8105755891cf7439143920bcbf02d66afb2c",
+    "claude/plan.json": "sha256-c0486935d93ceb2c18f423f22beb7f86ce2ee6bd8590690c606eaf16254541c2",
+    "claude/prepare.json": "sha256-be33de30c44bd0db04899146c268c157904234e783f7b0fdca35451196e89553",
+    "codex/plan.json": "sha256-81806dfb4de6816c5b4b8906572097e6e732c084d8080fb0612ae4a8a4946b89",
+    "codex/prepare.json": "sha256-f3e010a0efe94db02b1d6ef9ac3d6baef50f036728b95b22d5bd48a0de11005a",
+    "optional-mcp/plan.codex.json": "sha256-cadab37c5becb000e404a213f71edaea2579c63c71f7fa24c7af609057541dfd",
+    "optional-mcp/prepare.codex.json": "sha256-86d79767c4c341b17a5dc29aa83f58506bd30ef5096a95bb7f1ba5165bbf3923",
+    "list/current.json": "sha256-77b207a9399700eccc074ddb00c0094e81eff9565449407ab4247c5e7cbfbca3",
+    "doctor/healthy.json": "sha256-97174db483bcdaff231cb500408d3944f6c6f71dfde32d6a33917912a5f6e95a",
+    "errors/missing-root.json": "sha256-4d7ca0dd3c1b3aa474e48c4cc5129064061bb53082d493aff2bf3f19334acf58",
+    "errors/unsupported-target.json": "sha256-efd5f2653c001a08b9154f812786b759c94f5b1334f3f4ce07bb241cadd72b3d"
+  }
+}

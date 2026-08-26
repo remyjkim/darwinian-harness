@@ -24,17 +24,17 @@
     },
     {
       "path": "receipts/materialize.valid.json",
-      "sha256": "e230448b14ec206cbdd8f03d0cca1b5fab66c7531c3d5372a995294ad490e5fa",
+      "sha256": "d91cc76d238ac5ccc47cbdaf0fae9beb0e9cd4b9578624e5d0eb4aedb6c8d75d",
       "role": "positive_receipt"
     },
     {
       "path": "receipts/reconcile.valid.json",
-      "sha256": "8498cf551bcd761f42383e6573c7632e7118953089b2057e2ce06ca577c7148f",
+      "sha256": "08532b477e6922f5beceeff234c35c12e3bf814ddfc7d547d92fd9304a4aff29",
       "role": "positive_receipt"
     },
     {
       "path": "receipts/remove.valid.json",
-      "sha256": "fa86b3a8b2f6addc5454a51877f52740c11ab3169a8dffc1ddc9c1f366eaf22e",
+      "sha256": "6aecb780913e27b36673a2a279a309644afd28c1ff19fcb50fc59760e4c9574a",
       "role": "positive_receipt"
     },
     {

@@ -260,7 +260,7 @@ async function createTransferSource() {
   roots.push(source.root);
   await createInstalledSkillBundle(source.agentsDir, {
     packageName: "@portable/toolkit",
-    version: "1.4.0",
+    version: "1.4.2",
     skillName: "portable-toolkit",
   });
   await seedMcpInventory(source.agentsDir, {
@@ -335,13 +335,13 @@ describe("additive portable inventory sync", () => {
     });
 
     const first = await syncPortableInventory({ agentsDir: target.agentsDir, repoRoot: target.repoRoot, sourcePath: bundlePath });
-    const packageBytes = await readFile(join(target.agentsDir, "drwn", "skills", "@portable", "toolkit", "1.4.0", "bundle.json"));
+    const packageBytes = await readFile(join(target.agentsDir, "drwn", "skills", "@portable", "toolkit", "1.4.2", "bundle.json"));
     const second = await syncPortableInventory({ agentsDir: target.agentsDir, repoRoot: target.repoRoot, sourcePath: bundlePath });
 
     expect(first.summary).toEqual({ installed: 2, wouldInstall: 0, identical: 0, extra: 1 });
     expect(second.actions.map((entry) => entry.action)).toEqual(["no-op", "no-op"]);
     expect(second.summary).toEqual({ installed: 0, wouldInstall: 0, identical: 2, extra: 1 });
-    expect(await readFile(join(target.agentsDir, "drwn", "skills", "@portable", "toolkit", "1.4.0", "bundle.json"))).toEqual(packageBytes);
+    expect(await readFile(join(target.agentsDir, "drwn", "skills", "@portable", "toolkit", "1.4.2", "bundle.json"))).toEqual(packageBytes);
     expect(existsSync(join(target.agentsDir, "drwn", "skills", "extra-package", "current"))).toBe(true);
   });
 

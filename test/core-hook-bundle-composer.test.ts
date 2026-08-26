@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { bundleHookComposer } from "../cli/core/hook-generator/bundle-composer";
+import { bundleHookComposer, renderBundledHookComposer } from "../cli/core/hook-generator/bundle-composer";
 import { cleanupTempRoots, createTempRoot } from "./helpers";
 
 const tempRoots: string[] = [];
@@ -30,6 +30,26 @@ async function runComposer(path: string, payload: unknown) {
 }
 
 describe("bundleHookComposer", () => {
+  it("renders deterministic composer bytes without touching the output directory", async () => {
+    const root = await createTempRoot("hook-bundle-plan-");
+    tempRoots.push(root);
+    const policyPath = join(root, "card", "hooks", "observe", "policy.ts");
+    const outputDir = join(root, "generated", "hooks", "claude");
+    await mkdir(join(root, "card", "hooks", "observe"), { recursive: true });
+    await writeFile(policyPath, 'export default { policyKind: "observer" };\n');
+    const options = {
+      runtime: "claude-code" as const,
+      outputDir,
+      policies: [{ cardName: "@me/policy", policyName: "observe", policyTsPath: policyPath }],
+    };
+
+    const first = await renderBundledHookComposer(options);
+    const second = await renderBundledHookComposer(options);
+    expect(first).toBe(second);
+    await expect(Bun.file(join(outputDir, "composer.mjs")).exists()).resolves.toBe(false);
+    expect(await Bun.file(await bundleHookComposer(options)).text()).toBe(first);
+  });
+
   it("bundles a Claude composer that runs card policy code", async () => {
     const root = await createTempRoot("hook-bundle-");
     tempRoots.push(root);

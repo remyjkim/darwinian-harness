@@ -14,7 +14,7 @@ describe("drwn version reconciliation", () => {
   test("DRWN_VERSION matches package.json version", () => {
     const pkg = JSON.parse(readFileSync(join(import.meta.dir, "..", "package.json"), "utf8")) as { version: string };
     expect(DRWN_VERSION).toBe(pkg.version);
-    expect(DRWN_VERSION).toBe("1.3.0");
+    expect(DRWN_VERSION).toBe("1.4.2");
   });
 
   test("runtime version loading fails loudly for missing, malformed, and invalid package metadata", async () => {
@@ -28,8 +28,8 @@ describe("drwn version reconciliation", () => {
         await writeFile(packagePath, JSON.stringify(metadata));
         expect(() => readRuntimeVersion(packagePath)).toThrow("Worker package metadata is unavailable or invalid");
       }
-      await writeFile(packagePath, JSON.stringify({ version: "1.2.0" }));
-      expect(readRuntimeVersion(packagePath)).toBe("1.2.0");
+      await writeFile(packagePath, JSON.stringify({ version: "1.4.2" }));
+      expect(readRuntimeVersion(packagePath)).toBe("1.4.2");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -45,7 +45,11 @@ describe("drwn version reconciliation", () => {
     expect(WORKER_MIND_MIN_DRWN_VERSION).toBe("0.9.0");
   });
 
-  test("keeps the release hard-cut floor separate from current identity", () => {
+  test("keeps the release hard-cut floor and Buzz delivery floor separate from current identity", () => {
+    const buzz = JSON.parse(
+      readFileSync(join(import.meta.dir, "..", "registry", "cards", "buzz-delivery-worker", "card.json"), "utf8"),
+    ) as { harness?: { minVersion?: string } };
     expect(gte(DRWN_VERSION, "1.1.0")).toBe(true);
+    expect(buzz.harness?.minVersion).toBe("1.2.0");
   });
 });

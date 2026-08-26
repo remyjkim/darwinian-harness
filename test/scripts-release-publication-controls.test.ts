@@ -20,6 +20,7 @@ function policy(): PublicationApprovalPolicyV1 {
     schema: "darwinian.worker.publication-approval-policy",
     schemaVersion: 1,
     githubEnvironment: "darwinian-npm-publish",
+    candidateDistTag: "i336-candidate",
     requiredReviewers: ["remyjkim"],
     preventSelfReview: false,
     canAdminsBypass: false,
@@ -38,7 +39,7 @@ function githubReceipt(): GitHubPublicationControlsV1 {
       preventSelfReview: false,
       canAdminsBypass: false,
       customDeploymentPolicies: true,
-      deploymentPolicies: [{ type: "tag", pattern: "v1.3.0" }],
+      deploymentPolicies: [{ type: "tag", pattern: "v1.4.2" }],
     },
   };
 }
@@ -76,7 +77,8 @@ describe("publication control receipts", () => {
       environment: "darwinian-npm-publish",
       approval: { requiredReviewers: ["remyjkim"], preventSelfReview: false },
       package: "darwinian",
-      versionTag: "v1.3.0",
+      versionTag: "v1.4.2",
+      candidateDistTag: "i336-candidate",
     });
   });
 
@@ -92,7 +94,8 @@ describe("publication control receipts", () => {
       environment: "darwinian-npm-publish",
       approval: { requiredReviewers: ["leeminseung"], preventSelfReview: true },
       package: "darwinian",
-      versionTag: "v1.3.0",
+      versionTag: "v1.4.2",
+      candidateDistTag: "i336-candidate",
     });
   });
 
@@ -124,6 +127,7 @@ describe("publication control receipts", () => {
     ["environment unbound from OIDC publisher", (declared: PublicationApprovalPolicyV1) => { declared.githubEnvironment = "npm-publish" as never; }],
     ["wrong schema", (declared: PublicationApprovalPolicyV1) => { declared.schema = "other" as never; }],
     ["wrong schema version", (declared: PublicationApprovalPolicyV1) => { declared.schemaVersion = 2 as never; }],
+    ["wrong candidate tag", (declared: PublicationApprovalPolicyV1) => { declared.candidateDistTag = "latest" as never; }],
   ])("rejects an approval policy that breaches the fixed floor: %s", (_label, mutate) => {
     // Model the real threat: one operator edits the policy AND refreshes both readback
     // receipts to agree with it. Only the floor itself can reject that, so the receipts
@@ -169,7 +173,8 @@ describe("publication control receipts", () => {
         preventSelfReview: declared.preventSelfReview,
       },
       package: "darwinian",
-      versionTag: "v1.3.0",
+      versionTag: "v1.4.2",
+      candidateDistTag: "i336-candidate",
     });
   });
 

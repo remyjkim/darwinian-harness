@@ -25,7 +25,7 @@ describe("Worker release dry-run workflow", () => {
     );
     const releaseValidation = job("validate", "dry_run_complete");
 
-    expect(pkg.scripts["test:gate"]).toBe("bun test --timeout 30000 ./test/");
+    expect(pkg.scripts["test:gate"]).toBe("bun test --timeout 30000 --max-concurrency 2 ./test/");
     expect(ciValidation.match(/run: bun run test:gate/g)).toHaveLength(1);
     expect(releaseValidation.match(/run: bun run test:gate/g)).toHaveLength(1);
     expect(ciValidation).not.toContain("run: bun test --timeout 30000 ./test/");
@@ -35,6 +35,16 @@ describe("Worker release dry-run workflow", () => {
         "        env:\n" +
         "          QUALITY_GATE_TEST_MODE: '1'\n" +
         "        run: bun run verify:release",
+    );
+  });
+
+  test("release qualification installs and verifies the frozen launch-context target floors", () => {
+    const releaseValidation = job("validate", "dry_run_complete");
+    expect(releaseValidation).toContain("@anthropic-ai/claude-code@2.1.212");
+    expect(releaseValidation).toContain("@openai/codex@0.149.0");
+    expect(releaseValidation).toContain("run: bun run verify:worker-launch-targets");
+    expect(releaseValidation.indexOf("@anthropic-ai/claude-code@2.1.212")).toBeLessThan(
+      releaseValidation.indexOf("run: bun run verify:worker-launch-targets"),
     );
   });
 
@@ -110,9 +120,11 @@ describe("Worker release dry-run workflow", () => {
   });
 
   test("uploads exactly the tar and pre-upload receipt once under immutable artifact settings", () => {
-    expect(workflow.match(/actions\/upload-artifact@v4/g)).toHaveLength(1);
+    const dryRun = job("dry_run_complete", "validate_tag");
+    expect(dryRun.match(/actions\/upload-artifact@v4/g)).toHaveLength(1);
+    expect(workflow.match(/actions\/upload-artifact@v4/g)).toHaveLength(2);
     expect(workflow).toContain("name: darwinian-worker-release-candidate");
-    expect(workflow).toContain("darwinian-1.3.0.tgz");
+    expect(workflow).toContain("darwinian-1.4.2.tgz");
     expect(workflow).toContain("release-candidate.json");
     expect(workflow).toContain("if-no-files-found: error");
     expect(workflow).toContain("overwrite: false");
@@ -125,12 +137,9 @@ describe("Worker release dry-run workflow", () => {
 });
 
 describe("Worker annotated-tag publication workflow", () => {
-  test("accepts only the exact v1.3.0 annotated tag and validates its bound run and artifact before protection", () => {
+  test("accepts only the exact v1.4.2 annotated tag and validates its bound run and artifact before protection", () => {
     const validation = job("validate_tag", "publish");
-    expect(workflow).toContain("push:\n    tags:\n      - 'v1.3.0'");
-    // Every post-validation job checks out the same released tag by name; a stale one
-    // would qualify or publish a different commit than the trigger authorized.
-    expect(workflow.match(/ref: refs\/tags\/v1\.3\.0/g)).toHaveLength(3);
+    expect(workflow).toContain("push:\n    tags:\n      - 'v1.4.2'");
     expect(validation).toContain("name: Validate authorized tag");
     expect(validation).toContain("actions: read");
     expect(validation).toContain('git fetch --force --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"');
@@ -151,36 +160,41 @@ describe("Worker annotated-tag publication workflow", () => {
     expect(validation).not.toMatch(/^\s+environment:/m);
   });
 
-  test("grants OIDC only to the separately protected exact-artifact publish job", () => {
+  test("grants OIDC only to the protected exact-artifact candidate publish job", () => {
     const publish = job("publish", "smoke_macos");
     expect(workflow.match(/id-token: write/g)).toHaveLength(1);
-    expect(publish).toContain("name: Publish to npm");
+    expect(publish).toContain("name: Publish I336 candidate to npm");
     expect(publish).toContain("name: darwinian-npm-publish");
     expect(publish).toContain("id-token: write");
     expect(publish).toContain("bun scripts/release-cli.ts verify-controls");
     expect(publish).toContain("bun scripts/release-cli.ts assert-unpublished");
     expect(publish).toContain("actions/artifacts/${{ needs.validate_tag.outputs.artifact_id }}/zip");
     expect(publish).toContain("bun scripts/release-cli.ts requalify-artifact");
-    expect(publish).toContain('npm publish "./candidate/darwinian-1.3.0.tgz" --access public');
+    expect(publish).toContain('npm publish "./candidate/darwinian-1.4.2.tgz" --access public --tag i336-candidate');
+    expect(publish).toContain("npm view darwinian dist-tags --json");
+    expect(publish).toContain("PRIOR_LATEST");
+    expect(publish).toContain("RESULTING_LATEST");
+    expect(publish).toContain("create-candidate-receipt");
+    expect(publish).toContain("darwinian-worker-i336-candidate-receipt");
+    expect(publish).not.toContain("npm dist-tag");
     expect(publish).not.toContain("npm pack --ignore-scripts");
-    expect(publish).toContain('npm pack "darwinian@1.3.0"');
+    expect(publish).toContain('npm pack "darwinian@1.4.2"');
     expect(publish).not.toContain("NODE_AUTH_TOKEN");
     expect(publish).not.toContain("NPM_TOKEN");
   });
 
-  test("requires registry identity before Ubuntu/macOS installed smokes and exact GitHub Release verification", () => {
+  test("requires registry identity before Ubuntu/macOS installed smokes and creates no final GitHub Release", () => {
     const publish = job("publish", "smoke_macos");
     const macos = job("smoke_macos", "github_release");
-    const release = job("github_release");
     expect(publish).toContain("release-cli.ts verify-registry");
     expect(publish.indexOf("verify-registry")).toBeLessThan(publish.indexOf("smoke-artifact"));
     expect(macos).toContain("runs-on: macos-latest");
     expect(macos).toContain("release-cli.ts verify-registry");
     expect(macos).toContain("release-cli.ts smoke-artifact");
-    expect(release).toContain("contents: write");
-    expect(release).toContain("gh release view");
-    expect(release).toContain("gh release create");
-    expect(release).toContain("--verify-tag");
+    expect(job("github_release")).toBe("");
+    expect(workflow).not.toContain("gh release view");
+    expect(workflow).not.toContain("gh release create");
+    expect(workflow).not.toContain("contents: write");
     expect(workflow).not.toContain("already_published");
   });
 });

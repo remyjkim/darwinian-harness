@@ -5,18 +5,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const RETIRED_BUZZ_CARD_DIR = ["registry", "cards", "buzz-delivery-worker"].join("/");
-const RETIRED_BUZZ_CARD_PATH = `${RETIRED_BUZZ_CARD_DIR}/card.json`;
-const CURRENT_RELEASE_SURFACES = [
-  "package.json",
-  "README.md",
-  ".github",
-  "docs",
-  "registry",
-  "scripts",
-  "test",
-];
-
 describe("package readiness", () => {
   test("published CLI declares its Bun runtime requirement", () => {
     const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as Record<string, unknown>;
@@ -120,7 +108,7 @@ describe("package readiness", () => {
     );
     const releaseWorkflow = readFileSync(join(process.cwd(), ".github", "workflows", "release.yml"), "utf8");
 
-    expect(ciWorkflow.match(/submodules: true/g)).toHaveLength(1);
+    expect(ciWorkflow.match(/submodules: true/g)).toHaveLength(3);
     expect(docsPreviewWorkflow.match(/submodules: true/g)).toHaveLength(1);
     expect(docsProductionWorkflow.match(/submodules: true/g)).toHaveLength(1);
     expect(releaseWorkflow.match(/submodules: true/g)).toHaveLength(2);
@@ -203,11 +191,12 @@ describe("package readiness", () => {
     expect(paths).not.toContain("sync-mcp.ts");
     expect(paths).toContain("cli/commands/write.ts");
     expect(paths).toContain("cli/commands/mcp/write.ts");
-    expect(paths).toContain("cli/commands/acp/serve.ts");
+    expect(paths).toContain("cli/commands/worker/mind/mind.ts");
+    expect(paths).not.toContain("cli/commands/acp/serve.ts");
     expect(paths).toContain("cli/commands/worker/materialize.ts");
     expect(paths).toContain("cli/commands/worker/buzz-tools.ts");
     expect(paths).toContain("cli/commands/worker/secret-set.ts");
-    expect(paths).not.toContain(RETIRED_BUZZ_CARD_PATH);
+    expect(paths).toContain("registry/cards/buzz-delivery-worker/card.json");
     expect(paths).not.toContain("cli/commands/apply.ts");
     expect(paths).not.toContain("cli/commands/mcp/apply.ts");
     expect(paths).not.toContain("cli/commands/sync.ts");
@@ -219,47 +208,5 @@ describe("package readiness", () => {
     expect(paths).toContain("registry/mcp-servers.json");
     expect(paths).toContain("docs/assets/darwinian-worker-logo.png");
     expect(paths).toContain("skills/shared/frontend-design/SKILL.md");
-  });
-
-  test("retires the legacy packaged Buzz Card from source and every current release surface", () => {
-    expect(existsSync(join(process.cwd(), RETIRED_BUZZ_CARD_PATH))).toBe(false);
-    expect(existsSync(join(process.cwd(), RETIRED_BUZZ_CARD_DIR))).toBe(false);
-
-    const probe = Bun.spawnSync(
-      ["git", "grep", "-l", RETIRED_BUZZ_CARD_DIR, "--", ...CURRENT_RELEASE_SURFACES],
-      { cwd: process.cwd(), stdout: "pipe", stderr: "pipe" },
-    );
-    const matches = new TextDecoder().decode(probe.stdout).trim();
-
-    expect(matches).toBe("");
-  });
-
-  test("ships no replacement publishable Finch Card in the Worker registry", () => {
-    expect(existsSync(join(process.cwd(), "registry", "cards"))).toBe(false);
-  });
-
-  test("embeds no concrete release tuple that only publication can produce", () => {
-    const releaseSurfaces = [
-      ".github/workflows/release.yml",
-      ".github/workflows/release-recovery.yml",
-      "scripts/release/provenance.ts",
-      "scripts/release/publication-controls.ts",
-      "scripts/release/artifact-contract.ts",
-      "scripts/verify-release-readiness.ts",
-      "docs/release-process.md",
-      "docs/maintainers/publishing.md",
-      "CHANGELOG.md",
-    ];
-
-    for (const surface of releaseSurfaces) {
-      const content = readFileSync(join(process.cwd(), surface), "utf8");
-
-      expect({ surface, tagged: /\b[a-f0-9]{40}\b/.exec(content)?.[0] }).toEqual({ surface, tagged: undefined });
-      expect({ surface, digest: /\b[a-f0-9]{64}\b/.exec(content)?.[0] }).toEqual({ surface, digest: undefined });
-      expect({ surface, integrity: /sha512-[A-Za-z0-9+/=]{20,}/.exec(content)?.[0] }).toEqual({
-        surface,
-        integrity: undefined,
-      });
-    }
   });
 });

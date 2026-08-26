@@ -1,5 +1,5 @@
 // ABOUTME: Encrypts secrets at rest with AES-256-GCM under an OS-keychain-held key.
-// ABOUTME: Refuses to persist without a keychain; an env-gated file backend exists only for tests.
+// ABOUTME: Refuses to persist without macOS Keychain, Linux Secret Service, or Windows DPAPI.
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { existsSync, promises as fs } from "node:fs";
@@ -215,34 +215,6 @@ export async function clear(path: string, backend?: KeychainBackend): Promise<vo
 
 // --- Backends ---
 
-/** Key persisted as an owner-only file. Production-safe only as a test/headless escape hatch. */
-export class FileKeychainBackend implements KeychainBackend {
-  constructor(private readonly keyPath: string) {}
-  async isAvailable(): Promise<boolean> {
-    return true;
-  }
-  async loadKey(): Promise<Buffer | null> {
-    try {
-      const text = (await fs.readFile(this.keyPath, "utf8")).trim();
-      if (!text) throw new CredentialIntegrityError("Stored credentials key material is empty.");
-      return decodeScopedKey(text);
-    } catch (error) {
-      if (isErrorCode(error, "ENOENT")) return null;
-      throw error;
-    }
-  }
-  async storeKey(key: Buffer): Promise<void> {
-    await writeRestricted(this.keyPath, key.toString("base64"));
-  }
-  async deleteKey(): Promise<void> {
-    try {
-      await fs.unlink(this.keyPath);
-    } catch (error) {
-      if (!isErrorCode(error, "ENOENT")) throw error;
-    }
-  }
-}
-
 /** macOS Keychain via the `security` CLI. */
 export class MacKeychainBackend implements KeychainBackend {
   constructor(private readonly account: string, private readonly service = "drwn") {}
@@ -262,7 +234,7 @@ export class MacKeychainBackend implements KeychainBackend {
       "security", "add-generic-password", "-U", "-a", this.account, "-s", this.service, "-w", key.toString("base64"),
     ]);
     if (result.exitCode !== 0) {
-      throw new Error(`security add-generic-password failed: ${result.stderr.trim()}`);
+      throw new CredentialIntegrityError("Scoped key storage failed.");
     }
   }
   async deleteKey(): Promise<void> {
@@ -296,7 +268,7 @@ export class SecretToolBackend implements KeychainBackend {
       { stdin: key.toString("base64") },
     );
     if (result.exitCode !== 0) {
-      throw new Error(`secret-tool store failed: ${result.stderr.trim()}`);
+      throw new CredentialIntegrityError("Scoped key storage failed.");
     }
   }
   async deleteKey(): Promise<void> {
@@ -344,7 +316,7 @@ export class DpapiBackend implements KeychainBackend {
       `[IO.File]::WriteAllBytes(${psLiteral(this.keyPath)},$p)`;
     const result = await runProcess([exe, "-NoProfile", "-NonInteractive", "-Command", script]);
     if (result.exitCode !== 0) {
-      throw new Error(`DPAPI protect failed: ${result.stderr.trim()}`);
+      throw new CredentialIntegrityError("Scoped key storage failed.");
     }
     await restrictFile(this.keyPath);
   }
@@ -352,7 +324,7 @@ export class DpapiBackend implements KeychainBackend {
     try {
       await fs.unlink(this.keyPath);
     } catch (error) {
-      if (!isErrorCode(error, "ENOENT")) throw error;
+      if (!isErrorCode(error, "ENOENT")) throw new Error("CREDENTIAL_DELETE_FAILED");
     }
   }
 }
@@ -371,10 +343,6 @@ class UnavailableBackend implements KeychainBackend {
 }
 
 export function defaultBackend(scope: CredentialScopeV1): KeychainBackend {
-  const testDir = process.env.DRWN_TEST_KEYCHAIN_DIR;
-  if (testDir) {
-    return new FileKeychainBackend(join(testDir, `${scope.scopeDigest}.key`));
-  }
   if (scope.platform === "darwin") return new MacKeychainBackend(scope.keyRef);
   if (scope.platform === "win32") {
     return new DpapiBackend(

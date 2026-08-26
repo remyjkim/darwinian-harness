@@ -33,7 +33,7 @@ async function runGit(root: string, ...args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-async function scaffoldCleanRepo(version = "1.3.0"): Promise<string> {
+async function scaffoldCleanRepo(version = "1.4.2"): Promise<string> {
   const root = await tempRoot("drwn-i239-build-identity-");
   await mkdir(join(root, "cli", "generated"), { recursive: true });
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "darwinian", version }) + "\n");
@@ -56,11 +56,11 @@ describe("packaged Worker build identity", () => {
     const input = {
       schema: "darwinian.worker.build-identity",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: SOURCE_COMMIT,
     } as const;
 
-    expect(parsePackagedBuildIdentity(input, "1.3.0")).toEqual({
+    expect(parsePackagedBuildIdentity(input, "1.4.2")).toEqual({
       kind: "packaged",
       ...input,
       qualificationEligible: true,
@@ -75,26 +75,26 @@ describe("packaged Worker build identity", () => {
       { ...input, sourceCommit: "a".repeat(39) },
       { ...input, sourceCommit: DEVELOPMENT_SOURCE_COMMIT },
     ]) {
-      expect(() => parsePackagedBuildIdentity(invalid, "1.3.0")).toThrow(BuildIdentityError);
+      expect(() => parsePackagedBuildIdentity(invalid, "1.4.2")).toThrow(BuildIdentityError);
     }
-    expect(() => parsePackagedBuildIdentity(input, "v1.3.0")).toThrow(BuildIdentityError);
+    expect(() => parsePackagedBuildIdentity(input, "v1.4.2")).toThrow(BuildIdentityError);
   });
 
   test("loads packaged identity from its adjacent package metadata", async () => {
     const root = await tempRoot("drwn-i239-build-loader-");
     const packagePath = join(root, "package.json");
     const identityPath = join(root, "build-identity.json");
-    await writeFile(packagePath, JSON.stringify({ version: "1.3.0" }));
+    await writeFile(packagePath, JSON.stringify({ version: "1.4.2" }));
     await writeFile(identityPath, JSON.stringify({
       schema: "darwinian.worker.build-identity",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: SOURCE_COMMIT,
     }));
 
     expect(await loadBuildIdentity({ packagePath, identityPath })).toMatchObject({
       kind: "packaged",
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: SOURCE_COMMIT,
       qualificationEligible: true,
     });
@@ -103,7 +103,7 @@ describe("packaged Worker build identity", () => {
   test("uses one explicit, structurally joinable, never-qualifying development identity only when the member is absent", async () => {
     const root = await tempRoot("drwn-i239-build-development-");
     const packagePath = join(root, "package.json");
-    await writeFile(packagePath, JSON.stringify({ version: "1.3.0" }));
+    await writeFile(packagePath, JSON.stringify({ version: "1.4.2" }));
 
     expect(await loadBuildIdentity({
       packagePath,
@@ -112,7 +112,7 @@ describe("packaged Worker build identity", () => {
       kind: "development",
       schema: "darwinian.worker.build-identity",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: DEVELOPMENT_SOURCE_COMMIT,
       qualificationEligible: false,
     });
@@ -124,11 +124,11 @@ describe("packaged Worker build identity", () => {
     const packagePath = join(root, "package.json");
     const identityPath = join(root, "build-identity.json");
     await mkdir(join(root, ".git"));
-    await writeFile(packagePath, JSON.stringify({ version: "1.3.0" }));
+    await writeFile(packagePath, JSON.stringify({ version: "1.4.2" }));
     await writeFile(identityPath, JSON.stringify({
       schema: "darwinian.worker.build-identity",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: SOURCE_COMMIT,
     }));
 
@@ -136,7 +136,7 @@ describe("packaged Worker build identity", () => {
       kind: "development",
       schema: "darwinian.worker.build-identity",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: DEVELOPMENT_SOURCE_COMMIT,
       qualificationEligible: false,
     });
@@ -146,11 +146,11 @@ describe("packaged Worker build identity", () => {
     const root = await tempRoot("drwn-i239-build-malformed-");
     const packagePath = join(root, "package.json");
     const identityPath = join(root, "build-identity.json");
-    await writeFile(packagePath, JSON.stringify({ version: "1.3.0" }));
+    await writeFile(packagePath, JSON.stringify({ version: "1.4.2" }));
 
     for (const contents of [
       "not-json",
-      JSON.stringify({ schema: "darwinian.worker.build-identity", schemaVersion: 1, version: "1.3.0" }),
+      JSON.stringify({ schema: "darwinian.worker.build-identity", schemaVersion: 1, version: "1.4.2" }),
       JSON.stringify({
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
@@ -175,7 +175,7 @@ describe("build identity generator", () => {
     expect(generated).toEqual({
       schema: "darwinian.worker.build-identity",
       schemaVersion: 1,
-      version: "1.3.0",
+      version: "1.4.2",
       sourceCommit: expectedCommit,
     });
     expect(await readFile(memberPath, "utf8")).toBe(`${JSON.stringify(generated)}\n`);
@@ -203,7 +203,7 @@ describe("build identity generator", () => {
       ["status", "--porcelain", "--untracked-files=all"],
       ["rev-parse", "HEAD"],
     ]);
-    expect(generated.version).toBe("1.3.0");
+    expect(generated.version).toBe("1.4.2");
     expect(generated.sourceCommit).toBe(actualCommit);
   });
 
@@ -244,7 +244,7 @@ describe("build identity generator", () => {
       await writeFile(memberPath, `${JSON.stringify({
         schema: "darwinian.worker.build-identity",
         schemaVersion: 1,
-        version: "1.3.0",
+        version: "1.4.2",
         sourceCommit: SOURCE_COMMIT,
       })}\n`);
       await scenario.arrange(root);

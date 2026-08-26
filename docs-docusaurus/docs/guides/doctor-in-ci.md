@@ -14,6 +14,7 @@ CI-friendly read-only commands:
 
 - `drwn status --json` for a structured snapshot of effective state
 - `drwn doctor --json` for report-only diagnostics
+- `drwn worker launch-context list --json` for immutable context ownership and currentness
 - `drwn card outdated --check` to fail when project cards have newer versions
 - `drwn card validate <ref>` for a single card
 
@@ -34,7 +35,8 @@ mutations fail before writing.
 ## Exit-Code Semantics
 
 - `drwn doctor` exits non-zero for fatal ambient MCP collisions and
-  error-severity instruction-delivery or Worker-materialization issues
+  error-severity instruction-delivery or Worker-materialization issues, and for
+  drifted, corrupt, or foreign Worker launch contexts
 - other report arrays may be non-empty without changing doctor's exit code;
   assert the categories your CI treats as blocking
 - `drwn card validate <ref>` exits non-zero on integrity or schema failures
@@ -55,6 +57,9 @@ drwn doctor --json | jq -e '
   (.projectConfigIssues | length == 0) and
   ((.instructionDelivery.issues // []) | all(.severity != "error")) and
   ((.orgWorkerMaterialization.issues // []) | all(.severity != "error"))
+  and ((.launchContexts.drifted // 0) == 0)
+  and ((.launchContexts.corrupt // 0) == 0)
+  and ((.launchContexts.foreign // 0) == 0)
 '
 drwn card outdated --check --json | jq '.outdated | length == 0'
 drwn status --json | jq -e '
@@ -64,6 +69,9 @@ drwn status --json | jq -e '
 ```
 
 `--json` output is the contract surface; the human-readable text format is not.
+`launchContexts.obsolete` is advisory: it means effective inputs no longer
+produce that context ID. Drifted/corrupt/foreign counts are unhealthy because
+ownership cannot be verified. Doctor never prunes contexts.
 
 ## Minimal GitHub Actions Snippet
 

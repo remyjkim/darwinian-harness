@@ -1,1 +1,0 @@
-{"derivationVersion":"worker-runtime-admission-v1","fixtureByteLength":2292,"fixtureFile":"finch-runtime-admission.synthetic.v1.json","fixtureSha256":"d2664278422714d37939cf89a995f356624856eff45c842ccc6802ad63a28263","schema":"cl.i265.runtime-admission-fixture-source.v1","sourcePaths":["cli/core/runtime-admission-manifest.ts"],"syntheticNonpublishable":true}
