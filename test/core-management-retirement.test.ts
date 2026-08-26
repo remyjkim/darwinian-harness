@@ -78,6 +78,48 @@ describe("Deployed Worker retirement", () => {
     expect((await loadClientOperation(project, operationId))!.phase).toBe("receipt_verified");
   });
 
+  test("mismatched retirement success cannot trigger readback or clear project context", async () => {
+    const project = await fixture();
+    const calls: string[] = [];
+    const result = await retireDeployedWorker(input(project), {
+      operationId: () => operationId,
+      readbackRequestId: () => readId,
+      journalNow: clock(),
+      execute: async (request) => {
+        calls.push(request.routeKey);
+        return succeededManagementResult(request.routeKey, operationId, {
+          ...receipt(),
+          deployedWorkerId: "deployed_worker_other",
+        }, "2026-08-25T12:20:00.000Z");
+      },
+    });
+    expect(result).toMatchObject({ outcome: "refused", error: { code: "SERVER_RESPONSE_INVALID" } });
+    expect(calls).toEqual(["deployed_workers.retire"]);
+    expect(await loadProjectCloudContext(project)).not.toBeNull();
+    expect((await loadClientOperation(project, operationId))!.phase).toBe("sent");
+  });
+
+  test("mismatched retirement readback cannot clear project context or complete the journal", async () => {
+    const project = await fixture();
+    const result = await retireDeployedWorker(input(project), {
+      operationId: () => operationId,
+      readbackRequestId: () => readId,
+      journalNow: clock(),
+      execute: async (request) => request.routeKey === "deployed_workers.retire"
+        ? succeededManagementResult(request.routeKey, operationId, receipt(), "2026-08-25T12:20:00.000Z")
+        : succeededManagementResult(request.routeKey, readId, {
+            ...retiredReadback(),
+            worker: {
+              ...retiredReadback().worker,
+              deployedWorkerId: "deployed_worker_other",
+            },
+          }, "2026-08-25T12:21:00.000Z"),
+    });
+    expect(result).toMatchObject({ outcome: "refused", error: { code: "SERVER_RESPONSE_INVALID" } });
+    expect(await loadProjectCloudContext(project)).not.toBeNull();
+    expect((await loadClientOperation(project, operationId))!.phase).toBe("receipt_verified");
+  });
+
   test("response-loss restart reuses the exact operation and changed revisions conflict before fetch", async () => {
     const project = await fixture(); let retireCalls = 0; const ids: string[] = [];
     const dependencies: RetirementDependencies = {

@@ -50,10 +50,10 @@ describe("worker run status", () => {
     expect(JSON.parse(machine.stdout)).toMatchObject({ command: "runs.read", data: { run: { runId: "run_0001", status: "succeeded" } } });
   });
 
-  test("wrong-target readback is RESOURCE_UNAVAILABLE without existence detail", async () => {
+  test("wrong-target server success is invalid without existence detail", async () => {
     const result = await run(["worker", "run", "status", "run_0001"], response("succeeded", "deployed_worker_other"));
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("RESOURCE_UNAVAILABLE");
+    expect(result.stderr).toContain("SERVER_RESPONSE_INVALID");
     expect(result.stderr).not.toContain("deployed_worker_other");
   });
 

@@ -109,7 +109,12 @@ export async function retireDeployedWorker(
     return result;
   }
   if (result.outcome === "refused") return result;
-  const receipt = parseRouteSuccess("deployed_workers.retire", result.data, request);
+  let receipt: ManagementJsonObject;
+  try {
+    receipt = parseRouteSuccess("deployed_workers.retire", result.data, request);
+  } catch {
+    return invalidResult(journal.operationId, result.observedAt);
+  }
   if (
     receipt.requestId !== journal.operationId ||
     receipt.organizationId !== input.organizationId ||
@@ -123,9 +128,10 @@ export async function retireDeployedWorker(
   }
 
   const readbackId = (dependencies.readbackRequestId ?? randomUUID)();
+  const detailRequest = { requestId: readbackId, deployedWorkerId: input.deployedWorkerId };
   const detail = await execute({
     routeKey: "deployed_workers.read",
-    request: { requestId: readbackId, deployedWorkerId: input.deployedWorkerId },
+    request: detailRequest,
     credentialsPath: input.credentialsPath,
     env: input.env,
     keychainBackend: input.keychainBackend,
@@ -136,7 +142,12 @@ export async function retireDeployedWorker(
   if (detail.outcome === "refused") {
     return refusedManagementResult("deployed_workers.retire", journal.operationId, detail.error!, detail.observedAt);
   }
-  const readback = parseRouteSuccess("deployed_workers.read", detail.data);
+  let readback: ManagementJsonObject;
+  try {
+    readback = parseRouteSuccess("deployed_workers.read", detail.data, detailRequest);
+  } catch {
+    return invalidResult(journal.operationId, detail.observedAt);
+  }
   const worker = readback.worker as ManagementJsonObject;
   if (
     worker.organizationId !== input.organizationId ||

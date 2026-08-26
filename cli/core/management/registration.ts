@@ -130,9 +130,10 @@ export async function registerDeployedWorker(
 
   if (journal.phase === "prepared") journal = await advance(input.projectRoot, journal, "sent", dependencies);
   const execute = dependencies.execute ?? executeManagementRequest;
+  const registrationRequest = { requestId: journal.operationId, ...intent };
   const registration = await execute({
     routeKey: "deployed_workers.register",
-    request: { requestId: journal.operationId, ...intent },
+    request: registrationRequest,
     credentialsPath: input.credentialsPath,
     env: input.env,
     keychainBackend: input.keychainBackend,
@@ -147,7 +148,7 @@ export async function registerDeployedWorker(
 
   let receipt: ManagementJsonObject;
   try {
-    receipt = parseRouteSuccess("deployed_workers.register", registration.data);
+    receipt = parseRouteSuccess("deployed_workers.register", registration.data, registrationRequest);
   } catch {
     return registrationFailure(journal.operationId, registration.observedAt, "SERVER_RESPONSE_INVALID");
   }
@@ -165,9 +166,10 @@ export async function registerDeployedWorker(
   }
 
   const readbackRequestId = (dependencies.readbackRequestId ?? randomUUID)();
+  const detailRequest = { requestId: readbackRequestId, deployedWorkerId: receipt.deployedWorkerId };
   const detail = await execute({
     routeKey: "deployed_workers.read",
-    request: { requestId: readbackRequestId, deployedWorkerId: receipt.deployedWorkerId },
+    request: detailRequest,
     credentialsPath: input.credentialsPath,
     env: input.env,
     keychainBackend: input.keychainBackend,
@@ -181,7 +183,7 @@ export async function registerDeployedWorker(
 
   let worker: ManagementJsonObject;
   try {
-    const parsed = parseRouteSuccess("deployed_workers.read", detail.data);
+    const parsed = parseRouteSuccess("deployed_workers.read", detail.data, detailRequest);
     worker = parsed.worker as ManagementJsonObject;
   } catch {
     return registrationFailure(journal.operationId, detail.observedAt, "SERVER_RESPONSE_INVALID");

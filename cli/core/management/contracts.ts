@@ -620,25 +620,113 @@ export function parseManagementSuccess(routeKey: string, candidate: unknown, req
       result.error,
     );
   }
+  const response = result.data as ManagementJsonObject;
   if (routeKey === "deployment_artifacts.put") {
-    const response = result.data as ManagementJsonObject;
     const expectedRef = `deployment_artifact:sha256:${String(response.artifactSha256)}`;
-    const request = requestCandidate && typeof requestCandidate === "object" && !Array.isArray(requestCandidate)
-      ? requestCandidate as ManagementJsonObject
-      : null;
-    if (
-      response.artifactRef !== expectedRef ||
-      (request !== null && (
-        response.requestId !== request.requestId ||
-        response.deployedWorkerId !== request.deployedWorkerId ||
-        response.artifactSha256 !== request.artifactSha256 ||
-        response.byteLength !== request.byteLength
-      ))
-    ) {
+    if (response.artifactRef !== expectedRef) {
       throw new DrwnError("SERVER_RESPONSE_INVALID", "Invalid deployment artifact response identity.");
     }
   }
-  return result.data;
+  if (requestCandidate !== undefined) {
+    const requestResult = managementSchemas[schemaNameFromRef(route.requestSchema)]!.safeParse(requestCandidate);
+    if (!requestResult.success) {
+      throw new DrwnError("SERVER_RESPONSE_INVALID", "The management server returned an invalid response.");
+    }
+    assertManagementSuccessMatchesRequest(routeKey, response, requestResult.data as ManagementJsonObject);
+  }
+  return response;
+}
+
+function invalidSuccessIdentity(): never {
+  throw new DrwnError("SERVER_RESPONSE_INVALID", "The management server returned an invalid response.");
+}
+
+function objects(value: ManagementJsonValue | undefined): ManagementJsonObject[] {
+  return value as ManagementJsonObject[];
+}
+
+function object(value: ManagementJsonValue | undefined): ManagementJsonObject {
+  return value as ManagementJsonObject;
+}
+
+function revisionAdvanced(current: ManagementJsonValue | undefined, expected: ManagementJsonValue | undefined): boolean {
+  return Number(current) > Number(expected);
+}
+
+function assertManagementSuccessMatchesRequest(
+  routeKey: string,
+  response: ManagementJsonObject,
+  request: ManagementJsonObject,
+): void {
+  if (response.requestId !== request.requestId) invalidSuccessIdentity();
+  switch (routeKey) {
+    case "organizations.list":
+      return;
+    case "organizations.read":
+      if (object(response.organization).organizationId !== request.organizationId) invalidSuccessIdentity();
+      return;
+    case "deployed_workers.register":
+      if (response.organizationId !== request.organizationId) invalidSuccessIdentity();
+      return;
+    case "deployed_workers.list":
+      if (objects(response.workers).some((worker) => (
+        worker.organizationId !== request.organizationId ||
+        (request.environment !== undefined && worker.environment !== request.environment)
+      ))) invalidSuccessIdentity();
+      return;
+    case "deployed_workers.read":
+      if (object(response.worker).deployedWorkerId !== request.deployedWorkerId) invalidSuccessIdentity();
+      return;
+    case "deployment_artifacts.put":
+      if (
+        response.deployedWorkerId !== request.deployedWorkerId ||
+        response.artifactSha256 !== request.artifactSha256 ||
+        response.byteLength !== request.byteLength
+      ) invalidSuccessIdentity();
+      return;
+    case "deployments.create":
+      if (
+        response.deployedWorkerId !== request.deployedWorkerId ||
+        !revisionAdvanced(response.workerRevision, request.expectedWorkerRevision)
+      ) invalidSuccessIdentity();
+      return;
+    case "deployments.list":
+      if (objects(response.deployments).some((deployment) => (
+        deployment.deployedWorkerId !== request.deployedWorkerId
+      ))) invalidSuccessIdentity();
+      return;
+    case "deployments.rollback":
+      if (
+        response.deployedWorkerId !== request.deployedWorkerId ||
+        response.deploymentId !== request.deploymentId ||
+        !revisionAdvanced(response.workerRevision, request.expectedWorkerRevision)
+      ) invalidSuccessIdentity();
+      return;
+    case "secrets.set":
+      if (
+        response.deployedWorkerId !== request.deployedWorkerId ||
+        response.name !== request.name ||
+        !revisionAdvanced(response.workerRevision, request.expectedWorkerRevision)
+      ) invalidSuccessIdentity();
+      return;
+    case "runs.create":
+      if (response.deployedWorkerId !== request.deployedWorkerId) invalidSuccessIdentity();
+      return;
+    case "runs.read": {
+      const run = object(response.run);
+      if (run.deployedWorkerId !== request.deployedWorkerId || run.runId !== request.runId) invalidSuccessIdentity();
+      return;
+    }
+    case "deployed_workers.retire":
+      if (
+        response.deployedWorkerId !== request.deployedWorkerId ||
+        !revisionAdvanced(response.workerRevision, request.expectedWorkerRevision) ||
+        !revisionAdvanced(response.bindingRevision, request.expectedBindingRevision)
+      ) invalidSuccessIdentity();
+      return;
+    default:
+      invalidSuccessIdentity();
+  }
 }
 
 const requestIdHeaderSchema = compileManagementSchemaFragment(managementContract.idKinds.RequestId);

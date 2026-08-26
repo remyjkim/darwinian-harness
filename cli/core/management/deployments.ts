@@ -121,7 +121,17 @@ async function executeDeploymentMutation(
   }
   if (result.outcome === "refused") return result;
 
-  const receipt = parseRouteSuccess(routeKey, result.data, request);
+  let receipt: ManagementJsonObject;
+  try {
+    receipt = parseRouteSuccess(routeKey, result.data, request);
+  } catch {
+    return refusedManagementResult(
+      routeKey,
+      journal.operationId,
+      { code: "SERVER_RESPONSE_INVALID", retryable: false },
+      result.observedAt,
+    );
+  }
   if (
     receipt.requestId !== journal.operationId ||
     receipt.deployedWorkerId !== admitted.deployedWorkerId ||

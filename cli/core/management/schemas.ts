@@ -23,7 +23,7 @@ export function parseRouteRequest(
 export function parseRouteSuccess(
   routeKey: ManagementRouteKey,
   candidate: unknown,
-  requestCandidate?: unknown,
+  requestCandidate: unknown,
 ): ManagementJsonObject {
   try {
     return parseManagementSuccess(routeKey, candidate, requestCandidate) as ManagementJsonObject;
