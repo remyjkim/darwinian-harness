@@ -377,7 +377,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   publish:
-    name: Publish to npm
+    name: Publish I336 candidate to npm
     if: github.event_name == 'push'
     needs: [validate_tag]
     runs-on: ubuntu-latest
@@ -438,6 +438,16 @@ jobs:
           npm_config_cache: ${{ runner.temp }}/npm-release-probe
         run: bun scripts/release-cli.ts assert-unpublished
 
+      - name: Observe prior latest without mutation
+        run: |
+          npm view darwinian dist-tags --json > "$RUNNER_TEMP/prior-dist-tags.json"
+          PRIOR_LATEST="$(jq -er '.latest | strings | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"))' "$RUNNER_TEMP/prior-dist-tags.json")"
+          if [ "$PRIOR_LATEST" = "1.4.2" ]; then
+            echo "latest already points at the candidate version." >&2
+            exit 1
+          fi
+          echo "PRIOR_LATEST=$PRIOR_LATEST" >> "$GITHUB_ENV"
+
       - name: Download and requalify the exact authorized artifact
         env:
           GH_TOKEN: ${{ github.token }}
@@ -462,11 +472,13 @@ jobs:
             '.sourceCommit == $source and .sha256 == $digest and .filename == "darwinian-1.4.2.tgz"' \
             "$RUNNER_TEMP/protected-artifact.json" > /dev/null
 
-      - name: Publish the qualified bytes with trusted publishing
-        run: npm publish "./candidate/darwinian-1.4.2.tgz" --access public
+      - name: Publish the qualified bytes only under the I336 candidate tag
+        run: npm publish "./candidate/darwinian-1.4.2.tgz" --access public --tag i336-candidate
         working-directory: ${{ runner.temp }}
 
       - name: Verify propagated registry identity and Ubuntu install
+        env:
+          RELEASE_SOURCE_COMMIT: ${{ needs.validate_tag.outputs.source_commit }}
         run: |
           mkdir "$RUNNER_TEMP/published"
           for ATTEMPT in $(seq 1 30); do
@@ -500,6 +512,33 @@ jobs:
           bun scripts/release-cli.ts smoke-artifact \
             "$RUNNER_TEMP/published/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/published-smoke"
+          npm view darwinian dist-tags --json > "$RUNNER_TEMP/resulting-dist-tags.json"
+          CANDIDATE_VERSION="$(jq -er '.["i336-candidate"]' "$RUNNER_TEMP/resulting-dist-tags.json")"
+          RESULTING_LATEST="$(jq -er '.latest' "$RUNNER_TEMP/resulting-dist-tags.json")"
+          if [ "$CANDIDATE_VERSION" != "1.4.2" ] || [ "$RESULTING_LATEST" != "$PRIOR_LATEST" ]; then
+            echo "Candidate tag or latest readback differs from the authorized transition." >&2
+            exit 1
+          fi
+          jq -n \
+            --arg candidateVersion "$CANDIDATE_VERSION" \
+            --arg priorLatest "$PRIOR_LATEST" \
+            --arg resultingLatest "$RESULTING_LATEST" \
+            --arg observedAt "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+            '{candidateVersion, priorLatest, resultingLatest, observedAt}' \
+            > "$RUNNER_TEMP/candidate-registry.json"
+          bun scripts/release-cli.ts create-candidate-receipt \
+            "$RUNNER_TEMP/protected-artifact.json" \
+            "$RUNNER_TEMP/candidate-registry.json" \
+            > "$RUNNER_TEMP/i336-candidate-receipt.json"
+
+      - name: Retain the redacted candidate receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwinian-worker-i336-candidate-receipt
+          path: ${{ runner.temp }}/i336-candidate-receipt.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 30
 
   smoke_macos:
     name: Smoke install (macos)
@@ -569,42 +608,3 @@ jobs:
           bun scripts/release-cli.ts smoke-artifact \
             "$RUNNER_TEMP/published/darwinian-1.4.2.tgz" \
             "$RUNNER_TEMP/published-smoke"
-
-  github_release:
-    name: GitHub Release
-    if: github.event_name == 'push'
-    needs: [validate_tag, smoke_macos]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/v1.4.2
-          fetch-depth: 0
-
-      - name: Create or verify the exact GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: v1.4.2
-          SOURCE_COMMIT: ${{ needs.validate_tag.outputs.source_commit }}
-        run: |
-          git for-each-ref --format='%(contents)' "refs/tags/$TAG" > "$RUNNER_TEMP/tag-annotation.txt"
-          TAG_BODY="$(cat "$RUNNER_TEMP/tag-annotation.txt")"
-          if gh release view "$TAG" --json tagName,targetCommitish,name,body,url \
-            > "$RUNNER_TEMP/release.json" 2>/dev/null; then
-            jq -e \
-              --arg tag "$TAG" \
-              --arg target "$SOURCE_COMMIT" \
-              --arg body "$TAG_BODY" \
-              '.tagName == $tag and .targetCommitish == $target and .name == $tag and .body == $body' \
-              "$RUNNER_TEMP/release.json" > /dev/null
-          else
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --notes-file "$RUNNER_TEMP/tag-annotation.txt" \
-              --target "$SOURCE_COMMIT" \
-              --verify-tag
-          fi

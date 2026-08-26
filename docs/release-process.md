@@ -4,7 +4,7 @@
 
 The CLI release is a two-event, exact-byte process. Manual dispatch can only
 qualify current `main`; it cannot publish. A later exact annotated `v1.4.2` tag
-authorizes publication of the one artifact uploaded by that dry run. No path
+authorizes candidate publication of the one artifact uploaded by that dry run. No path
 treats an already-published version as successful qualification of new source.
 
 ### 1. Complete and qualify source
@@ -23,8 +23,9 @@ bun run verify:release
 Package version, runtime version, and generated build identity must agree on
 `1.4.2`. A source/development identity is explicitly non-eligible. Source
 availability is not installed qualification: the workflow must generate the
-build identity from clean Git, pack once, require the ACP/materialize/Buzz/secret
-members, install that exact tar, and run all twelve safe version/help smokes.
+build identity from clean Git, pack once, require the org/Deployed Worker management,
+materialize, Buzz, secret, launch-context and auth members, install that exact tar,
+and run the fixed safe version/help smoke set.
 The distinction between source availability and installed qualification remains
 part of the retained release evidence.
 
@@ -106,48 +107,50 @@ artifact by ID; verifies the archive digest before extraction; and rejoins the
 receipt, packaged build identity, and measured tar. It never searches for a
 merely similar run.
 
-### 5. Approve exact-tar OIDC publication
+### 5. Approve exact-tar OIDC candidate publication
 
-Only `Publish to npm` enters `darwinian-npm-publish` and receives
+Only `Publish I336 candidate to npm` enters `darwinian-npm-publish` and receives
 `id-token: write`. After policy-conformant approval it repeats the default-branch,
 control-readback, registry-freshness, archive-digest, receipt, build, and tar
 checks. It then publishes the downloaded exact tarball; it does not repack the
 checkout:
 
 ```bash
-npm publish "./candidate/darwinian-1.4.2.tgz" --access public
+npm publish "./candidate/darwinian-1.4.2.tgz" --access public --tag i336-candidate
 ```
 
 There is no `NPM_TOKEN` or maintainer-token fallback for the `darwinian` CLI.
 Failure before publication requires a new successful dry run and new annotated
 authorization. Do not reuse a stale run or edit/move the tag.
 
-### 6. Verify registry bytes and release metadata
+### 6. Verify registry bytes and unchanged latest routing
 
 After propagation, npm version, `gitHead` when reported, shasum, and integrity
 must equal the qualified candidate before the Ubuntu and macOS installed smokes
-run. Only then may the workflow create or verify a GitHub Release whose tag,
-target commit, title, and body exactly match the annotated tag.
+run. The workflow must also prove `i336-candidate` resolves to `1.4.2` and the
+post-publication `latest` value equals the recorded prior value. This workflow
+cannot call `npm dist-tag`, move `latest`, or create a final GitHub Release.
 
 The read-only registry metadata check is:
 
 ```bash
 npm view darwinian@1.4.2 version gitHead dist.shasum dist.integrity --json
+npm view darwinian dist-tags --json
 ```
 
-Record the registry metadata, both installed-smoke results, tag/commit, GitHub
-Release URL, workflow run, and candidate SHA in
+Record the registry metadata, both installed-smoke results, tag/commit, workflow
+run, protocol digest, prior/resulting latest readback, and candidate SHA in
 `.ai/tasks/cl0239_darwinian_worker_cli_release_completion.md`.
 
 Released capability is not live environment evidence. I236 and I238 own their
-separate credentials, staging, ACP/Buzz, and operational qualification gates.
+separate credentials, staging, management/Buzz, and operational qualification gates.
 Worker publication is also distinct from Services adoption. Do not describe a
 green release as deployment, live Buzz delivery, membership, resource
 authorization, or production traffic proof.
 
 ### Recovery after npm publication
 
-If npm publication succeeds but a later registry smoke or GitHub Release step
+If npm candidate publication succeeds but a later registry or installed smoke
 fails, the ordinary workflow cannot be rerun because `1.4.2` now exists. Use
 `.github/workflows/release-recovery.yml` only after a new policy-conformant approval.
 
@@ -162,7 +165,7 @@ timestamp and run ID):
   "authorizedAt": "2026-08-08T00:00:00.000Z",
   "tag": "v1.4.2",
   "failedRunId": 123456789,
-  "action": "verify_and_repair_metadata"
+  "action": "verify_candidate"
 }
 ```
 
@@ -170,8 +173,9 @@ Recovery enters `darwinian-npm-publish` for policy-conformant approval but has n
 OIDC, npm token, publish, repack, tag mutation/push, dist-tag, or unpublish
 capability. It requires the existing tag, failed canonical run, dry-run
 authorization, unexpired artifact, receipt, npm `gitHead`, and registry tar bytes
-to agree. It may run Ubuntu/macOS installed smokes and create or verify missing
-GitHub Release metadata at the existing tag only. Any identity mismatch stops
+to agree and proves `i336-candidate` still resolves to `1.4.2`. It may run
+Ubuntu/macOS installed smokes only. It cannot create or repair a GitHub Release.
+Any identity mismatch stops
 for a separately authorized deprecation and patch roll-forward decision.
 
 ## Releasing `drwn-command-bridge`

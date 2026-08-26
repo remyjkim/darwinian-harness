@@ -2,6 +2,7 @@
   "schema": "darwinian.worker.publication-approval-policy",
   "schemaVersion": 1,
   "githubEnvironment": "darwinian-npm-publish",
+  "candidateDistTag": "i336-candidate",
   "requiredReviewers": ["mind001-cl"],
   "preventSelfReview": true,
   "canAdminsBypass": false

@@ -4,7 +4,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   RELEASE_ARTIFACT_NAME,
+  createCandidatePublicationReceipt,
   createReleaseCandidateReceipt,
+  parseCandidatePublicationReceipt,
   parseReleaseCandidateReceipt,
   parseRecoveryAuthorizationReceipt,
   parseReleaseTagAuthorization,
@@ -82,9 +84,8 @@ function validInput() {
     jobs: [
       { name: "Validate release commit", conclusion: "success" },
       { name: "Dry run complete", conclusion: "success" },
-      { name: "Publish to npm", conclusion: "skipped" },
+      { name: "Publish I336 candidate to npm", conclusion: "skipped" },
       { name: "Smoke install (macos)", conclusion: "skipped" },
-      { name: "GitHub Release", conclusion: "skipped" },
     ],
     artifacts: [{ id: 456, name: RELEASE_ARTIFACT_NAME, digest: DIGEST, expired: false, runId: 123 }],
     artifact: {
@@ -143,6 +144,80 @@ describe("release candidate receipt parser", () => {
   });
 });
 
+describe("I336 candidate publication receipt", () => {
+  test("binds exact registry candidate bytes and protocol while proving latest did not move", () => {
+    const artifact = validInput().artifact;
+    const text = createCandidatePublicationReceipt({
+      artifact,
+      protocolDigest: "e".repeat(64),
+      candidateVersion: "1.4.2",
+      priorLatest: "1.4.0",
+      resultingLatest: "1.4.0",
+      createdAt: "2026-08-08T00:20:00.000Z",
+      observedAt: "2026-08-08T00:19:00.000Z",
+      runId: 789,
+      runAttempt: 1,
+      runUrl: "https://github.com/remyjkim/darwinian-worker/actions/runs/789",
+      ref: "refs/tags/v1.4.2",
+      sourceCommit: COMMIT,
+    });
+    expect(parseCandidatePublicationReceipt(text)).toEqual({
+      schema: "darwinian.worker.i336-candidate",
+      schemaVersion: 1,
+      createdAt: "2026-08-08T00:20:00.000Z",
+      workflow: {
+        path: ".github/workflows/release.yml",
+        event: "push",
+        ref: "refs/tags/v1.4.2",
+        runId: 789,
+        runAttempt: 1,
+        runUrl: "https://github.com/remyjkim/darwinian-worker/actions/runs/789",
+        sourceCommit: COMMIT,
+      },
+      package: { name: "darwinian", version: "1.4.2" },
+      artifact: {
+        filename: "darwinian-1.4.2.tgz",
+        byteLength: 12345,
+        sha256: "d".repeat(64),
+        integrity: INTEGRITY,
+      },
+      protocol: { name: "deployed-worker.v1", sha256: "e".repeat(64) },
+      registry: {
+        candidateTag: "i336-candidate",
+        candidateVersion: "1.4.2",
+        priorLatest: "1.4.0",
+        resultingLatest: "1.4.0",
+        observedAt: "2026-08-08T00:19:00.000Z",
+      },
+    });
+  });
+
+  test("rejects candidate drift, latest movement, tuple mismatch, and secret-shaped fields", () => {
+    const base = {
+      artifact: validInput().artifact,
+      protocolDigest: "e".repeat(64),
+      candidateVersion: "1.4.2",
+      priorLatest: "1.4.0",
+      resultingLatest: "1.4.0",
+      createdAt: "2026-08-08T00:20:00.000Z",
+      observedAt: "2026-08-08T00:19:00.000Z",
+      runId: 789,
+      runAttempt: 1,
+      runUrl: "https://github.com/remyjkim/darwinian-worker/actions/runs/789",
+      ref: "refs/tags/v1.4.2",
+      sourceCommit: COMMIT,
+    };
+    for (const override of [
+      { candidateVersion: "1.4.1" },
+      { resultingLatest: "1.4.2" },
+      { sourceCommit: "f".repeat(40) },
+      { protocolDigest: "bad" },
+    ]) expect(() => createCandidatePublicationReceipt({ ...base, ...override })).toThrow();
+    const valid = JSON.parse(createCandidatePublicationReceipt(base));
+    expect(() => parseCandidatePublicationReceipt(JSON.stringify({ ...valid, authorization: "Bearer SECRET" }))).toThrow();
+  });
+});
+
 describe("annotated tag authorization parser", () => {
   test("accepts the exact closed machine block", () => {
     expect(parseReleaseTagAuthorization(annotation())).toEqual({
@@ -175,7 +250,7 @@ describe("release recovery authorization parser", () => {
     authorizedAt: "2026-08-08T00:00:00.000Z",
     tag: "v1.4.2",
     failedRunId: 789,
-    action: "verify_and_repair_metadata",
+    action: "verify_candidate",
   } as const;
 
   test("accepts only the exact non-publishing recovery authority", () => {
@@ -226,7 +301,7 @@ describe("exact release provenance join", () => {
     ["failed run", (input: ReturnType<typeof validInput>) => { input.run.conclusion = "failure"; }],
     ["missing exact job", (input: ReturnType<typeof validInput>) => { input.jobs = input.jobs.filter((job) => job.name !== "Dry run complete"); }],
     ["failed exact job", (input: ReturnType<typeof validInput>) => { input.jobs.find((job) => job.name === "Dry run complete")!.conclusion = "failure"; }],
-    ["mutation job ran", (input: ReturnType<typeof validInput>) => { input.jobs.find((job) => job.name === "Publish to npm")!.conclusion = "success"; }],
+    ["mutation job ran", (input: ReturnType<typeof validInput>) => { input.jobs.find((job) => job.name === "Publish I336 candidate to npm")!.conclusion = "success"; }],
     ["expired artifact", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.expired = true; }],
     ["renamed artifact", (input: ReturnType<typeof validInput>) => { input.artifacts[0]!.name = "renamed"; }],
     ["multiple artifacts", (input: ReturnType<typeof validInput>) => { input.artifacts.push({ ...input.artifacts[0]!, id: 457 }); }],

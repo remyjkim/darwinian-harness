@@ -50,6 +50,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   management kernel; slug/Mind routes and direct arbitrary Deploy API calls are removed.
 - ACP and provider-backed Mind runtime features are removed. `worker mind` remains a
   provider-neutral no-I/O placeholder while the persistence backend is undecided.
+- The release workflow publishes the exact tar only under `i336-candidate`; it records
+  the prior `latest` value and cannot move it or create a final GitHub Release.
 
 ## [1.4.0] - 2026-08-24
 

@@ -5,6 +5,7 @@ export interface PublicationApprovalPolicyV1 {
   schema: "darwinian.worker.publication-approval-policy";
   schemaVersion: 1;
   githubEnvironment: "darwinian-npm-publish";
+  candidateDistTag: "i336-candidate";
   requiredReviewers: string[];
   preventSelfReview: boolean;
   canAdminsBypass: false;
@@ -101,12 +102,14 @@ function assertApprovalPolicy(value: unknown): asserts value is PublicationAppro
     "schema",
     "schemaVersion",
     "githubEnvironment",
+    "candidateDistTag",
     "requiredReviewers",
     "preventSelfReview",
     "canAdminsBypass",
   ])) fail();
   if (value.schema !== "darwinian.worker.publication-approval-policy" || value.schemaVersion !== 1) fail();
   if (value.githubEnvironment !== "darwinian-npm-publish") fail();
+  if (value.candidateDistTag !== "i336-candidate") fail();
   if (typeof value.preventSelfReview !== "boolean") fail();
   if (value.canAdminsBypass !== false) fail();
   const reviewers = value.requiredReviewers;
@@ -186,6 +189,7 @@ export function validatePublicationControls(input: {
   approval: { requiredReviewers: string[]; preventSelfReview: boolean };
   package: "darwinian";
   versionTag: "v1.4.2";
+  candidateDistTag: "i336-candidate";
 } {
   assertNoSecretBearingInput(input.github);
   assertNoSecretBearingInput(input.npm);
@@ -202,5 +206,6 @@ export function validatePublicationControls(input: {
     },
     package: "darwinian",
     versionTag: "v1.4.2",
+    candidateDistTag: input.policy.candidateDistTag,
   };
 }
