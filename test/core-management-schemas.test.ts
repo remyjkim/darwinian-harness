@@ -38,23 +38,27 @@ describe("management schemas", () => {
 
   test("admits only a status-consistent public error for the same request", () => {
     const parsed = parseManagementPublicError({
-      schema: "cl.drwn.error.v1",
       requestId,
-      code: "RATE_LIMITED",
-      message: "Try later",
-      retryable: true,
+      error: "rate_limited",
       retryAfterSeconds: 2,
-    }, 429, requestId);
+    }, 429, requestId, "organizations.list");
     expect(parsed).toEqual({ code: "RATE_LIMITED", retryable: true, retryAfterSeconds: 2 });
 
     for (const [candidate, status, expected] of [
-      [{ schema: "cl.drwn.error.v1", requestId, code: "RATE_LIMITED", message: "x", retryable: true }, 503, requestId],
-      [{ schema: "cl.drwn.error.v1", requestId, code: "RATE_LIMITED", message: "x", retryable: true }, 429, "123e4567-e89b-42d3-a456-426614174001"],
-      [{ schema: "cl.drwn.error.v1", requestId, code: "UNKNOWN", message: "x", retryable: false }, 400, requestId],
-      [{ schema: "cl.drwn.error.v1", requestId, code: "RATE_LIMITED", message: "x", retryable: true, raw: "secret" }, 429, requestId],
+      [{ requestId, error: "rate_limited", retryAfterSeconds: 2 }, 503, requestId],
+      [{ requestId, error: "rate_limited", retryAfterSeconds: 2 }, 429, "123e4567-e89b-42d3-a456-426614174001"],
+      [{ requestId, error: "unknown" }, 400, requestId],
+      [{ requestId, error: "rate_limited", retryAfterSeconds: 2, raw: "secret" }, 429, requestId],
     ] as const) {
-      expect(() => parseManagementPublicError(candidate, status, expected))
+      expect(() => parseManagementPublicError(candidate, status, expected, "organizations.list"))
         .toThrow(expect.objectContaining({ code: "SERVER_RESPONSE_INVALID" }));
     }
+
+    expect(parseManagementPublicError({
+      error: "client_protocol_unsupported",
+      receivedProtocol: "deployed-worker.v0",
+      requiredProtocol: "deployed-worker.v1",
+      minimumDrwnVersion: "1.4.2",
+    }, 426, requestId, "organizations.list")).toEqual({ code: "UNSUPPORTED_PROTOCOL", retryable: false });
   });
 });

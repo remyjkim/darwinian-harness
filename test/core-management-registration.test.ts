@@ -99,7 +99,7 @@ describe("resumable Deployed Worker registration", () => {
       execute: async () => { calls += 1; throw new Error("must not execute"); },
     };
     for (const overrides of [
-      { organizationId: "worker_wrong" },
+      { organizationId: "bad/org" },
       { name: "" },
       { name: "x".repeat(257) },
       { environment: "preview" },

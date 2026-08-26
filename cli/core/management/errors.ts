@@ -2,9 +2,11 @@
 // ABOUTME: Drops server-authored messages so results retain only reviewed safe fields.
 
 import { DrwnError } from "../errors";
-import { managementContract, managementSchemas } from "./contracts";
+import { managementContract, managementSchemaName, managementSchemas } from "./contracts";
+import { managementRoutes, type ManagementRouteKey } from "./routes";
 
-export type ManagementErrorCode = typeof managementContract.errors.codes[number];
+export type ManagementErrorCode = typeof managementContract.errors.clientCodes[number];
+export type ManagementWireErrorCode = typeof managementContract.errors.wireCodes[number];
 
 export interface ManagementPublicError {
   code: ManagementErrorCode;
@@ -12,8 +14,9 @@ export interface ManagementPublicError {
   retryAfterSeconds?: number;
 }
 
-const errorCodes = new Set<string>(managementContract.errors.codes);
+const errorCodes = new Set<string>(managementContract.errors.clientCodes);
 const retryableCodes = new Set<ManagementErrorCode>(["RATE_LIMITED", "TEMPORARILY_UNAVAILABLE"]);
+const retryableWireCodes = new Set<ManagementWireErrorCode>(managementContract.errors.retryableWireCodes);
 
 function invalidServerResponse(): DrwnError {
   return new DrwnError("SERVER_RESPONSE_INVALID", "The management server returned an invalid response.");
@@ -31,25 +34,43 @@ export function parseManagementPublicError(
   candidate: unknown,
   status: number,
   expectedRequestId: string,
+  routeKey: ManagementRouteKey,
 ): Readonly<ManagementPublicError> {
   try {
-    const parsed = managementSchemas.PublicError!.parse(candidate) as {
+    if (status === 410) {
+      const parsed = managementSchemas.MindContractRemovedFailure!.parse(candidate) as { error: ManagementWireErrorCode };
+      if (parsed.error !== "mind_contract_removed") throw invalidServerResponse();
+      return Object.freeze({ code: "MIND_CONTRACT_REMOVED", retryable: false });
+    }
+    if (status === 426) {
+      const parsed = managementSchemas.ClientProtocolUnsupportedFailure!.parse(candidate) as { error: ManagementWireErrorCode };
+      if (parsed.error !== "client_protocol_unsupported") throw invalidServerResponse();
+      return Object.freeze({ code: "UNSUPPORTED_PROTOCOL", retryable: false });
+    }
+
+    const route = managementRoutes[routeKey];
+    const parsed = managementSchemas[managementSchemaName(route.failureSchema)]!.parse(candidate) as {
       requestId: string;
-      code: ManagementErrorCode;
-      retryable: boolean;
+      error: ManagementWireErrorCode;
       retryAfterSeconds?: number;
     };
+    const code = managementContract.errors.clientCodeByWireCode[parsed.error];
+    const retryable = retryableWireCodes.has(parsed.error);
+    const allowedWireCodes = managementContract.errors.routeWireCodes[routeKey];
     if (
       parsed.requestId !== expectedRequestId ||
-      managementContract.errors.httpStatusByCode[parsed.code] !== status ||
-      parsed.retryable !== retryableCodes.has(parsed.code) ||
-      (!parsed.retryable && parsed.retryAfterSeconds !== undefined)
+      managementContract.errors.httpStatusByWireCode[parsed.error] !== status ||
+      allowedWireCodes === undefined ||
+      !allowedWireCodes.includes(parsed.error) ||
+      code === undefined ||
+      retryable !== retryableCodes.has(code) ||
+      (!retryable && parsed.retryAfterSeconds !== undefined)
     ) {
       throw invalidServerResponse();
     }
     return Object.freeze({
-      code: parsed.code,
-      retryable: parsed.retryable,
+      code,
+      retryable,
       ...(parsed.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: parsed.retryAfterSeconds }),
     });
   } catch (error) {

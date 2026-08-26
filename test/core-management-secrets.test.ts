@@ -40,7 +40,7 @@ describe("Deployed Worker secrets", () => {
       name: "PROVIDER_API_KEY", value: "value", expectedWorkerRevision: 3,
     };
     for (const override of [
-      { deployedWorkerId: "worker_wrong" }, { name: "lowercase" }, { value: "" },
+      { deployedWorkerId: "bad/id" }, { name: "lowercase" }, { value: "" },
       { value: "x".repeat(65_537) }, { expectedWorkerRevision: 0 },
     ]) {
       await expect(setDeployedWorkerSecret({ ...base, ...override }, {

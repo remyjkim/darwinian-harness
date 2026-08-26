@@ -40,7 +40,7 @@ const servicesPath = resolve(
   "v1",
   "contract.json",
 );
-const expectedDigest = "e396d4fb42134d4b79882da54e473d1e3f54ef88862c807057ae859fe066e2f7";
+const expectedDigest = "1534f85fe8d9079eb1c6c3cc9cf34477fb7cd19973247f31f4b98df0ed9bc3b2";
 
 test("vendors the exact immutable Services artifact and pins its authority", () => {
   expect(existsSync(vendoredPath)).toBe(true);
@@ -55,13 +55,15 @@ test("vendors the exact immutable Services artifact and pins its authority", () 
     schemaVersion: 1,
     protocol: "deployed-worker.v1",
     servicesRepository: "curation-labs/darwinian-services",
-    sourceCommit: "abac8dc9f1466aa855054daf2fea045a54a54732",
+    sourceCommit: "bc5e32660ac711e13dfe68731caf515810cfa035",
     sha256: expectedDigest,
     routeCount: 13,
     positiveVectorCount: 13,
-    negativeVectorCount: 35,
-    schemaCount: 42,
-    errorCodeCount: 10,
+    negativeVectorCount: 32,
+    semanticVectorCount: 3,
+    schemaCount: 63,
+    wireErrorCodeCount: 9,
+    clientErrorCodeCount: 10,
   });
 });
 
@@ -70,9 +72,10 @@ test("admits the closed contract and derives the exact route inventory", () => {
   expect(Object.isFrozen(managementContract)).toBe(true);
   expect(Object.isFrozen(managementContract.schemas)).toBe(true);
   expect(Object.isFrozen(managementSchemas)).toBe(true);
-  expect(Object.keys(managementContract.schemas)).toHaveLength(42);
+  expect(Object.keys(managementContract.schemas)).toHaveLength(63);
   expect(managementContract.vectors.positive).toHaveLength(13);
-  expect(managementContract.vectors.negative).toHaveLength(35);
+  expect(managementContract.vectors.negative).toHaveLength(32);
+  expect(managementContract.semanticVectors).toHaveLength(3);
   expect(MANAGEMENT_ROUTE_KEYS).toEqual([
     "organizations.list",
     "organizations.read",
@@ -172,6 +175,7 @@ test("pins strict top-level, profile, header, ID, and error inventories", () => 
     "routes",
     "schemas",
     "errors",
+    "semanticVectors",
     "vectors",
   ]);
   expect(managementContract.profiles).toEqual({
@@ -206,19 +210,19 @@ test("pins strict top-level, profile, header, ID, and error inventories", () => 
     mutationIdempotencyHeader: "X-Request-Id",
   });
   expect(Object.fromEntries(Object.entries(managementContract.idKinds).map(([name, schema]) => [name, schema.pattern]))).toEqual({
-    OrganizationId: "^org_[A-Za-z0-9._:-]+$",
-    WorkerId: "^worker_[A-Za-z0-9._:-]+$",
-    DeployedWorkerId: "^deployed_worker_[A-Za-z0-9._:-]+$",
-    DeploymentId: "^deployment_attempt_[A-Za-z0-9._:-]+$",
-    RunId: "^run_[A-Za-z0-9._:-]+$",
+    OrganizationId: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    WorkerId: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    DeployedWorkerId: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    DeploymentId: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    RunId: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
     RequestId: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
   });
-  expect(new Set(Object.values(managementContract.idKinds).map((schema) => schema.pattern)).size).toBe(6);
-  expect(managementContract.errors.codes).toContain("SERVER_RESPONSE_INVALID");
-  expect(managementContract.errors.httpStatusByCode.SERVER_RESPONSE_INVALID).toBe(502);
-  expect((managementContract.schemas.PublicError!.properties as Record<string, { enum?: string[] }>).code?.enum).toEqual(
-    managementContract.errors.codes,
-  );
+  expect(new Set(Object.values(managementContract.idKinds).slice(0, 5).map((schema) => schema.pattern)).size).toBe(1);
+  expect(managementContract.errors.wireCodes).toContain("client_protocol_unsupported");
+  expect(managementContract.errors.wireCodes).not.toContain("server_response_invalid");
+  expect(managementContract.errors.clientCodes).toContain("SERVER_RESPONSE_INVALID");
+  expect(managementContract.errors.clientCodeByWireCode.client_protocol_unsupported).toBe("UNSUPPORTED_PROTOCOL");
+  expect(managementContract.schemas.PublicError).toBeUndefined();
 });
 
 function assertObjectSchemasClosed(value: unknown, path = "root"): void {
@@ -256,7 +260,7 @@ function caughtCode(operation: () => unknown): string | undefined {
   }
 }
 
-test("rejects all thirty-five negative vectors on only their intended surface", () => {
+test("rejects all thirty-two executable negatives on only their intended client surface", () => {
   const positives = new Map(managementContract.vectors.positive.map((vector) => [vector.routeKey, vector]));
   const baseHeaders = {
     Authorization: "Bearer services-token-fixture",
@@ -265,7 +269,7 @@ test("rejects all thirty-five negative vectors on only their intended surface", 
     "X-Request-Id": "123e4567-e89b-42d3-a456-426614174000",
   };
   for (const vector of managementContract.vectors.negative) {
-    expect(managementContract.errors.codes, vector.caseId).toContain(vector.expectedError);
+    expect(managementContract.errors.clientCodes, vector.caseId).toContain(vector.expectedClientError);
     const positive = positives.get(vector.routeKey)!;
     expect(parseManagementRequest(vector.routeKey, positive.request), vector.caseId).toEqual(positive.request);
     expect(parseManagementSuccess(vector.routeKey, positive.success), vector.caseId).toEqual(positive.success);
@@ -283,8 +287,20 @@ test("rejects all thirty-five negative vectors on only their intended surface", 
     } else {
       code = caughtCode(() => assertManagementPathAllowed(String(vector.candidate.path)));
     }
-    expect(code, vector.caseId).toBe(vector.expectedError);
+    expect(code, vector.caseId).toBe(vector.expectedClientError);
   }
+});
+
+test("preserves opaque legacy IDs and keeps cross-kind checks in semantic server vectors", () => {
+  for (const value of ["card_legacy-deployed", "worker_legacy-deployed", "dep_legacy-attempt"]) {
+    expect(() => resolveManagementRoute("deployed_workers.read", { deployedWorkerId: value })).not.toThrow();
+  }
+  expect(managementContract.semanticVectors.map(({ caseId }) => caseId)).toEqual([
+    "organization-worker-id-confusion",
+    "worker-deployed-worker-id-confusion",
+    "deployed-worker-deployment-id-confusion",
+  ]);
+  expect(managementContract.vectors.negative.some(({ caseId }) => caseId.includes("confusion"))).toBe(false);
 });
 
 function collectPropertyPaths(value: unknown, path: string, target: string[], forbidden: Set<string>): void {

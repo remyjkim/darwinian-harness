@@ -167,11 +167,8 @@ describe("organization management commands", () => {
   test("org use refusal leaves local context absent and never reflects the candidate ID", async () => {
     const requestId = requestIds[1]!;
     const result = await runOrg(["org", "use", "org_hidden"], (async () => response({
-      schema: "cl.drwn.error.v1",
       requestId,
-      code: "RESOURCE_UNAVAILABLE",
-      message: "server detail that is not retained",
-      retryable: false,
+      error: "resource_unavailable",
     }, 404)) as unknown as typeof fetch, { requestIds: [requestId] });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("RESOURCE_UNAVAILABLE");

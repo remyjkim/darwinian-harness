@@ -52,12 +52,14 @@ function token(): string {
 
 function response(value: unknown, status = 200): Response { return Response.json(value, { status }); }
 function publicError(requestId: string, code: string, status: number): Response {
+  const wireCode = {
+    RESOURCE_UNAVAILABLE: "resource_unavailable",
+    AUTHORIZATION_DENIED: "authorization_denied",
+  }[code];
+  if (!wireCode) throw new Error("unsupported fixture error");
   return response({
-    schema: "cl.drwn.error.v1",
     requestId,
-    code,
-    message: "safe",
-    retryable: false,
+    error: wireCode,
   }, status);
 }
 
@@ -249,7 +251,7 @@ describe("read-only Worker management commands", () => {
     expect(wrong.stderr).not.toContain("org_other");
     expect(await loadProjectCloudContext(fixture.repoRoot)).toBeNull();
 
-    const invalid = await runExistingFixture(fixture, ["worker", "use", "worker_wrong"], wrongOrgFetch, ids[1]!, projectConfigPath);
+    const invalid = await runExistingFixture(fixture, ["worker", "use", "bad/id"], wrongOrgFetch, ids[1]!, projectConfigPath);
     expect(invalid.exitCode).toBe(1);
     expect(invalid.stderr).toContain("VALIDATION_FAILED");
     expect(calls).toBe(1);

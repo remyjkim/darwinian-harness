@@ -27,6 +27,30 @@ const commitSchema = z.string().regex(/^[a-f0-9]{40}$/);
 const schemaRef = z.string().regex(/^#\/schemas\/[A-Za-z][A-Za-z0-9]*$/);
 const routeKeySchema = z.string().regex(/^[a-z]+(?:[_.][a-z]+)*$/);
 
+const wireErrorCodeSchema = z.enum([
+  "consent_required",
+  "authorization_denied",
+  "resource_unavailable",
+  "validation_failed",
+  "revision_conflict",
+  "rate_limited",
+  "temporarily_unavailable",
+  "mind_contract_removed",
+  "client_protocol_unsupported",
+]);
+const clientErrorCodeSchema = z.enum([
+  "CONSENT_REQUIRED",
+  "AUTHORIZATION_DENIED",
+  "RESOURCE_UNAVAILABLE",
+  "VALIDATION_FAILED",
+  "REVISION_CONFLICT",
+  "RATE_LIMITED",
+  "TEMPORARILY_UNAVAILABLE",
+  "MIND_CONTRACT_REMOVED",
+  "UNSUPPORTED_PROTOCOL",
+  "SERVER_RESPONSE_INVALID",
+]);
+
 const lockSchema = z.object({
   schema: z.literal("drwn.management-contract-lock"),
   schemaVersion: z.literal(1),
@@ -36,9 +60,11 @@ const lockSchema = z.object({
   sha256: sha256Schema,
   routeCount: z.literal(13),
   positiveVectorCount: z.literal(13),
-  negativeVectorCount: z.literal(35),
-  schemaCount: z.literal(42),
-  errorCodeCount: z.literal(10),
+  negativeVectorCount: z.literal(32),
+  semanticVectorCount: z.literal(3),
+  schemaCount: z.literal(63),
+  wireErrorCodeCount: z.literal(9),
+  clientErrorCodeCount: z.literal(10),
 }).strict();
 
 const idKindSchema = z.object({
@@ -81,6 +107,7 @@ const routeSchema = z.object({
   mutation: z.boolean(),
   requestSchema: schemaRef,
   successSchema: schemaRef,
+  failureSchema: schemaRef,
 }).strict();
 
 const positiveVectorSchema = z.object({
@@ -94,7 +121,19 @@ const negativeVectorSchema = z.object({
   routeKey: routeKeySchema,
   surface: z.enum(["request", "response", "header", "path"]),
   candidate: jsonObjectSchema,
-  expectedError: z.string().regex(/^[A-Z][A-Z0-9_]+$/),
+  expectedClientError: clientErrorCodeSchema,
+}).strict();
+
+const semanticVectorSchema = z.object({
+  caseId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  routeKey: routeKeySchema,
+  layer: z.enum(["authorization", "producer"]),
+  candidate: jsonObjectSchema,
+  constraint: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  expected: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("wire-error"), code: wireErrorCodeSchema }).strict(),
+    z.object({ kind: z.literal("producer-invariant"), code: z.literal("distinct-authoritative-fields") }).strict(),
+  ]),
 }).strict();
 
 const contractSchema = z.object({
@@ -153,14 +192,19 @@ const contractSchema = z.object({
     payloadContract: z.literal("canonical-worker-deploy-payload-v1-json"),
   }).strict(),
   routes: z.array(routeSchema).length(13),
-  schemas: z.record(z.string(), jsonObjectSchema).refine((value) => Object.keys(value).length === 42),
+  schemas: z.record(z.string(), jsonObjectSchema).refine((value) => Object.keys(value).length === 63),
   errors: z.object({
-    codes: z.array(z.string().regex(/^[A-Z][A-Z0-9_]+$/)).length(10),
-    httpStatusByCode: z.record(z.string(), z.number().int().min(400).max(599)),
+    wireCodes: z.array(wireErrorCodeSchema).length(9),
+    clientCodes: z.array(clientErrorCodeSchema).length(10),
+    clientCodeByWireCode: z.record(wireErrorCodeSchema, clientErrorCodeSchema),
+    httpStatusByWireCode: z.record(wireErrorCodeSchema, z.number().int().min(400).max(599)),
+    retryableWireCodes: z.tuple([z.literal("rate_limited"), z.literal("temporarily_unavailable")]),
+    routeWireCodes: z.record(routeKeySchema, z.array(wireErrorCodeSchema).min(1)),
   }).strict(),
+  semanticVectors: z.array(semanticVectorSchema).length(3),
   vectors: z.object({
     positive: z.array(positiveVectorSchema).length(13),
-    negative: z.array(negativeVectorSchema).length(35),
+    negative: z.array(negativeVectorSchema).length(32),
   }).strict(),
 }).strict();
 
@@ -465,7 +509,11 @@ function assertInventories(contract: ManagementContract, lock: ManagementContrac
   if (new Set(routeKeys).size !== routeKeys.length) throw invalidContract("Management route keys are not unique");
   const schemaNames = new Set(Object.keys(contract.schemas));
   for (const route of contract.routes) {
-    if (!schemaNames.has(schemaNameFromRef(route.requestSchema)) || !schemaNames.has(schemaNameFromRef(route.successSchema))) {
+    if (
+      !schemaNames.has(schemaNameFromRef(route.requestSchema)) ||
+      !schemaNames.has(schemaNameFromRef(route.successSchema)) ||
+      !schemaNames.has(schemaNameFromRef(route.failureSchema))
+    ) {
       throw invalidContract(`Management route ${route.routeKey} refers to an unknown schema`);
     }
   }
@@ -473,22 +521,32 @@ function assertInventories(contract: ManagementContract, lock: ManagementContrac
     throw invalidContract("A positive management vector refers to an unknown route");
   }
   if (contract.vectors.negative.some((vector) =>
-    !routeKeys.includes(vector.routeKey) || !contract.errors.codes.includes(vector.expectedError)
+    !routeKeys.includes(vector.routeKey) || !contract.errors.clientCodes.includes(vector.expectedClientError)
   )) {
     throw invalidContract("A negative management vector refers to an unknown route or error");
+  }
+  if (contract.semanticVectors.some((vector) => !routeKeys.includes(vector.routeKey))) {
+    throw invalidContract("A semantic management vector refers to an unknown route");
   }
   const counts = {
     routeCount: contract.routes.length,
     positiveVectorCount: contract.vectors.positive.length,
     negativeVectorCount: contract.vectors.negative.length,
+    semanticVectorCount: contract.semanticVectors.length,
     schemaCount: Object.keys(contract.schemas).length,
-    errorCodeCount: contract.errors.codes.length,
+    wireErrorCodeCount: contract.errors.wireCodes.length,
+    clientErrorCodeCount: contract.errors.clientCodes.length,
   };
   for (const [key, count] of Object.entries(counts)) {
     if (lock[key as keyof typeof counts] !== count) throw invalidContract(`Management contract ${key} does not match its lock`);
   }
-  if (Object.keys(contract.errors.httpStatusByCode).sort().join("\n") !== [...contract.errors.codes].sort().join("\n")) {
-    throw invalidContract("Management error code and HTTP status inventories differ");
+  const wireCodes = [...contract.errors.wireCodes].sort().join("\n");
+  if (
+    Object.keys(contract.errors.httpStatusByWireCode).sort().join("\n") !== wireCodes ||
+    Object.keys(contract.errors.clientCodeByWireCode).sort().join("\n") !== wireCodes ||
+    Object.keys(contract.errors.routeWireCodes).sort().join("\n") !== [...routeKeys].sort().join("\n")
+  ) {
+    throw invalidContract("Management wire, projection, status, and route error inventories differ");
   }
   assertContractJsonSchemaDialect(contract);
 }

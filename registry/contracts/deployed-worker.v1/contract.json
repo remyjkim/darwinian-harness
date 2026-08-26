@@ -71,31 +71,31 @@
     "OrganizationId": {
       "title": "OrganizationId",
       "type": "string",
-      "pattern": "^org_[A-Za-z0-9._:-]+$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
       "maxLength": 128
     },
     "WorkerId": {
       "title": "WorkerId",
       "type": "string",
-      "pattern": "^worker_[A-Za-z0-9._:-]+$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
       "maxLength": 128
     },
     "DeployedWorkerId": {
       "title": "DeployedWorkerId",
       "type": "string",
-      "pattern": "^deployed_worker_[A-Za-z0-9._:-]+$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
       "maxLength": 128
     },
     "DeploymentId": {
       "title": "DeploymentId",
       "type": "string",
-      "pattern": "^deployment_attempt_[A-Za-z0-9._:-]+$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
       "maxLength": 128
     },
     "RunId": {
       "title": "RunId",
       "type": "string",
-      "pattern": "^run_[A-Za-z0-9._:-]+$",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
       "maxLength": 128
     },
     "RequestId": {
@@ -969,57 +969,487 @@
         }
       }
     },
-    "PublicError": {
+    "ConsentRequiredFailure": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "schema",
         "requestId",
-        "code",
-        "message",
-        "retryable"
+        "error"
       ],
       "properties": {
-        "schema": {
-          "type": "string",
-          "const": "cl.drwn.error.v1"
-        },
         "requestId": {
           "$ref": "#/idKinds/RequestId"
         },
-        "code": {
-          "type": "string",
-          "enum": [
-            "CONSENT_REQUIRED",
-            "AUTHORIZATION_DENIED",
-            "RESOURCE_UNAVAILABLE",
-            "VALIDATION_FAILED",
-            "REVISION_CONFLICT",
-            "RATE_LIMITED",
-            "TEMPORARILY_UNAVAILABLE",
-            "MIND_CONTRACT_REMOVED",
-            "UNSUPPORTED_PROTOCOL",
-            "SERVER_RESPONSE_INVALID"
-          ]
+        "error": {
+          "const": "consent_required"
+        }
+      }
+    },
+    "AuthorizationDeniedFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "error"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
         },
-        "message": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
+        "error": {
+          "const": "authorization_denied"
+        }
+      }
+    },
+    "ResourceUnavailableFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "error"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
         },
-        "retryable": {
-          "type": "boolean"
+        "error": {
+          "const": "resource_unavailable"
+        }
+      }
+    },
+    "ValidationFailedFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "error"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "error": {
+          "const": "validation_failed"
+        }
+      }
+    },
+    "RevisionConflictFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "error"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "error": {
+          "const": "revision_conflict"
+        }
+      }
+    },
+    "RateLimitedFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "error",
+        "retryAfterSeconds"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "error": {
+          "const": "rate_limited"
         },
         "retryAfterSeconds": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 3600
+          "maximum": 300
         }
       }
+    },
+    "TemporarilyUnavailableFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "error",
+        "retryAfterSeconds"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "error": {
+          "const": "temporarily_unavailable"
+        },
+        "retryAfterSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 300
+        }
+      }
+    },
+    "MindContractRemovedFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error",
+        "requiredProtocol",
+        "minimumDrwnVersion",
+        "documentation"
+      ],
+      "properties": {
+        "error": {
+          "const": "mind_contract_removed"
+        },
+        "requiredProtocol": {
+          "const": "deployed-worker.v1"
+        },
+        "minimumDrwnVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+          "maxLength": 64
+        },
+        "documentation": {
+          "type": "string",
+          "pattern": "^https://[^\\s]+$",
+          "maxLength": 2048
+        }
+      }
+    },
+    "ClientProtocolUnsupportedFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "error",
+        "receivedProtocol",
+        "requiredProtocol",
+        "minimumDrwnVersion"
+      ],
+      "properties": {
+        "error": {
+          "const": "client_protocol_unsupported"
+        },
+        "receivedProtocol": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requiredProtocol": {
+          "const": "deployed-worker.v1"
+        },
+        "minimumDrwnVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+          "maxLength": 64
+        }
+      }
+    },
+    "OrganizationsListFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "OrganizationsReadFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeployedWorkersRegisterFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ValidationFailedFailure"
+        },
+        {
+          "$ref": "#/schemas/RevisionConflictFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeployedWorkersListFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeployedWorkersReadFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeploymentArtifactsPutFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/ValidationFailedFailure"
+        },
+        {
+          "$ref": "#/schemas/RevisionConflictFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeploymentsCreateFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/ValidationFailedFailure"
+        },
+        {
+          "$ref": "#/schemas/RevisionConflictFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeploymentsListFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeploymentsRollbackFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/ValidationFailedFailure"
+        },
+        {
+          "$ref": "#/schemas/RevisionConflictFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "SecretsSetFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/ValidationFailedFailure"
+        },
+        {
+          "$ref": "#/schemas/RevisionConflictFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "RunsCreateFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/ValidationFailedFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "RunsReadFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
+    },
+    "DeployedWorkersRetireFailure": {
+      "oneOf": [
+        {
+          "$ref": "#/schemas/ConsentRequiredFailure"
+        },
+        {
+          "$ref": "#/schemas/AuthorizationDeniedFailure"
+        },
+        {
+          "$ref": "#/schemas/ResourceUnavailableFailure"
+        },
+        {
+          "$ref": "#/schemas/ValidationFailedFailure"
+        },
+        {
+          "$ref": "#/schemas/RevisionConflictFailure"
+        },
+        {
+          "$ref": "#/schemas/RateLimitedFailure"
+        },
+        {
+          "$ref": "#/schemas/TemporarilyUnavailableFailure"
+        }
+      ]
     }
   },
   "errors": {
-    "codes": [
+    "wireCodes": [
+      "consent_required",
+      "authorization_denied",
+      "resource_unavailable",
+      "validation_failed",
+      "revision_conflict",
+      "rate_limited",
+      "temporarily_unavailable",
+      "mind_contract_removed",
+      "client_protocol_unsupported"
+    ],
+    "clientCodes": [
       "CONSENT_REQUIRED",
       "AUTHORIZATION_DENIED",
       "RESOURCE_UNAVAILABLE",
@@ -1031,17 +1461,135 @@
       "UNSUPPORTED_PROTOCOL",
       "SERVER_RESPONSE_INVALID"
     ],
-    "httpStatusByCode": {
-      "CONSENT_REQUIRED": 403,
-      "AUTHORIZATION_DENIED": 403,
-      "RESOURCE_UNAVAILABLE": 404,
-      "VALIDATION_FAILED": 400,
-      "REVISION_CONFLICT": 409,
-      "RATE_LIMITED": 429,
-      "TEMPORARILY_UNAVAILABLE": 503,
-      "MIND_CONTRACT_REMOVED": 410,
-      "UNSUPPORTED_PROTOCOL": 426,
-      "SERVER_RESPONSE_INVALID": 502
+    "clientCodeByWireCode": {
+      "consent_required": "CONSENT_REQUIRED",
+      "authorization_denied": "AUTHORIZATION_DENIED",
+      "resource_unavailable": "RESOURCE_UNAVAILABLE",
+      "validation_failed": "VALIDATION_FAILED",
+      "revision_conflict": "REVISION_CONFLICT",
+      "rate_limited": "RATE_LIMITED",
+      "temporarily_unavailable": "TEMPORARILY_UNAVAILABLE",
+      "mind_contract_removed": "MIND_CONTRACT_REMOVED",
+      "client_protocol_unsupported": "UNSUPPORTED_PROTOCOL"
+    },
+    "httpStatusByWireCode": {
+      "consent_required": 403,
+      "authorization_denied": 403,
+      "resource_unavailable": 404,
+      "validation_failed": 400,
+      "revision_conflict": 409,
+      "rate_limited": 429,
+      "temporarily_unavailable": 503,
+      "mind_contract_removed": 410,
+      "client_protocol_unsupported": 426
+    },
+    "retryableWireCodes": [
+      "rate_limited",
+      "temporarily_unavailable"
+    ],
+    "routeWireCodes": {
+      "organizations.list": [
+        "consent_required",
+        "authorization_denied",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "organizations.read": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployed_workers.register": [
+        "consent_required",
+        "authorization_denied",
+        "validation_failed",
+        "revision_conflict",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployed_workers.list": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployed_workers.read": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployment_artifacts.put": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "validation_failed",
+        "revision_conflict",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployments.create": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "validation_failed",
+        "revision_conflict",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployments.list": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployments.rollback": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "validation_failed",
+        "revision_conflict",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "secrets.set": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "validation_failed",
+        "revision_conflict",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "runs.create": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "validation_failed",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "runs.read": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "rate_limited",
+        "temporarily_unavailable"
+      ],
+      "deployed_workers.retire": [
+        "consent_required",
+        "authorization_denied",
+        "resource_unavailable",
+        "validation_failed",
+        "revision_conflict",
+        "rate_limited",
+        "temporarily_unavailable"
+      ]
     }
   },
   "routes": [
@@ -1054,7 +1602,8 @@
       },
       "mutation": false,
       "requestSchema": "#/schemas/OrganizationsListRequest",
-      "successSchema": "#/schemas/OrganizationsListSuccess"
+      "successSchema": "#/schemas/OrganizationsListSuccess",
+      "failureSchema": "#/schemas/OrganizationsListFailure"
     },
     {
       "routeKey": "organizations.read",
@@ -1065,7 +1614,8 @@
       },
       "mutation": false,
       "requestSchema": "#/schemas/OrganizationsReadRequest",
-      "successSchema": "#/schemas/OrganizationsReadSuccess"
+      "successSchema": "#/schemas/OrganizationsReadSuccess",
+      "failureSchema": "#/schemas/OrganizationsReadFailure"
     },
     {
       "routeKey": "deployed_workers.register",
@@ -1076,7 +1626,8 @@
       },
       "mutation": true,
       "requestSchema": "#/schemas/DeployedWorkersRegisterRequest",
-      "successSchema": "#/schemas/DeployedWorkersRegisterSuccess"
+      "successSchema": "#/schemas/DeployedWorkersRegisterSuccess",
+      "failureSchema": "#/schemas/DeployedWorkersRegisterFailure"
     },
     {
       "routeKey": "deployed_workers.list",
@@ -1088,7 +1639,8 @@
       },
       "mutation": false,
       "requestSchema": "#/schemas/DeployedWorkersListRequest",
-      "successSchema": "#/schemas/DeployedWorkersListSuccess"
+      "successSchema": "#/schemas/DeployedWorkersListSuccess",
+      "failureSchema": "#/schemas/DeployedWorkersListFailure"
     },
     {
       "routeKey": "deployed_workers.read",
@@ -1100,7 +1652,8 @@
       },
       "mutation": false,
       "requestSchema": "#/schemas/DeployedWorkersReadRequest",
-      "successSchema": "#/schemas/DeployedWorkersReadSuccess"
+      "successSchema": "#/schemas/DeployedWorkersReadSuccess",
+      "failureSchema": "#/schemas/DeployedWorkersReadFailure"
     },
     {
       "routeKey": "deployment_artifacts.put",
@@ -1112,7 +1665,8 @@
       },
       "mutation": true,
       "requestSchema": "#/schemas/DeploymentArtifactsPutRequest",
-      "successSchema": "#/schemas/DeploymentArtifactsPutSuccess"
+      "successSchema": "#/schemas/DeploymentArtifactsPutSuccess",
+      "failureSchema": "#/schemas/DeploymentArtifactsPutFailure"
     },
     {
       "routeKey": "deployments.create",
@@ -1124,7 +1678,8 @@
       },
       "mutation": true,
       "requestSchema": "#/schemas/DeploymentsCreateRequest",
-      "successSchema": "#/schemas/DeploymentsCreateSuccess"
+      "successSchema": "#/schemas/DeploymentsCreateSuccess",
+      "failureSchema": "#/schemas/DeploymentsCreateFailure"
     },
     {
       "routeKey": "deployments.list",
@@ -1136,7 +1691,8 @@
       },
       "mutation": false,
       "requestSchema": "#/schemas/DeploymentsListRequest",
-      "successSchema": "#/schemas/DeploymentsListSuccess"
+      "successSchema": "#/schemas/DeploymentsListSuccess",
+      "failureSchema": "#/schemas/DeploymentsListFailure"
     },
     {
       "routeKey": "deployments.rollback",
@@ -1148,7 +1704,8 @@
       },
       "mutation": true,
       "requestSchema": "#/schemas/DeploymentsRollbackRequest",
-      "successSchema": "#/schemas/DeploymentsRollbackSuccess"
+      "successSchema": "#/schemas/DeploymentsRollbackSuccess",
+      "failureSchema": "#/schemas/DeploymentsRollbackFailure"
     },
     {
       "routeKey": "secrets.set",
@@ -1160,7 +1717,8 @@
       },
       "mutation": true,
       "requestSchema": "#/schemas/SecretsSetRequest",
-      "successSchema": "#/schemas/SecretsSetSuccess"
+      "successSchema": "#/schemas/SecretsSetSuccess",
+      "failureSchema": "#/schemas/SecretsSetFailure"
     },
     {
       "routeKey": "runs.create",
@@ -1172,7 +1730,8 @@
       },
       "mutation": true,
       "requestSchema": "#/schemas/RunsCreateRequest",
-      "successSchema": "#/schemas/RunsCreateSuccess"
+      "successSchema": "#/schemas/RunsCreateSuccess",
+      "failureSchema": "#/schemas/RunsCreateFailure"
     },
     {
       "routeKey": "runs.read",
@@ -1184,7 +1743,8 @@
       },
       "mutation": false,
       "requestSchema": "#/schemas/RunsReadRequest",
-      "successSchema": "#/schemas/RunsReadSuccess"
+      "successSchema": "#/schemas/RunsReadSuccess",
+      "failureSchema": "#/schemas/RunsReadFailure"
     },
     {
       "routeKey": "deployed_workers.retire",
@@ -1196,7 +1756,51 @@
       },
       "mutation": true,
       "requestSchema": "#/schemas/DeployedWorkersRetireRequest",
-      "successSchema": "#/schemas/DeployedWorkersRetireSuccess"
+      "successSchema": "#/schemas/DeployedWorkersRetireSuccess",
+      "failureSchema": "#/schemas/DeployedWorkersRetireFailure"
+    }
+  ],
+  "semanticVectors": [
+    {
+      "caseId": "organization-worker-id-confusion",
+      "routeKey": "deployed_workers.register",
+      "layer": "authorization",
+      "candidate": {
+        "organizationId": "worker_alpha"
+      },
+      "constraint": "opaque-id-must-resolve-as-visible-organization",
+      "expected": {
+        "kind": "wire-error",
+        "code": "authorization_denied"
+      }
+    },
+    {
+      "caseId": "worker-deployed-worker-id-confusion",
+      "routeKey": "deployed_workers.register",
+      "layer": "producer",
+      "candidate": {
+        "workerId": "deployed_worker_alpha",
+        "deployedWorkerId": "worker_alpha"
+      },
+      "constraint": "joined-authorities-must-preserve-distinct-field-identities",
+      "expected": {
+        "kind": "producer-invariant",
+        "code": "distinct-authoritative-fields"
+      }
+    },
+    {
+      "caseId": "deployed-worker-deployment-id-confusion",
+      "routeKey": "deployments.rollback",
+      "layer": "authorization",
+      "candidate": {
+        "deployedWorkerId": "deployment_attempt_0001",
+        "deploymentId": "deployed_worker_alpha"
+      },
+      "constraint": "attempt-must-belong-to-authorized-deployed-worker",
+      "expected": {
+        "kind": "wire-error",
+        "code": "resource_unavailable"
+      }
     }
   ],
   "vectors": {
@@ -1447,7 +2051,7 @@
           "requestId": "123e4567-e89b-42d3-a456-426614174000",
           "unexpected": true
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "unknown-response-field",
@@ -1457,36 +2061,7 @@
           "requestId": "123e4567-e89b-42d3-a456-426614174001",
           "unexpected": true
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
-      },
-      {
-        "caseId": "organization-worker-id-confusion",
-        "routeKey": "deployed_workers.register",
-        "surface": "request",
-        "candidate": {
-          "organizationId": "worker_alpha"
-        },
-        "expectedError": "VALIDATION_FAILED"
-      },
-      {
-        "caseId": "worker-deployed-worker-id-confusion",
-        "routeKey": "deployed_workers.register",
-        "surface": "response",
-        "candidate": {
-          "workerId": "deployed_worker_alpha",
-          "deployedWorkerId": "worker_alpha"
-        },
-        "expectedError": "SERVER_RESPONSE_INVALID"
-      },
-      {
-        "caseId": "deployed-worker-deployment-id-confusion",
-        "routeKey": "deployments.rollback",
-        "surface": "request",
-        "candidate": {
-          "deployedWorkerId": "deployment_attempt_0001",
-          "deploymentId": "deployed_worker_alpha"
-        },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "malformed-organization-id",
@@ -1495,7 +2070,7 @@
         "candidate": {
           "organizationId": "org/invalid"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "malformed-worker-id",
@@ -1504,7 +2079,7 @@
         "candidate": {
           "workerId": "wrk invalid"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "malformed-deployed-worker-id",
@@ -1513,7 +2088,7 @@
         "candidate": {
           "deployedWorkerId": "dw/invalid"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "malformed-deployment-id",
@@ -1522,7 +2097,7 @@
         "candidate": {
           "deploymentId": "dep invalid"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "malformed-run-id",
@@ -1531,7 +2106,7 @@
         "candidate": {
           "runId": "run/invalid"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "malformed-request-id",
@@ -1540,7 +2115,7 @@
         "candidate": {
           "X-Request-Id": "123E4567-E89B-42D3-A456-426614174000"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "malformed-artifact-sha",
@@ -1549,7 +2124,7 @@
         "candidate": {
           "artifactSha256": "6867241440EF87A70A4875C40B56AFDE567CCDB261AE4317C87A13C25B0314E1"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "malformed-artifact-base64",
@@ -1558,7 +2133,7 @@
         "candidate": {
           "payloadBase64": "***not-base64***"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "artifact-byte-length-mismatch",
@@ -1567,7 +2142,7 @@
         "candidate": {
           "byteLength": 981
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "artifact-digest-mismatch",
@@ -1576,7 +2151,7 @@
         "candidate": {
           "artifactSha256": "0000000000000000000000000000000000000000000000000000000000000000"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "artifact-response-ref-mismatch",
@@ -1585,7 +2160,7 @@
         "candidate": {
           "artifactRef": "deployment_artifact:sha256:0000000000000000000000000000000000000000000000000000000000000000"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "artifact-response-length-mismatch",
@@ -1594,7 +2169,7 @@
         "candidate": {
           "byteLength": 981
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "malformed-cursor",
@@ -1603,7 +2178,7 @@
         "candidate": {
           "cursor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "revision-zero",
@@ -1612,7 +2187,7 @@
         "candidate": {
           "expectedWorkerRevision": 0
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "revision-fractional",
@@ -1621,7 +2196,7 @@
         "candidate": {
           "expectedBindingRevision": 1.5
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "unknown-environment",
@@ -1630,7 +2205,7 @@
         "candidate": {
           "environment": "preview"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "page-limit-overflow",
@@ -1639,7 +2214,7 @@
         "candidate": {
           "limit": 101
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "credential-response-key",
@@ -1648,7 +2223,7 @@
         "candidate": {
           "credential": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "access-token-response-key",
@@ -1657,7 +2232,7 @@
         "candidate": {
           "accessToken": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "refresh-token-response-key",
@@ -1666,7 +2241,7 @@
         "candidate": {
           "refreshToken": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "authorization-response-key",
@@ -1675,7 +2250,7 @@
         "candidate": {
           "authorization": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "cookie-response-key",
@@ -1684,7 +2259,7 @@
         "candidate": {
           "cookie": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "management-token-response-key",
@@ -1693,7 +2268,7 @@
         "candidate": {
           "managementToken": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "key-ref-response-key",
@@ -1702,7 +2277,7 @@
         "candidate": {
           "keyRef": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "private-key-response-key",
@@ -1711,7 +2286,7 @@
         "candidate": {
           "privateKey": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "secret-value-response-key",
@@ -1720,7 +2295,7 @@
         "candidate": {
           "secretValue": "present-but-forbidden"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "malformed-timestamp",
@@ -1729,7 +2304,7 @@
         "candidate": {
           "observedAt": "2026-02-29T12:00:00Z"
         },
-        "expectedError": "SERVER_RESPONSE_INVALID"
+        "expectedClientError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "old-mind-path",
@@ -1738,7 +2313,7 @@
         "candidate": {
           "path": "/api/minds/legacy"
         },
-        "expectedError": "MIND_CONTRACT_REMOVED"
+        "expectedClientError": "MIND_CONTRACT_REMOVED"
       },
       {
         "caseId": "arbitrary-route",
@@ -1747,7 +2322,7 @@
         "candidate": {
           "path": "/api/proxy/https://example.invalid"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedClientError": "VALIDATION_FAILED"
       },
       {
         "caseId": "unsupported-protocol",
@@ -1756,7 +2331,7 @@
         "candidate": {
           "X-Drwn-Protocol": "deployed-worker.v0"
         },
-        "expectedError": "UNSUPPORTED_PROTOCOL"
+        "expectedClientError": "UNSUPPORTED_PROTOCOL"
       }
     ]
   }

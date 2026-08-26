@@ -39,8 +39,16 @@ describe("Deployed Worker selector", () => {
     }
   });
 
-  test("rejects malformed or cross-kind IDs without fallback", () => {
-    for (const explicitId of ["worker_wrong", "deployment_attempt_wrong", "../escape", ""] ) {
+  test("accepts opaque legacy IDs and rejects only malformed grammar without fallback", () => {
+    for (const explicitId of ["worker_wrong", "deployment_attempt_wrong", "card_legacy"]) {
+      expect(resolveDeployedWorkerSelector({
+        explicitId,
+        projectContext: context,
+        profileDigest: context.profileDigest,
+        organizationId: context.organizationId,
+      })).toEqual({ source: "explicit", deployedWorkerId: explicitId });
+    }
+    for (const explicitId of ["../escape", "bad/id", ""] ) {
       expect(() => resolveDeployedWorkerSelector({
         explicitId,
         projectContext: context,

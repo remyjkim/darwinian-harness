@@ -241,7 +241,7 @@ export async function executeManagementRequest(
 
     let error: ManagementPublicError;
     try {
-      error = parseManagementPublicError(body, response.status, prepared.requestId);
+      error = parseManagementPublicError(body, response.status, prepared.requestId, prepared.routeKey);
     } catch {
       return refusedManagementResult(
         input.routeKey,

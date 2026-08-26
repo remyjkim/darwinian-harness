@@ -80,28 +80,28 @@ async function persist(): Promise<void> {
 
 function routeFor(method: string, pathname: string): { routeKey: ManagementRouteKey; path: ManagementJsonObject } | null {
   if (method === "GET" && pathname === "/api/organizations") return { routeKey: "organizations.list", path: {} };
-  const organization = pathname.match(/^\/api\/organizations\/(org_[A-Za-z0-9._:-]+)$/);
+  const organization = pathname.match(/^\/api\/organizations\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/);
   if (method === "GET" && organization) return { routeKey: "organizations.read", path: { organizationId: organization[1]! } };
   if (method === "POST" && pathname === "/api/deployed-workers/register") return { routeKey: "deployed_workers.register", path: {} };
   if (method === "GET" && pathname === "/api/deployed-workers") return { routeKey: "deployed_workers.list", path: {} };
-  const artifact = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)\/deployment-artifacts\/([a-f0-9]{64})$/);
+  const artifact = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/deployment-artifacts\/([a-f0-9]{64})$/);
   if (method === "PUT" && artifact) return { routeKey: "deployment_artifacts.put", path: { deployedWorkerId: artifact[1]!, artifactSha256: artifact[2]! } };
-  const rollback = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)\/deployments\/(deployment_[A-Za-z0-9._:-]+)\/rollback$/);
+  const rollback = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/deployments\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/rollback$/);
   if (method === "POST" && rollback) return { routeKey: "deployments.rollback", path: { deployedWorkerId: rollback[1]!, deploymentId: rollback[2]! } };
-  const deployments = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)\/deployments$/);
+  const deployments = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/deployments$/);
   if (deployments) return {
     routeKey: method === "POST" ? "deployments.create" : "deployments.list",
     path: { deployedWorkerId: deployments[1]! },
   };
-  const secret = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)\/secrets\/([A-Z][A-Z0-9_]*)$/);
+  const secret = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/secrets\/([A-Z][A-Z0-9_]*)$/);
   if (method === "PUT" && secret) return { routeKey: "secrets.set", path: { deployedWorkerId: secret[1]!, name: secret[2]! } };
-  const run = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)\/runs\/(run_[A-Za-z0-9._:-]+)$/);
+  const run = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/runs\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/);
   if (method === "GET" && run) return { routeKey: "runs.read", path: { deployedWorkerId: run[1]!, runId: run[2]! } };
-  const runs = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)\/runs$/);
+  const runs = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/runs$/);
   if (method === "POST" && runs) return { routeKey: "runs.create", path: { deployedWorkerId: runs[1]! } };
-  const retire = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)\/retire$/);
+  const retire = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})\/retire$/);
   if (method === "POST" && retire) return { routeKey: "deployed_workers.retire", path: { deployedWorkerId: retire[1]! } };
-  const worker = pathname.match(/^\/api\/deployed-workers\/(deployed_worker_[A-Za-z0-9._:-]+)$/);
+  const worker = pathname.match(/^\/api\/deployed-workers\/([A-Za-z0-9][A-Za-z0-9._:-]{0,127})$/);
   if (method === "GET" && worker) return { routeKey: "deployed_workers.read", path: { deployedWorkerId: worker[1]! } };
   return null;
 }
@@ -144,7 +144,12 @@ async function handle(request: Request): Promise<Response> {
   for (const [name, valid] of headerChecks) if (!valid && !state.headerErrors.includes(name)) state.headerErrors.push(name);
   if (!matched || state.headerErrors.length > 0) {
     await persist();
-    return Response.json({ requestId, code: "UNSUPPORTED_PROTOCOL", retryable: false }, { status: 426 });
+    return Response.json({
+      error: "client_protocol_unsupported",
+      receivedProtocol: request.headers.get("X-Drwn-Protocol"),
+      requiredProtocol: "deployed-worker.v1",
+      minimumDrwnVersion: "1.4.2",
+    }, { status: 426 });
   }
 
   let body: ManagementJsonObject = {};
@@ -286,7 +291,7 @@ const server = Bun.serve({
   fetch: handle,
   error(error) {
     process.stderr.write(`fixture request failed: ${error instanceof Error ? error.message : "unknown"}\n`);
-    return Response.json({ requestId: "00000000-0000-4000-8000-000000000000", code: "SERVER_RESPONSE_INVALID", retryable: false }, { status: 502 });
+    return new Response(null, { status: 500 });
   },
 });
 

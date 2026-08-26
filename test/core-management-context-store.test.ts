@@ -60,7 +60,7 @@ describe("management context store", () => {
     expect(await loadProjectCloudContext(project)).toBeNull();
   });
 
-  test("rejects malformed, unknown, wrong-kind, and profile-mismatched state", async () => {
+  test("rejects malformed and unknown state without treating opaque prefixes as ID kinds", async () => {
     const project = await fixture();
     const path = join(project, ".agents", "drwn", "cloud.local.json");
     await writeProjectCloudContext(project, {
@@ -74,8 +74,8 @@ describe("management context store", () => {
     const original = JSON.parse(await readFile(path, "utf8"));
     for (const candidate of [
       { ...original, role: "owner" },
-      { ...original, organizationId: "worker_wrong" },
-      { ...original, deployedWorkerId: "deployment_attempt_wrong" },
+      { ...original, organizationId: "bad/org" },
+      { ...original, deployedWorkerId: "bad/id" },
       { ...original, schemaVersion: 2 },
     ]) {
       await writeFile(path, `${JSON.stringify(candidate)}\n`);
@@ -89,11 +89,11 @@ describe("management context store", () => {
       schema: "drwn.project-cloud-context",
       schemaVersion: 1,
       profileDigest: digestA,
-      organizationId: "worker_wrong",
+      organizationId: "bad/org",
       deployedWorkerId: "deployed_worker_alpha",
       verifiedAt: "2026-08-25T12:00:00.000Z",
     })).rejects.toMatchObject({ code: "CLOUD_CONTEXT_INVALID" });
-    await expect(selectMachineOrganization(project, digestA, "worker_wrong", "2026-08-25T12:00:00.000Z"))
+    await expect(selectMachineOrganization(project, digestA, "bad/org", "2026-08-25T12:00:00.000Z"))
       .rejects.toMatchObject({ code: "CLOUD_CONTEXT_INVALID" });
     await expect(clearMachineOrganization(project, "not-a-digest"))
       .rejects.toMatchObject({ code: "CLOUD_CONTEXT_INVALID" });

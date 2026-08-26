@@ -37,13 +37,36 @@ function json(value: unknown, status = 200, headers: Record<string, string> = {}
   return Response.json(value, { status, headers });
 }
 
-function publicError(requestId: string, code: string, retryable: boolean, retryAfterSeconds?: number) {
+function publicError(requestId: string, code: string, _retryable: boolean, retryAfterSeconds?: number) {
+  if (code === "MIND_CONTRACT_REMOVED") {
+    return {
+      error: "mind_contract_removed",
+      requiredProtocol: "deployed-worker.v1",
+      minimumDrwnVersion: "1.4.2",
+      documentation: "https://docs.darwinian.dev/worker/upgrade",
+    };
+  }
+  if (code === "UNSUPPORTED_PROTOCOL") {
+    return {
+      error: "client_protocol_unsupported",
+      receivedProtocol: "deployed-worker.v0",
+      requiredProtocol: "deployed-worker.v1",
+      minimumDrwnVersion: "1.4.2",
+    };
+  }
+  const wireCode = {
+    CONSENT_REQUIRED: "consent_required",
+    AUTHORIZATION_DENIED: "authorization_denied",
+    RESOURCE_UNAVAILABLE: "resource_unavailable",
+    VALIDATION_FAILED: "validation_failed",
+    REVISION_CONFLICT: "revision_conflict",
+    RATE_LIMITED: "rate_limited",
+    TEMPORARILY_UNAVAILABLE: "temporarily_unavailable",
+  }[code];
+  if (!wireCode) throw new Error("unknown fixture client error code");
   return {
-    schema: "cl.drwn.error.v1",
     requestId,
-    code,
-    message: "safe server message",
-    retryable,
+    error: wireCode,
     ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
   };
 }
