@@ -371,7 +371,6 @@
       "required": [
         "requestId",
         "organizationId",
-        "workerId",
         "name",
         "environment"
       ],
@@ -381,9 +380,6 @@
         },
         "organizationId": {
           "$ref": "#/idKinds/OrganizationId"
-        },
-        "workerId": {
-          "$ref": "#/idKinds/WorkerId"
         },
         "name": {
           "type": "string",
@@ -1141,7 +1137,6 @@
         "request": {
           "requestId": "123e4567-e89b-42d3-a456-426614174002",
           "organizationId": "org_acme",
-          "workerId": "worker_alpha",
           "name": "worker-alpha",
           "environment": "staging"
         },
@@ -1349,8 +1344,7 @@
         "routeKey": "deployed_workers.register",
         "surface": "request",
         "candidate": {
-          "organizationId": "worker_alpha",
-          "workerId": "org_acme"
+          "organizationId": "worker_alpha"
         },
         "expectedError": "VALIDATION_FAILED"
       },
@@ -1386,11 +1380,11 @@
       {
         "caseId": "malformed-worker-id",
         "routeKey": "deployed_workers.register",
-        "surface": "request",
+        "surface": "response",
         "candidate": {
           "workerId": "wrk invalid"
         },
-        "expectedError": "VALIDATION_FAILED"
+        "expectedError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "malformed-deployed-worker-id",

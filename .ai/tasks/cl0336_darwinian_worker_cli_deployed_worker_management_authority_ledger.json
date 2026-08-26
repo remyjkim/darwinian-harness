@@ -24,7 +24,7 @@
   "services": {
     "i336CandidateCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
     "i336AuthorizedStartingCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
-    "i336AcceptedCommit": "97752b0511c1812c2440f794d6d25a21d8371c7e",
+    "i336AcceptedCommit": "7f40c83045dd29d992b2ee5bf232cc8204da9470",
     "i321CandidateCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
     "i321AuthorizedStartingCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
     "i321AcceptedCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929"
@@ -33,8 +33,8 @@
     "name": "deployed-worker.v1",
     "artifactPath": "ops/deploy/contracts/drwn-management/v1/contract.json",
     "artifactVersion": 1,
-    "sourceCommit": "97752b0511c1812c2440f794d6d25a21d8371c7e",
-    "sha256": "bbd527bf9818edfeb7f7ffc2e012bd61dc7368e0cfb62b15eea4577e68432da8",
+    "sourceCommit": "7f40c83045dd29d992b2ee5bf232cc8204da9470",
+    "sha256": "0cc02c8705b7aa6e612bef1a8c56468481e0ec1a93489365ecfe28538bd0846a",
     "routeCount": 12,
     "positiveVectorCount": 12,
     "negativeVectorCount": 29,

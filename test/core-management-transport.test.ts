@@ -110,7 +110,6 @@ describe("executeManagementRequest", () => {
     const request = {
       requestId: ids.register,
       organizationId: "org_acme",
-      workerId: "worker_alpha",
       name: "worker-alpha",
       environment: "staging",
     };
@@ -141,7 +140,7 @@ describe("executeManagementRequest", () => {
     expect(result.outcome).toBe("succeeded");
     expect(bodies).toHaveLength(2);
     expect(bodies[0]).toBe(bodies[1]);
-    expect(JSON.parse(bodies[0]!)).toEqual({ environment: "staging", name: "worker-alpha", organizationId: "org_acme", workerId: "worker_alpha" });
+    expect(JSON.parse(bodies[0]!)).toEqual({ environment: "staging", name: "worker-alpha", organizationId: "org_acme" });
     expect(requestIds).toEqual([ids.register, ids.register]);
     expect(sleeps).toEqual([2_000]);
   });
@@ -216,7 +215,6 @@ describe("executeManagementRequest", () => {
       request: {
         requestId: ids.register,
         organizationId: "org_acme",
-        workerId: "worker_alpha",
         name: "worker-alpha",
         environment: "staging",
       },

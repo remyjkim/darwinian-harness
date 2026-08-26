@@ -40,7 +40,7 @@ const servicesPath = resolve(
   "v1",
   "contract.json",
 );
-const expectedDigest = "bbd527bf9818edfeb7f7ffc2e012bd61dc7368e0cfb62b15eea4577e68432da8";
+const expectedDigest = "0cc02c8705b7aa6e612bef1a8c56468481e0ec1a93489365ecfe28538bd0846a";
 
 test("vendors the exact immutable Services artifact and pins its authority", () => {
   expect(existsSync(vendoredPath)).toBe(true);
@@ -55,7 +55,7 @@ test("vendors the exact immutable Services artifact and pins its authority", () 
     schemaVersion: 1,
     protocol: "deployed-worker.v1",
     servicesRepository: "curation-labs/darwinian-services",
-    sourceCommit: "97752b0511c1812c2440f794d6d25a21d8371c7e",
+    sourceCommit: "7f40c83045dd29d992b2ee5bf232cc8204da9470",
     sha256: expectedDigest,
     routeCount: 12,
     positiveVectorCount: 12,
@@ -89,6 +89,20 @@ test("admits the closed contract and derives the exact route inventory", () => {
   ]);
   expect(Object.isFrozen(managementRoutes)).toBe(true);
   expect(Object.keys(managementRoutes)).toEqual([...MANAGEMENT_ROUTE_KEYS]);
+});
+
+test("registration intent excludes client WorkerId while success returns authoritative identity", () => {
+  const route = managementRoutes["deployed_workers.register"];
+  const positive = managementContract.vectors.positive.find(({ routeKey }) => routeKey === route.routeKey)!;
+  const requestSchema = managementContract.schemas.DeployedWorkersRegisterRequest as {
+    required: string[];
+    properties: Record<string, unknown>;
+  };
+
+  expect(requestSchema.required).toEqual(["requestId", "organizationId", "name", "environment"]);
+  expect(Object.keys(requestSchema.properties)).toEqual(["requestId", "organizationId", "name", "environment"]);
+  expect(Object.keys(positive.request)).toEqual(["requestId", "organizationId", "name", "environment"]);
+  expect(positive.success).toMatchObject({ workerId: "worker_alpha", deployedWorkerId: "deployed_worker_alpha" });
 });
 
 test("loads from an installed package-shaped root without a Services checkout", () => {
