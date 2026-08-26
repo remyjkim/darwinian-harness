@@ -1,24 +1,24 @@
 {
   "schema": "cl.drwn.worker-management-authority-ledger",
   "schemaVersion": 1,
-  "status": "source_ready",
-  "observedAt": "2026-08-26T04:38:48Z",
+  "status": "integration_green",
+  "observedAt": "2026-08-26T05:34:47Z",
   "worker": {
-    "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-architecture",
+    "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-integration",
     "documentationRoot": "/Users/pureicis/dev/darwinian-minds",
-    "branch": "codex/i336-worker-cli-architecture",
+    "branch": "codex/i336-worker-cli-integration",
     "candidateBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
     "acceptedBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
     "architecture": {
       "path": ".ai/analyses/cl0336_darwinian_worker_cli_deployed_worker_management_target_architecture.html",
-      "sha256": "b34f9bb5cdd6f1457e365e70a9fc5bccfa7f8478e7d32ca1f73dac076c37b568",
+      "sha256": "0cd0079821126c0b8d9a3db104c05d49eb05344190322e49f5c9ad0fbc855746",
       "authority": "primary-checkout",
       "historicalGitBlob": "d2b94ca8cf418fb2f176cc10a2755b3e1609f1ed",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
     },
     "taskPlan": {
       "path": ".ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_task_plan.html",
-      "sha256": "eb4be8c63f9ec886e29bb5d03ab8af1b535c0b69884ebcfb712c6b036470e94e",
+      "sha256": "c8af8776e870ede7375d5d2cdb99bbd522fd7629645cca9d5d73429a3eeda4ff",
       "authority": "primary-checkout",
       "historicalGitBlob": "453bae3b2717ccfc172b598b9924d937e01736a0",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
@@ -27,7 +27,7 @@
   "services": {
     "i336CandidateCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
     "i336AuthorizedStartingCommit": "9296fc4547ba2b8e1c11991dc62811c30c9020b3",
-    "i336AcceptedCommit": "bc5e32660ac711e13dfe68731caf515810cfa035",
+    "i336AcceptedCommit": "5920f2c763f6afae3768286692df75489274006f",
     "i321CandidateCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
     "i321AuthorizedStartingCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
     "i321AcceptedCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929"
@@ -36,7 +36,7 @@
     "name": "deployed-worker.v1",
     "artifactPath": "ops/deploy/contracts/drwn-management/v1/contract.json",
     "artifactVersion": 1,
-    "sourceCommit": "bc5e32660ac711e13dfe68731caf515810cfa035",
+    "sourceCommit": "5920f2c763f6afae3768286692df75489274006f",
     "sha256": "1534f85fe8d9079eb1c6c3cc9cf34477fb7cd19973247f31f4b98df0ed9bc3b2",
     "routeCount": 13,
     "positiveVectorCount": 13,
@@ -151,6 +151,12 @@
       "status": "approved",
       "answer": "darwinian 1.4.2 is based directly on 1.2.0 semantics and selectively carries forward only explicitly reviewed later components; published 1.3.0 and the v1.4 branch are predecessor/comparison and implementation-seed evidence, not blanket feature bases",
       "approvedAt": "2026-08-26T04:38:48Z"
+    },
+    {
+      "id": "INTEGRATION-01",
+      "status": "passed",
+      "answer": "remote main cef3090c is contained by merge 001908e1; all I265 runtime-admission and routine surfaces remain excluded, the 1.2 release-completion record is retained, and the clean Services contract authority is repinned",
+      "approvedAt": "2026-08-26T05:34:47Z"
     }
   ],
   "operationalAuthorities": {
@@ -184,6 +190,22 @@
     },
     "typecheck": "passed",
     "releaseReadiness": "passed"
+  },
+  "integration": {
+    "remoteMainCommit": "cef3090c013134b578d87fd938a6741fd288d36a",
+    "mergeCommit": "001908e1ba6fc280ae4a1c6efe0492c2dc7083fd",
+    "contractAuthorityCommit": "5920f2c763f6afae3768286692df75489274006f",
+    "contractPinCommit": "5ae5090",
+    "fullSuite": {
+      "command": "bun test --timeout 30000 --max-concurrency 2 ./test/",
+      "files": 371,
+      "passed": 2205,
+      "skipped": 7,
+      "failed": 0,
+      "durationSeconds": 687.09
+    },
+    "typecheck": "passed",
+    "hardCutResidue": "passed"
   },
   "sourceBlockers": [],
   "operationalBlockers": [
