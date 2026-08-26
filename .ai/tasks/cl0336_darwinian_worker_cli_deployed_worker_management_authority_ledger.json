@@ -2,7 +2,7 @@
   "schema": "cl.drwn.worker-management-authority-ledger",
   "schemaVersion": 1,
   "status": "source_ready",
-  "observedAt": "2026-08-25T22:39:27Z",
+  "observedAt": "2026-08-26T00:44:55Z",
   "worker": {
     "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-architecture",
     "branch": "codex/i336-worker-cli-architecture",
@@ -10,15 +10,15 @@
     "acceptedBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
     "architecture": {
       "path": ".ai/analyses/cl0336_darwinian_worker_cli_deployed_worker_management_target_architecture.html",
-      "sha256": "6daa58c11aa584fe00e95bb243fb6ca7ee9bdcfbb014fb3900ade3759f82e9de",
-      "gitBlob": "35c801951e2614644746128a155ee22478883a5f",
-      "gitCommit": "5f07dec423fac4289c3e26cad441e816e8bf1203"
+      "sha256": "d6570b1f3e7e989cd613da08f81af06054bc90d013b09eb5b4a6eb0bd25495da",
+      "gitBlob": "d2b94ca8cf418fb2f176cc10a2755b3e1609f1ed",
+      "gitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
     },
     "taskPlan": {
       "path": ".ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_task_plan.html",
-      "sha256": "bc3c89721b3dbd075ce5c28cd87692e55deca0222647321862d016e51699fa25",
-      "gitBlob": "85d2d0dcc8ae5ba1ad1b75c462592eb994d35660",
-      "gitCommit": "e8ece1fa6d52abddc9a41273b21ebd45eb2ed8e3"
+      "sha256": "6d17ccea20efaf91c78abdb91f9632a8478a80a548982f1115a7d77c3ad083cb",
+      "gitBlob": "453bae3b2717ccfc172b598b9924d937e01736a0",
+      "gitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
     }
   },
   "services": {
@@ -98,7 +98,7 @@
     },
     {
       "id": "GAP-06",
-      "status": "approved_pending_protocol_artifact",
+      "status": "approved",
       "answer": "closed organization detail, deploy receipt, bounded run polling, revisioned retirement, environment enum and request identity contract"
     },
     {
@@ -110,6 +110,12 @@
       "id": "GAP-08",
       "status": "approved",
       "answer": "Services-issued staging profile and two-human two-organization identity manifest"
+    },
+    {
+      "id": "NAMING-01",
+      "status": "approved",
+      "answer": "Foundry naming is exclusive across active product surfaces; immutable historical evidence remains unchanged",
+      "approvedAt": "2026-08-26T00:44:55Z"
     }
   ],
   "operationalAuthorities": {
