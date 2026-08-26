@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -247,8 +247,6 @@ describe("worker API commands", () => {
   });
 
   test("status reports the metered chat API URL for a ready active deployment", async () => {
-    process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
-
     stubFetch(async (url) => {
       const path = new URL(url).pathname;
       if (path === "/api/minds") {
@@ -285,12 +283,11 @@ describe("worker API commands", () => {
     const result = await runWorkerCommand(["worker", "status", "harari"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Chat: http://api.test.local/api/minds/harari/chat");
+    expect(result.stdout).toContain("Chat: https://api.darwinian.dev/api/minds/harari/chat");
     expect(result.stdout).not.toContain("http://gw.test.local/m/harari/chat");
   });
 
   test("chat posts messages to the metered chat API endpoint", async () => {
-    process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
     let postedBody: unknown;
     const calls: string[] = [];
     stubFetch(async (url, init) => {
@@ -397,9 +394,8 @@ describe("worker API commands", () => {
     expect(calls).toEqual(["POST /api/minds/harari/rollback", "DELETE /api/minds/harari"]);
   });
 
-  test("deploy captures the mind id, caches the binding, and notes a missing bgdb-token endpoint", async () => {
+  test("deploy ignores legacy Mind fields and never fetches or persists a storage binding", async () => {
     process.env.DRWN_POLL_MS = "1";
-    process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
@@ -407,70 +403,25 @@ describe("worker API commands", () => {
     tempRoots.push(cwd);
     process.chdir(cwd);
 
+    const calls: string[] = [];
     stubFetch(async (url, init) => {
       const path = new URL(url).pathname;
+      calls.push(`${init?.method ?? "GET"} ${path}`);
       if (path === "/api/deployments" && init?.method === "POST") {
         return json({ deploymentId: "dep_test", mindId: "mind_abc123", slug: "harari", status: "pending" }, 201);
-      }
-      if (path === "/api/minds/harari/bgdb-token" && init?.method === "POST") {
-        return json({ error: "not found" }, 404);
       }
       return json({ id: "dep_test", status: "ready" });
     });
 
     const result = await runWorkerCommand(["worker", "deploy", "@me/plain@^1.0.0", "--name", "harari"], fixture);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Mind: mind_abc123");
-    expect(result.stdout).toContain("mind binding not available");
-
-    const bindings = JSON.parse(
-      await readFile(join(fixture.agentsDir, "drwn", "mind-bindings.json"), "utf8"),
-    ) as Record<string, { mindId: string }>;
-    expect(bindings.harari?.mindId).toBe("mind_abc123");
-  });
-
-  test("deploy stores binding coordinates when the bgdb-token endpoint responds, without persisting the token", async () => {
-    process.env.DRWN_POLL_MS = "1";
-    process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
-    const fixture = await scaffoldCliFixture();
-    tempRoots.push(fixture.root);
-    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
-    const cwd = await mkdtemp(join(tmpdir(), "drwn-worker-test-"));
-    tempRoots.push(cwd);
-    process.chdir(cwd);
-
-    stubFetch(async (url, init) => {
-      const path = new URL(url).pathname;
-      if (path === "/api/deployments" && init?.method === "POST") {
-        return json({ deploymentId: "dep_test", mindId: "mind_abc123", slug: "harari", status: "pending" }, 201);
-      }
-      if (path === "/api/minds/harari/bgdb-token" && init?.method === "POST") {
-        return json({
-          binding: { baseUrl: "http://bgdb.test.local", filesystemId: "fs_owner", pathPrefix: "minds/mind_abc123" },
-          token: "SECRET-child-token",
-          expiresAt: "2999-01-01T00:00:00Z",
-        });
-      }
-      return json({ id: "dep_test", status: "ready" });
-    });
-
-    const result = await runWorkerCommand(["worker", "deploy", "@me/plain@^1.0.0", "--name", "harari"], fixture);
-    expect(result.exitCode).toBe(0);
-
-    const raw = await readFile(join(fixture.agentsDir, "drwn", "mind-bindings.json"), "utf8");
-    expect(raw).not.toContain("SECRET-child-token");
-    const bindings = JSON.parse(raw) as Record<string, { mindId: string; baseUrl?: string; filesystemId?: string; pathPrefix?: string }>;
-    expect(bindings.harari).toEqual({
-      mindId: "mind_abc123",
-      baseUrl: "http://bgdb.test.local",
-      filesystemId: "fs_owner",
-      pathPrefix: "minds/mind_abc123",
-    });
+    expect(result.stdout).not.toContain("Mind:");
+    expect(calls).toEqual(["POST /api/deployments", "GET /api/deployments/dep_test"]);
+    expect(await Bun.file(join(fixture.agentsDir, "drwn", "mind-bindings.json")).exists()).toBe(false);
   });
 
   test("deploy reads .drwn.secrets, redacts tokens, and reports ready output", async () => {
     process.env.DRWN_POLL_MS = "1";
-    process.env.DRWN_STUDIO_API_URL = "http://api.test.local";
     const fixture = await scaffoldCliFixture();
     tempRoots.push(fixture.root);
     await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
@@ -500,7 +451,7 @@ describe("worker API commands", () => {
     expect((postedBody as { blueprint?: { lockfile?: { cards?: { name?: string }[] } } }).blueprint?.lockfile?.cards?.[0]?.name).toBe("@me/plain");
     expect(calls).toEqual(["POST /api/deployments", "GET /api/deployments/dep_test"]);
     expect(result.stdout).toContain("Deployment dep_test is ready.");
-    expect(result.stdout).toContain("Chat: http://api.test.local/api/minds/harari/chat");
+    expect(result.stdout).toContain("Chat: drwn worker chat harari --message <text>");
     expect(result.stdout).not.toContain("secret_token");
   });
 });
