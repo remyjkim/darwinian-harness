@@ -5,13 +5,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
 import { Writable } from "node:stream";
 import { WorkerCommand } from "../cli/commands/worker/worker";
-import { WorkerDeleteCommand } from "../cli/commands/worker/delete";
 import { WorkerDeployCommand } from "../cli/commands/worker/deploy";
 import { WorkerDeploymentsCommand } from "../cli/commands/worker/deployments";
 import { WorkerChatCommand } from "../cli/commands/worker/chat";
 import { WorkerListCommand } from "../cli/commands/worker/list";
 import { WorkerRollbackCommand } from "../cli/commands/worker/rollback";
 import { WorkerStatusCommand } from "../cli/commands/worker/status";
+import { WorkerRetireCommand } from "../cli/commands/worker/retire";
 import { resolveWorkerConfig } from "../cli/core/worker-config";
 import {
   defaultSecretsFileCandidates,
@@ -86,17 +86,9 @@ async function runWorkerCommand(args: string[], fixture?: Awaited<ReturnType<typ
   cli.register(WorkerDeploymentsCommand);
   cli.register(WorkerChatCommand);
   cli.register(WorkerRollbackCommand);
-  cli.register(WorkerDeleteCommand);
+  cli.register(WorkerRetireCommand);
   const exitCode = await cli.run(args, context);
   return { stdout: stdout.text(), stderr: stderr.text(), exitCode };
-}
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-}
-
-function stubFetch(handler: (url: string, init?: RequestInit) => Promise<Response>) {
-  globalThis.fetch = handler as unknown as typeof fetch;
 }
 
 describe("worker config and secrets", () => {
@@ -151,7 +143,7 @@ describe("worker command routing", () => {
       "drwn worker deployments",
       "drwn worker chat",
       "drwn worker rollback",
-      "drwn worker delete",
+      "drwn worker retire",
       "drwn login",
       "drwn refresh",
       "drwn whoami",
@@ -165,12 +157,14 @@ describe("worker command routing", () => {
     expect(stdout).not.toContain("drwn cloud status");
   });
 
-  test("worker command-group help lists deploy/list/status/deployments/chat/rollback/delete", async () => {
+  test("worker command-group help lists the Deployed Worker management surface", async () => {
     const result = await runWorkerCommand(["worker", "--help"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("drwn worker deployments");
     expect(result.stdout).toContain("drwn worker chat");
-    expect(result.stdout).toContain("<slug>");
+    expect(result.stdout).toContain("drwn worker retire");
+    expect(result.stdout).not.toContain("<slug>");
+    expect(result.stdout).not.toContain("worker delete");
     expect(result.stdout).not.toContain("worker login");
   });
 
@@ -182,43 +176,5 @@ describe("worker command routing", () => {
   test("the retired cloud status path is not registered", async () => {
     const result = await runWorkerCommand(["cloud", "status", "harari"]);
     expect(result.exitCode).not.toBe(0);
-  });
-});
-
-describe("worker API commands", () => {
-  test("chat posts messages to the metered chat API endpoint", async () => {
-    let postedBody: unknown;
-    const calls: string[] = [];
-    stubFetch(async (url, init) => {
-      const path = new URL(url).pathname;
-      calls.push(`${init?.method ?? "GET"} ${path}`);
-      postedBody = JSON.parse(String(init?.body));
-      return json({ output: "hello back", metered: true });
-    });
-
-    const result = await runWorkerCommand(["worker", "chat", "harari", "--message", "hello"]);
-
-    expect(result.exitCode).toBe(0);
-    expect(calls).toEqual(["POST /api/minds/harari/chat"]);
-    expect(postedBody).toEqual({ message: "hello" });
-    expect(JSON.parse(result.stdout)).toEqual({ output: "hello back", metered: true });
-  });
-
-  test("delete retains its legacy endpoint until the T10 retirement hard cut", async () => {
-    const calls: string[] = [];
-    stubFetch(async (url, init) => {
-      const path = new URL(url).pathname;
-      calls.push(`${init?.method ?? "GET"} ${path}`);
-      return json({ deleted: "harari" });
-    });
-
-    const refused = await runWorkerCommand(["worker", "delete", "harari"]);
-    expect(refused.exitCode).toBe(1);
-    expect(refused.stderr).toContain("without --force");
-
-    const deleted = await runWorkerCommand(["worker", "delete", "harari", "--force"]);
-    expect(deleted.exitCode).toBe(0);
-    expect(deleted.stdout).toContain("Deleted");
-    expect(calls).toEqual(["DELETE /api/minds/harari"]);
   });
 });

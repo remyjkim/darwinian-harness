@@ -14,11 +14,11 @@ const DETAILS = [
   "  drwn worker list",
   "  drwn worker status [deployedWorkerId]",
   "  drwn worker deployments [--deployed-worker <deployedWorkerId>]",
-  "  drwn worker chat [deployedWorkerId] --message <text>",
-  "  drwn worker secret set [deployedWorkerId] <name>",
+  "  drwn worker chat [--deployed-worker <deployedWorkerId>] --message <text>",
+  "  drwn worker secret set <name> [--deployed-worker <deployedWorkerId>]",
   "  drwn worker buzz-tools",
   "  drwn worker rollback [--deployed-worker <deployedWorkerId>] --to <deploymentId>",
-  "  drwn worker delete <slug> --force",
+  "  drwn worker retire [--deployed-worker <deployedWorkerId>] --yes",
 ].join("\n");
 
 export class WorkerCommand extends BaseCommand {

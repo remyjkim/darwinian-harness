@@ -1,113 +1,102 @@
-// ABOUTME: Command-level tests for stdin-only Worker secret configuration.
-// ABOUTME: Secret bytes never appear in argv, stdout, stderr, or error rendering.
+// ABOUTME: Proves secret CLI ingestion is stdin-only, target-bound, metadata-only, and non-retaining.
+// ABOUTME: Kind/env mapping remains strict while the wire contract receives one canonical uppercase name.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
-import { PassThrough, Writable } from "node:stream";
-import type { AgentsContext } from "../cli/context";
+import { rm } from "node:fs/promises";
+import { PassThrough } from "node:stream";
 import { WorkerSecretSetCommand } from "../cli/commands/worker/secret-set";
-import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
+import { createManagementCommandFixture, managementToken } from "./management-command-helpers";
 
 const roots: string[] = [];
-const originalFetch = globalThis.fetch;
-const originalEnv = { ...process.env };
+const detailId = "123e4567-e89b-42d3-a456-426614174004";
+const secretId = "123e4567-e89b-42d3-a456-426614174008";
 
-class CaptureStream extends Writable {
-  chunks: Buffer[] = [];
-  override _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error | null) => void) {
-    this.chunks.push(Buffer.from(chunk));
-    callback();
-  }
-  text() { return Buffer.concat(this.chunks).toString("utf8"); }
-}
-
-function jwt(): string {
-  const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${b64({ alg: "none" })}.${b64({
-    iss: "https://auth.darwinian.dev/api/auth",
-    aud: "https://api.darwinian.dev",
-    sub: "user_123",
-    exp: Math.floor(Date.now() / 1000) + 900,
-  })}.sig`;
+async function run(args: string[], secret: string, fetcher: typeof fetch, tty = false) {
+  const stdin = new PassThrough() as PassThrough & { isTTY?: boolean };
+  stdin.isTTY = tty; stdin.end(secret);
+  const f = await createManagementCommandFixture(stdin); roots.push(f.fixture.root);
+  const ids = [detailId, secretId];
+  WorkerSecretSetCommand.testDeps = {
+    env: { DRWN_TOKEN: managementToken() }, fetcher,
+    requestId: () => ids.shift()!, now: () => "2026-08-25T12:10:00.000Z",
+  };
+  const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0", enableColors: false });
+  cli.register(WorkerSecretSetCommand);
+  const exitCode = await cli.run(args, f.context);
+  return { ...f, exitCode, stdout: f.stdout.text(), stderr: f.stderr.text() };
 }
 
 afterEach(async () => {
-  globalThis.fetch = originalFetch;
-  process.env = { ...originalEnv };
-  await cleanupTempRoots(roots);
+  WorkerSecretSetCommand.testDeps = undefined;
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function run(args: string[], secret: string, tty = false) {
-  process.env.DRWN_TOKEN = jwt();
-  const fixture = await scaffoldCliFixture();
-  roots.push(fixture.root);
-  const stdin = new PassThrough() as PassThrough & { isTTY?: boolean };
-  stdin.isTTY = tty;
-  stdin.end(secret);
-  const stdout = new CaptureStream();
-  const stderr = new CaptureStream();
-  const context: AgentsContext = {
-    repoRoot: fixture.repoRoot,
-    agentsDir: fixture.agentsDir,
-    homeDir: fixture.homeDir,
-    cwd: process.cwd(),
-    projectConfigPath: null,
-    stdin,
-    stdout,
-    stderr,
-    env: {},
-    colorDepth: 1,
-  };
-  const cli = new Cli({ binaryName: "drwn", binaryLabel: "drwn", binaryVersion: "0.0.0" });
-  cli.register(WorkerSecretSetCommand);
-  const exitCode = await cli.run(args, context);
-  return { exitCode, stdout: stdout.text(), stderr: stderr.text() };
+function server(requests: Array<{ path: string; body: unknown; requestId: string }>): typeof fetch {
+  return (async (input, init) => {
+    const path = new URL(String(input)).pathname;
+    const requestId = new Headers(init?.headers).get("x-request-id")!;
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    requests.push({ path, body, requestId });
+    if (path === "/api/deployed-workers/deployed_worker_alpha") {
+      return Response.json({ requestId, worker: {
+        organizationId: "org_acme", workerId: "worker_alpha", deployedWorkerId: "deployed_worker_alpha",
+        name: "worker-alpha", environment: "staging", workerRevision: 3, bindingRevision: 1, retired: false,
+      } });
+    }
+    return Response.json({
+      requestId, deployedWorkerId: "deployed_worker_alpha", name: path.split("/").at(-1),
+      secretRevision: 1, workerRevision: 4, observedAt: "2026-08-25T12:10:00.000Z",
+    });
+  }) as typeof fetch;
 }
 
 describe("worker secret set", () => {
-  test("sends an env secret from stdin without echoing it", async () => {
-    const requests: Array<{ url: string; body: unknown }> = [];
-    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      requests.push({ url: String(input instanceof Request ? input.url : input), body: JSON.parse(String(init?.body)) });
-      return new Response(JSON.stringify({ ok: true, server: "buzz-private-key" }), { status: 200 });
-    }) as unknown as typeof fetch;
-
+  test("sends an env secret from stdin and returns only canonical metadata", async () => {
+    const requests: Array<{ path: string; body: unknown; requestId: string }> = [];
+    const sentinel = "sk_SENTINEL_COMMAND_SECRET_123456";
     const result = await run([
-      "worker", "secret", "set", "harari", "buzz-private-key",
-      "--kind", "env", "--env-var", "BUZZ_PRIVATE_KEY",
-    ], "nsec1-super-secret\n");
-
+      "worker", "secret", "set", "provider-label", "--kind", "env", "--env-var", "PROVIDER_API_KEY", "--json",
+    ], `${sentinel}\n`, server(requests));
     expect(result.exitCode).toBe(0);
-    expect(requests).toEqual([{
-      url: "https://api.darwinian.dev/api/minds/harari/secrets/buzz-private-key",
-      body: { token: "nsec1-super-secret", kind: "env", env_var: "BUZZ_PRIVATE_KEY" },
-    }]);
-    expect(result.stdout).toContain("BUZZ_PRIVATE_KEY");
-    expect(`${result.stdout}${result.stderr}`).not.toContain("nsec1-super-secret");
+    expect(requests.map(({ path }) => path)).toEqual([
+      "/api/deployed-workers/deployed_worker_alpha",
+      "/api/deployed-workers/deployed_worker_alpha/secrets/PROVIDER_API_KEY",
+    ]);
+    expect(requests[1]!.body).toEqual({ expectedWorkerRevision: 3, value: sentinel });
+    expect(JSON.parse(result.stdout)).toMatchObject({ command: "secrets.set", data: { name: "PROVIDER_API_KEY", secretRevision: 1 } });
+    expect(`${result.stdout}${result.stderr}`).not.toContain(sentinel);
+    expect(await Bun.file(`${result.fixture.repoRoot}/.agents/drwn/.cloud-operations`).exists()).toBe(false);
   });
 
-  test("rejects TTY input, empty input, and invalid kind/env combinations before fetch", async () => {
-    let fetches = 0;
-    globalThis.fetch = (async () => {
-      fetches += 1;
-      return new Response("{}", { status: 200 });
-    }) as unknown as typeof fetch;
-
-    expect((await run(["worker", "secret", "set", "harari", "x"], "secret", true)).exitCode).toBe(1);
-    expect((await run(["worker", "secret", "set", "harari", "x"], "\n")).exitCode).toBe(1);
-    expect((await run(["worker", "secret", "set", "harari", "x", "--kind", "env"], "secret")).exitCode).toBe(1);
-    expect((await run(["worker", "secret", "set", "harari", "x", "--kind", "mcp", "--env-var", "X"], "secret")).exitCode).toBe(1);
-    expect(fetches).toBe(0);
+  test("TTY, empty input, and invalid kind/env/name combinations fail before fetch", async () => {
+    for (const [args, secret, tty] of [
+      [["worker", "secret", "set", "MCP_TOKEN"], "secret", true],
+      [["worker", "secret", "set", "MCP_TOKEN"], "\n", false],
+      [["worker", "secret", "set", "label", "--kind", "env"], "secret", false],
+      [["worker", "secret", "set", "MCP_TOKEN", "--kind", "mcp", "--env-var", "X"], "secret", false],
+      [["worker", "secret", "set", "lowercase"], "secret", false],
+    ] as const) {
+      let calls = 0;
+      const result = await run([...args], secret, (async () => { calls += 1; throw new Error("must not fetch"); }) as unknown as typeof fetch, tty);
+      expect(result.exitCode).toBe(1);
+      expect(calls).toBe(0);
+    }
   });
 
-  test("redacts a server error even if it reflects the secret", async () => {
-    globalThis.fetch = (async () => new Response(
-      JSON.stringify({ error: "rejected nsec1-super-secret" }),
-      { status: 400, headers: { "content-type": "application/json" } },
-    )) as unknown as typeof fetch;
-    const result = await run(["worker", "secret", "set", "harari", "x"], "nsec1-super-secret\n");
+  test("a reflected typed server error never retains the secret", async () => {
+    const sentinel = "sk_SENTINEL_REFLECTED_COMMAND_123456";
+    const result = await run(["worker", "secret", "set", "MCP_TOKEN"], sentinel, (async (input, init) => {
+      const requestId = new Headers(init?.headers).get("x-request-id")!;
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("deployed_worker_alpha")) return server([])(input, init);
+      return Response.json({
+        schema: "cl.drwn.error.v1", requestId, code: "VALIDATION_FAILED",
+        message: `rejected ${sentinel}`, retryable: false,
+      }, { status: 400 });
+    }) as typeof fetch);
     expect(result.exitCode).toBe(1);
-    expect(`${result.stdout}${result.stderr}`).not.toContain("nsec1-super-secret");
-    expect(result.stderr).toContain("Secret update failed (400)");
+    expect(result.stderr).toContain("SERVER_RESPONSE_INVALID");
+    expect(`${result.stdout}${result.stderr}`).not.toContain(sentinel);
   });
 });

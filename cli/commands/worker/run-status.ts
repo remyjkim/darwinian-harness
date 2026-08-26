@@ -1,66 +1,63 @@
-// ABOUTME: Implements drwn worker run status for reading a chat run by id (I65 Fix 4).
-// ABOUTME: Reports queued/running/yielded/done/failed and prints the transcript's visible replies.
+// ABOUTME: Reads one run only under its exact selected Deployed Worker target.
+// ABOUTME: Human and JSON output derive from the strict run summary with no raw events.
 
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
-import { resolveWorkerConfig } from "../../core/worker-config";
-import { describeWorkerError } from "../../core/worker-error";
-import { describeRunFailure, pollRunOnce, renderError, runWebUrl, transcriptEventText } from "../../core/worker-run";
-import { renderJson } from "../../core/output";
+import { resolveCredentialsPath } from "../../core/paths";
+import { resolveProjectRootFromConfigPath } from "../../core/project";
+import type { ManagementJsonObject } from "../../core/management/contracts";
+import { renderManagementCommandFailure } from "../../core/management/organizations";
+import { resolveCloudProfile } from "../../core/management/profile";
+import { renderManagementResultHuman, renderManagementResultJson } from "../../core/management/results";
+import { readRun, type RunDependencies } from "../../core/management/runs";
+import { resolveWorkerTarget } from "../../core/management/workers";
+
+type WorkerRunStatusDeps = RunDependencies & { env?: Record<string, string | undefined> };
 
 export class WorkerRunStatusCommand extends BaseCommand {
   static override paths = [["worker", "run", "status"]];
-
+  static testDeps: WorkerRunStatusDeps | undefined;
   static override usage = BaseCommand.Usage({
     category: "Worker",
-    description: "Show the status and reply of a chat run.",
-    details: `
-      Fetches a chat run by its run id (as returned by \`drwn worker chat\`)
-      and prints its status plus any visible replies. Use --json for the raw
-      poll payload.
-    `,
+    description: "Read one target-bound Deployed Worker run.",
+    details: "Requires an exact run ID plus explicit or project-bound Deployed Worker target. Wrong-target and unavailable runs are non-enumerating.",
     examples: [
-      ["Check a run", "drwn worker run status run_42"],
-      ["Raw payload", "drwn worker run status run_42 --json"],
+      ["Read a project-bound run", "drwn worker run status run_0001"],
+      ["Read an explicit target", "drwn worker run status run_0001 --deployed-worker deployed_worker_alpha --json"],
     ],
   });
-
-  runId = Option.String();
-
-  json = Option.Boolean("--json", false, {
-    description: "Print the raw poll payload as JSON.",
-  });
+  runId = Option.String({ required: true });
+  deployedWorkerId = Option.String("--deployed-worker", { description: "Explicit Deployed Worker ID; otherwise use the verified project binding." });
+  json = Option.Boolean("--json", false, { description: "Emit the strict command-result JSON envelope." });
 
   async execute(): Promise<number> {
-    const { apiBaseUrl, webBaseUrl } = resolveWorkerConfig();
+    const deps = WorkerRunStatusCommand.testDeps ?? {};
+    const env = deps.env ?? process.env;
     try {
-      const { response, body } = await pollRunOnce(this.context, apiBaseUrl, this.runId, 0);
-      if (!response.ok) {
-        this.context.stderr.write(`Run status failed (${response.status}): ${renderError(body)}\n`);
-        return 1;
-      }
-      if (this.json) {
-        this.context.stdout.write(renderJson(body));
-      }
-      if (body.status === "not_found") {
-        this.context.stderr.write(`Run ${this.runId} not found.\n`);
-        return 1;
-      }
-      if (!this.json) {
-        this.context.stdout.write(`Status: ${body.status}\n`);
-        this.context.stdout.write(`Open in browser: ${runWebUrl(webBaseUrl, this.runId)}\n`);
-        for (const event of body.events ?? []) {
-          const text = transcriptEventText(event);
-          if (text) this.context.stdout.write(`${text}\n`);
-        }
-      }
-      if (body.status === "failed") {
-        this.context.stderr.write(`Run failed: ${describeRunFailure(body.result)}\n`);
-        return 1;
-      }
-      return 0;
+      const profile = resolveCloudProfile(env);
+      const projectRoot = this.context.projectConfigPath ? resolveProjectRootFromConfigPath(this.context.projectConfigPath) : null;
+      const connection = { credentialsPath: resolveCredentialsPath(this.context.agentsDir), env, keychainBackend: deps.keychainBackend };
+      const target = await resolveWorkerTarget({
+        ...connection, homeDir: this.context.homeDir, projectRoot,
+        profileDigest: profile.profileDigest, explicitId: this.deployedWorkerId,
+      });
+      const result = await readRun({
+        ...connection, deployedWorkerId: target.selection.deployedWorkerId, runId: this.runId,
+      }, deps);
+      const run = result.outcome === "succeeded" ? result.data!.run as ManagementJsonObject : null;
+      const terminalFailure = run?.status === "failed" || run?.status === "cancelled";
+      const output = this.json
+        ? renderManagementResultJson(result)
+        : result.outcome !== "succeeded"
+          ? renderManagementResultHuman(result)
+          : terminalFailure
+            ? `${String(run!.status).toUpperCase()}: run ended without success.\n`
+            : `Run: ${run!.runId}\nStatus: ${run!.status}\n${run!.output ? `${run!.output}\n` : ""}`;
+      const exitCode = result.outcome === "succeeded" && !terminalFailure ? 0 : 1;
+      (exitCode === 0 ? this.context.stdout : this.context.stderr).write(output);
+      return exitCode;
     } catch (error) {
-      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
+      this.context.stderr.write(renderManagementCommandFailure(error));
       return 1;
     }
   }
