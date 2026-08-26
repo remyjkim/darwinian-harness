@@ -64,11 +64,19 @@ a persistence backend is selected:
 
 ```bash
 drwn worker mind
-drwn worker status <slug> --json
+drwn org list --json
+drwn org use org_acme
+drwn worker register --organization org_acme --name worker-alpha --environment staging
+drwn worker status --json
+drwn worker deploy @team/worker@1.0.0
+drwn worker deployments --json
+drwn worker rollback --to deployment_attempt_0001
+drwn worker chat --message "hello" --json
+drwn worker retire --yes
 drwn worker materialize --payload payload.json --project-root /srv/worker
 drwn worker buzz-tools
 drwn worker launch-context prepare <installed-root> --target codex --dry-run --json
-printf '%s' "$WORKER_SECRET" | drwn worker secret set <slug> <name>
+printf '%s' "$WORKER_SECRET" | drwn worker secret set PROVIDER_API_KEY
 drwn login --json
 drwn refresh --json
 drwn logout --json --require-remote-revoke
@@ -81,10 +89,9 @@ auth/Worker/launch-context help paths. Actual login, logout, refresh,
 materialization, Buzz delivery, secret mutation, and analysis upload are
 operational actions, not release smokes.
 
-`worker status` reports local governance declarations separately from deployed
-enforcement. Until the Deploy API supplies authoritative capability evidence,
-an active deployment's enforcement state is `unknown`, never inferred from the
-local Card.
+`worker status` reports only strict authoritative Deployed Worker detail. Names
+and local Card slugs never select remote authority, and malformed or
+secret-shaped responses fail closed before rendering.
 
 Machine intent uses the V2 namespaced contract and the same immutable closure
 model:

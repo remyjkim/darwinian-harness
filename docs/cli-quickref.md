@@ -292,12 +292,21 @@ Worker Blueprint authoring and remote operations:
 - `drwn worker new <name> [--into <collection>]`
 - `drwn worker compose <path-or-name> --add <cardRef>`
 - `drwn worker publish [name] [--from <source-path>]`
-- `drwn worker deploy <rootRef> --name <slug>`
+- `drwn org list [--limit 1-100] [--cursor <opaque>] [--json]`
+- `drwn org use <organizationId> [--json]`
+- `drwn worker register --organization <organizationId> --name <name> --environment development|staging|production [--json]`
+- `drwn worker use <deployedWorkerId> [--json]`
+- `drwn worker deploy <rootRef> [--deployed-worker <id>] [--json]`
 - `drwn worker list`
-- `drwn worker status <slug> --json`
+- `drwn worker status [deployedWorkerId] [--json]`
+- `drwn worker deployments [--deployed-worker <id>] [--limit 1-100] [--cursor <opaque>] [--json]`
+- `drwn worker rollback [--deployed-worker <id>] --to <deploymentId> [--json]`
+- `drwn worker chat [--deployed-worker <id>] --message <text> [--no-wait] [--json]`
+- `drwn worker run status <runId> [--deployed-worker <id>] [--json]`
+- `drwn worker retire [--deployed-worker <id>] --yes [--json]`
 - `drwn worker materialize --payload <payload.json> --project-root <path> [--store-export <tar>] [--emit-store-tar <tar>] [--emit-project-tar <tar>] [--json]`
 - `drwn worker buzz-tools`
-- `drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var <NAME>]` (secret bytes come from stdin)
+- `drwn worker secret set <name> [--deployed-worker <id>] [--kind mcp|env] [--env-var <NAME>] [--json]` (secret bytes come from stdin)
 - `drwn worker mind` (provider-neutral placeholder; returns `MIND_BACKEND_UNSELECTED` without I/O)
 
 Cards compose capabilities into one Blueprint. Installed Worker roots are
@@ -667,21 +676,11 @@ governed Buzz message tools over MCP stdio. `drwn worker secret set` accepts
 secret bytes only on non-interactive stdin and never accepts or renders them as
 an argument.
 
-`drwn worker status <slug> --json` constructs one governance model for human and
-JSON output. Declaration evidence comes only from an exact matching local
-project lock and reports real `tools.allow`/`tools.deny` counts, including zero.
-Unavailable declaration reasons are `LOCAL_PROJECT_UNAVAILABLE`,
-`LOCAL_TARGET_UNAVAILABLE`, and `LOCAL_CARD_REF_MISMATCH`. Declaration does not
-prove deployment enforcement. For an active deployment the Deploy API currently
-does not report that capability, so enforcement is `unknown` with
-`CAPABILITY_NOT_REPORTED`; with no active deployment it is `not_applicable` with
-`NO_ACTIVE_DEPLOYMENT`. The CLI never substitutes another Card's rules or prints
-an `enforced`/`not enforced` guess.
-
-These commands establish local source capability only until a particular
-artifact and environment are qualified. I236/I238 own separate staging and live
-evidence; Worker source availability is not Services adoption or operational
-success.
+`drwn worker status [deployedWorkerId] --json` reads one strict typed management
+resource by immutable ID. It never joins a local Card slug to a deployed Worker,
+and it rejects malformed or secret-shaped server responses before rendering.
+Deployment history, rollback, runs, secrets, and retirement use the same
+target-bound management contract.
 
 ## How analyze works
 

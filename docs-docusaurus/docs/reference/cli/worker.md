@@ -8,34 +8,28 @@ The operational Worker surface complements the Card/Blueprint authoring
 commands:
 
 ```bash
-drwn worker status <slug> --json
+drwn org list --json
+drwn worker status --json
+drwn worker deploy @team/worker@1.0.0 --json
+drwn worker chat --message "hello" --json
 drwn worker materialize --payload payload.json --project-root /srv/worker
 drwn worker launch-context prepare <installed-root> --target codex --dry-run --json
 drwn worker buzz-tools
-printf '%s' "$WORKER_SECRET" | drwn worker secret set <slug> <name>
+printf '%s' "$WORKER_SECRET" | drwn worker secret set PROVIDER_API_KEY
 ```
 
-## Status and governance truth
+## Deployed Worker management
 
-`drwn worker status <slug>` reads the Worker and deployment endpoints, shows the
-latest and active deployments separately, and always includes one governance
-model in successful JSON output.
+`drwn org list/use` selects non-authoritative organization context.
+`drwn worker register/use` writes project binding only after authoritative readback.
+Status, deployment history, rollback, secrets, runs, and retirement (`drwn worker retire`) use strict typed
+IDs and the versioned management result envelope; names and slugs never select authority.
 
-Governance declaration and deployment enforcement are different claims.
-Declaration is derived only from an exact match between the deployment Card and
-the selected local project's locked Worker root. It reports the real
-`tools.allow` and `tools.deny` counts, including zero. When exact evidence is
-unavailable it reports one stable reason:
-
-- `LOCAL_PROJECT_UNAVAILABLE`
-- `LOCAL_TARGET_UNAVAILABLE`
-- `LOCAL_CARD_REF_MISMATCH`
-
-The Deploy API does not currently report authoritative governance capability.
-An active deployment therefore reports enforcement `unknown` with
-`CAPABILITY_NOT_REPORTED`; no active deployment reports `not_applicable` with
-`NO_ACTIVE_DEPLOYMENT`. The CLI does not infer enforcement, borrow another
-Card's rules, guess a policy hash, or print an “enforced”/“not enforced” claim.
+The client validates the frozen `deployed-worker.v1` contract before sending a
+request. Unsupported protocol tuples, malformed envelopes, unknown response
+fields, and secret-shaped response values fail closed as
+`UNSUPPORTED_PROTOCOL` or `SERVER_RESPONSE_INVALID`. The CLI never joins local
+Card names or slugs to remote authority.
 
 ## Materialize
 
@@ -92,11 +86,11 @@ bytes are never accepted on argv or rendered to stdout, stderr, or an error.
 Use `--kind mcp` for an MCP secret, or `--kind env --env-var NAME` for an
 environment binding.
 
-The `materialize`, `buzz-tools`, and `secret set` help commands are members of
+All org/Worker management help commands plus `materialize`, `buzz-tools`, and `secret set` are members of
 the fixed installed-package release-smoke set. `status --help` is also read-only,
 but is outside that fixed set. Actual status calls use auth/network, and the
 other actual commands may mutate state or start a runtime; they are not release
-smokes. Released Worker capability is also separate from Services adoption and
+smokes. Released Worker capability is separate from Services adoption and
 joint staging or live qualification.
 
 ## Related

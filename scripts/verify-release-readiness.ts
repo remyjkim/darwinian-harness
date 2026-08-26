@@ -202,13 +202,13 @@ function verifyDocsPresence() {
   const missing = requiredFiles.filter((file) => !existsSync(join(repoRoot, file)));
   const requiredTokens: Array<[string, string[]]> = [
     ["README.md", ["drwn worker mind", "provider-neutral placeholder", "drwn refresh --json", "Foundry/Analyzer-linked"]],
-    ["docs/cli-quickref.md", ["payload v3", "envelope v2", "CAPABILITY_NOT_REPORTED", "MIND_BACKEND_UNSELECTED"]],
+    ["docs/cli-quickref.md", ["payload v3", "envelope v2", "deployedWorkerId", "MIND_BACKEND_UNSELECTED"]],
     ["docs-docusaurus/docs/reference/cli/mind.md", ["MIND_BACKEND_UNSELECTED", "provider-neutral"]],
-    ["docs-docusaurus/docs/reference/cli/worker.md", ["LOCAL_CARD_REF_MISMATCH", "NO_ACTIVE_DEPLOYMENT"]],
+    ["docs-docusaurus/docs/reference/cli/worker.md", ["drwn org list", "drwn worker retire", "strict typed"]],
     ["docs-docusaurus/docs/reference/cli/refresh.md", ["CREDENTIAL_SCHEMA_UNSUPPORTED", "never persisted"]],
     ["docs/release-process.md", ["dry-run run ID and attempt", "artifact ID and digest", "release-recovery.yml"]],
     ["docs/maintainers/publishing.md", ["No local token fallback", "darwinian-npm-publish"]],
-    ["CHANGELOG.md", ["## [1.4.0] - 2026-08-24", "## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
+    ["CHANGELOG.md", ["## [1.4.2] - 2026-08-24", "## [1.2.0] - 2026-08-07", "## [1.1.0] - 2026-08-05", "## [1.0.0] - 2026-08-03"]],
   ];
   const drift: string[] = [];
   for (const [file, tokens] of requiredTokens) {
@@ -238,7 +238,7 @@ function verifyDocsPresence() {
 
 type SourceOverrides = Record<string, string>;
 
-const TARGET_RELEASE_VERSION = "1.4.0";
+const TARGET_RELEASE_VERSION = "1.4.2";
 const BUZZ_DELIVERY_MIN_VERSION = "1.2.0";
 const FIRST_SUPPORTED_WORKER_VERSION = "1.1.0";
 
@@ -1181,7 +1181,7 @@ export function verifySemanticMindContract(root = repoRoot, overrides: SourceOve
     issues.push("package.json must be valid JSON");
   }
   const runtimeVersion = runtimeVersionFromSource(source("cli/core/version.ts"), packageVersion, issues);
-  if (!packageVersion || !gte(packageVersion, "1.4.0")) issues.push("package version must be at least 1.4.0");
+  if (!packageVersion || !gte(packageVersion, "1.4.2")) issues.push("package version must be at least 1.4.2");
   if (runtimeVersion !== packageVersion) issues.push("runtime version must match package version");
   if (Object.hasOwn(dependencies, "@agentclientprotocol/sdk")) issues.push("ACP SDK dependency remains");
   if (Object.hasOwn(dependencies, "ulid")) issues.push("retired Mind backend ULID dependency remains");
