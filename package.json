@@ -53,6 +53,8 @@
     "drwn": "bun run cli/index.ts",
     "test": "bun test ./test/",
     "test:gate": "bun test --timeout 30000 --max-concurrency 2 ./test/",
+    "test:e2e:management:bash": "bash test/e2e/drwn-management-cli.sh",
+    "test:e2e:management:live": "bash test/e2e/drwn-management-cli-live.sh",
     "typecheck": "tsc --noEmit",
     "verify:release": "bun run scripts/verify-release-readiness.ts",
     "verify:worker-launch-targets": "bun run scripts/verify-worker-launch-targets.ts --json",

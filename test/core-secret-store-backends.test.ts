@@ -273,7 +273,8 @@ describe("real macOS keychain round-trip", () => {
   test.skipIf(process.platform !== "darwin" || process.env.DRWN_RUN_REAL_KEYCHAIN_TESTS !== "1")(
     "stores, loads, and deletes a key via the real security CLI when explicitly enabled",
     async () => {
-      const backend = new MacKeychainBackend("drwn-test-key", `drwn-test-${randomBytes(6).toString("hex")}`);
+      const suffix = randomBytes(8).toString("hex");
+      const backend = new MacKeychainBackend(`drwn-test-account-${suffix}`, `drwn-test-service-${suffix}`);
       const key = randomBytes(32);
       try {
         await backend.storeKey(key);
@@ -385,18 +386,15 @@ describe("real Windows DPAPI backend", () => {
 });
 
 describe("real Linux secret-tool backend", () => {
-  test.skipIf(process.env.DRWN_RUN_REAL_KEYCHAIN_TESTS !== "1")(
-    "stores, loads, and deletes a key via the Secret Service when explicitly enabled and available",
+  test.skipIf(process.platform !== "linux" || process.env.DRWN_RUN_REAL_KEYCHAIN_TESTS !== "1")(
+    "stores, loads, and deletes a key via the required unlocked Secret Service session",
     async () => {
       const backend = new SecretToolBackend(
         "drwn-test-key",
         "drwn test credentials key",
         `drwn-test-${randomBytes(6).toString("hex")}`,
       );
-      // Runtime skip: no secret-tool / D-Bus session in this environment (macOS, headless CI).
-      if (!(await backend.isAvailable())) {
-        return;
-      }
+      expect(await backend.isAvailable()).toBe(true);
       const key = randomBytes(32);
       try {
         await backend.storeKey(key);
