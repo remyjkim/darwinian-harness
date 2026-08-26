@@ -284,11 +284,9 @@ The first supported contract does not read prototype project state. Follow [`doc
 | `DRWN_FETCH_CONCURRENCY` | Concurrent Card/skill fetch limit. |
 | `DRWN_GIT_TIMEOUT_MS` | Git operation timeout. |
 
-Cloud endpoints cannot be overridden independently. The retired
-`DRWN_STUDIO_API_URL`, `DRWN_STUDIO_WEB_URL`, `DRWN_DAH_HUB_URL`, and
-`DRWN_DAH_RESOURCE` variables are rejected before credential access. Use the bundled
-staging tuple or one reviewed local profile so API, web, Auth Hub, issuer, audience,
-client, and scopes cannot be mixed across environments.
+Cloud endpoints cannot be overridden independently. Use the bundled staging tuple or
+one reviewed local profile so API, web, Auth Hub, issuer, audience, client, and scopes
+cannot be mixed across environments. Retired endpoint variables are not interpreted.
 
 ## References
 

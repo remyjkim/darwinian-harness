@@ -417,7 +417,6 @@ export async function runInstalledArtifactSmokes(
     ...process.env,
     AGENTS_HOME_DIR: userHome,
     AGENTS_DIR: agentsDir,
-    DRWN_STUDIO_API_URL: "http://127.0.0.1:9",
   };
   delete env.DRWN_TOKEN;
   const run = deps.run ?? defaultCommandRunner;

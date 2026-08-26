@@ -30,7 +30,7 @@ describe("drwnCliProfile", () => {
   });
 
   test("rejects retired partial Auth Hub and API overrides", () => {
-    for (const key of ["DRWN_DAH_HUB_URL", "DRWN_DAH_RESOURCE", "DRWN_STUDIO_API_URL", "DRWN_STUDIO_WEB_URL"]) {
+    for (const key of ["DRWN_DAH_HUB_URL", "DRWN_DAH_RESOURCE"]) {
       expect(() => drwnCliProfile({ [key]: "https://partial.example" }))
         .toThrow(expect.objectContaining({ code: "CLOUD_PROFILE_INVALID" }));
     }

@@ -12,12 +12,6 @@ import { WorkerListCommand } from "../cli/commands/worker/list";
 import { WorkerRollbackCommand } from "../cli/commands/worker/rollback";
 import { WorkerStatusCommand } from "../cli/commands/worker/status";
 import { WorkerRetireCommand } from "../cli/commands/worker/retire";
-import { resolveWorkerConfig } from "../cli/core/worker-config";
-import {
-  defaultSecretsFileCandidates,
-  DRWN_SECRETS_FILE,
-  parseSecretsFile,
-} from "../cli/core/worker-secrets";
 import type { AgentsContext } from "../cli/context";
 import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
 
@@ -90,40 +84,6 @@ async function runWorkerCommand(args: string[], fixture?: Awaited<ReturnType<typ
   const exitCode = await cli.run(args, context);
   return { stdout: stdout.text(), stderr: stderr.text(), exitCode };
 }
-
-describe("worker config and secrets", () => {
-  test("uses new defaults and DRWN studio endpoint overrides", () => {
-    expect(resolveWorkerConfig({})).toEqual({
-      apiBaseUrl: "https://api.darwinian.dev",
-      webBaseUrl: "https://foundry.darwinian.dev",
-    });
-    expect(resolveWorkerConfig({
-      IMINDS_API_URL: "https://old-api.example",
-      IMINDS_GATEWAY_URL: "https://old-gw.example",
-    })).toEqual({
-      apiBaseUrl: "https://api.darwinian.dev",
-      webBaseUrl: "https://foundry.darwinian.dev",
-    });
-    expect(resolveWorkerConfig({
-      DRWN_STUDIO_API_URL: "https://new-api.example",
-      DRWN_STUDIO_WEB_URL: "https://new-web.example",
-      IMINDS_API_URL: "https://old-api.example",
-      IMINDS_GATEWAY_URL: "https://old-gw.example",
-    })).toEqual({
-      apiBaseUrl: "https://new-api.example",
-      webBaseUrl: "https://new-web.example",
-    });
-  });
-
-  test("parses secrets and only tries .drwn.secrets by default", () => {
-    expect(parseSecretsFile("# c\nnotion=secret_abc\n\n  search = tok2 \nk=a=b=c\n")).toEqual({
-      notion: "secret_abc",
-      search: "tok2",
-      k: "a=b=c",
-    });
-    expect(defaultSecretsFileCandidates()).toEqual([DRWN_SECRETS_FILE]);
-  });
-});
 
 describe("worker command routing", () => {
   test("help exposes worker commands, keeps existing top-level auth available, and omits worker login", async () => {

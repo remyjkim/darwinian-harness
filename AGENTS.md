@@ -47,7 +47,7 @@ Use the `clNNNN_<slug>_<kind>.md` grammar from `.ai/rules/org-wide/06_issue_work
 Do **NOT** use `docs/plans/YYYY-MM-DD-*` paths.
 
 ### Commit prefixes
-Use the area-based prefix table from `.ai/rules/repo-wide/01_git_conventions.md` (e.g. `[studio-be]`, `[auth-hub]`, `[deploy]`).
+Use the area-based prefix table from `.ai/rules/repo-wide/01_git_conventions.md` (e.g. `[foundry-be]`, `[auth-hub]`, `[deploy]`).
 
 Do **NOT** use `[type:component]` or `[feat:auth]` style prefixes.
 

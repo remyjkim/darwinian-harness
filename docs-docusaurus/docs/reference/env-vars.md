@@ -72,9 +72,8 @@ DRWN_CLOUD_PROFILE_FILE=/absolute/path/to/drwn-cloud-profile.json \
 drwn login
 ```
 
-The retired `DRWN_STUDIO_API_URL`, `DRWN_STUDIO_WEB_URL`, `DRWN_DAH_HUB_URL`, and
-`DRWN_DAH_RESOURCE` variables are not compatibility aliases. Supplying any of them is
-a visible configuration error.
+Independent endpoint overrides are not compatibility aliases. Select the bundled
+production/staging tuple or one reviewed strict local profile instead.
 
 ### `DRWN_TOKEN`
 

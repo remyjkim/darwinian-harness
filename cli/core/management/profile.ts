@@ -12,8 +12,6 @@ const MAX_LOCAL_PROFILE_BYTES = 65_536;
 const RETIRED_PARTIAL_OVERRIDES = [
   "DRWN_DAH_HUB_URL",
   "DRWN_DAH_RESOURCE",
-  "DRWN_STUDIO_API_URL",
-  "DRWN_STUDIO_WEB_URL",
 ] as const;
 
 const requestedScopesSchema = z.tuple([

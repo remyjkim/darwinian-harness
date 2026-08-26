@@ -83,8 +83,6 @@ describe("resolveCloudProfile", () => {
     for (const key of [
       "DRWN_DAH_HUB_URL",
       "DRWN_DAH_RESOURCE",
-      "DRWN_STUDIO_API_URL",
-      "DRWN_STUDIO_WEB_URL",
     ]) {
       expect(() => resolveCloudProfile({ [key]: "https://partial.example" }), key)
         .toThrow(expect.objectContaining({ code: "CLOUD_PROFILE_INVALID" }));
