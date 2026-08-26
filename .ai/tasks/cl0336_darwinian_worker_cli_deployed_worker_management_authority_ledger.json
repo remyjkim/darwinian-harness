@@ -2,7 +2,7 @@
   "schema": "cl.drwn.worker-management-authority-ledger",
   "schemaVersion": 1,
   "status": "source_ready",
-  "observedAt": "2026-08-26T04:15:20Z",
+  "observedAt": "2026-08-26T04:25:28Z",
   "worker": {
     "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-architecture",
     "documentationRoot": "/Users/pureicis/dev/darwinian-minds",
@@ -11,14 +11,14 @@
     "acceptedBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
     "architecture": {
       "path": ".ai/analyses/cl0336_darwinian_worker_cli_deployed_worker_management_target_architecture.html",
-      "sha256": "44504409e9b57e386e7096d7786810fe1e8acf9fc40e4cf97a90803078ef9c33",
+      "sha256": "5f7b16dd7ff744870ccf0b1b48e04771434c07343c39cb12da2e98c37c2f64bd",
       "authority": "primary-checkout",
       "historicalGitBlob": "d2b94ca8cf418fb2f176cc10a2755b3e1609f1ed",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
     },
     "taskPlan": {
       "path": ".ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_task_plan.html",
-      "sha256": "35357f3755ca2a125bae5a9443c3c3cf9dc00d3fce784d7c97ea6762b10f3238",
+      "sha256": "17df62c2602dbb0dcdc8f99c174e58ebad1d040c975b549c1a907fd9a7590be9",
       "authority": "primary-checkout",
       "historicalGitBlob": "453bae3b2717ccfc172b598b9924d937e01736a0",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
@@ -109,7 +109,7 @@
     {
       "id": "GAP-07",
       "status": "approved",
-      "answer": "candidate publisher cannot move latest; separate protected minimal npm promotion authority"
+      "answer": "candidate publisher cannot move latest; npm trusted-publishing OIDC cannot authenticate dist-tag mutation, so promotion requires an external interactive npm-2FA ceremony or a separately reviewed non-OIDC credential authority"
     },
     {
       "id": "GAP-08",
@@ -139,6 +139,12 @@
       "status": "approved",
       "answer": "the final 13-route artifact restores I330 opaque domain IDs, separates three semantic authority vectors from lexical negatives, and maps lower-case route-specific Services failures into Worker-owned uppercase command-result codes; SERVER_RESPONSE_INVALID remains client-local",
       "approvedAt": "2026-08-26T04:15:20Z"
+    },
+    {
+      "id": "PROMOTION-01",
+      "status": "blocked_external",
+      "answer": "do not create an automated latest-mutation workflow that claims OIDC authority; official npm trusted-publishing support is limited to publish and stage publish",
+      "approvedAt": "2026-08-26T04:25:28Z"
     }
   ],
   "operationalAuthorities": {
@@ -175,7 +181,7 @@
   },
   "sourceBlockers": [],
   "operationalBlockers": [
-    "protected npm promotion authority",
+    "interactive npm-2FA or separately reviewed non-OIDC latest-promotion authority",
     "staging identity authority and receipt sink"
   ]
 }

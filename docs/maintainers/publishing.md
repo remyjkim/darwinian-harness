@@ -41,7 +41,10 @@ publishing different local bytes.
 After publication, require npm shasum/integrity equality before installed smokes
 on Ubuntu and macOS. Require `i336-candidate == 1.4.2` and prove `latest` is
 unchanged. Candidate publication has no `npm dist-tag` or GitHub Release path;
-those remain behind the later separately approved promotion workflow.
+`latest` remains behind a separately approved interactive npm-2FA ceremony (or
+a future reviewed non-OIDC credential authority). Trusted-publishing OIDC does
+not authenticate `npm dist-tag`, so a GitHub protected environment alone is not
+promotion authority.
 
 If publication has already succeeded and a later step fails, use
 `.github/workflows/release-recovery.yml` with the exact failed run ID and an

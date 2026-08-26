@@ -130,6 +130,9 @@ must equal the qualified candidate before the Ubuntu and macOS installed smokes
 run. The workflow must also prove `i336-candidate` resolves to `1.4.2` and the
 post-publication `latest` value equals the recorded prior value. This workflow
 cannot call `npm dist-tag`, move `latest`, or create a final GitHub Release.
+Current npm trusted-publishing OIDC does not authenticate `npm dist-tag`; final
+promotion therefore remains blocked on a separately approved interactive npm-2FA
+ceremony or another reviewed non-OIDC credential authority.
 
 The read-only registry metadata check is:
 
