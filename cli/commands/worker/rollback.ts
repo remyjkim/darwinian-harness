@@ -1,51 +1,63 @@
-// ABOUTME: Implements drwn worker rollback for moving a worker alias to an older deployment.
-// ABOUTME: The Deploy API keeps immutable deployment records; this only changes routing.
+// ABOUTME: Activates one explicitly named deployment attempt under a verified Deployed Worker target.
+// ABOUTME: Current revision comes from authoritative detail; previous/latest inference is removed.
 
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
-import { resolveWorkerConfig } from "../../core/worker-config";
-import { describeWorkerError } from "../../core/worker-error";
-import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
+import { requireProjectRoot } from "../card/project-command";
+import { resolveCredentialsPath } from "../../core/paths";
+import { renderDeploymentResultHuman, rollbackDeployment, type DeploymentDependencies } from "../../core/management/deployments";
+import { renderManagementCommandFailure } from "../../core/management/organizations";
+import { resolveCloudProfile } from "../../core/management/profile";
+import { renderManagementResultHuman, renderManagementResultJson } from "../../core/management/results";
+import { resolveVerifiedWorkerTarget } from "../../core/management/workers";
+import type { ManagementJsonObject } from "../../core/management/contracts";
+
+type WorkerRollbackDeps = DeploymentDependencies & { env?: Record<string, string | undefined> };
 
 export class WorkerRollbackCommand extends BaseCommand {
   static override paths = [["worker", "rollback"]];
-
+  static testDeps: WorkerRollbackDeps | undefined;
   static override usage = BaseCommand.Usage({
     category: "Worker",
-    description: "Roll a worker back to a previous deployment.",
-    details: `
-      Requests that the Deploy API repoint the worker alias to a previous ready
-      deployment. Without --to, the Deploy API chooses the most recent ready
-      deployment before the currently active one.
-    `,
+    description: "Activate one explicit owned deployment attempt.",
+    details: "Requires --to with a typed deployment ID and uses the current authoritative Worker revision. It never infers previous or latest.",
     examples: [
-      ["Roll back one deployment", "drwn worker rollback harari"],
-      ["Roll back to a specific deployment", "drwn worker rollback harari --to dep_abc123"],
+      ["Activate an attempt", "drwn worker rollback --to deployment_attempt_0001"],
+      ["Use an explicit target", "drwn worker rollback --deployed-worker deployed_worker_alpha --to deployment_attempt_0001 --json"],
     ],
   });
-
-  slug = Option.String();
-
-  to = Option.String("--to", {
-    description: "Target deployment id.",
-  });
+  deployedWorkerId = Option.String("--deployed-worker", { description: "Explicit Deployed Worker ID; otherwise use the verified project binding." });
+  to = Option.String("--to", { required: true, description: "Exact owned deployment ID to activate." });
+  json = Option.Boolean("--json", false, { description: "Emit the strict command-result JSON envelope." });
 
   async execute(): Promise<number> {
-    const { apiBaseUrl } = resolveWorkerConfig();
+    const deps = WorkerRollbackCommand.testDeps ?? {};
+    const env = deps.env ?? process.env;
     try {
-      const { response: res, body } = await fetchJsonWithWorkerAuth<{ activeDeploymentId?: string; error?: string }>(this.context, `${apiBaseUrl}/api/minds/${this.slug}/rollback`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(this.to ? { to: this.to } : {}),
-      });
-      if (!res.ok) {
-        this.context.stderr.write(`Rollback failed (${res.status}): ${body.error ?? "unknown error"}\n`);
+      const projectRoot = requireProjectRoot(this);
+      const profile = resolveCloudProfile(env);
+      const connection = { credentialsPath: resolveCredentialsPath(this.context.agentsDir), env, keychainBackend: deps.keychainBackend };
+      const verified = await resolveVerifiedWorkerTarget({
+        ...connection, homeDir: this.context.homeDir, projectRoot,
+        profileDigest: profile.profileDigest, explicitId: this.deployedWorkerId,
+      }, deps);
+      if (verified.result.outcome !== "succeeded") {
+        const output = this.json ? renderManagementResultJson(verified.result) : renderManagementResultHuman(verified.result);
+        this.context.stderr.write(output);
         return 1;
       }
-      this.context.stdout.write(`"${this.slug}" now serves ${body.activeDeploymentId}\n`);
-      return 0;
+      const worker = verified.result.data!.worker as ManagementJsonObject;
+      const result = await rollbackDeployment({
+        ...connection, projectRoot, profileDigest: profile.profileDigest,
+        deployedWorkerId: verified.target.selection.deployedWorkerId,
+        deploymentId: this.to,
+        expectedWorkerRevision: Number(worker.workerRevision),
+      }, deps);
+      const output = this.json ? renderManagementResultJson(result) : renderDeploymentResultHuman(result);
+      (result.outcome === "succeeded" ? this.context.stdout : this.context.stderr).write(output);
+      return result.outcome === "succeeded" ? 0 : 1;
     } catch (error) {
-      this.context.stderr.write(`${describeWorkerError(error, apiBaseUrl)}\n`);
+      this.context.stderr.write(renderManagementCommandFailure(error));
       return 1;
     }
   }

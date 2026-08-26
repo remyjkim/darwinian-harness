@@ -13,11 +13,11 @@ const DETAILS = [
   "  drwn worker launch-context prepare <installed-root> --target claude|codex",
   "  drwn worker list",
   "  drwn worker status [deployedWorkerId]",
-  "  drwn worker deployments [deployedWorkerId]",
+  "  drwn worker deployments [--deployed-worker <deployedWorkerId>]",
   "  drwn worker chat [deployedWorkerId] --message <text>",
   "  drwn worker secret set [deployedWorkerId] <name>",
   "  drwn worker buzz-tools",
-  "  drwn worker rollback <slug>",
+  "  drwn worker rollback [--deployed-worker <deployedWorkerId>] --to <deploymentId>",
   "  drwn worker delete <slug> --force",
 ].join("\n");
 

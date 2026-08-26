@@ -75,6 +75,21 @@ export interface BuildWorkerDeployPayloadOptions {
   maxStoreExportBytes?: number;
 }
 
+function canonicalizeDeployValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeDeployValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort().map((key) => [
+      key,
+      canonicalizeDeployValue((value as Record<string, unknown>)[key]),
+    ]));
+  }
+  return value;
+}
+
+export function canonicalWorkerDeployPayloadBytes(payload: WorkerDeployPayload): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(canonicalizeDeployValue(payload)));
+}
+
 function posixRelative(from: string, to: string) {
   return relative(from, to).replace(/\\/g, "/");
 }

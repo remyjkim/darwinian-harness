@@ -4,7 +4,12 @@
 import { randomUUID } from "node:crypto";
 import { DrwnError } from "../errors";
 import type { ManagementJsonObject } from "./contracts";
-import { clearMachineOrganization, loadMachineCloudContext, writeProjectCloudContext } from "./context-store";
+import {
+  clearMachineOrganization,
+  loadMachineCloudContext,
+  loadProjectCloudContext,
+  writeProjectCloudContext,
+} from "./context-store";
 import {
   requireSelectedOrganizationId,
   type ManagementReadConnection,
@@ -12,6 +17,7 @@ import {
 } from "./organizations";
 import { refusedManagementResult, renderManagementResultHuman, type DrwnManagementResult } from "./results";
 import { executeManagementRequest } from "./transport";
+import { resolveDeployedWorkerSelector, type DeployedWorkerSelector } from "./selector";
 
 export interface WorkerPageInput extends ManagementReadConnection {
   organizationId: string;
@@ -34,6 +40,48 @@ export interface WorkerUseInput extends Omit<WorkerReadInput, "organizationId"> 
   homeDir: string;
   projectRoot: string;
   profileDigest: string;
+}
+
+export interface ResolveWorkerTargetInput extends ManagementReadConnection {
+  homeDir: string;
+  projectRoot: string | null;
+  profileDigest: string;
+  explicitId?: string;
+}
+
+export interface ResolvedWorkerTarget {
+  organizationId: string;
+  selection: DeployedWorkerSelector;
+}
+
+export async function resolveWorkerTarget(input: ResolveWorkerTargetInput): Promise<ResolvedWorkerTarget> {
+  const machineContext = await loadMachineCloudContext(input.homeDir);
+  const organizationId = requireSelectedOrganizationId(machineContext, input.profileDigest);
+  const projectContext = input.projectRoot ? await loadProjectCloudContext(input.projectRoot) : null;
+  return {
+    organizationId,
+    selection: resolveDeployedWorkerSelector({
+      explicitId: input.explicitId,
+      projectContext,
+      profileDigest: input.profileDigest,
+      organizationId,
+    }),
+  };
+}
+
+export async function resolveVerifiedWorkerTarget(
+  input: ResolveWorkerTargetInput,
+  dependencies: ManagementReadDependencies = {},
+): Promise<{ target: ResolvedWorkerTarget; result: Readonly<DrwnManagementResult> }> {
+  const target = await resolveWorkerTarget(input);
+  const result = await readDeployedWorker({
+    credentialsPath: input.credentialsPath,
+    env: input.env,
+    keychainBackend: input.keychainBackend,
+    organizationId: target.organizationId,
+    deployedWorkerId: target.selection.deployedWorkerId,
+  }, dependencies);
+  return { target, result };
 }
 
 function nextRequestId(dependencies: ManagementReadDependencies): string {

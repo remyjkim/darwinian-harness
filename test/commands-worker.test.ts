@@ -3,9 +3,6 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Writable } from "node:stream";
 import { WorkerCommand } from "../cli/commands/worker/worker";
 import { WorkerDeleteCommand } from "../cli/commands/worker/delete";
@@ -22,7 +19,7 @@ import {
   parseSecretsFile,
 } from "../cli/core/worker-secrets";
 import type { AgentsContext } from "../cli/context";
-import { cleanupTempRoots, publishCardWithSkills, scaffoldCliFixture } from "./helpers";
+import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
 
 const tempRoots: string[] = [];
 const originalFetch = globalThis.fetch;
@@ -207,41 +204,13 @@ describe("worker API commands", () => {
     expect(JSON.parse(result.stdout)).toEqual({ output: "hello back", metered: true });
   });
 
-  test("deployments marks the active deployment and supports JSON", async () => {
-    const body = {
-      active_deployment_id: "dep_a",
-      deployments: [
-        { id: "dep_a", mind_id: "mind_1", card_ref: "github:x/a#1", model: "m", status: "ready", content_hash: "hash", error: null, created_at: "c1", updated_at: "u1" },
-        { id: "dep_b", mind_id: "mind_1", card_ref: "github:x/a#2", model: null, status: "failed", content_hash: null, error: "boom", created_at: "c2", updated_at: "u2" },
-      ],
-    };
-    stubFetch(async (url) => {
-      expect(new URL(url).pathname).toBe("/api/minds/harari/deployments");
-      return json(body);
-    });
-
-    const result = await runWorkerCommand(["worker", "deployments", "harari"]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/^\*\s+dep_a/m);
-    expect(result.stdout).toContain("boom");
-
-    const asJson = await runWorkerCommand(["worker", "deployments", "harari", "--json"]);
-    expect(asJson.exitCode).toBe(0);
-    expect(JSON.parse(asJson.stdout)).toEqual(body);
-  });
-
-  test("rollback and delete call the expected endpoints", async () => {
+  test("delete retains its legacy endpoint until the T10 retirement hard cut", async () => {
     const calls: string[] = [];
     stubFetch(async (url, init) => {
       const path = new URL(url).pathname;
       calls.push(`${init?.method ?? "GET"} ${path}`);
-      if (path.endsWith("/rollback")) return json({ activeDeploymentId: "dep_prev" });
       return json({ deleted: "harari" });
     });
-
-    const rollback = await runWorkerCommand(["worker", "rollback", "harari"]);
-    expect(rollback.exitCode).toBe(0);
-    expect(rollback.stdout).toContain("dep_prev");
 
     const refused = await runWorkerCommand(["worker", "delete", "harari"]);
     expect(refused.exitCode).toBe(1);
@@ -250,67 +219,6 @@ describe("worker API commands", () => {
     const deleted = await runWorkerCommand(["worker", "delete", "harari", "--force"]);
     expect(deleted.exitCode).toBe(0);
     expect(deleted.stdout).toContain("Deleted");
-    expect(calls).toEqual(["POST /api/minds/harari/rollback", "DELETE /api/minds/harari"]);
-  });
-
-  test("deploy ignores legacy Mind fields and never fetches or persists a storage binding", async () => {
-    process.env.DRWN_POLL_MS = "1";
-    const fixture = await scaffoldCliFixture();
-    tempRoots.push(fixture.root);
-    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
-    const cwd = await mkdtemp(join(tmpdir(), "drwn-worker-test-"));
-    tempRoots.push(cwd);
-    process.chdir(cwd);
-
-    const calls: string[] = [];
-    stubFetch(async (url, init) => {
-      const path = new URL(url).pathname;
-      calls.push(`${init?.method ?? "GET"} ${path}`);
-      if (path === "/api/deployments" && init?.method === "POST") {
-        return json({ deploymentId: "dep_test", mindId: "mind_abc123", slug: "harari", status: "pending" }, 201);
-      }
-      return json({ id: "dep_test", status: "ready" });
-    });
-
-    const result = await runWorkerCommand(["worker", "deploy", "@me/plain@^1.0.0", "--name", "harari"], fixture);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).not.toContain("Mind:");
-    expect(calls).toEqual(["POST /api/deployments", "GET /api/deployments/dep_test"]);
-    expect(await Bun.file(join(fixture.agentsDir, "drwn", "mind-bindings.json")).exists()).toBe(false);
-  });
-
-  test("deploy reads .drwn.secrets, redacts tokens, and reports ready output", async () => {
-    process.env.DRWN_POLL_MS = "1";
-    const fixture = await scaffoldCliFixture();
-    tempRoots.push(fixture.root);
-    await publishCardWithSkills(fixture, { name: "@me/plain", skills: ["plain"] });
-    const cwd = await mkdtemp(join(tmpdir(), "drwn-worker-test-"));
-    tempRoots.push(cwd);
-    process.chdir(cwd);
-    await writeFile(join(cwd, ".drwn.secrets"), "notion=secret_token\n");
-
-    let postedBody: unknown;
-    const calls: string[] = [];
-    stubFetch(async (url, init) => {
-      const path = new URL(url).pathname;
-      calls.push(`${init?.method ?? "GET"} ${path}`);
-      if (path === "/api/deployments" && init?.method === "POST") {
-        postedBody = JSON.parse(String(init.body));
-        return json({ deploymentId: "dep_test" }, 201);
-      }
-      return json({ id: "dep_test", status: "ready" });
-    });
-
-    const result = await runWorkerCommand(["worker", "deploy", "@me/plain@^1.0.0", "--name", "harari"], fixture);
-    expect(result.exitCode).toBe(0);
-    expect((postedBody as Record<string, unknown>).cardRef).toBe("@me/plain@^1.0.0");
-    expect((postedBody as Record<string, unknown>).name).toBe("harari");
-    expect((postedBody as Record<string, unknown>).secrets).toEqual({ notion: "secret_token" });
-    expect((postedBody as { blueprint?: { contractVersion?: number } }).blueprint?.contractVersion).toBe(1);
-    expect((postedBody as { blueprint?: { lockfile?: { cards?: { name?: string }[] } } }).blueprint?.lockfile?.cards?.[0]?.name).toBe("@me/plain");
-    expect(calls).toEqual(["POST /api/deployments", "GET /api/deployments/dep_test"]);
-    expect(result.stdout).toContain("Deployment dep_test is ready.");
-    expect(result.stdout).toContain("Chat: drwn worker chat harari --message <text>");
-    expect(result.stdout).not.toContain("secret_token");
+    expect(calls).toEqual(["DELETE /api/minds/harari"]);
   });
 });
