@@ -23,9 +23,10 @@ export function parseRouteRequest(
 export function parseRouteSuccess(
   routeKey: ManagementRouteKey,
   candidate: unknown,
+  requestCandidate?: unknown,
 ): ManagementJsonObject {
   try {
-    return parseManagementSuccess(routeKey, candidate) as ManagementJsonObject;
+    return parseManagementSuccess(routeKey, candidate, requestCandidate) as ManagementJsonObject;
   } catch {
     throw new DrwnError("SERVER_RESPONSE_INVALID", "The management server returned an invalid response.");
   }

@@ -54,6 +54,7 @@ export interface ManagementTransportDependencies {
 interface PreparedManagementRequest {
   routeKey: ManagementRouteKey;
   requestId: string;
+  request: ManagementJsonObject;
   url: string;
   method: string;
   bodyText?: string;
@@ -104,6 +105,7 @@ function prepareRequest(
   return Object.freeze({
     routeKey,
     requestId: request.requestId,
+    request,
     url: url.href,
     method: route.method,
     ...(bodyText === undefined ? {} : { bodyText }),
@@ -219,7 +221,7 @@ export async function executeManagementRequest(
 
     if (response.ok) {
       try {
-        const data = parseRouteSuccess(input.routeKey, body);
+        const data = parseRouteSuccess(input.routeKey, body, prepared.request);
         if (data.requestId !== prepared.requestId) throw new Error("request id mismatch");
         return succeededManagementResult(
           input.routeKey,

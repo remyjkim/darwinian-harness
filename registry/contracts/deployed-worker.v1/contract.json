@@ -55,10 +55,17 @@
       },
       {
         "name": "X-Request-Id",
-        "semantics": "lowercase-uuidv4-and-sole-mutation-idempotency-identity"
+        "semantics": "lowercase-uuidv4-request-identity"
       }
     ],
     "mutationIdempotencyHeader": "X-Request-Id"
+  },
+  "artifactStaging": {
+    "maxPayloadBytes": 37748736,
+    "artifactRefPrefix": "deployment_artifact:sha256:",
+    "requestIdDerivation": "uuidv4-from-artifact-sha256-first-16-bytes",
+    "storage": "target-scoped-create-if-absent-exact-byte-match",
+    "payloadContract": "canonical-worker-deploy-payload-v1-json"
   },
   "idKinds": {
     "OrganizationId": {
@@ -130,6 +137,33 @@
     "PositiveRevision": {
       "type": "integer",
       "minimum": 1
+    },
+    "ArtifactSha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "ArtifactRef": {
+      "type": "string",
+      "pattern": "^deployment_artifact:sha256:[a-f0-9]{64}$",
+      "maxLength": 91
+    },
+    "ArtifactByteLength": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 37748736
+    },
+    "ArtifactPayloadBase64": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 50331648,
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+    },
+    "ArtifactPutStatus": {
+      "type": "string",
+      "enum": [
+        "created",
+        "existing"
+      ]
     },
     "Timestamp": {
       "type": "string",
@@ -235,9 +269,7 @@
           "$ref": "#/idKinds/DeployedWorkerId"
         },
         "artifactRef": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
+          "$ref": "#/schemas/ArtifactRef"
         },
         "status": {
           "type": "string",
@@ -510,6 +542,66 @@
         }
       }
     },
+    "DeploymentArtifactsPutRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "artifactSha256",
+        "byteLength",
+        "payloadBase64"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "artifactSha256": {
+          "$ref": "#/schemas/ArtifactSha256"
+        },
+        "byteLength": {
+          "$ref": "#/schemas/ArtifactByteLength"
+        },
+        "payloadBase64": {
+          "$ref": "#/schemas/ArtifactPayloadBase64"
+        }
+      }
+    },
+    "DeploymentArtifactsPutSuccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "deployedWorkerId",
+        "artifactRef",
+        "artifactSha256",
+        "byteLength",
+        "status"
+      ],
+      "properties": {
+        "requestId": {
+          "$ref": "#/idKinds/RequestId"
+        },
+        "deployedWorkerId": {
+          "$ref": "#/idKinds/DeployedWorkerId"
+        },
+        "artifactRef": {
+          "$ref": "#/schemas/ArtifactRef"
+        },
+        "artifactSha256": {
+          "$ref": "#/schemas/ArtifactSha256"
+        },
+        "byteLength": {
+          "$ref": "#/schemas/ArtifactByteLength"
+        },
+        "status": {
+          "$ref": "#/schemas/ArtifactPutStatus"
+        }
+      }
+    },
     "DeploymentsCreateRequest": {
       "type": "object",
       "additionalProperties": false,
@@ -527,9 +619,7 @@
           "$ref": "#/idKinds/DeployedWorkerId"
         },
         "artifactRef": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 512
+          "$ref": "#/schemas/ArtifactRef"
         },
         "expectedWorkerRevision": {
           "$ref": "#/schemas/PositiveRevision"
@@ -1013,6 +1103,18 @@
       "successSchema": "#/schemas/DeployedWorkersReadSuccess"
     },
     {
+      "routeKey": "deployment_artifacts.put",
+      "method": "PUT",
+      "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/deployment-artifacts/{artifactSha256}",
+      "authority": {
+        "kind": "capability",
+        "capability": "deploy"
+      },
+      "mutation": true,
+      "requestSchema": "#/schemas/DeploymentArtifactsPutRequest",
+      "successSchema": "#/schemas/DeploymentArtifactsPutSuccess"
+    },
+    {
       "routeKey": "deployments.create",
       "method": "POST",
       "pathTemplate": "/api/deployed-workers/{deployedWorkerId}/deployments",
@@ -1195,11 +1297,29 @@
         }
       },
       {
+        "routeKey": "deployment_artifacts.put",
+        "request": {
+          "requestId": "68672414-40ef-47a7-8a48-75c40b56afde",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "artifactSha256": "6867241440ef87a70a4875c40b56afde567ccdb261ae4317c87a13c25b0314e1",
+          "byteLength": 980,
+          "payloadBase64": "eyJjb25maWciOnsiY2FyZHMiOlsiQGZpeHR1cmUvd29ya2VyQDEuMC4wIl0sInZlcnNpb24iOjF9LCJjb250cmFjdFZlcnNpb24iOjEsImVudHJ5cG9pbnQiOnsia2luZCI6ImNhcmQiLCJuYW1lIjoiQGZpeHR1cmUvd29ya2VyIiwicmVxdWVzdGVkIjoiQGZpeHR1cmUvd29ya2VyQDEuMC4wIn0sImdvdmVybmFuY2UiOm51bGwsImxvY2tmaWxlIjp7ImNhcmRzIjpbeyJnaXQiOnsiY29tbWl0IjoiY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyJ9LCJob29rcyI6W10sImludGVncml0eSI6InNoYTI1Ni1iYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiIiwibWFuaWZlc3QiOnsiZGVzY3JpcHRpb24iOiIiLCJuYW1lIjoiQGZpeHR1cmUvd29ya2VyIiwidmVyc2lvbiI6IjEuMC4wIn0sIm5hbWUiOiJAZml4dHVyZS93b3JrZXIiLCJvcmlnaW4iOiJzdG9yZSIsInBhdGgiOiJkcnduL2V4dHJhY3RlZC9hYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwicmVnaXN0cnkiOm51bGwsInJlcXVlc3RlZCI6IkBmaXh0dXJlL3dvcmtlckAxLjAuMCIsInNraWxscyI6W10sInRyZWVTaGEiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwidmVyc2lvbiI6IjEuMC4wIn1dLCJsb2NrZmlsZVZlcnNpb24iOjUsInN0b3JlIjp7Im1pbkRyd25WZXJzaW9uIjoiMS40LjIifX0sIm1hdGVyaWFsaXphdGlvbiI6ImxvY2tmaWxlLXN0b3JlLWV4cG9ydCIsInN0b3JlRXhwb3J0Ijp7ImJ5dGVMZW5ndGgiOjEsImJ5dGVzQmFzZTY0IjoiZUE9PSIsImNvbXByZXNzaW9uIjoibm9uZSIsImVuY29kaW5nIjoiYmFzZTY0Iiwia2luZCI6ImRyd24tc3RvcmUtZXhwb3J0LXRhciIsInNoYTI1NiI6IjJkNzExNjQyYjcyNmIwNDQwMTYyN2NhOWZiYWMzMmY1Yzg1MzBmYjE5MDNjYzRkYjAyMjU4NzE3OTIxYTQ4ODEifX0="
+        },
+        "success": {
+          "requestId": "68672414-40ef-47a7-8a48-75c40b56afde",
+          "deployedWorkerId": "deployed_worker_alpha",
+          "artifactRef": "deployment_artifact:sha256:6867241440ef87a70a4875c40b56afde567ccdb261ae4317c87a13c25b0314e1",
+          "artifactSha256": "6867241440ef87a70a4875c40b56afde567ccdb261ae4317c87a13c25b0314e1",
+          "byteLength": 980,
+          "status": "created"
+        }
+      },
+      {
         "routeKey": "deployments.create",
         "request": {
           "requestId": "123e4567-e89b-42d3-a456-426614174005",
           "deployedWorkerId": "deployed_worker_alpha",
-          "artifactRef": "card:sha256:abc123",
+          "artifactRef": "deployment_artifact:sha256:6867241440ef87a70a4875c40b56afde567ccdb261ae4317c87a13c25b0314e1",
           "expectedWorkerRevision": 1
         },
         "success": {
@@ -1223,7 +1343,7 @@
             {
               "deploymentId": "deployment_attempt_0001",
               "deployedWorkerId": "deployed_worker_alpha",
-              "artifactRef": "card:sha256:abc123",
+              "artifactRef": "deployment_artifact:sha256:6867241440ef87a70a4875c40b56afde567ccdb261ae4317c87a13c25b0314e1",
               "status": "active",
               "createdAt": "2026-08-25T12:00:00Z"
             }
@@ -1421,6 +1541,60 @@
           "X-Request-Id": "123E4567-E89B-42D3-A456-426614174000"
         },
         "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-artifact-sha",
+        "routeKey": "deployment_artifacts.put",
+        "surface": "request",
+        "candidate": {
+          "artifactSha256": "6867241440EF87A70A4875C40B56AFDE567CCDB261AE4317C87A13C25B0314E1"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "malformed-artifact-base64",
+        "routeKey": "deployment_artifacts.put",
+        "surface": "request",
+        "candidate": {
+          "payloadBase64": "***not-base64***"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "artifact-byte-length-mismatch",
+        "routeKey": "deployment_artifacts.put",
+        "surface": "request",
+        "candidate": {
+          "byteLength": 981
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "artifact-digest-mismatch",
+        "routeKey": "deployment_artifacts.put",
+        "surface": "request",
+        "candidate": {
+          "artifactSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "expectedError": "VALIDATION_FAILED"
+      },
+      {
+        "caseId": "artifact-response-ref-mismatch",
+        "routeKey": "deployment_artifacts.put",
+        "surface": "response",
+        "candidate": {
+          "artifactRef": "deployment_artifact:sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
+      },
+      {
+        "caseId": "artifact-response-length-mismatch",
+        "routeKey": "deployment_artifacts.put",
+        "surface": "response",
+        "candidate": {
+          "byteLength": 981
+        },
+        "expectedError": "SERVER_RESPONSE_INVALID"
       },
       {
         "caseId": "malformed-cursor",

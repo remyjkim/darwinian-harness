@@ -40,7 +40,7 @@ const servicesPath = resolve(
   "v1",
   "contract.json",
 );
-const expectedDigest = "0cc02c8705b7aa6e612bef1a8c56468481e0ec1a93489365ecfe28538bd0846a";
+const expectedDigest = "e396d4fb42134d4b79882da54e473d1e3f54ef88862c807057ae859fe066e2f7";
 
 test("vendors the exact immutable Services artifact and pins its authority", () => {
   expect(existsSync(vendoredPath)).toBe(true);
@@ -55,12 +55,12 @@ test("vendors the exact immutable Services artifact and pins its authority", () 
     schemaVersion: 1,
     protocol: "deployed-worker.v1",
     servicesRepository: "curation-labs/darwinian-services",
-    sourceCommit: "7f40c83045dd29d992b2ee5bf232cc8204da9470",
+    sourceCommit: "abac8dc9f1466aa855054daf2fea045a54a54732",
     sha256: expectedDigest,
-    routeCount: 12,
-    positiveVectorCount: 12,
-    negativeVectorCount: 29,
-    schemaCount: 35,
+    routeCount: 13,
+    positiveVectorCount: 13,
+    negativeVectorCount: 35,
+    schemaCount: 42,
     errorCodeCount: 10,
   });
 });
@@ -70,15 +70,16 @@ test("admits the closed contract and derives the exact route inventory", () => {
   expect(Object.isFrozen(managementContract)).toBe(true);
   expect(Object.isFrozen(managementContract.schemas)).toBe(true);
   expect(Object.isFrozen(managementSchemas)).toBe(true);
-  expect(Object.keys(managementContract.schemas)).toHaveLength(35);
-  expect(managementContract.vectors.positive).toHaveLength(12);
-  expect(managementContract.vectors.negative).toHaveLength(29);
+  expect(Object.keys(managementContract.schemas)).toHaveLength(42);
+  expect(managementContract.vectors.positive).toHaveLength(13);
+  expect(managementContract.vectors.negative).toHaveLength(35);
   expect(MANAGEMENT_ROUTE_KEYS).toEqual([
     "organizations.list",
     "organizations.read",
     "deployed_workers.register",
     "deployed_workers.list",
     "deployed_workers.read",
+    "deployment_artifacts.put",
     "deployments.create",
     "deployments.list",
     "deployments.rollback",
@@ -89,6 +90,32 @@ test("admits the closed contract and derives the exact route inventory", () => {
   ]);
   expect(Object.isFrozen(managementRoutes)).toBe(true);
   expect(Object.keys(managementRoutes)).toEqual([...MANAGEMENT_ROUTE_KEYS]);
+});
+
+test("pins target-scoped immutable deployment artifact staging semantics", () => {
+  const contract = managementContract as unknown as {
+    artifactStaging: Record<string, unknown>;
+    vectors: { positive: Array<{ routeKey: string; request: Record<string, unknown>; success: Record<string, unknown> }> };
+  };
+  expect(contract.artifactStaging).toEqual({
+    maxPayloadBytes: 37_748_736,
+    artifactRefPrefix: "deployment_artifact:sha256:",
+    requestIdDerivation: "uuidv4-from-artifact-sha256-first-16-bytes",
+    storage: "target-scoped-create-if-absent-exact-byte-match",
+    payloadContract: "canonical-worker-deploy-payload-v1-json",
+  });
+  const vector = contract.vectors.positive.find(({ routeKey }) => routeKey === "deployment_artifacts.put")!;
+  const payload = Buffer.from(String(vector.request.payloadBase64), "base64");
+  expect(createHash("sha256").update(payload).digest("hex")).toBe(String(vector.request.artifactSha256));
+  expect(payload.byteLength).toBe(Number(vector.request.byteLength));
+  expect(vector.success).toMatchObject({
+    requestId: "68672414-40ef-47a7-8a48-75c40b56afde",
+    deployedWorkerId: "deployed_worker_alpha",
+    artifactRef: `deployment_artifact:sha256:${vector.request.artifactSha256}`,
+    artifactSha256: vector.request.artifactSha256,
+    byteLength: vector.request.byteLength,
+    status: "created",
+  });
 });
 
 test("registration intent excludes client WorkerId while success returns authoritative identity", () => {
@@ -141,6 +168,7 @@ test("pins strict top-level, profile, header, ID, and error inventories", () => 
     "idKinds",
     "profiles",
     "headers",
+    "artifactStaging",
     "routes",
     "schemas",
     "errors",
@@ -173,7 +201,7 @@ test("pins strict top-level, profile, header, ID, and error inventories", () => 
       { name: "Authorization", semantics: "services-bearer-only" },
       { name: "X-Drwn-Protocol", semantics: "exact-protocol" },
       { name: "X-Drwn-Version", semantics: "client-version" },
-      { name: "X-Request-Id", semantics: "lowercase-uuidv4-and-sole-mutation-idempotency-identity" },
+      { name: "X-Request-Id", semantics: "lowercase-uuidv4-request-identity" },
     ],
     mutationIdempotencyHeader: "X-Request-Id",
   });
@@ -204,7 +232,7 @@ function assertObjectSchemasClosed(value: unknown, path = "root"): void {
   for (const [key, child] of Object.entries(record)) assertObjectSchemasClosed(child, `${path}.${key}`);
 }
 
-test("compiles every closed schema reference and parses all twelve positive vectors", () => {
+test("compiles every closed schema reference and parses all thirteen positive vectors", () => {
   for (const [name, schema] of Object.entries(managementContract.schemas)) {
     assertObjectSchemasClosed(schema, `schemas.${name}`);
     expect(managementSchemas[name], name).toBeDefined();
@@ -228,7 +256,7 @@ function caughtCode(operation: () => unknown): string | undefined {
   }
 }
 
-test("rejects all twenty-nine negative vectors on only their intended surface", () => {
+test("rejects all thirty-five negative vectors on only their intended surface", () => {
   const positives = new Map(managementContract.vectors.positive.map((vector) => [vector.routeKey, vector]));
   const baseHeaders = {
     Authorization: "Bearer services-token-fixture",
@@ -245,7 +273,11 @@ test("rejects all twenty-nine negative vectors on only their intended surface", 
     if (vector.surface === "request") {
       code = caughtCode(() => parseManagementRequest(vector.routeKey, { ...positive.request, ...vector.candidate }));
     } else if (vector.surface === "response") {
-      code = caughtCode(() => parseManagementSuccess(vector.routeKey, { ...positive.success, ...vector.candidate }));
+      code = caughtCode(() => parseManagementSuccess(
+        vector.routeKey,
+        { ...positive.success, ...vector.candidate },
+        positive.request,
+      ));
     } else if (vector.surface === "header") {
       code = caughtCode(() => validateManagementHeaders({ ...baseHeaders, ...vector.candidate }));
     } else {

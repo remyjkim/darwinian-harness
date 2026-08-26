@@ -15,6 +15,7 @@ export const MANAGEMENT_ROUTE_KEYS = [
   "deployed_workers.register",
   "deployed_workers.list",
   "deployed_workers.read",
+  "deployment_artifacts.put",
   "deployments.create",
   "deployments.list",
   "deployments.rollback",

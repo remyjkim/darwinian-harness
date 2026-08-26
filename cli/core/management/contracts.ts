@@ -34,10 +34,10 @@ const lockSchema = z.object({
   servicesRepository: z.literal("curation-labs/darwinian-services"),
   sourceCommit: commitSchema,
   sha256: sha256Schema,
-  routeCount: z.literal(12),
-  positiveVectorCount: z.literal(12),
-  negativeVectorCount: z.literal(29),
-  schemaCount: z.literal(35),
+  routeCount: z.literal(13),
+  positiveVectorCount: z.literal(13),
+  negativeVectorCount: z.literal(35),
+  schemaCount: z.literal(42),
   errorCodeCount: z.literal(10),
 }).strict();
 
@@ -140,20 +140,27 @@ const contractSchema = z.object({
       z.object({ name: z.literal("X-Drwn-Version"), semantics: z.literal("client-version") }).strict(),
       z.object({
         name: z.literal("X-Request-Id"),
-        semantics: z.literal("lowercase-uuidv4-and-sole-mutation-idempotency-identity"),
+        semantics: z.literal("lowercase-uuidv4-request-identity"),
       }).strict(),
     ]),
     mutationIdempotencyHeader: z.literal("X-Request-Id"),
   }).strict(),
-  routes: z.array(routeSchema).length(12),
-  schemas: z.record(z.string(), jsonObjectSchema).refine((value) => Object.keys(value).length === 35),
+  artifactStaging: z.object({
+    maxPayloadBytes: z.literal(37_748_736),
+    artifactRefPrefix: z.literal("deployment_artifact:sha256:"),
+    requestIdDerivation: z.literal("uuidv4-from-artifact-sha256-first-16-bytes"),
+    storage: z.literal("target-scoped-create-if-absent-exact-byte-match"),
+    payloadContract: z.literal("canonical-worker-deploy-payload-v1-json"),
+  }).strict(),
+  routes: z.array(routeSchema).length(13),
+  schemas: z.record(z.string(), jsonObjectSchema).refine((value) => Object.keys(value).length === 42),
   errors: z.object({
     codes: z.array(z.string().regex(/^[A-Z][A-Z0-9_]+$/)).length(10),
     httpStatusByCode: z.record(z.string(), z.number().int().min(400).max(599)),
   }).strict(),
   vectors: z.object({
-    positive: z.array(positiveVectorSchema).length(12),
-    negative: z.array(negativeVectorSchema).length(29),
+    positive: z.array(positiveVectorSchema).length(13),
+    negative: z.array(negativeVectorSchema).length(35),
   }).strict(),
 }).strict();
 
@@ -531,10 +538,20 @@ export function parseManagementRequest(routeKey: string, candidate: unknown): un
   if (!result.success) {
     throw new DrwnError("VALIDATION_FAILED", `Invalid request for management route ${routeKey}`, undefined, result.error);
   }
+  if (routeKey === "deployment_artifacts.put") {
+    const request = result.data as ManagementJsonObject;
+    const payload = Buffer.from(String(request.payloadBase64), "base64");
+    if (
+      payload.byteLength !== request.byteLength ||
+      createHash("sha256").update(payload).digest("hex") !== request.artifactSha256
+    ) {
+      throw new DrwnError("VALIDATION_FAILED", "Invalid deployment artifact payload identity.");
+    }
+  }
   return result.data;
 }
 
-export function parseManagementSuccess(routeKey: string, candidate: unknown): unknown {
+export function parseManagementSuccess(routeKey: string, candidate: unknown, requestCandidate?: unknown): unknown {
   const route = managementRouteForKey(routeKey);
   const result = managementSchemas[schemaNameFromRef(route.successSchema)]!.safeParse(candidate);
   if (!result.success) {
@@ -544,6 +561,24 @@ export function parseManagementSuccess(routeKey: string, candidate: unknown): un
       undefined,
       result.error,
     );
+  }
+  if (routeKey === "deployment_artifacts.put") {
+    const response = result.data as ManagementJsonObject;
+    const expectedRef = `deployment_artifact:sha256:${String(response.artifactSha256)}`;
+    const request = requestCandidate && typeof requestCandidate === "object" && !Array.isArray(requestCandidate)
+      ? requestCandidate as ManagementJsonObject
+      : null;
+    if (
+      response.artifactRef !== expectedRef ||
+      (request !== null && (
+        response.requestId !== request.requestId ||
+        response.deployedWorkerId !== request.deployedWorkerId ||
+        response.artifactSha256 !== request.artifactSha256 ||
+        response.byteLength !== request.byteLength
+      ))
+    ) {
+      throw new DrwnError("SERVER_RESPONSE_INVALID", "Invalid deployment artifact response identity.");
+    }
   }
   return result.data;
 }
