@@ -7,6 +7,7 @@ const DETAILS = [
   "Cards compose one selected project Worker with drwn use; Deployed Worker management uses explicit organization and Deployed Worker IDs.",
   "",
   "Available commands:",
+  "  drwn worker register --organization <organizationId> --name <name> --environment <environment>",
   "  drwn worker use <deployedWorkerId>",
   "  drwn worker deploy <cardRef>",
   "  drwn worker launch-context prepare <installed-root> --target claude|codex",
