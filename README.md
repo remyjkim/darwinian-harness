@@ -58,11 +58,12 @@ Claude Code 2.1.212 and Codex CLI 0.149.0 are the conservative first supported
 targets. Context pruning is report-only unless `--execute --older-than` is
 explicit. Cold-restored orchestrator bindings remain `relaunch_required`.
 
-The installed CLI also exposes the operational ACP, deployed-Worker, and DAH
-authentication surfaces:
+The installed CLI also exposes deployed-Worker and DAH authentication surfaces.
+ACP is removed, and `drwn worker mind` is a provider-neutral placeholder until
+a persistence backend is selected:
 
 ```bash
-drwn acp serve <slug>
+drwn worker mind
 drwn worker status <slug> --json
 drwn worker materialize --payload payload.json --project-root /srv/worker
 drwn worker buzz-tools
@@ -75,11 +76,10 @@ drwn analyze sessions --dry-run
 ```
 
 `drwn analyze sessions` remains the Foundry/Analyzer-linked session-upload
-feature; it is separate from ACP serving. `drwn --version` and eleven documented
-auth/ACP/Worker/launch-context `--help` commands form the twelve safe installed-package release
-smokes. Actual login, logout, refresh, ACP serving, materialization, Buzz
-delivery, secret mutation, and analysis upload are operational actions, not
-release smokes.
+feature. Safe installed-package release smokes use only version and documented
+auth/Worker/launch-context help paths. Actual login, logout, refresh,
+materialization, Buzz delivery, secret mutation, and analysis upload are
+operational actions, not release smokes.
 
 `worker status` reports local governance declarations separately from deployed
 enforcement. Until the Deploy API supplies authoritative capability evidence,

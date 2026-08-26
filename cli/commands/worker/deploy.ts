@@ -11,7 +11,6 @@ import { fetchJsonWithWorkerAuth } from "../../core/worker-http";
 import { defaultSecretsFileCandidates, DRWN_SECRETS_FILE, parseSecretsFile } from "../../core/worker-secrets";
 import { buildWorkerDeployPayload } from "../../core/worker-deploy";
 import { DrwnError } from "../../core/errors";
-import { writeMindBinding } from "../../core/mind-store/bindings";
 import { resolveProjectRootFromConfigPath } from "../../core/project";
 
 export const DEPLOY_TARGETS = ["preview", "production"] as const;
@@ -122,9 +121,9 @@ export class WorkerDeployCommand extends BaseCommand {
       return 1;
     }
 
-    let created: { deploymentId?: string; mindId?: string; error?: string };
+    let created: { deploymentId?: string; error?: string };
     try {
-      const { response: res, body: createdBody } = await fetchJsonWithWorkerAuth<{ deploymentId?: string; mindId?: string; error?: string }>(this.context, `${apiBaseUrl}/api/deployments`, {
+      const { response: res, body: createdBody } = await fetchJsonWithWorkerAuth<{ deploymentId?: string; error?: string }>(this.context, `${apiBaseUrl}/api/deployments`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -161,11 +160,7 @@ export class WorkerDeployCommand extends BaseCommand {
       if (deployment.status === "ready") {
         this.context.stdout.write(`Deployment ${depId} is ready.\n`);
         this.context.stdout.write(`Worker: ${this.name}\n`);
-        if (created.mindId) {
-          this.context.stdout.write(`Mind: ${created.mindId}\n`);
-          await this.captureMindBinding(apiBaseUrl, created.mindId);
-        }
-        this.context.stdout.write(`Chat: ${apiBaseUrl}/api/minds/${this.name}/chat\n`);
+        this.context.stdout.write(`Chat: drwn worker chat ${this.name} --message <text>\n`);
         this.context.stdout.write(`Status: drwn worker status ${this.name}\n`);
         return 0;
       }
@@ -180,28 +175,4 @@ export class WorkerDeployCommand extends BaseCommand {
     return 1;
   }
 
-  // Caches non-secret binding coordinates for worker mind commands; tokens are never persisted.
-  private async captureMindBinding(apiBaseUrl: string, mindId: string) {
-    try {
-      const { response, body } = await fetchJsonWithWorkerAuth<{
-        binding?: { baseUrl?: string; tenantId?: number; filesystemId?: string; pathPrefix?: string };
-      }>(this.context, `${apiBaseUrl}/api/minds/${this.name}/bgdb-token`, { method: "POST" });
-      if (!response.ok || !body.binding) {
-        await writeMindBinding(this.context.agentsDir, this.name!, { mindId });
-        this.context.stdout.write("Note: mind binding not available from the deploy API yet; set BGDB_* env to use worker mind commands.\n");
-        return;
-      }
-      await writeMindBinding(this.context.agentsDir, this.name!, {
-        mindId,
-        ...(body.binding.baseUrl ? { baseUrl: body.binding.baseUrl } : {}),
-        ...(body.binding.tenantId !== undefined ? { tenantId: body.binding.tenantId } : {}),
-        ...(body.binding.filesystemId ? { filesystemId: body.binding.filesystemId } : {}),
-        ...(body.binding.pathPrefix ? { pathPrefix: body.binding.pathPrefix } : {}),
-      });
-      this.context.stdout.write(`Mind binding cached (prefix: ${body.binding.pathPrefix ?? "unknown"}). Provision with: drwn worker mind provision\n`);
-    } catch {
-      await writeMindBinding(this.context.agentsDir, this.name!, { mindId });
-      this.context.stdout.write("Note: mind binding not available from the deploy API yet; set BGDB_* env to use worker mind commands.\n");
-    }
-  }
 }

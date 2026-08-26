@@ -14,11 +14,11 @@ async function readDocsTree(relativeRoot: string) {
 }
 
 describe("documentation readiness", () => {
-  test("I239 publishes the auth, ACP, Worker, and exact release boundaries without claiming live qualification", async () => {
+  test("publishes auth, Worker, provider-neutral Mind, and exact release boundaries without claiming live qualification", async () => {
     const [
       readme,
       quickref,
-      acp,
+      mind,
       worker,
       login,
       refresh,
@@ -32,7 +32,7 @@ describe("documentation readiness", () => {
     ] = await Promise.all([
       readFile(new URL("../README.md", import.meta.url), "utf8"),
       readFile(new URL("../docs/cli-quickref.md", import.meta.url), "utf8"),
-      readFile(new URL("../docs-docusaurus/docs/reference/cli/acp.md", import.meta.url), "utf8"),
+      readFile(new URL("../docs-docusaurus/docs/reference/cli/mind.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/worker.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/login.md", import.meta.url), "utf8"),
       readFile(new URL("../docs-docusaurus/docs/reference/cli/refresh.md", import.meta.url), "utf8"),
@@ -47,7 +47,7 @@ describe("documentation readiness", () => {
 
     const commandOverview = `${readme}\n${quickref}`;
     for (const command of [
-      "drwn acp serve <slug>",
+      "drwn worker mind",
       "drwn worker status <slug> --json",
       "drwn worker materialize --payload",
       "drwn worker buzz-tools",
@@ -72,15 +72,15 @@ describe("documentation readiness", () => {
       expect(authDocs).toContain(forbidden);
     }
 
-    const workerDocs = `${quickref}\n${acp}\n${worker}`;
+    const workerDocs = `${quickref}\n${mind}\n${worker}`;
     for (const token of [
       "LOCAL_PROJECT_UNAVAILABLE",
       "LOCAL_TARGET_UNAVAILABLE",
       "LOCAL_CARD_REF_MISMATCH",
       "CAPABILITY_NOT_REPORTED",
       "NO_ACTIVE_DEPLOYMENT",
-      "HTTP 202",
-      "terminal cancellation",
+      "MIND_BACKEND_UNSELECTED",
+      "provider-neutral",
       "zero",
     ]) expect(workerDocs).toContain(token);
     expect(analyze).toContain("Foundry");
@@ -89,7 +89,8 @@ describe("documentation readiness", () => {
     expect(whoami).toContain("DRWN_TOKEN");
     expect(whoami).not.toContain("Analyzer");
     expect(whoami).not.toContain("DRWN_ANALYZER_URL");
-    expect(sidebars).toContain("reference/cli/acp");
+    expect(sidebars).not.toContain("reference/cli/acp");
+    expect(sidebars).toContain("reference/cli/mind");
     expect(sidebars).toContain("reference/cli/worker");
     expect(sidebars).toContain("reference/cli/refresh");
 

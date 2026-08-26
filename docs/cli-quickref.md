@@ -298,7 +298,7 @@ Worker Blueprint authoring and remote operations:
 - `drwn worker materialize --payload <payload.json> --project-root <path> [--store-export <tar>] [--emit-store-tar <tar>] [--emit-project-tar <tar>] [--json]`
 - `drwn worker buzz-tools`
 - `drwn worker secret set <slug> <name> [--kind mcp|env] [--env-var <NAME>]` (secret bytes come from stdin)
-- `drwn acp serve <slug>` (the slug may instead come from `DRWN_ACP_SLUG` or one unambiguous local binding)
+- `drwn worker mind` (provider-neutral placeholder; returns `MIND_BACKEND_UNSELECTED` without I/O)
 
 Cards compose capabilities into one Blueprint. Installed Worker roots are
 alternatives; `drwn use` selects at most one root for project projection.
@@ -462,7 +462,7 @@ drwn machine skill install --help
 drwn login --help
 drwn refresh --help
 drwn logout --help
-drwn acp serve --help
+drwn worker mind --help
 drwn worker materialize --help
 drwn worker buzz-tools --help
 drwn worker secret set --help
@@ -473,7 +473,7 @@ drwn worker launch-context prune --help
 drwn analyze sessions --help
 ```
 
-`drwn --version` plus the eleven login/refresh/logout/ACP/Worker/launch-context
+`drwn --version` plus the eleven login/refresh/logout/Worker/launch-context
 help invocations above are the twelve safe installed-package release smokes. `analyze sessions`
 help remains documented but is not one of the release smokes. The safe set does
 not authenticate, contact Buzz, read credential bytes, use the keychain, or
@@ -653,19 +653,12 @@ claim already-issued access tokens are invalidated. Qualification uses
 confirmed 2xx revoke, and both the remote confirmation and local deletion must
 succeed.
 
-## How ACP and deployed Worker operations work
+## Worker Mind placeholder and deployed Worker operations
 
-`drwn acp serve <slug>` speaks ACP JSON-RPC/NDJSON on stdio. Stdout is protocol
-only; diagnostics and DAH device-flow instructions go to stderr. When no slug is
-passed, resolution uses `DRWN_ACP_SLUG` and then one unambiguous deployed binding.
-The command bridges ACP sessions to the selected deployed Worker; it does not
-replace the Foundry-linked `drwn analyze sessions` upload path.
-
-Cancellation is two-track. HTTP 202 from the Worker cancel endpoint means only
-that cancellation was accepted or was already in progress. It is not terminal
-cancellation evidence. ACP continues polling until it observes an
-`agent.cancelled` event or the run-status endpoint reports `cancelled` (or
-another terminal state).
+`drwn worker mind` is provider-neutral in 1.4.2. It returns
+`MIND_BACKEND_UNSELECTED` and performs no filesystem, network, BeginningDB, R2,
+S3, or provider discovery. Local Card persona, belief, and memory authoring
+remains available independently of a persistence backend.
 
 `drwn worker materialize --payload ...` validates the V1 deploy payload and
 store digest, stages a V2 project, performs a frozen install, and projects it.

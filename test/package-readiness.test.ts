@@ -191,7 +191,8 @@ describe("package readiness", () => {
     expect(paths).not.toContain("sync-mcp.ts");
     expect(paths).toContain("cli/commands/write.ts");
     expect(paths).toContain("cli/commands/mcp/write.ts");
-    expect(paths).toContain("cli/commands/acp/serve.ts");
+    expect(paths).toContain("cli/commands/worker/mind/mind.ts");
+    expect(paths).not.toContain("cli/commands/acp/serve.ts");
     expect(paths).toContain("cli/commands/worker/materialize.ts");
     expect(paths).toContain("cli/commands/worker/buzz-tools.ts");
     expect(paths).toContain("cli/commands/worker/secret-set.ts");

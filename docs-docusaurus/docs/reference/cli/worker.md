@@ -97,9 +97,9 @@ the fixed installed-package release-smoke set. `status --help` is also read-only
 but is outside that fixed set. Actual status calls use auth/network, and the
 other actual commands may mutate state or start a runtime; they are not release
 smokes. Released Worker capability is also separate from Services adoption and
-I236/I238 staging or live qualification.
+joint staging or live qualification.
 
 ## Related
 
-- [ACP](./acp) — serve a deployed Worker to ACP clients
+- [Worker Mind](./mind) — provider-neutral backend placeholder
 - [Login](./login) — authenticate operational commands

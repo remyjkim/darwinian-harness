@@ -150,5 +150,5 @@ drwn write
 - [Minds](../concepts/minds) — Mind content in one selected Worker closure
 - [Beliefs, Personas, and Memory](../concepts/beliefs-memories-personas) — content types in detail
 - [Hook Policies](../concepts/hook-policies) — writing enforcement and observer policies
-- [Managing Minds](./managing-minds) — provision, sync, diff, and checkpoint
+- [Worker Mind CLI](../reference/cli/mind) — provider-neutral backend placeholder
 - [`drwn card source`](../reference/cli/card) — full source subcommand reference

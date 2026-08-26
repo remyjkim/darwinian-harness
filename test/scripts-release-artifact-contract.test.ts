@@ -62,7 +62,7 @@ describe("release package member qualification", () => {
       members: ["cli/index.ts", "package.json", "registry/config.json"],
     };
     expect(oldPublishedPackage.versionOutput).toBe("1.1.0");
-    expect(() => qualifyPackageMembers(oldPublishedPackage.members)).toThrow("cli/commands/acp/serve.ts");
+    expect(() => qualifyPackageMembers(oldPublishedPackage.members)).toThrow("missing required member");
   });
 
   test.each([

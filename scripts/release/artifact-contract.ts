@@ -13,10 +13,10 @@ import {
 } from "../../cli/core/build-identity";
 
 export const REQUIRED_RELEASE_MEMBERS = [
-  "cli/commands/acp/serve.ts",
   "cli/commands/worker/materialize.ts",
   "cli/commands/worker/buzz-tools.ts",
   "cli/commands/worker/secret-set.ts",
+  "cli/commands/worker/mind/mind.ts",
   "cli/commands/worker/launch-context/launch-context.ts",
   "cli/commands/worker/launch-context/prepare.ts",
   "cli/commands/worker/launch-context/list.ts",
@@ -29,7 +29,6 @@ export const REQUIRED_RELEASE_MEMBERS = [
 
 export const SAFE_INSTALLED_SMOKES = [
   ["--version"],
-  ["acp", "serve", "--help"],
   ["worker", "materialize", "--help"],
   ["worker", "buzz-tools", "--help"],
   ["worker", "secret", "set", "--help"],
@@ -37,6 +36,7 @@ export const SAFE_INSTALLED_SMOKES = [
   ["worker", "launch-context", "prepare", "--help"],
   ["worker", "launch-context", "list", "--help"],
   ["worker", "launch-context", "prune", "--help"],
+  ["worker", "mind", "--help"],
   ["login", "--help"],
   ["refresh", "--help"],
   ["logout", "--help"],
