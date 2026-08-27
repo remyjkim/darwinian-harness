@@ -59,7 +59,7 @@ export interface RunDeviceFlowInput {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   randomUUID?: () => string;
-  onUserAction: (info: { verification_uri_complete: string; user_code: string }) => void;
+  onUserAction: (info: { verification_uri_complete: string; user_code: string; expires_at: string }) => void | Promise<void>;
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -147,8 +147,8 @@ async function pollDeviceToken(
   device: DeviceAuthorization,
   sleep: (ms: number) => Promise<void>,
   now: () => number,
+  expiresAt: number,
 ): Promise<string> {
-  const expiresAt = now() + device.expires_in * 1000;
   let intervalMs = (device.interval ?? 5) * 1000;
   while (true) {
     await sleep(intervalMs);
@@ -363,11 +363,13 @@ export async function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCr
   const sleep = input.sleep ?? defaultSleep;
   const now = input.now ?? Date.now;
   const device = await startDeviceFlow(input.profile, fetcher);
-  input.onUserAction({
+  const expiresAt = now() + device.expires_in * 1000;
+  await input.onUserAction({
     verification_uri_complete: device.verification_uri_complete ?? device.verification_uri,
     user_code: device.user_code,
+    expires_at: new Date(expiresAt).toISOString(),
   });
-  const opaque = await pollDeviceToken(input.profile, fetcher, device, sleep, now);
+  const opaque = await pollDeviceToken(input.profile, fetcher, device, sleep, now, expiresAt);
   const tokens = await exchangeDeviceSession(input.profile, opaque, fetcher);
   assertDelegationReadyClaims(tokens.claims, input.profile, { nowSeconds: Math.floor(now() / 1000) });
   try {

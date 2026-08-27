@@ -451,12 +451,14 @@ export async function runInstalledArtifactSmokes(
   const project = join(workspaceRoot, "project");
   const userHome = join(workspaceRoot, "user-home");
   const agentsDir = join(workspaceRoot, "agents");
-  await Promise.all([prefix, cache, project, userHome, agentsDir].map((path) => mkdir(path)));
+  const runnerTemp = join(workspaceRoot, "runner-temp");
+  await Promise.all([prefix, cache, project, userHome, agentsDir, runnerTemp].map((path) => mkdir(path)));
 
   const env: Record<string, string | undefined> = {
     ...process.env,
     AGENTS_HOME_DIR: userHome,
     AGENTS_DIR: agentsDir,
+    RUNNER_TEMP: runnerTemp,
   };
   delete env.DRWN_TOKEN;
   const run = deps.run ?? defaultCommandRunner;
@@ -482,7 +484,7 @@ export async function runInstalledArtifactSmokes(
     throw new ReleaseArtifactError("installed bin resolves outside the clean prefix");
   }
 
-  const quarantine = [project, userHome, agentsDir];
+  const quarantine = [project, userHome, agentsDir, runnerTemp];
   const passed: string[] = [];
   for (const smoke of SAFE_INSTALLED_SMOKES) {
     const result = await run([bin, ...smoke], { cwd: project, env });
@@ -496,6 +498,7 @@ export async function runInstalledArtifactSmokes(
   const qualificationSmoke = [
     "__internal", "qualify-staging-community",
     "--plan-file", join(project, "missing-private-plan.json"),
+    "--approval-notice-file", join(runnerTemp, "approval-notice.json"),
     "--output-file", join(project, "i321-staging-slot-community.json"),
   ];
   const qualification = await run([bin, ...qualificationSmoke], { cwd: project, env });

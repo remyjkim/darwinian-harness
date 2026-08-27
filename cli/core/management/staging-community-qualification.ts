@@ -5,10 +5,10 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { link, lstat, open, readFile, realpath, unlink } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { DrwnError } from "../errors";
-import { runDeviceFlow, type RunDeviceFlowInput } from "../auth/device-flow";
+import { runDeviceFlow } from "../auth/device-flow";
 import { drwnCliProfile } from "../auth/profile";
 import { DRWN_VERSION } from "../version";
 import { validateManagementHeaders } from "./contracts";
@@ -66,6 +66,13 @@ const publicReceiptSchema = receiptPlanSchema.extend({
   receiptDigestSha256: sha256Schema,
 }).strict();
 
+const stagingDeviceApprovalNoticeSchema = z.object({
+  schema: z.string(),
+  qualificationRunId: uuidV4Schema,
+  verificationUriComplete: z.string().min(1),
+  expiresAt: z.iso.datetime(),
+}).strict();
+
 const headerPairSchema = z.tuple([z.string(), z.string()]);
 const responseSchema = z.object({
   routeKey: z.string(),
@@ -81,6 +88,12 @@ const vectorSchema = z.object({
   responseOverride: responseOverrideSchema.optional(),
   expected: z.enum(["receipt", "refuse_no_output"]),
   expectedReceipt: z.record(z.string(), z.unknown()).optional(),
+}).strict();
+
+const deviceApprovalVectorSchema = z.object({
+  name: z.string().min(1),
+  expected: z.enum(["notice", "refuse_no_output"]),
+  candidate: z.record(z.string(), z.unknown()),
 }).strict();
 
 const artifactSchema = z.object({
@@ -106,6 +119,11 @@ const artifactSchema = z.object({
     ordinaryJsonOutput: z.literal("unchanged_header_free"),
     cloudContext: z.literal("organization_selection_only_no_authority_headers_or_receipt"),
     logs: z.literal("no_auth_headers_body_or_receipt"),
+    approvalNotice: z.literal("create_only_mode_0600_runner_temp"),
+    approvalHandoff: z.literal("live_private_github_actions_notice"),
+    approvalHandoffFileCleanup: z.literal("erase_handoff_file_on_every_outcome"),
+    approvalNoticeRetention: z.literal("private_run_log_normal_retention_inert_after_expiry"),
+    approvalNoticePersistence: z.literal("never_artifact_cache_receipt_or_cloud_context"),
     forbiddenInputs: z.tuple([
       z.literal("operator_community_id"), z.literal("operator_relay_url"),
       z.literal("operator_https_base"), z.literal("operator_provider_policy"),
@@ -113,6 +131,21 @@ const artifactSchema = z.object({
   }).strict(),
   baseResponse: responseSchema,
   currentRunPlan: receiptPlanSchema,
+  deviceApproval: z.object({
+    schema: z.literal("cl.drwn.staging-device-approval-notice-contract.v1"),
+    noticeSchema: z.literal("cl.drwn.staging-device-approval-notice.v1"),
+    channel: z.literal("live_private_github_actions_notice"),
+    fileBoundary: z.literal("create_only_mode_0600_runner_temp"),
+    handoffFileCleanup: z.literal("erase_handoff_file_on_every_outcome"),
+    actionsNoticeRetention: z.literal("private_run_log_normal_retention_inert_after_expiry"),
+    forbiddenPersistence: z.literal("never_artifact_cache_receipt_or_cloud_context"),
+    authorizedOrigin: z.literal("https://auth-staging-main.darwinian.dev"),
+    approvalPath: z.literal("/device"),
+    maximumVerificationUriBytes: z.literal(2_048),
+    maximumLifetimeSeconds: z.literal(3_600),
+    validationTime: z.literal("2026-08-27T17:05:00.000Z"),
+    vectors: z.array(deviceApprovalVectorSchema).length(27),
+  }).strict(),
   vectors: z.array(vectorSchema).length(14),
 }).strict();
 
@@ -120,30 +153,43 @@ const lockSchema = z.object({
   schema: z.literal("dah.staging-slot-community-contract-lock"),
   schemaVersion: z.literal(1),
   servicesRepository: z.literal("curation-labs/darwinian-services"),
-  sourceCommit: z.literal("29267384aee6a73d5bc4330e2ac81413e0cf15fb"),
-  mergedMainCommit: z.literal("864c2434c441878f4542dcfbd42a21439ba970f8"),
-  sha256: z.literal("89e7ad1410a28445678a812f1ec5e4a9e7cbb51e38c320ccdbc728843c7ea387"),
+  sourceCommit: z.literal("df219967d0f11822f3f642602f59e372ad1e4d6a"),
+  mergedMainCommit: z.literal("ed5a40c95947eb4def084bc88a5c4cac9805beb5"),
+  sha256: z.literal("141f45e8e54e1c248558b6b41853e6f8fb4d0e9910e4d2ad5fab4069136ab83c"),
   vectorCount: z.literal(14),
   positiveVectorCount: z.literal(1),
   hostileVectorCount: z.literal(13),
+  deviceApprovalVectorCount: z.literal(27),
+  deviceApprovalPositiveVectorCount: z.literal(1),
+  deviceApprovalHostileVectorCount: z.literal(26),
 }).strict();
 
 export type StagingCommunityPrivatePlan = z.infer<typeof privatePlanSchema>;
 export type QualificationOrganizationReadResponse = z.infer<typeof responseSchema>;
 export type StagingCommunityReceipt = z.infer<typeof publicReceiptSchema>;
+export type StagingDeviceApprovalNotice = z.infer<typeof stagingDeviceApprovalNoticeSchema>;
+export interface StagingDeviceApprovalNoticeFileIdentity {
+  path: string;
+  dev: number;
+  ino: number;
+}
 
 export interface ExecuteStagingCommunityQualificationInput {
   planPath: string;
   outputPath: string;
-  onUserAction: RunDeviceFlowInput["onUserAction"];
+  approvalNoticePath: string;
+  runnerTemp: string;
 }
 
 export interface StagingCommunityQualificationDependencies {
   fetcher?: typeof fetch;
   runDeviceFlow?: typeof runDeviceFlow;
   requestId?: () => string;
+  now?: () => number;
   readPlan?: typeof readStagingCommunityPrivatePlan;
   writeReceipt?: typeof writeStagingCommunityReceipt;
+  publishApprovalNotice?: typeof publishStagingDeviceApprovalNotice;
+  cleanupApprovalNotice?: typeof cleanupStagingDeviceApprovalNotice;
 }
 
 function refusal(): never {
@@ -181,7 +227,10 @@ function loadContract() {
     const contract = artifactSchema.parse(JSON.parse(contractBytes.toString("utf8")));
     if (
       contract.vectors.filter(({ expected }) => expected === "receipt").length !== lock.positiveVectorCount ||
-      contract.vectors.filter(({ expected }) => expected === "refuse_no_output").length !== lock.hostileVectorCount
+      contract.vectors.filter(({ expected }) => expected === "refuse_no_output").length !== lock.hostileVectorCount ||
+      contract.deviceApproval.vectors.length !== lock.deviceApprovalVectorCount ||
+      contract.deviceApproval.vectors.filter(({ expected }) => expected === "notice").length !== lock.deviceApprovalPositiveVectorCount ||
+      contract.deviceApproval.vectors.filter(({ expected }) => expected === "refuse_no_output").length !== lock.deviceApprovalHostileVectorCount
     ) refusal();
     return deepFreeze(contract);
   } catch (error) {
@@ -191,6 +240,152 @@ function loadContract() {
 }
 
 export const stagingCommunityContract = loadContract();
+
+function invalidApprovalNotice(): never {
+  throw new DrwnError("STAGING_DEVICE_APPROVAL_NOTICE_INVALID", "Staging device approval notice refused.");
+}
+
+export function parseStagingDeviceApprovalNotice(
+  candidate: unknown,
+  expected: { qualificationRunId: string; now: number },
+): Readonly<StagingDeviceApprovalNotice> {
+  try {
+    const notice = stagingDeviceApprovalNoticeSchema.parse(candidate);
+    const contract = stagingCommunityContract.deviceApproval;
+    if (
+      notice.schema !== contract.noticeSchema ||
+      notice.qualificationRunId !== uuidV4Schema.parse(expected.qualificationRunId) ||
+      !Number.isFinite(expected.now) ||
+      Buffer.byteLength(notice.verificationUriComplete, "utf8") > contract.maximumVerificationUriBytes
+    ) invalidApprovalNotice();
+    const verification = new URL(notice.verificationUriComplete);
+    const query = [...verification.searchParams.entries()];
+    if (
+      verification.protocol !== "https:" ||
+      verification.username !== "" || verification.password !== "" || verification.hash !== "" ||
+      verification.origin !== contract.authorizedOrigin || verification.pathname !== contract.approvalPath ||
+      verification.href !== notice.verificationUriComplete ||
+      query.length !== 1 || query[0]![0] !== "user_code" || query[0]![1].length === 0 ||
+      /[\u0000-\u001f\u007f]/u.test(query[0]![1])
+    ) invalidApprovalNotice();
+    const expiresAt = Date.parse(notice.expiresAt);
+    if (
+      !Number.isFinite(expiresAt) || new Date(expiresAt).toISOString() !== notice.expiresAt ||
+      expiresAt <= expected.now || expiresAt - expected.now > contract.maximumLifetimeSeconds * 1_000
+    ) invalidApprovalNotice();
+    return deepFreeze(notice);
+  } catch (error) {
+    if (error instanceof DrwnError && error.code === "STAGING_DEVICE_APPROVAL_NOTICE_INVALID") throw error;
+    invalidApprovalNotice();
+  }
+}
+
+function approvalNoticeFileError(): DrwnError {
+  return new DrwnError("STAGING_DEVICE_APPROVAL_NOTICE_FILE_INVALID", "Staging device approval notice file refused.");
+}
+
+async function assertApprovalNoticePath(path: string, runnerTemp: string): Promise<{ path: string; parent: string }> {
+  if (!isAbsolute(path) || !isAbsolute(runnerTemp)) throw approvalNoticeFileError();
+  const canonicalRunner = await realpath(runnerTemp);
+  if (canonicalRunner !== resolve(runnerTemp)) throw approvalNoticeFileError();
+  const runnerMetadata = await lstat(canonicalRunner);
+  if (!runnerMetadata.isDirectory() || runnerMetadata.isSymbolicLink() || !ownerMatches(runnerMetadata.uid)) {
+    throw approvalNoticeFileError();
+  }
+  const resolvedPath = resolve(path);
+  const child = relative(canonicalRunner, resolvedPath);
+  if (child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) throw approvalNoticeFileError();
+  const parent = dirname(resolvedPath);
+  if (await realpath(parent) !== resolve(parent)) throw approvalNoticeFileError();
+  const parentMetadata = await lstat(parent);
+  if (!parentMetadata.isDirectory() || parentMetadata.isSymbolicLink() || !ownerMatches(parentMetadata.uid)) {
+    throw approvalNoticeFileError();
+  }
+  return { path: resolvedPath, parent };
+}
+
+export async function publishStagingDeviceApprovalNotice(
+  path: string,
+  candidate: unknown,
+  options: { runnerTemp: string; qualificationRunId: string; now: number },
+): Promise<Readonly<StagingDeviceApprovalNoticeFileIdentity>> {
+  let temporaryPath: string | undefined;
+  let temporaryIdentity: { dev: number; ino: number } | undefined;
+  let finalPath: string | undefined;
+  try {
+    const notice = parseStagingDeviceApprovalNotice(candidate, options);
+    const safe = await assertApprovalNoticePath(path, options.runnerTemp);
+    finalPath = safe.path;
+    try {
+      await lstat(safe.path);
+      throw approvalNoticeFileError();
+    } catch (error) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    temporaryPath = join(safe.parent, `.staging-device-approval.${crypto.randomUUID()}.tmp`);
+    const handle = await open(temporaryPath, "wx", 0o600);
+    try {
+      await handle.writeFile(Buffer.from(`${canonicalJson(notice)}\n`, "utf8"));
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    const temporaryMetadata = await lstat(temporaryPath);
+    temporaryIdentity = { dev: temporaryMetadata.dev, ino: temporaryMetadata.ino };
+    if (
+      !temporaryMetadata.isFile() || temporaryMetadata.isSymbolicLink() || temporaryMetadata.nlink !== 1 ||
+      (temporaryMetadata.mode & 0o777) !== 0o600 || !ownerMatches(temporaryMetadata.uid)
+    ) throw approvalNoticeFileError();
+    await link(temporaryPath, safe.path);
+    await unlink(temporaryPath);
+    temporaryPath = undefined;
+    const finalMetadata = await lstat(safe.path);
+    if (
+      !finalMetadata.isFile() || finalMetadata.isSymbolicLink() || finalMetadata.nlink !== 1 ||
+      (finalMetadata.mode & 0o777) !== 0o600 || !ownerMatches(finalMetadata.uid) ||
+      finalMetadata.dev !== temporaryIdentity.dev || finalMetadata.ino !== temporaryIdentity.ino
+    ) throw approvalNoticeFileError();
+    return deepFreeze({ path: safe.path, dev: finalMetadata.dev, ino: finalMetadata.ino });
+  } catch {
+    if (temporaryPath !== undefined) await unlink(temporaryPath).catch(() => undefined);
+    if (finalPath !== undefined && temporaryIdentity !== undefined) {
+      const current = await lstat(finalPath).catch(() => null);
+      if (current?.dev === temporaryIdentity.dev && current.ino === temporaryIdentity.ino) {
+        await unlink(finalPath).catch(() => undefined);
+      }
+    }
+    throw approvalNoticeFileError();
+  }
+}
+
+export async function cleanupStagingDeviceApprovalNotice(
+  identity: Readonly<StagingDeviceApprovalNoticeFileIdentity>,
+  options: { runnerTemp: string },
+): Promise<void> {
+  try {
+    const safe = await assertApprovalNoticePath(identity.path, options.runnerTemp);
+    const current = await lstat(safe.path).catch((error) => {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return null;
+      throw error;
+    });
+    if (current === null) return;
+    if (
+      !current.isFile() || current.isSymbolicLink() || current.nlink !== 1 ||
+      (current.mode & 0o777) !== 0o600 || !ownerMatches(current.uid) ||
+      current.dev !== identity.dev || current.ino !== identity.ino
+    ) throw approvalNoticeFileError();
+    await unlink(safe.path);
+    try {
+      await lstat(safe.path);
+      throw approvalNoticeFileError();
+    } catch (error) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+    }
+  } catch (error) {
+    if (error instanceof DrwnError && error.code === "STAGING_DEVICE_APPROVAL_NOTICE_FILE_INVALID") throw error;
+    throw approvalNoticeFileError();
+  }
+}
 
 function privateFileError(code: "STAGING_COMMUNITY_PLAN_INVALID" | "STAGING_COMMUNITY_OUTPUT_INVALID"): DrwnError {
   return new DrwnError(code, code === "STAGING_COMMUNITY_PLAN_INVALID"
@@ -362,11 +557,45 @@ export async function executeStagingCommunityQualification(
   try {
     const plan = await (dependencies.readPlan ?? readStagingCommunityPrivatePlan)(input.planPath);
     const profile = drwnCliProfile({ DRWN_CLOUD_PROFILE: "staging" });
-    const credential = await (dependencies.runDeviceFlow ?? runDeviceFlow)({
-      profile,
-      fetcher: dependencies.fetcher ?? fetch,
-      onUserAction: input.onUserAction,
-    });
+    let noticeIdentity: Readonly<StagingDeviceApprovalNoticeFileIdentity> | undefined;
+    let credential: Awaited<ReturnType<typeof runDeviceFlow>> | undefined;
+    let flowFailed = false;
+    try {
+      credential = await (dependencies.runDeviceFlow ?? runDeviceFlow)({
+        profile,
+        fetcher: dependencies.fetcher ?? fetch,
+        now: dependencies.now,
+        onUserAction: async ({ verification_uri_complete, expires_at }) => {
+          noticeIdentity = await (dependencies.publishApprovalNotice ?? publishStagingDeviceApprovalNotice)(
+            input.approvalNoticePath,
+            {
+              schema: stagingCommunityContract.deviceApproval.noticeSchema,
+              qualificationRunId: plan.receipt.qualificationRunId,
+              verificationUriComplete: verification_uri_complete,
+              expiresAt: expires_at,
+            },
+            {
+              runnerTemp: input.runnerTemp,
+              qualificationRunId: plan.receipt.qualificationRunId,
+              now: (dependencies.now ?? Date.now)(),
+            },
+          );
+        },
+      });
+    } catch {
+      flowFailed = true;
+    }
+    let cleanupFailed = false;
+    if (noticeIdentity !== undefined) {
+      try {
+        await (dependencies.cleanupApprovalNotice ?? cleanupStagingDeviceApprovalNotice)(noticeIdentity, {
+          runnerTemp: input.runnerTemp,
+        });
+      } catch {
+        cleanupFailed = true;
+      }
+    }
+    if (flowFailed || cleanupFailed || credential === undefined || noticeIdentity === undefined) refusal();
     const requestId = (dependencies.requestId ?? crypto.randomUUID)();
     const requiredHeaders = validateManagementHeaders({
       Authorization: `Bearer ${credential.accessToken}`,

@@ -2,10 +2,13 @@
   "schema": "dah.staging-slot-community-contract-lock",
   "schemaVersion": 1,
   "servicesRepository": "curation-labs/darwinian-services",
-  "sourceCommit": "29267384aee6a73d5bc4330e2ac81413e0cf15fb",
-  "mergedMainCommit": "864c2434c441878f4542dcfbd42a21439ba970f8",
-  "sha256": "89e7ad1410a28445678a812f1ec5e4a9e7cbb51e38c320ccdbc728843c7ea387",
+  "sourceCommit": "df219967d0f11822f3f642602f59e372ad1e4d6a",
+  "mergedMainCommit": "ed5a40c95947eb4def084bc88a5c4cac9805beb5",
+  "sha256": "141f45e8e54e1c248558b6b41853e6f8fb4d0e9910e4d2ad5fab4069136ab83c",
   "vectorCount": 14,
   "positiveVectorCount": 1,
-  "hostileVectorCount": 13
+  "hostileVectorCount": 13,
+  "deviceApprovalVectorCount": 27,
+  "deviceApprovalPositiveVectorCount": 1,
+  "deviceApprovalHostileVectorCount": 26
 }

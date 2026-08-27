@@ -88,8 +88,15 @@ describe("drwn command help", () => {
         "bun", join(import.meta.dir, "..", "cli", "index.ts"),
         "__internal", "qualify-staging-community",
         "--plan-file", join(root, "missing-plan.json"),
+        "--approval-notice-file", join(root, "approval-notice.json"),
         "--output-file", join(root, "i321-staging-slot-community.json"),
-      ], { cwd: root, stdin: "ignore", stdout: "pipe", stderr: "pipe", env: { ...process.env, NO_COLOR: "1" } });
+      ], {
+        cwd: root,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, NO_COLOR: "1", RUNNER_TEMP: root },
+      });
       expect(await proc.exited).toBe(1);
       expect(await new Response(proc.stdout).text()).toBe("");
       expect(await new Response(proc.stderr).text()).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");

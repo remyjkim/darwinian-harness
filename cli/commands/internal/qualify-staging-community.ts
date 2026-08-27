@@ -3,16 +3,13 @@
 
 import { Option } from "clipanion";
 import { BaseCommand } from "../base";
-import { openBrowser as defaultOpenBrowser } from "../../core/auth/browser";
-import { runDeviceFlow } from "../../core/auth/device-flow";
 import {
   executeStagingCommunityQualification,
   type StagingCommunityQualificationDependencies,
 } from "../../core/management/staging-community-qualification";
 
 type QualificationCommandDependencies = StagingCommunityQualificationDependencies & {
-  openBrowser?: (url: string) => void;
-  runDeviceFlow?: typeof runDeviceFlow;
+  env?: Record<string, string | undefined>;
 };
 
 // Intentionally has no `static usage`: this is an I336 qualification seam, not public CLI surface.
@@ -21,18 +18,19 @@ export class QualifyStagingCommunityCommand extends BaseCommand {
   static testDeps: QualificationCommandDependencies | undefined;
 
   planPath = Option.String("--plan-file", { required: true });
+  approvalNoticePath = Option.String("--approval-notice-file", { required: true });
   outputPath = Option.String("--output-file", { required: true });
 
   async execute(): Promise<number> {
     const dependencies = QualifyStagingCommunityCommand.testDeps ?? {};
     try {
+      const runnerTemp = (dependencies.env ?? process.env).RUNNER_TEMP;
+      if (typeof runnerTemp !== "string" || runnerTemp.length === 0) throw new Error("runner temp unavailable");
       await executeStagingCommunityQualification({
         planPath: this.planPath,
+        approvalNoticePath: this.approvalNoticePath,
+        runnerTemp,
         outputPath: this.outputPath,
-        onUserAction: ({ verification_uri_complete }) => {
-          this.context.stderr.write("AUTH_DEVICE_APPROVAL_REQUIRED\n");
-          (dependencies.openBrowser ?? defaultOpenBrowser)(verification_uri_complete);
-        },
       }, dependencies);
       return 0;
     } catch {

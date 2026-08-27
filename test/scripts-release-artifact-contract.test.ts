@@ -260,13 +260,16 @@ describe("installed artifact smokes", () => {
       expect(call.cwd).toBe(join(root, "smoke", "project"));
       expect(call.env.AGENTS_HOME_DIR).toBe(join(root, "smoke", "user-home"));
       expect(call.env.AGENTS_DIR).toBe(join(root, "smoke", "agents"));
+      expect(call.env.RUNNER_TEMP).toBe(join(root, "smoke", "runner-temp"));
       expect(call.env[["DRWN", "TEST", "KEYCHAIN", "DIR"].join("_")]).toBeUndefined();
       expect(call.env.DRWN_TOKEN).toBeUndefined();
     }
     const qualification = calls.find(({ command }) => command.includes("qualify-staging-community"));
     expect(qualification?.command).toContain("__internal");
     expect(qualification?.command).toContain("--plan-file");
+    expect(qualification?.command).toContain("--approval-notice-file");
     expect(qualification?.command).toContain("--output-file");
+    expect(qualification?.command).toContain(join(root, "smoke", "runner-temp", "approval-notice.json"));
   });
 
   test("fails when version output differs or a help smoke mutates quarantined auth/project state", async () => {

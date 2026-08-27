@@ -27,6 +27,8 @@ describe("management Bash E2E contract", () => {
     expect(hermetic).toContain("DRWN_E2E_BIN");
     expect(hermetic).toContain("drwn-management-e2e-server.ts");
     expect(hermetic).toContain("__internal qualify-staging-community");
+    expect(hermetic).toContain("--approval-notice-file");
+    expect(hermetic).toContain("RUNNER_TEMP");
     expect(hermetic).toContain("STAGING_COMMUNITY_QUALIFICATION_FAILED");
     expect(hermetic).toContain("i321-staging-slot-community.json");
     expect(hermetic).toContain("openssl req -x509");

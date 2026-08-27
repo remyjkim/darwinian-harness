@@ -9,14 +9,14 @@ import { join } from "node:path";
 const packageRoot = join(import.meta.dir, "..");
 const contractPath = join(packageRoot, "registry", "contracts", "staging-slot-community.v1", "contract.json");
 const lockPath = join(packageRoot, "cli", "generated", "dah-staging-slot-community-contract-lock.json");
-const expectedSha256 = "89e7ad1410a28445678a812f1ec5e4a9e7cbb51e38c320ccdbc728843c7ea387";
+const expectedSha256 = "141f45e8e54e1c248558b6b41853e6f8fb4d0e9910e4d2ad5fab4069136ab83c";
 
 function artifact(): Record<string, any> {
   return JSON.parse(readFileSync(contractPath, "utf8"));
 }
 
 describe("I321 staging Community contract", () => {
-  test("vendors the exact PR638 bytes and immutable authority lock", () => {
+  test("vendors the exact merged I321 bytes and immutable authority lock", () => {
     expect(existsSync(contractPath)).toBe(true);
     expect(existsSync(lockPath)).toBe(true);
     const bytes = readFileSync(contractPath);
@@ -25,19 +25,22 @@ describe("I321 staging Community contract", () => {
       schema: "dah.staging-slot-community-contract-lock",
       schemaVersion: 1,
       servicesRepository: "curation-labs/darwinian-services",
-      sourceCommit: "29267384aee6a73d5bc4330e2ac81413e0cf15fb",
-      mergedMainCommit: "864c2434c441878f4542dcfbd42a21439ba970f8",
+      sourceCommit: "df219967d0f11822f3f642602f59e372ad1e4d6a",
+      mergedMainCommit: "ed5a40c95947eb4def084bc88a5c4cac9805beb5",
       sha256: expectedSha256,
       vectorCount: 14,
       positiveVectorCount: 1,
       hostileVectorCount: 13,
+      deviceApprovalVectorCount: 27,
+      deviceApprovalPositiveVectorCount: 1,
+      deviceApprovalHostileVectorCount: 26,
     });
   });
 
   test("freezes the one read route, two authority headers, and process-local ceremony", () => {
     const contract = artifact();
     expect(Object.keys(contract)).toEqual([
-      "schema", "schemaVersion", "authority", "ceremony", "baseResponse", "currentRunPlan", "vectors",
+      "schema", "schemaVersion", "authority", "ceremony", "deviceApproval", "baseResponse", "currentRunPlan", "vectors",
     ]);
     expect(contract.schema).toBe("cl.dah.staging-slot-community-interoperability.v1");
     expect(contract.authority).toEqual({
@@ -57,10 +60,34 @@ describe("I321 staging Community contract", () => {
       output: "caller_supplied_mode_0600_create_only_file",
       ordinaryJsonOutput: "unchanged_header_free",
       cloudContext: "organization_selection_only_no_authority_headers_or_receipt",
+      approvalNotice: "create_only_mode_0600_runner_temp",
+      approvalHandoff: "live_private_github_actions_notice",
+      approvalHandoffFileCleanup: "erase_handoff_file_on_every_outcome",
+      approvalNoticeRetention: "private_run_log_normal_retention_inert_after_expiry",
+      approvalNoticePersistence: "never_artifact_cache_receipt_or_cloud_context",
     });
     expect(contract.ceremony.forbiddenInputs).toEqual([
       "operator_community_id", "operator_relay_url", "operator_https_base", "operator_provider_policy",
     ]);
+  });
+
+  test("freezes the exact four-field approval notice and all twenty-six hostile vectors", () => {
+    const approval = artifact().deviceApproval;
+    expect({ ...approval, vectors: undefined }).toMatchObject({
+      schema: "cl.drwn.staging-device-approval-notice-contract.v1",
+      noticeSchema: "cl.drwn.staging-device-approval-notice.v1",
+      authorizedOrigin: "https://auth-staging-main.darwinian.dev",
+      approvalPath: "/device",
+      maximumVerificationUriBytes: 2_048,
+      maximumLifetimeSeconds: 3_600,
+    });
+    expect(approval.vectors).toHaveLength(27);
+    expect(approval.vectors.filter(({ expected }: any) => expected === "notice")).toHaveLength(1);
+    expect(approval.vectors.filter(({ expected }: any) => expected === "refuse_no_output")).toHaveLength(26);
+    expect(Object.keys(approval.vectors[0].candidate)).toEqual([
+      "schema", "qualificationRunId", "verificationUriComplete", "expiresAt",
+    ]);
+    expect(approval.vectors.some(({ candidate }: any) => Object.hasOwn(candidate, "noticeDigestSha256"))).toBe(true);
   });
 
   test("contains one exact receipt and thirteen refuse-no-output vectors", () => {

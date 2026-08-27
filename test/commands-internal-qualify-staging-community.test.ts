@@ -14,7 +14,7 @@ import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
 const tempRoots: string[] = [];
 const tokenSentinel = "ACCESS_TOKEN_SENTINEL_QUALIFICATION";
 const refreshSentinel = "REFRESH_TOKEN_SENTINEL_QUALIFICATION";
-const verificationSentinel = "https://auth.example.test/device?user_code=VERIFY-SENTINEL";
+const verificationSentinel = "https://auth-staging-main.darwinian.dev/device?user_code=VERIFY-SENTINEL";
 
 class CaptureStream extends Writable {
   chunks: Buffer[] = [];
@@ -32,21 +32,26 @@ async function fixture() {
   tempRoots.push(value.root);
   const planPath = join(root, "qualification-plan.json");
   const outputPath = join(root, "i321-staging-slot-community.json");
+  const noticePath = join(root, "approval-notice.json");
   await writeFile(planPath, `${JSON.stringify({
     schema: "cl.drwn.staging-slot-community-plan.v1",
     organizationId: "org_qualification_fixture",
     receipt: stagingCommunityContract.currentRunPlan,
   })}\n`, { mode: 0o600 });
-  return { ...value, planPath, outputPath };
+  return { ...value, planPath, outputPath, noticePath };
 }
 
 type TestDeps = NonNullable<typeof QualifyStagingCommunityCommand.testDeps>;
 
-function defaultDependencies(state: { requests: Request[]; browsers: string[] }): TestDeps {
+function defaultDependencies(state: { requests: Request[] }): TestDeps {
   return {
     runDeviceFlow: async (input) => {
       expect(input.profile.cloudProfileId).toBe("staging");
-      input.onUserAction({ verification_uri_complete: verificationSentinel, user_code: "VERIFY-SENTINEL" });
+      await input.onUserAction({
+        verification_uri_complete: verificationSentinel,
+        user_code: "VERIFY-SENTINEL",
+        expires_at: "2026-08-27T17:10:00.000Z",
+      });
       return {
         version: 3, credentialId: "55555555-5555-4555-8555-555555555555", generation: 1,
         issuer: input.profile.issuer, clientId: "drwn-cli", resource: input.profile.resource,
@@ -55,7 +60,8 @@ function defaultDependencies(state: { requests: Request[]; browsers: string[] })
         savedAt: "2026-08-27T16:59:00.000Z", userEmail: "human-sentinel@example.test",
       };
     },
-    openBrowser: (url) => { state.browsers.push(url); },
+    env: {},
+    now: () => Date.parse(stagingCommunityContract.deviceApproval.validationTime),
     requestId: () => "22222222-2222-4222-8222-222222222222",
     fetcher: (async (input, init) => {
       const request = new Request(String(input), init); state.requests.push(request);
@@ -77,8 +83,12 @@ async function run(
   const f = await fixture();
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const state = { requests: [] as Request[], browsers: [] as string[] };
-  QualifyStagingCommunityCommand.testDeps = { ...defaultDependencies(state), ...overrides };
+  const state = { requests: [] as Request[] };
+  QualifyStagingCommunityCommand.testDeps = {
+    ...defaultDependencies(state),
+    env: { RUNNER_TEMP: f.root },
+    ...overrides,
+  };
   const context: AgentsContext = {
     repoRoot: f.repoRoot, projectConfigPath: null, agentsDir: f.agentsDir, homeDir: f.homeDir, cwd: f.root,
     stdin: process.stdin, stdout, stderr, env: {}, colorDepth: 1,
@@ -97,15 +107,20 @@ afterEach(async () => {
 
 describe("hidden staging Community qualification command", () => {
   test("runs one process-local device flow/read and writes only the public mode-0600 receipt", async () => {
-    const result = await run((f) => ["__internal", "qualify-staging-community", "--plan-file", f.planPath, "--output-file", f.outputPath]);
+    const result = await run((f) => [
+      "__internal", "qualify-staging-community",
+      "--plan-file", f.planPath,
+      "--approval-notice-file", f.noticePath,
+      "--output-file", f.outputPath,
+    ]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("AUTH_DEVICE_APPROVAL_REQUIRED\n");
-    expect(result.browsers).toEqual([verificationSentinel]);
+    expect(result.stderr).toBe("");
     expect(result.requests).toHaveLength(1);
     expect(result.requests[0]!.method).toBe("GET");
     expect(new URL(result.requests[0]!.url).pathname).toBe("/api/organizations/org_qualification_fixture");
     expect((await lstat(result.outputPath)).mode & 0o777).toBe(0o600);
+    await expect(lstat(result.noticePath)).rejects.toMatchObject({ code: "ENOENT" });
     const publicBytes = await readFile(result.outputPath, "utf8");
     expect(JSON.parse(publicBytes)).toEqual(stagingCommunityContract.vectors[0]!.expectedReceipt);
     expect(`${result.stdout}${result.stderr}${publicBytes}`).not.toMatch(/ACCESS_TOKEN|REFRESH_TOKEN|human-sentinel|VERIFY-SENTINEL|organizationId|displayName|headerPairs/i);
@@ -114,7 +129,12 @@ describe("hidden staging Community qualification command", () => {
   });
 
   test("refuses before output and reflects no hostile identity or authority material", async () => {
-    const result = await run((f) => ["__internal", "qualify-staging-community", "--plan-file", f.planPath, "--output-file", f.outputPath], {
+    const result = await run((f) => [
+      "__internal", "qualify-staging-community",
+      "--plan-file", f.planPath,
+      "--approval-notice-file", f.noticePath,
+      "--output-file", f.outputPath,
+    ], {
       fetcher: (async () => new Response(JSON.stringify(stagingCommunityContract.baseResponse.body), { status: 200, headers: {
         "content-type": "application/json", "x-dah-buzz-community-id": "HOSTILE_COMMUNITY_SENTINEL",
         "x-dah-organization-read-sha256": "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b",
@@ -122,18 +142,23 @@ describe("hidden staging Community qualification command", () => {
     });
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("AUTH_DEVICE_APPROVAL_REQUIRED\nSTAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+    expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
     await expect(lstat(result.outputPath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.stderr).not.toMatch(/HOSTILE|ACCESS|REFRESH|VERIFY|organization/i);
   });
 
   test("binds the authorized response request ID to the current invocation", async () => {
-    const result = await run((f) => ["__internal", "qualify-staging-community", "--plan-file", f.planPath, "--output-file", f.outputPath], {
+    const result = await run((f) => [
+      "__internal", "qualify-staging-community",
+      "--plan-file", f.planPath,
+      "--approval-notice-file", f.noticePath,
+      "--output-file", f.outputPath,
+    ], {
       requestId: () => "99999999-9999-4999-8999-999999999999",
     });
     expect(result.exitCode).toBe(1);
     await expect(lstat(result.outputPath)).rejects.toMatchObject({ code: "ENOENT" });
-    expect(result.stderr).toBe("AUTH_DEVICE_APPROVAL_REQUIRED\nSTAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+    expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
   });
 
   test("stays out of public help and rejects operator authority flags before auth", async () => {
@@ -146,9 +171,35 @@ describe("hidden staging Community qualification command", () => {
     expect(help.exitCode).toBe(0);
     expect(help.stdout).not.toContain("qualify-staging-community");
     for (const flag of ["--community-id", "--relay-url", "--https-base", "--provider-policy"]) {
-      const result = await run((f) => ["__internal", "qualify-staging-community", "--plan-file", f.planPath, "--output-file", f.outputPath, flag, "forbidden"], overrides);
+      const result = await run((f) => [
+        "__internal", "qualify-staging-community",
+        "--plan-file", f.planPath,
+        "--approval-notice-file", f.noticePath,
+        "--output-file", f.outputPath,
+        flag, "forbidden",
+      ], overrides);
       expect(result.exitCode).not.toBe(0);
     }
     expect(effects).toBe(0);
+  });
+
+  test("refuses a missing RUNNER_TEMP before reading the plan or starting device authorization", async () => {
+    let effects = 0;
+    const result = await run((f) => [
+      "__internal", "qualify-staging-community",
+      "--plan-file", f.planPath,
+      "--approval-notice-file", f.noticePath,
+      "--output-file", f.outputPath,
+    ], {
+      env: {},
+      readPlan: async () => { effects += 1; throw new Error("must not read"); },
+      runDeviceFlow: async () => { effects += 1; throw new Error("must not authorize"); },
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+    expect(effects).toBe(0);
+    await expect(lstat(result.noticePath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(result.outputPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
