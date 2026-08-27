@@ -77,6 +77,7 @@ describe("management Bash E2E contract", () => {
     expect(pkg.scripts["test:e2e:management:live"]).toBe("bash test/e2e/drwn-management-cli-live.sh");
 
     expect(workflow).toContain("management-artifact");
+    expect(workflow.match(/ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
     const validateJob = workflow.slice(workflow.indexOf("  validate:"), workflow.indexOf("  command-bridge:"));
     expect(validateJob).toContain("os: [ubuntu-latest, macos-latest]");
     expect(validateJob).not.toContain("windows-latest");
