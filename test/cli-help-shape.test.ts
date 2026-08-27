@@ -2,6 +2,9 @@
 // ABOUTME: Protects against threadbare help and stale command-description regressions.
 
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 async function helpFor(args: string[], helpFlag = "--help") {
   const proc = Bun.spawn(["bun", "run", "cli/index.ts", ...args, helpFlag], {
@@ -76,6 +79,32 @@ const REQUIRED_SNIPPETS: Record<string, string[]> = {
 };
 
 describe("drwn command help", () => {
+  test("registers the internal qualification path without exposing it in public help or requiring a project", async () => {
+    const topLevel = await helpFor([]);
+    expect(topLevel.stdout).not.toContain("qualify-staging-community");
+    const root = await realpath(await mkdtemp(join(tmpdir(), "drwn-hidden-qualification-")));
+    try {
+      const proc = Bun.spawn([
+        "bun", join(import.meta.dir, "..", "cli", "index.ts"),
+        "__internal", "qualify-staging-community",
+        "--plan-file", join(root, "missing-plan.json"),
+        "--approval-notice-file", join(root, "approval-notice.json"),
+        "--output-file", join(root, "i321-staging-slot-community.json"),
+      ], {
+        cwd: root,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: { ...process.env, NO_COLOR: "1", RUNNER_TEMP: root },
+      });
+      expect(await proc.exited).toBe(1);
+      expect(await new Response(proc.stdout).text()).toBe("");
+      expect(await new Response(proc.stderr).text()).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("does not register prototype curation commands", async () => {
     const topLevel = await helpFor([]);
     expect(topLevel.stdout).not.toContain("drwn skills curate");

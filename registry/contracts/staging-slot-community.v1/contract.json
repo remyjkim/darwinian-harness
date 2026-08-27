@@ -1,0 +1,565 @@
+{
+  "schema": "cl.dah.staging-slot-community-interoperability.v1",
+  "schemaVersion": 1,
+  "authority": {
+    "routeKey": "organizations.read",
+    "successStatus": 200,
+    "communityHeader": "x-dah-buzz-community-id",
+    "organizationReadDigestHeader": "x-dah-organization-read-sha256",
+    "canonicalization": "canonical-json/v1",
+    "authorizedReadDigestSchema": "cl.dah.authorized-organization-read-digest.v1",
+    "receiptDigestSchema": "cl.dah.staging-slot-community-digest.v1",
+    "publicReceiptSchema": "cl.dah.staging-slot-community.v1"
+  },
+  "ceremony": {
+    "invocation": "hidden_internal_qualification_only",
+    "authentication": "device_flow_process_local",
+    "currentRunPlan": "mode_0600_same_run_file",
+    "output": "caller_supplied_mode_0600_create_only_file",
+    "stdout": "no_receipt_or_authority_material",
+    "stderr": "fixed_codes_only_no_auth_or_identity_material",
+    "ordinaryJsonOutput": "unchanged_header_free",
+    "cloudContext": "organization_selection_only_no_authority_headers_or_receipt",
+    "logs": "no_auth_headers_body_or_receipt",
+    "approvalNotice": "create_only_mode_0600_runner_temp",
+    "approvalHandoff": "live_private_github_actions_notice",
+    "approvalHandoffFileCleanup": "erase_handoff_file_on_every_outcome",
+    "approvalNoticeRetention": "private_run_log_normal_retention_inert_after_expiry",
+    "approvalNoticePersistence": "never_artifact_cache_receipt_or_cloud_context",
+    "forbiddenInputs": [
+      "operator_community_id",
+      "operator_relay_url",
+      "operator_https_base",
+      "operator_provider_policy"
+    ]
+  },
+  "deviceApproval": {
+    "schema": "cl.drwn.staging-device-approval-notice-contract.v1",
+    "noticeSchema": "cl.drwn.staging-device-approval-notice.v1",
+    "channel": "live_private_github_actions_notice",
+    "fileBoundary": "create_only_mode_0600_runner_temp",
+    "handoffFileCleanup": "erase_handoff_file_on_every_outcome",
+    "actionsNoticeRetention": "private_run_log_normal_retention_inert_after_expiry",
+    "forbiddenPersistence": "never_artifact_cache_receipt_or_cloud_context",
+    "authorizedOrigin": "https://auth-staging-main.darwinian.dev",
+    "approvalPath": "/device",
+    "maximumVerificationUriBytes": 2048,
+    "maximumLifetimeSeconds": 3600,
+    "validationTime": "2026-08-27T17:05:00.000Z",
+    "vectors": [
+      {
+        "name": "canonical_expiring_locator_is_the_only_authorized_notice",
+        "expected": "notice",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "non_https_locator_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "http://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "credentialed_locator_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://user:password@auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "fragment_locator_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH#fragment",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "wrong_origin_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://attacker.example/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "wrong_approval_path_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/not-device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "wrong_notice_schema_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v2",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "missing_schema_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "missing_qualification_run_id_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "missing_verification_uri_complete_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "missing_expires_at_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH"
+        }
+      },
+      {
+        "name": "missing_user_code_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "empty_user_code_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "duplicate_user_code_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH&user_code=IJKL-MNOP",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "extra_query_parameter_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH&next=forbidden",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "token_query_parameter_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH&access_token=forbidden",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "workflow_command_encoding_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH%0A%3A%3Aerror%3A%3Ainjected",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "expired_notice_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:05:00.000Z"
+        }
+      },
+      {
+        "name": "stale_notice_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T16:55:00.000Z"
+        }
+      },
+      {
+        "name": "expired_notice_replay_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:04:59.000Z"
+        }
+      },
+      {
+        "name": "overlong_lifetime_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T18:05:01.000Z"
+        }
+      },
+      {
+        "name": "wrong_qualification_run_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "44444444-4444-4444-8444-444444444444",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
+        "name": "notice_digest_field_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z",
+          "noticeDigestSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      {
+        "name": "separate_user_code_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z",
+          "userCode": "ABCD-EFGH"
+        }
+      },
+      {
+        "name": "device_code_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z",
+          "deviceCode": "forbidden"
+        }
+      },
+      {
+        "name": "token_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z",
+          "accessToken": "forbidden"
+        }
+      },
+      {
+        "name": "organization_identity_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z",
+          "organizationId": "org_forbidden"
+        }
+      }
+    ]
+  },
+  "baseResponse": {
+    "routeKey": "organizations.read",
+    "status": 200,
+    "headerPairs": [
+      [
+        "x-dah-buzz-community-id",
+        "7234a403-cb91-4dab-812c-c6a3dc50a6ef"
+      ],
+      [
+        "x-dah-organization-read-sha256",
+        "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+      ]
+    ],
+    "body": {
+      "requestId": "22222222-2222-4222-8222-222222222222",
+      "organization": {
+        "organizationId": "org_qualification_fixture",
+        "displayName": "Qualification Fixture",
+        "revision": 7
+      }
+    }
+  },
+  "currentRunPlan": {
+    "schema": "cl.dah.staging-slot-community.v1",
+    "environmentId": "staging-1",
+    "sourceCommitSha": "fe979d59a8d62d6354685e0ef9d5edee56246a21",
+    "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+    "cliReadinessReceiptSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "providerPolicyVersion": "sha256:1e4da3c3faf437545dc8d9767fbb40944df40de6537d6999a3988dd0cdc78251",
+    "relayUrl": "wss://kc.communities.buzz.xyz",
+    "httpsBase": "https://kc.communities.buzz.xyz",
+    "observedAt": "2026-08-27T17:00:00.000Z"
+  },
+  "vectors": [
+    {
+      "name": "authenticated_organization_read_emits_exact_public_receipt",
+      "expected": "receipt",
+      "expectedReceipt": {
+        "schema": "cl.dah.staging-slot-community.v1",
+        "environmentId": "staging-1",
+        "sourceCommitSha": "fe979d59a8d62d6354685e0ef9d5edee56246a21",
+        "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+        "cliReadinessReceiptSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "organizationReadDigestSha256": "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b",
+        "providerPolicyVersion": "sha256:1e4da3c3faf437545dc8d9767fbb40944df40de6537d6999a3988dd0cdc78251",
+        "communityId": "7234a403-cb91-4dab-812c-c6a3dc50a6ef",
+        "relayUrl": "wss://kc.communities.buzz.xyz",
+        "httpsBase": "https://kc.communities.buzz.xyz",
+        "observedAt": "2026-08-27T17:00:00.000Z",
+        "receiptDigestSha256": "25262e73e3d3feda463851cc762e7b17f3fb994cf1c0503ceae7acfd5792978a"
+      }
+    },
+    {
+      "name": "missing_community_header_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-organization-read-sha256",
+            "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "duplicate_community_header_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-buzz-community-id",
+            "7234a403-cb91-4dab-812c-c6a3dc50a6ef"
+          ],
+          [
+            "x-dah-buzz-community-id",
+            "7234a403-cb91-4dab-812c-c6a3dc50a6ef"
+          ],
+          [
+            "x-dah-organization-read-sha256",
+            "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "missing_read_digest_header_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-buzz-community-id",
+            "7234a403-cb91-4dab-812c-c6a3dc50a6ef"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "duplicate_read_digest_header_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-buzz-community-id",
+            "7234a403-cb91-4dab-812c-c6a3dc50a6ef"
+          ],
+          [
+            "x-dah-organization-read-sha256",
+            "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+          ],
+          [
+            "x-dah-organization-read-sha256",
+            "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "malformed_community_header_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-buzz-community-id",
+            "../escape"
+          ],
+          [
+            "x-dah-organization-read-sha256",
+            "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "malformed_read_digest_header_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-buzz-community-id",
+            "7234a403-cb91-4dab-812c-c6a3dc50a6ef"
+          ],
+          [
+            "x-dah-organization-read-sha256",
+            "NOT-A-DIGEST"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "wrong_route_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "routeKey": "organizations.list"
+      }
+    },
+    {
+      "name": "non_success_status_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "status": 403
+      }
+    },
+    {
+      "name": "malformed_body_request_id_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "body": {
+          "requestId": "not-a-uuid",
+          "organization": {
+            "organizationId": "org_qualification_fixture",
+            "displayName": "Qualification Fixture",
+            "revision": 7
+          }
+        }
+      }
+    },
+    {
+      "name": "body_unknown_field_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "body": {
+          "requestId": "22222222-2222-4222-8222-222222222222",
+          "organization": {
+            "organizationId": "org_qualification_fixture",
+            "displayName": "Qualification Fixture",
+            "revision": 7
+          },
+          "bearer": "forbidden"
+        }
+      }
+    },
+    {
+      "name": "body_drift_against_read_digest_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "body": {
+          "requestId": "44444444-4444-4444-8444-444444444444",
+          "organization": {
+            "organizationId": "org_qualification_fixture",
+            "displayName": "Qualification Fixture",
+            "revision": 7
+          }
+        }
+      }
+    },
+    {
+      "name": "community_drift_against_read_digest_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-buzz-community-id",
+            "community_personal_other"
+          ],
+          [
+            "x-dah-organization-read-sha256",
+            "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+          ]
+        ]
+      }
+    },
+    {
+      "name": "unknown_reserved_dah_header_refuses",
+      "expected": "refuse_no_output",
+      "responseOverride": {
+        "headerPairs": [
+          [
+            "x-dah-buzz-community-id",
+            "7234a403-cb91-4dab-812c-c6a3dc50a6ef"
+          ],
+          [
+            "x-dah-organization-read-sha256",
+            "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b"
+          ],
+          [
+            "x-dah-organization-id",
+            "forbidden"
+          ]
+        ]
+      }
+    }
+  ]
+}

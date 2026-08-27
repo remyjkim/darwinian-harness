@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Cli } from "clipanion";
 import { realpath } from "node:fs/promises";
 import { Writable } from "node:stream";
+import { createHash } from "node:crypto";
 import { WorkerDeployCommand } from "../cli/commands/worker/deploy";
 import { WorkerDeploymentsCommand } from "../cli/commands/worker/deployments";
 import { WorkerRollbackCommand } from "../cli/commands/worker/rollback";
@@ -41,7 +42,25 @@ function token(): string {
 
 function payload(): WorkerDeployPayload {
   const vector = managementContract.vectors.positive.find(({ routeKey }) => routeKey === "deployment_artifacts.put")!;
-  return JSON.parse(Buffer.from(String(vector.request.payloadBase64), "base64").toString("utf8")) as WorkerDeployPayload;
+  const bytes = Buffer.from(vector.bodyFixture!.bytesBase64, "base64");
+  const manifestLength = Number.parseInt(bytes.subarray(124, 135).toString("ascii"), 8);
+  const manifest = JSON.parse(bytes.subarray(512, 512 + manifestLength).toString("utf8"));
+  const storeOffset = 512 + Math.ceil(manifestLength / 512) * 512;
+  const storeLength = Number.parseInt(bytes.subarray(storeOffset + 124, storeOffset + 135).toString("ascii"), 8);
+  const store = bytes.subarray(storeOffset + 512, storeOffset + 512 + storeLength);
+  return {
+    contractVersion: 1,
+    materialization: "lockfile-store-export",
+    entrypoint: manifest.entrypoint,
+    lockfile: manifest.lockfile,
+    config: manifest.config,
+    governance: manifest.governance,
+    storeExport: {
+      kind: "drwn-store-export-tar", compression: "none", encoding: "base64",
+      sha256: createHash("sha256").update(store).digest("hex"),
+      byteLength: store.byteLength, bytesBase64: store.toString("base64"),
+    },
+  } as WorkerDeployPayload;
 }
 
 async function fixture() {
@@ -59,7 +78,7 @@ async function fixture() {
   return { ...value, projectConfigPath };
 }
 
-type Call = { method: string; path: string; body: unknown; requestId: string };
+type Call = { method: string; path: string; body: unknown; requestId: string; headers: Record<string, string> };
 
 async function run(args: string[], fetcher: typeof fetch) {
   const f = await fixture(); const stdout = new CaptureStream(); const stderr = new CaptureStream();
@@ -95,9 +114,15 @@ afterEach(async () => {
 function server(calls: Call[]): typeof fetch {
   return (async (input, init) => {
     const url = new URL(String(input)); const method = init?.method ?? "GET";
-    const requestId = new Headers(init?.headers).get("x-request-id")!;
-    const body = init?.body ? JSON.parse(String(init.body)) : null;
-    calls.push({ method, path: `${url.pathname}${url.search}`, body, requestId });
+    const requestHeaders = new Headers(init?.headers);
+    const headers = Object.fromEntries(requestHeaders);
+    const requestId = requestHeaders.get("x-request-id")!;
+    const body = init?.body
+      ? requestHeaders.get("content-type") === "application/vnd.darwinian.worker-deploy-bundle.v1+tar"
+        ? Buffer.from(await new Response(init.body).arrayBuffer())
+        : JSON.parse(String(init.body))
+      : null;
+    calls.push({ method, path: `${url.pathname}${url.search}`, body, requestId, headers });
     if (url.pathname === "/api/deployed-workers/deployed_worker_alpha") {
       return Response.json({ requestId, worker: {
         organizationId: "org_acme", workerId: "worker_alpha", deployedWorkerId: "deployed_worker_alpha",
@@ -109,7 +134,7 @@ function server(calls: Call[]): typeof fetch {
       return Response.json({
         requestId, deployedWorkerId: "deployed_worker_alpha",
         artifactRef: `deployment_artifact:sha256:${sha}`, artifactSha256: sha,
-        byteLength: body.byteLength, status: "created",
+        byteLength: Number(requestHeaders.get("content-length")), status: "created",
       });
     }
     if (url.pathname === "/api/deployed-workers/deployed_worker_alpha/deployments" && method === "POST") {
@@ -141,13 +166,17 @@ describe("Worker deployment commands", () => {
     expect(result.exitCode).toBe(0);
     expect(calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       "GET /api/deployed-workers/deployed_worker_alpha",
-      "PUT /api/deployed-workers/deployed_worker_alpha/deployment-artifacts/6867241440ef87a70a4875c40b56afde567ccdb261ae4317c87a13c25b0314e1",
+      "PUT /api/deployed-workers/deployed_worker_alpha/deployment-artifacts/ce5c71eef917857859ad19bb4e79d5eaf2fb4e805bdd5eefa9597b0b92da7b87",
       "POST /api/deployed-workers/deployed_worker_alpha/deployments",
     ]);
-    expect(calls[1]!.body).toMatchObject({ byteLength: 980 });
-    expect(String((calls[1]!.body as { payloadBase64: string }).payloadBase64)).not.toBe("");
+    expect(calls[1]!.body).toBeInstanceOf(Buffer);
+    expect((calls[1]!.body as Buffer).byteLength).toBe(5_120);
+    expect(createHash("sha256").update(calls[1]!.body as Buffer).digest("hex")).toBe("ce5c71eef917857859ad19bb4e79d5eaf2fb4e805bdd5eefa9597b0b92da7b87");
+    expect(calls[1]!.headers["content-type"]).toBe("application/vnd.darwinian.worker-deploy-bundle.v1+tar");
+    expect(calls[1]!.headers["content-length"]).toBe("5120");
+    expect(calls[1]!.headers).not.toHaveProperty("content-encoding");
     expect(calls[2]!.body).toEqual({
-      artifactRef: "deployment_artifact:sha256:6867241440ef87a70a4875c40b56afde567ccdb261ae4317c87a13c25b0314e1",
+      artifactRef: "deployment_artifact:sha256:ce5c71eef917857859ad19bb4e79d5eaf2fb4e805bdd5eefa9597b0b92da7b87",
       expectedWorkerRevision: 1,
     });
     expect(calls.every(({ path }) => !path.includes("/api/minds"))).toBe(true);

@@ -46,6 +46,16 @@ function packJson(bytes: Buffer, overrides: Record<string, unknown> = {}): strin
 }
 
 describe("release package member qualification", () => {
+  test("requires the D45 bundle and hidden I321 qualification authorities in the tar", () => {
+    for (const member of [
+      "cli/core/management/deployment-bundle.ts",
+      "cli/core/management/staging-community-qualification.ts",
+      "cli/commands/internal/qualify-staging-community.ts",
+      "cli/generated/dah-staging-slot-community-contract-lock.json",
+      "registry/contracts/staging-slot-community.v1/contract.json",
+    ]) expect(REQUIRED_RELEASE_MEMBERS as readonly string[]).toContain(member);
+  });
+
   test("accepts every required source member plus generated build identity", () => {
     expect(qualifyPackageMembers([...REQUIRED_RELEASE_MEMBERS])).toEqual([...REQUIRED_RELEASE_MEMBERS]);
   });
@@ -222,6 +232,9 @@ describe("installed artifact smokes", () => {
     await writeFile(artifact, "fixture");
     const runner: ReleaseCommandRunner = async (command, options) => {
       calls.push({ command, cwd: options.cwd, env: options.env });
+      if (command.includes("qualify-staging-community")) {
+        return { exitCode: 1, stdout: "", stderr: "STAGING_COMMUNITY_QUALIFICATION_FAILED\n" };
+      }
       return { exitCode: 0, stdout: command.includes("--version") ? "1.4.2\n" : "Usage\n", stderr: "" };
     };
 
@@ -234,8 +247,11 @@ describe("installed artifact smokes", () => {
       resolveInstalledBin: async (prefix) => join(await realpath(prefix), "lib", "node_modules", "darwinian", "cli", "index.ts"),
     });
 
-    expect(result).toEqual({ version: "1.4.2", passed: SAFE_INSTALLED_SMOKES.map((smoke) => smoke.join(" ")) });
-    expect(calls).toHaveLength(1 + SAFE_INSTALLED_SMOKES.length);
+    expect(result).toEqual({
+      version: "1.4.2",
+      passed: [...SAFE_INSTALLED_SMOKES.map((smoke) => smoke.join(" ")), "__internal qualify-staging-community refusal"],
+    });
+    expect(calls).toHaveLength(2 + SAFE_INSTALLED_SMOKES.length);
     expect(calls[0]?.command.slice(0, 4)).toEqual(["npm", "install", "--global", artifact]);
     for (const [index, smoke] of SAFE_INSTALLED_SMOKES.entries()) {
       const call = calls[index + 1]!;
@@ -244,9 +260,16 @@ describe("installed artifact smokes", () => {
       expect(call.cwd).toBe(join(root, "smoke", "project"));
       expect(call.env.AGENTS_HOME_DIR).toBe(join(root, "smoke", "user-home"));
       expect(call.env.AGENTS_DIR).toBe(join(root, "smoke", "agents"));
+      expect(call.env.RUNNER_TEMP).toBe(join(root, "smoke", "runner-temp"));
       expect(call.env[["DRWN", "TEST", "KEYCHAIN", "DIR"].join("_")]).toBeUndefined();
       expect(call.env.DRWN_TOKEN).toBeUndefined();
     }
+    const qualification = calls.find(({ command }) => command.includes("qualify-staging-community"));
+    expect(qualification?.command).toContain("__internal");
+    expect(qualification?.command).toContain("--plan-file");
+    expect(qualification?.command).toContain("--approval-notice-file");
+    expect(qualification?.command).toContain("--output-file");
+    expect(qualification?.command).toContain(join(root, "smoke", "runner-temp", "approval-notice.json"));
   });
 
   test("fails when version output differs or a help smoke mutates quarantined auth/project state", async () => {

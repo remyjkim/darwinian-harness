@@ -3,7 +3,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { seedStore } from "../cli/core/store-seed";
@@ -129,6 +129,24 @@ test("buildWorkerDeployPayload storeExport decodes and seeds a store", async () 
   for (const card of payload.lockfile.cards) {
     expect(await Bun.file(join(agentsDir, card.path, "card.json")).exists()).toBe(true);
   }
+});
+
+test("buildWorkerDeployPayload storeExport is byte-identical across source mtime drift", async () => {
+  const fixture = await scaffoldCliFixture();
+  tempRoots.push(fixture.root);
+  await publishBlueprintFixture(fixture);
+  const first = await buildWorkerDeployPayload({
+    agentsDir: fixture.agentsDir,
+    cardRef: "@me/frontend-eng@^1.0.0",
+  });
+  await utimes(join(fixture.agentsDir, "drwn", "store.json"), new Date("2020-01-01T00:00:00Z"), new Date("2030-01-01T00:00:00Z"));
+  const second = await buildWorkerDeployPayload({
+    agentsDir: fixture.agentsDir,
+    cardRef: "@me/frontend-eng@^1.0.0",
+  });
+  expect(second.storeExport.byteLength).toBe(first.storeExport.byteLength);
+  expect(second.storeExport.sha256).toBe(first.storeExport.sha256);
+  expect(second.storeExport.bytesBase64).toBe(first.storeExport.bytesBase64);
 });
 
 test("buildWorkerDeployPayload translates the selected pinned project closure without leaking local schemas", async () => {

@@ -22,25 +22,18 @@ import {
   managementRoutes,
   resolveManagementRoute,
 } from "../cli/core/management/routes";
+import {
+  assertDeploymentBundleBytes,
+  assertDeploymentBundleRequestIdentity,
+  assertDeploymentProviderOutcome,
+  validateDeploymentBundleHeaders,
+} from "../cli/core/management/deployment-bundle";
 
 const repoRoot = join(import.meta.dir, "..");
 const vendoredPath = join(repoRoot, "registry", "contracts", "deployed-worker.v1", "contract.json");
 const lockPath = join(repoRoot, "cli", "generated", "drwn-management-contract-lock.json");
-const servicesPath = resolve(
-  repoRoot,
-  "..",
-  "..",
-  "darwinian-services",
-  ".worktrees",
-  "i336-drwn-contract",
-  "ops",
-  "deploy",
-  "contracts",
-  "drwn-management",
-  "v1",
-  "contract.json",
-);
-const expectedDigest = "1534f85fe8d9079eb1c6c3cc9cf34477fb7cd19973247f31f4b98df0ed9bc3b2";
+const servicesPath = resolve(repoRoot, "..", "..", "darwinian-services", "ops", "deploy", "contracts", "drwn-management", "v1", "contract.json");
+const expectedDigest = "6dcba2f6dbce453ad408f357645687cc66e1b5d5bfbdb5fd47b529a8dc952c80";
 
 test("vendors the exact immutable Services artifact and pins its authority", () => {
   expect(existsSync(vendoredPath)).toBe(true);
@@ -55,13 +48,14 @@ test("vendors the exact immutable Services artifact and pins its authority", () 
     schemaVersion: 1,
     protocol: "deployed-worker.v1",
     servicesRepository: "curation-labs/darwinian-services",
-    sourceCommit: "5920f2c763f6afae3768286692df75489274006f",
+    sourceCommit: "c6fa3e60bd90f74c3967e609722cb900f996b5b8",
     sha256: expectedDigest,
     routeCount: 13,
     positiveVectorCount: 13,
-    negativeVectorCount: 32,
+    negativeVectorCount: 47,
     semanticVectorCount: 3,
-    schemaCount: 63,
+    schemaCount: 62,
+    rawBodyContractCount: 1,
     wireErrorCodeCount: 9,
     clientErrorCodeCount: 10,
   });
@@ -72,9 +66,9 @@ test("admits the closed contract and derives the exact route inventory", () => {
   expect(Object.isFrozen(managementContract)).toBe(true);
   expect(Object.isFrozen(managementContract.schemas)).toBe(true);
   expect(Object.isFrozen(managementSchemas)).toBe(true);
-  expect(Object.keys(managementContract.schemas)).toHaveLength(63);
+  expect(Object.keys(managementContract.schemas)).toHaveLength(62);
   expect(managementContract.vectors.positive).toHaveLength(13);
-  expect(managementContract.vectors.negative).toHaveLength(32);
+  expect(managementContract.vectors.negative).toHaveLength(47);
   expect(managementContract.semanticVectors).toHaveLength(3);
   expect(MANAGEMENT_ROUTE_KEYS).toEqual([
     "organizations.list",
@@ -95,24 +89,39 @@ test("admits the closed contract and derives the exact route inventory", () => {
   expect(Object.keys(managementRoutes)).toEqual([...MANAGEMENT_ROUTE_KEYS]);
 });
 
-test("pins target-scoped immutable deployment artifact staging semantics", () => {
+test("pins deterministic raw USTAR deployment artifact staging semantics", () => {
   const contract = managementContract as unknown as {
     artifactStaging: Record<string, unknown>;
-    vectors: { positive: Array<{ routeKey: string; request: Record<string, unknown>; success: Record<string, unknown> }> };
+    rawBodyContracts: Record<string, Record<string, unknown>>;
+    vectors: { positive: Array<{ routeKey: string; request: Record<string, unknown>; bodyFixture?: Record<string, unknown>; success: Record<string, unknown> }> };
   };
   expect(contract.artifactStaging).toEqual({
-    maxPayloadBytes: 37_748_736,
+    minBundleBytes: 3_072,
+    maxBundleBytes: 29_362_176,
+    maxManifestBytes: 3_145_728,
+    maxStoreBytes: 26_214_400,
     artifactRefPrefix: "deployment_artifact:sha256:",
     requestIdDerivation: "uuidv4-from-artifact-sha256-first-16-bytes",
-    storage: "target-scoped-create-if-absent-exact-byte-match",
-    payloadContract: "canonical-worker-deploy-payload-v1-json",
+    storage: "target-scoped-create-if-absent-verified-bundle-match",
+    payloadContract: "deterministic-worker-deploy-bundle-v1-ustar",
+    sameAttemptExistingBeforeValidationEof: "forbidden",
+    conditionalCreateRace: "temporarily-unavailable-retry-same-request-fresh-identical-file-stream",
+    existingResult: "fresh-attempt-complete-stream-validation-and-stored-object-readback",
+  });
+  expect(contract.rawBodyContracts.DeterministicWorkerDeployBundleV1).toMatchObject({
+    mediaType: "application/vnd.darwinian.worker-deploy-bundle.v1+tar",
+    contentEncoding: "forbidden",
+    contentLength: { required: true, minimum: 3_072, maximum: 29_362_176 },
+    entries: [{ path: "manifest.json", order: 1 }, { path: "store.tar", order: 2 }],
+    headerPolicy: { uid: 0, gid: 0, mtime: 0, mode: "0644", extensions: "forbidden", terminalZeroBlocks: 2 },
   });
   const vector = contract.vectors.positive.find(({ routeKey }) => routeKey === "deployment_artifacts.put")!;
-  const payload = Buffer.from(String(vector.request.payloadBase64), "base64");
-  expect(createHash("sha256").update(payload).digest("hex")).toBe(String(vector.request.artifactSha256));
-  expect(payload.byteLength).toBe(Number(vector.request.byteLength));
+  const body = Buffer.from(String(vector.bodyFixture?.bytesBase64), "base64");
+  expect(createHash("sha256").update(body).digest("hex")).toBe(String(vector.request.artifactSha256));
+  expect(body.byteLength).toBe(Number(vector.request.byteLength));
+  expect(vector.request).not.toHaveProperty("payloadBase64");
   expect(vector.success).toMatchObject({
-    requestId: "68672414-40ef-47a7-8a48-75c40b56afde",
+    requestId: "ce5c71ee-f917-4578-99ad-19bb4e79d5ea",
     deployedWorkerId: "deployed_worker_alpha",
     artifactRef: `deployment_artifact:sha256:${vector.request.artifactSha256}`,
     artifactSha256: vector.request.artifactSha256,
@@ -172,6 +181,7 @@ test("pins strict top-level, profile, header, ID, and error inventories", () => 
     "profiles",
     "headers",
     "artifactStaging",
+    "rawBodyContracts",
     "routes",
     "schemas",
     "errors",
@@ -260,7 +270,7 @@ function caughtCode(operation: () => unknown): string | undefined {
   }
 }
 
-test("rejects all thirty-two executable negatives on only their intended client surface", () => {
+test("rejects all forty-seven executable negatives on only their intended client surface", () => {
   const positives = new Map(managementContract.vectors.positive.map((vector) => [vector.routeKey, vector]));
   const baseHeaders = {
     Authorization: "Bearer services-token-fixture",
@@ -275,7 +285,13 @@ test("rejects all thirty-two executable negatives on only their intended client 
     expect(parseManagementSuccess(vector.routeKey, positive.success), vector.caseId).toEqual(positive.success);
     let code: string | undefined;
     if (vector.surface === "request") {
-      code = caughtCode(() => parseManagementRequest(vector.routeKey, { ...positive.request, ...vector.candidate }));
+      code = caughtCode(() => {
+        const request = { ...positive.request, ...vector.candidate };
+        parseManagementRequest(vector.routeKey, request);
+        if (vector.routeKey === "deployment_artifacts.put") {
+          assertDeploymentBundleRequestIdentity(request, Buffer.from(positive.bodyFixture!.bytesBase64, "base64"));
+        }
+      });
     } else if (vector.surface === "response") {
       code = caughtCode(() => parseManagementSuccess(
         vector.routeKey,
@@ -283,7 +299,21 @@ test("rejects all thirty-two executable negatives on only their intended client 
         positive.request,
       ));
     } else if (vector.surface === "header") {
-      code = caughtCode(() => validateManagementHeaders({ ...baseHeaders, ...vector.candidate }));
+      code = caughtCode(() => {
+        if (vector.routeKey === "deployment_artifacts.put" && Object.keys(vector.candidate).some((name) => name.startsWith("Content-"))) {
+          validateDeploymentBundleHeaders({
+            "Content-Length": String(positive.request.byteLength),
+            "Content-Type": managementContract.rawBodyContracts.DeterministicWorkerDeployBundleV1.mediaType,
+            ...vector.candidate,
+          });
+        } else {
+          validateManagementHeaders({ ...baseHeaders, ...vector.candidate });
+        }
+      });
+    } else if (vector.surface === "body") {
+      code = caughtCode(() => assertDeploymentBundleBytes(Buffer.from(String(vector.candidate.bytesBase64), "base64")));
+    } else if (vector.surface === "provider") {
+      code = caughtCode(() => assertDeploymentProviderOutcome(vector.candidate));
     } else {
       code = caughtCode(() => assertManagementPathAllowed(String(vector.candidate.path)));
     }

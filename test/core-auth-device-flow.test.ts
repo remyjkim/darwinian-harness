@@ -79,7 +79,7 @@ function nativeFetcher(options: { pending?: number; terminalError?: string } = {
 describe("runDeviceFlow", () => {
   test("runs only the native DAH flow and creates an exact generation-1 v3 credential", async () => {
     const profile = drwnCliProfile({});
-    const actions: Array<{ verification_uri_complete: string; user_code: string }> = [];
+    const actions: Array<Record<string, string>> = [];
     const slept: number[] = [];
     const { fetcher, requests } = nativeFetcher({ pending: 1 });
 
@@ -109,6 +109,7 @@ describe("runDeviceFlow", () => {
     expect(actions).toEqual([{
       verification_uri_complete: "https://app.test/device?user_code=ABCD",
       user_code: "ABCD",
+      expires_at: new Date((IAT + 1) * 1000 + 600_000).toISOString(),
     }]);
     expect(slept).toEqual([1000, 1000]);
     expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
@@ -124,6 +125,36 @@ describe("runDeviceFlow", () => {
     });
     const authorize = new URL(requests[3]!.url);
     expect(authorize.searchParams.get("scope")).toBe("openid email offline_access dah:management.delegate");
+  });
+
+  test("awaits the approval notice callback before polling and shares the exact poll expiry", async () => {
+    const profile = drwnCliProfile({});
+    const { fetcher, requests } = nativeFetcher();
+    let releaseNotice!: () => void;
+    const noticeGate = new Promise<void>((resolve) => { releaseNotice = resolve; });
+    let notice: Record<string, string> | undefined;
+    const flow = runDeviceFlow({
+      profile,
+      fetcher,
+      sleep: async () => {},
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
+      onUserAction: async (info) => {
+        notice = info as unknown as Record<string, string>;
+        await noticeGate;
+      },
+    });
+
+    await Bun.sleep(0);
+    expect(requests.map(({ url }) => new URL(url).pathname)).toEqual(["/api/auth/device/code"]);
+    expect(notice).toEqual({
+      verification_uri_complete: "https://app.test/device?user_code=ABCD",
+      user_code: "ABCD",
+      expires_at: new Date((IAT + 1) * 1000 + 600_000).toISOString(),
+    });
+    releaseNotice();
+    await flow;
+    expect(requests.map(({ url }) => new URL(url).pathname)).toContain("/api/auth/device/token");
   });
 
   test("rejects a successful final token without exact delegation readiness before credential creation", async () => {

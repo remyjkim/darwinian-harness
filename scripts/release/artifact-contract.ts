@@ -43,8 +43,13 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "cli/core/management/context-store.ts",
   "cli/core/management/operation-journal.ts",
   "cli/core/management/deployment-artifacts.ts",
+  "cli/core/management/deployment-bundle.ts",
+  "cli/core/management/staging-community-qualification.ts",
+  "cli/commands/internal/qualify-staging-community.ts",
   "cli/generated/drwn-management-contract-lock.json",
+  "cli/generated/dah-staging-slot-community-contract-lock.json",
   "registry/contracts/deployed-worker.v1/contract.json",
+  "registry/contracts/staging-slot-community.v1/contract.json",
   "registry/cards/buzz-delivery-worker/card.json",
   "cli/generated/build-identity.json",
 ] as const;
@@ -446,12 +451,14 @@ export async function runInstalledArtifactSmokes(
   const project = join(workspaceRoot, "project");
   const userHome = join(workspaceRoot, "user-home");
   const agentsDir = join(workspaceRoot, "agents");
-  await Promise.all([prefix, cache, project, userHome, agentsDir].map((path) => mkdir(path)));
+  const runnerTemp = join(workspaceRoot, "runner-temp");
+  await Promise.all([prefix, cache, project, userHome, agentsDir, runnerTemp].map((path) => mkdir(path)));
 
   const env: Record<string, string | undefined> = {
     ...process.env,
     AGENTS_HOME_DIR: userHome,
     AGENTS_DIR: agentsDir,
+    RUNNER_TEMP: runnerTemp,
   };
   delete env.DRWN_TOKEN;
   const run = deps.run ?? defaultCommandRunner;
@@ -477,7 +484,7 @@ export async function runInstalledArtifactSmokes(
     throw new ReleaseArtifactError("installed bin resolves outside the clean prefix");
   }
 
-  const quarantine = [project, userHome, agentsDir];
+  const quarantine = [project, userHome, agentsDir, runnerTemp];
   const passed: string[] = [];
   for (const smoke of SAFE_INSTALLED_SMOKES) {
     const result = await run([bin, ...smoke], { cwd: project, env });
@@ -488,5 +495,18 @@ export async function runInstalledArtifactSmokes(
     await assertEmptyDirectories(quarantine);
     passed.push(smoke.join(" "));
   }
+  const qualificationSmoke = [
+    "__internal", "qualify-staging-community",
+    "--plan-file", join(project, "missing-private-plan.json"),
+    "--approval-notice-file", join(runnerTemp, "approval-notice.json"),
+    "--output-file", join(project, "i321-staging-slot-community.json"),
+  ];
+  const qualification = await run([bin, ...qualificationSmoke], { cwd: project, env });
+  if (
+    qualification.exitCode !== 1 || qualification.stdout !== "" ||
+    qualification.stderr !== "STAGING_COMMUNITY_QUALIFICATION_FAILED\n"
+  ) throw new ReleaseArtifactError("installed hidden qualification refusal smoke failed");
+  await assertEmptyDirectories(quarantine);
+  passed.push("__internal qualify-staging-community refusal");
   return { version: input.expectedVersion, passed };
 }
