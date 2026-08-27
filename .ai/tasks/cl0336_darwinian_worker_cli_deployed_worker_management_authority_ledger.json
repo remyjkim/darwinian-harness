@@ -1,8 +1,8 @@
 {
   "schema": "cl.drwn.worker-management-authority-ledger",
   "schemaVersion": 1,
-  "status": "source_package_green_live_ceremony_blocked",
-  "observedAt": "2026-08-27T19:52:00Z",
+  "status": "source_local_package_green_hosted_review_pending",
+  "observedAt": "2026-08-27T21:46:02Z",
   "worker": {
     "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-integration",
     "documentationRoot": "/Users/pureicis/dev/darwinian-minds",
@@ -11,17 +11,22 @@
     "acceptedBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
     "architecture": {
       "path": ".ai/analyses/cl0336_darwinian_worker_cli_deployed_worker_management_target_architecture.html",
-      "sha256": "157015502300e36e05b93b8a77f7ed60d2e67126db618f8bdc909571f969a8e3",
+      "sha256": "15eb6bf67d2361f01a72514ac1342b5614606b78080cf6d23b971388563c7c05",
       "authority": "primary-checkout",
       "historicalGitBlob": "d2b94ca8cf418fb2f176cc10a2755b3e1609f1ed",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
     },
     "taskPlan": {
       "path": ".ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_task_plan.html",
-      "sha256": "de00e972ee47667c0ffe29d9a353a6533b2bb56882a8e61db0a26fe31f145788",
+      "sha256": "acb89784a8c0e00288f16fc0dc1fd9629acf782e09dc93023bb2b0d061276463",
       "authority": "primary-checkout",
       "historicalGitBlob": "453bae3b2717ccfc172b598b9924d937e01736a0",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
+    },
+    "completion": {
+      "path": ".ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_completion.html",
+      "sha256": "c2139b7f46098c091afe3d59ec2cc1ad60599d57954de4f63771a8f1e9324d23",
+      "authority": "primary-checkout"
     }
   },
   "services": {
@@ -30,8 +35,8 @@
     "i336AcceptedCommit": "c6fa3e60bd90f74c3967e609722cb900f996b5b8",
     "i321CandidateCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
     "i321AuthorizedStartingCommit": "3a690760ad30b0dc002ffe6589d8b83d81109929",
-    "i321AcceptedCommit": "29267384aee6a73d5bc4330e2ac81413e0cf15fb",
-    "mergedMainCommit": "864c2434c441878f4542dcfbd42a21439ba970f8"
+    "i321AcceptedCommit": "df219967d0f11822f3f642602f59e372ad1e4d6a",
+    "mergedMainCommit": "ed5a40c95947eb4def084bc88a5c4cac9805beb5"
   },
   "protocol": {
     "name": "deployed-worker.v1",
@@ -53,14 +58,18 @@
     "schema": "cl.dah.staging-slot-community-interoperability.v1",
     "artifactPath": "auth-hub/packages/dah-control-contracts/fixtures/staging-slot-community/v1/contract.json",
     "vendoredPath": "registry/contracts/staging-slot-community.v1/contract.json",
-    "sourceCommit": "29267384aee6a73d5bc4330e2ac81413e0cf15fb",
-    "mergedMainCommit": "864c2434c441878f4542dcfbd42a21439ba970f8",
-    "sha256": "89e7ad1410a28445678a812f1ec5e4a9e7cbb51e38c320ccdbc728843c7ea387",
+    "sourceCommit": "df219967d0f11822f3f642602f59e372ad1e4d6a",
+    "mergedMainCommit": "ed5a40c95947eb4def084bc88a5c4cac9805beb5",
+    "sha256": "141f45e8e54e1c248558b6b41853e6f8fb4d0e9910e4d2ad5fab4069136ab83c",
     "vectorCount": 14,
     "positiveVectorCount": 1,
     "hostileVectorCount": 13,
+    "deviceApprovalVectorCount": 27,
+    "deviceApprovalPositiveVectorCount": 1,
+    "deviceApprovalHostileVectorCount": 26,
     "publicReceiptSchema": "cl.dah.staging-slot-community.v1",
-    "status": "accepted"
+    "approvalNoticeSchema": "cl.drwn.staging-device-approval-notice.v1",
+    "status": "accepted_and_source_green"
   },
   "profiles": {
     "production": {
@@ -187,8 +196,8 @@
     },
     {
       "id": "I321-COMMUNITY-QUALIFICATION-01",
-      "status": "source_green_pending_hosted",
-      "answer": "one hidden command consumes one mode-0600 private plan with one organizationId, runs staging device flow process-locally, performs exactly organizations.read, executes all fourteen I321 vectors, and creates only the self-digested mode-0600 public receipt",
+      "status": "source_local_package_green_pending_hosted",
+      "answer": "one hidden command consumes one mode-0600 private plan with one organizationId, publishes exactly one four-field expiring mode-0600 approval notice under RUNNER_TEMP before polling, erases the handoff on every outcome, performs exactly organizations.read, executes all fourteen Community and twenty-seven notice vectors, and creates only the self-digested mode-0600 public receipt",
       "approvedAt": "2026-08-27T19:23:06Z"
     },
     {
@@ -199,9 +208,9 @@
     },
     {
       "id": "HOSTED-CEREMONY-01",
-      "status": "p0_owner_decision_required",
-      "answer": "the current I321 process-local verification-code contract and Worker best-effort browser launch cannot produce a Human-approved GitHub-hosted ceremony; PR115 is draft and must not merge as live-capable until I321 publishes exact successor bytes for an authorized expiring verification_uri_complete handoff or supplies a Human-reachable runner authority",
-      "approvedAt": "2026-08-27T19:52:00Z"
+      "status": "owner_authority_merged_source_green_hosted_pending",
+      "answer": "merged I321 PR642 authorizes one exact expiring verification_uri_complete handoff; Worker publishes it create-only at mode 0600 under RUNNER_TEMP before token polling and erases only that handoff file on every outcome, while I336 alone owns the private Actions notice and its normal inert-after-expiry log retention",
+      "approvedAt": "2026-08-27T21:46:02Z"
     }
   ],
   "operationalAuthorities": {
@@ -239,37 +248,46 @@
   "integration": {
     "remoteMainCommit": "cef3090c013134b578d87fd938a6741fd288d36a",
     "mergeCommit": "001908e1ba6fc280ae4a1c6efe0492c2dc7083fd",
-    "qualifiedSourceCommit": "fcd5b583c5ccd439147fddd9f430e4d01fa87062",
+    "qualifiedSourceCommit": "9184cd958a1c3b4f5f0b1bedb67930ee98f4e0a1",
     "contractAuthorityCommit": "c6fa3e60bd90f74c3967e609722cb900f996b5b8",
     "contractPinCommit": "99d678ed4b58def74e6d69c4c5164d3c8d3fb22a",
-    "stagingCommunitySourceCommit": "29267384aee6a73d5bc4330e2ac81413e0cf15fb",
-    "stagingCommunityPinCommit": "316e77c01f5783270525e186715fa8d7165d15c3",
+    "stagingCommunitySourceCommit": "df219967d0f11822f3f642602f59e372ad1e4d6a",
+    "stagingCommunityPinCommit": "9184cd958a1c3b4f5f0b1bedb67930ee98f4e0a1",
     "fullSuite": {
       "command": "bun test --timeout 30000 --max-concurrency 2 ./test/",
-      "files": 371,
-      "passed": 2208,
+      "files": 375,
+      "passed": 2241,
       "skipped": 7,
       "failed": 0,
-      "durationSeconds": 626.7
+      "durationSeconds": 612.87
     },
     "typecheck": "passed",
     "hardCutResidue": "passed",
     "responseIdentityBinding": "passed",
     "d45RawUstar": "passed",
-    "stagingCommunityVectors": "14/14 passed",
+    "stagingCommunityVectors": "14/14 Community and 27/27 approval-notice passed",
     "ordinaryHeaderIsolation": "passed",
     "bashE2E": "passed",
     "hostedMacOs": "pending"
   },
+  "localArtifact": {
+    "filename": "darwinian-1.4.2.tgz",
+    "byteLength": 572428,
+    "sha1": "319ce4d200f66bf6abfb85184350271f079bc38e",
+    "sha256": "99cc3284b8d4d2fceb2f3efeb7161909d7eaf2e27b465ef2a5ecb2f3b60b522e",
+    "integrity": "sha512-zo/nYoBwbwxI5+fzxKU++dumRRN3Gtq8OXle5q+jYInXoNXY2ifIY9clN3d+dbX62O+Lz+kzxpCpCCUHnvHtTg==",
+    "sourceCommit": "9184cd958a1c3b4f5f0b1bedb67930ee98f4e0a1",
+    "status": "local_qualified_not_published"
+  },
   "sourceBlockers": [
-    "I321 exact hosted Human device-ceremony successor contract or alternative runner authority",
-    "G3 resubmission and review after ceremony TDD"
+    "exact PR #115 successor head push and hosted macOS/package evidence",
+    "G3 resubmission and review of D45 plus I321 notice lifecycle"
   ],
   "operationalBlockers": [
     "interactive npm-2FA or separately reviewed non-OIDC latest-promotion authority",
     "I336 current-run private plan and receipt artifact sink",
     "live protected device-flow approval and staging read",
-    "Human-reachable hosted device verification handoff under exact owner authority",
+    "I336 concurrent private Actions notice relay and handoff-file deletion",
     "deferred Ubuntu Secret Service/management and Windows DPAPI/management follow-up qualification"
   ]
 }
