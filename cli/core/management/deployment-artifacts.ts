@@ -29,7 +29,7 @@ export function buildDeploymentArtifact(payload: WorkerDeployPayload): Readonly<
   return buildDeterministicDeploymentBundle(payload);
 }
 
-async function openVerifiedBundleStream(path: string, artifact: Readonly<DeploymentArtifact>): Promise<ReadableStream<Uint8Array>> {
+async function openVerifiedBundleStream(path: string, artifact: Readonly<DeploymentArtifact>): Promise<Blob> {
   try {
     const before = await lstat(path);
     if (!before.isFile() || before.isSymbolicLink() || (before.mode & 0o777) !== 0o600 || before.size !== artifact.byteLength) {
@@ -41,7 +41,7 @@ async function openVerifiedBundleStream(path: string, artifact: Readonly<Deploym
       before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size ||
       createHash("sha256").update(bytes).digest("hex") !== artifact.artifactSha256
     ) throw new Error("changed spool");
-    return Bun.file(path).stream();
+    return Bun.file(path);
   } catch {
     throw new DrwnError("DEPLOYMENT_ARTIFACT_INVALID", "The deployment artifact spool is unavailable or changed.");
   }

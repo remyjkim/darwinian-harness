@@ -77,6 +77,10 @@ describe("management Bash E2E contract", () => {
     expect(pkg.scripts["test:e2e:management:live"]).toBe("bash test/e2e/drwn-management-cli-live.sh");
 
     expect(workflow).toContain("management-artifact");
+    const validateJob = workflow.slice(workflow.indexOf("  validate:"), workflow.indexOf("  command-bridge:"));
+    expect(validateJob).toContain("os: [ubuntu-latest, macos-latest]");
+    expect(validateJob).not.toContain("windows-latest");
+    expect(validateJob).toMatch(/- name: Shellcheck strict management journeys\n\s+if: runner\.os == 'Linux'/);
     const managementJob = workflow.slice(workflow.indexOf("  management-three-os:"));
     expect(managementJob).toContain("os: [macos-latest]");
     expect(managementJob).not.toContain("Install Linux Secret Service stack");

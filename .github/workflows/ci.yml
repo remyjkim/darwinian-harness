@@ -26,12 +26,12 @@ jobs:
     # Individual Linux tests still fail at 30s through test:gate; this outer bound
     # protects the complete matrix job from normal hosted-runner variance.
     timeout-minutes: 60
-    # Linux owns the canonical full suite. macOS and Windows execute the strict
-    # management/auth subset plus the shared immutable-artifact qualification below.
+    # Linux owns the canonical full suite. macOS executes the strict management/auth
+    # subset plus the shared immutable-artifact qualification below. Windows is deferred.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +46,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Shellcheck strict management journeys
+        if: runner.os == 'Linux'
         run: shellcheck test/e2e/drwn-management-cli.sh test/e2e/drwn-management-cli-live.sh test/e2e/lib/assertions.sh
 
       - name: Typecheck

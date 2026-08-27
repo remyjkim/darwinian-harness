@@ -67,7 +67,9 @@ describe("deployment artifact staging", () => {
       execute: async (input) => {
         requests.push(structuredClone(input.request));
         expect(input.rawBody).toBeDefined();
-        bodies.push(Buffer.from(await new Response(await input.rawBody!.createBody()).arrayBuffer()));
+        const body = await input.rawBody!.createBody();
+        expect(body).toBeInstanceOf(Blob);
+        bodies.push(Buffer.from(await new Response(body).arrayBuffer()));
         calls += 1;
         if (calls === 1) {
           return indeterminateManagementResult(input.routeKey, String(input.request.requestId), "2026-08-25T12:00:00.000Z");
