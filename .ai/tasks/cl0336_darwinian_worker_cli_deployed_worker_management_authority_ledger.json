@@ -233,7 +233,7 @@
   "integration": {
     "remoteMainCommit": "cef3090c013134b578d87fd938a6741fd288d36a",
     "mergeCommit": "001908e1ba6fc280ae4a1c6efe0492c2dc7083fd",
-    "qualifiedSourceCommit": "11b2a39c39d3b1ac2295aeab4e5a80ed7142a1a8",
+    "qualifiedSourceCommit": "fcd5b583c5ccd439147fddd9f430e4d01fa87062",
     "contractAuthorityCommit": "c6fa3e60bd90f74c3967e609722cb900f996b5b8",
     "contractPinCommit": "99d678ed4b58def74e6d69c4c5164d3c8d3fb22a",
     "stagingCommunitySourceCommit": "29267384aee6a73d5bc4330e2ac81413e0cf15fb",
