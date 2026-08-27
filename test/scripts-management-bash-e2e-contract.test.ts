@@ -26,6 +26,9 @@ describe("management Bash E2E contract", () => {
     expect(hermetic).toContain("trap cleanup EXIT INT TERM");
     expect(hermetic).toContain("DRWN_E2E_BIN");
     expect(hermetic).toContain("drwn-management-e2e-server.ts");
+    expect(hermetic).toContain("__internal qualify-staging-community");
+    expect(hermetic).toContain("STAGING_COMMUNITY_QUALIFICATION_FAILED");
+    expect(hermetic).toContain("i321-staging-slot-community.json");
     expect(hermetic).toContain("openssl req -x509");
     expect(hermetic).toContain("wait_for_https");
     expect(hermetic).toContain("worker register");
@@ -64,7 +67,7 @@ describe("management Bash E2E contract", () => {
     expect(fixture).not.toContain("SENTINEL_MANAGEMENT_SECRET_336");
   });
 
-  test("package scripts and CI make one measured artifact and real custody blocking on three OSes", async () => {
+  test("package scripts and CI make one measured artifact with macOS custody blocking now", async () => {
     const [packageSource, workflow] = await Promise.all([
       source("package.json"),
       source(".github/workflows/ci.yml"),
@@ -74,13 +77,14 @@ describe("management Bash E2E contract", () => {
     expect(pkg.scripts["test:e2e:management:live"]).toBe("bash test/e2e/drwn-management-cli-live.sh");
 
     expect(workflow).toContain("management-artifact");
-    expect(workflow).toContain("ubuntu-latest");
-    expect(workflow).toContain("macos-latest");
-    expect(workflow).toContain("windows-latest");
+    const managementJob = workflow.slice(workflow.indexOf("  management-three-os:"));
+    expect(managementJob).toContain("os: [macos-latest]");
+    expect(managementJob).not.toContain("Install Linux Secret Service stack");
+    expect(managementJob).not.toContain("Exercise required Windows DPAPI custody");
     expect(workflow).toContain("artifact-sha256");
     expect(workflow).toContain("download-artifact@v4");
     expect(workflow).toContain("test:e2e:management:bash");
-    expect(workflow).toContain("DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'");
+    expect(managementJob).toContain("DRWN_RUN_REAL_KEYCHAIN_TESTS: '1'");
     expect(workflow).toContain("shellcheck test/e2e/drwn-management-cli.sh");
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toContain("DRWN_TEST_KEYCHAIN_DIR");

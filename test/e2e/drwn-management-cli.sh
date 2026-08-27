@@ -121,6 +121,19 @@ run_drwn worker retire --help >/dev/null
 HELP_STATE_AFTER="$(find "$E2E_ROOT" -type f -print0 | sort -z | xargs -0 shasum -a 256)"
 [[ "$HELP_STATE_BEFORE" == "$HELP_STATE_AFTER" ]] || fail "management help mutated isolated state"
 
+QUALIFICATION_RECEIPT="$E2E_ROOT/i321-staging-slot-community.json"
+set +e
+QUALIFICATION_STDOUT="$(run_drwn __internal qualify-staging-community \
+  --plan-file "$E2E_ROOT/missing-private-plan.json" \
+  --output-file "$QUALIFICATION_RECEIPT" \
+  2>"$E2E_ROOT/qualification.stderr")"
+QUALIFICATION_STATUS=$?
+set -e
+[[ "$QUALIFICATION_STATUS" -ne 0 ]] || fail "missing qualification plan unexpectedly succeeded"
+[[ -z "$QUALIFICATION_STDOUT" ]] || fail "qualification refusal wrote stdout"
+[[ "$(cat "$E2E_ROOT/qualification.stderr")" == "STAGING_COMMUNITY_QUALIFICATION_FAILED" ]] || fail "qualification refusal was not fixed and redacted"
+assert_file_absent "$QUALIFICATION_RECEIPT"
+
 start_server 1
 ORG_LIST="$(run_drwn org list --json)"
 assert_contains "$ORG_LIST" '"organizationId": "org_acme"'

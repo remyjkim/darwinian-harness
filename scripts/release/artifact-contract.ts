@@ -43,8 +43,13 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "cli/core/management/context-store.ts",
   "cli/core/management/operation-journal.ts",
   "cli/core/management/deployment-artifacts.ts",
+  "cli/core/management/deployment-bundle.ts",
+  "cli/core/management/staging-community-qualification.ts",
+  "cli/commands/internal/qualify-staging-community.ts",
   "cli/generated/drwn-management-contract-lock.json",
+  "cli/generated/dah-staging-slot-community-contract-lock.json",
   "registry/contracts/deployed-worker.v1/contract.json",
+  "registry/contracts/staging-slot-community.v1/contract.json",
   "registry/cards/buzz-delivery-worker/card.json",
   "cli/generated/build-identity.json",
 ] as const;
@@ -488,5 +493,17 @@ export async function runInstalledArtifactSmokes(
     await assertEmptyDirectories(quarantine);
     passed.push(smoke.join(" "));
   }
+  const qualificationSmoke = [
+    "__internal", "qualify-staging-community",
+    "--plan-file", join(project, "missing-private-plan.json"),
+    "--output-file", join(project, "i321-staging-slot-community.json"),
+  ];
+  const qualification = await run([bin, ...qualificationSmoke], { cwd: project, env });
+  if (
+    qualification.exitCode !== 1 || qualification.stdout !== "" ||
+    qualification.stderr !== "STAGING_COMMUNITY_QUALIFICATION_FAILED\n"
+  ) throw new ReleaseArtifactError("installed hidden qualification refusal smoke failed");
+  await assertEmptyDirectories(quarantine);
+  passed.push("__internal qualify-staging-community refusal");
   return { version: input.expectedVersion, passed };
 }
