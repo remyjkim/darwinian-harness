@@ -2,21 +2,21 @@
 // ABOUTME: Digest-derived UUID identity makes response-loss replay deterministic without a large journal.
 
 import { createHash } from "node:crypto";
+import { chmod, lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { WorkerDeployPayload } from "../worker-deploy";
 import { DrwnError } from "../errors";
-import { canonicalWorkerDeployPayloadBytes, type WorkerDeployPayload } from "../worker-deploy";
 import { managementContract } from "./contracts";
+import {
+  buildDeterministicDeploymentBundle,
+  type DeterministicDeploymentBundle,
+} from "./deployment-bundle";
 import type { ManagementReadConnection, ManagementReadDependencies } from "./organizations";
 import type { DrwnManagementResult } from "./results";
 import { executeManagementRequest } from "./transport";
 
-export interface DeploymentArtifact {
-  bytes: Uint8Array;
-  payloadBase64: string;
-  byteLength: number;
-  artifactSha256: string;
-  artifactRef: string;
-  requestId: string;
-}
+export type DeploymentArtifact = DeterministicDeploymentBundle;
 
 export interface StageDeploymentArtifactInput extends ManagementReadConnection {
   deployedWorkerId: string;
@@ -25,28 +25,26 @@ export interface StageDeploymentArtifactInput extends ManagementReadConnection {
 
 export type DeploymentArtifactDependencies = ManagementReadDependencies;
 
-function uuidV4FromSha256(sha256: string): string {
-  const bytes = Buffer.from(sha256.slice(0, 32), "hex");
-  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-  const hex = bytes.toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+export function buildDeploymentArtifact(payload: WorkerDeployPayload): Readonly<DeploymentArtifact> {
+  return buildDeterministicDeploymentBundle(payload);
 }
 
-export function buildDeploymentArtifact(payload: WorkerDeployPayload): Readonly<DeploymentArtifact> {
-  const bytes = canonicalWorkerDeployPayloadBytes(payload);
-  if (bytes.byteLength > managementContract.artifactStaging.maxPayloadBytes) {
-    throw new DrwnError("DEPLOYMENT_ARTIFACT_TOO_LARGE", "The portable deployment artifact exceeds the supported limit.");
+async function openVerifiedBundleStream(path: string, artifact: Readonly<DeploymentArtifact>): Promise<ReadableStream<Uint8Array>> {
+  try {
+    const before = await lstat(path);
+    if (!before.isFile() || before.isSymbolicLink() || (before.mode & 0o777) !== 0o600 || before.size !== artifact.byteLength) {
+      throw new Error("unsafe spool");
+    }
+    const bytes = await readFile(path);
+    const after = await lstat(path);
+    if (
+      before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size ||
+      createHash("sha256").update(bytes).digest("hex") !== artifact.artifactSha256
+    ) throw new Error("changed spool");
+    return Bun.file(path).stream();
+  } catch {
+    throw new DrwnError("DEPLOYMENT_ARTIFACT_INVALID", "The deployment artifact spool is unavailable or changed.");
   }
-  const artifactSha256 = createHash("sha256").update(bytes).digest("hex");
-  return Object.freeze({
-    bytes,
-    payloadBase64: Buffer.from(bytes).toString("base64"),
-    byteLength: bytes.byteLength,
-    artifactSha256,
-    artifactRef: `${managementContract.artifactStaging.artifactRefPrefix}${artifactSha256}`,
-    requestId: uuidV4FromSha256(artifactSha256),
-  });
 }
 
 export async function stageDeploymentArtifact(
@@ -54,18 +52,30 @@ export async function stageDeploymentArtifact(
   dependencies: DeploymentArtifactDependencies = {},
 ): Promise<{ artifact: Readonly<DeploymentArtifact>; result: Readonly<DrwnManagementResult> }> {
   const artifact = buildDeploymentArtifact(input.payload);
-  const result = await (dependencies.execute ?? executeManagementRequest)({
-    routeKey: "deployment_artifacts.put",
-    request: {
-      requestId: artifact.requestId,
-      deployedWorkerId: input.deployedWorkerId,
-      artifactSha256: artifact.artifactSha256,
-      byteLength: artifact.byteLength,
-      payloadBase64: artifact.payloadBase64,
-    },
-    credentialsPath: input.credentialsPath,
-    env: input.env,
-    keychainBackend: input.keychainBackend,
-  }, dependencies);
-  return { artifact, result };
+  const spoolRoot = await mkdtemp(join(tmpdir(), "drwn-deployment-bundle-"));
+  const spoolPath = join(spoolRoot, "bundle.tar");
+  try {
+    await chmod(spoolRoot, 0o700);
+    await writeFile(spoolPath, artifact.bytes, { flag: "wx", mode: 0o600 });
+    const result = await (dependencies.execute ?? executeManagementRequest)({
+      routeKey: "deployment_artifacts.put",
+      request: {
+        requestId: artifact.requestId,
+        deployedWorkerId: input.deployedWorkerId,
+        artifactSha256: artifact.artifactSha256,
+        byteLength: artifact.byteLength,
+      },
+      rawBody: {
+        mediaType: managementContract.rawBodyContracts.DeterministicWorkerDeployBundleV1.mediaType,
+        byteLength: artifact.byteLength,
+        createBody: () => openVerifiedBundleStream(spoolPath, artifact),
+      },
+      credentialsPath: input.credentialsPath,
+      env: input.env,
+      keychainBackend: input.keychainBackend,
+    }, dependencies);
+    return { artifact, result };
+  } finally {
+    await rm(spoolRoot, { recursive: true, force: true });
+  }
 }

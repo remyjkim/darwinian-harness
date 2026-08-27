@@ -51,12 +51,16 @@ describe("management Bash E2E contract", () => {
       "1.4.2",
       "X-Request-Id",
       "Authorization",
+      "application/vnd.darwinian.worker-deploy-bundle.v1+tar",
+      "Content-Length",
+      "assertDeploymentBundleBytes",
       "deployment_artifacts.put",
       "deployed_workers.register",
       "runs.read",
       "deployed_workers.retire",
     ]) expect(fixture).toContain(token);
     expect(fixture).toContain("secretValueObserved");
+    expect(fixture).not.toContain("candidate.payloadBase64");
     expect(fixture).not.toContain("SENTINEL_MANAGEMENT_SECRET_336");
   });
 
