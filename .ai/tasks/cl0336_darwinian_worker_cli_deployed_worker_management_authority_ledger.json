@@ -1,8 +1,8 @@
 {
   "schema": "cl.drwn.worker-management-authority-ledger",
   "schemaVersion": 1,
-  "status": "owner_amendment_source_green_pending_hosted_review",
-  "observedAt": "2026-08-27T19:23:06Z",
+  "status": "source_package_green_live_ceremony_blocked",
+  "observedAt": "2026-08-27T19:52:00Z",
   "worker": {
     "worktree": "/Users/pureicis/dev/darwinian-minds-worktrees/i336-worker-cli-integration",
     "documentationRoot": "/Users/pureicis/dev/darwinian-minds",
@@ -11,14 +11,14 @@
     "acceptedBaseCommit": "1adf7aef1396024e8ac877e0fae86dd682647771",
     "architecture": {
       "path": ".ai/analyses/cl0336_darwinian_worker_cli_deployed_worker_management_target_architecture.html",
-      "sha256": "4b3cf1f2c3a830b77e06828eae82fadbed884cb48cafe71c38dc6f2aac48051d",
+      "sha256": "157015502300e36e05b93b8a77f7ed60d2e67126db618f8bdc909571f969a8e3",
       "authority": "primary-checkout",
       "historicalGitBlob": "d2b94ca8cf418fb2f176cc10a2755b3e1609f1ed",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
     },
     "taskPlan": {
       "path": ".ai/tasks/cl0336_darwinian_worker_cli_deployed_worker_management_task_plan.html",
-      "sha256": "e5542dacce2a08dd6d27d4ac0b69d23d5651e29b5a2a48926d5633906d441dd8",
+      "sha256": "de00e972ee47667c0ffe29d9a353a6533b2bb56882a8e61db0a26fe31f145788",
       "authority": "primary-checkout",
       "historicalGitBlob": "453bae3b2717ccfc172b598b9924d937e01736a0",
       "historicalGitCommit": "a6f5fff9610373656745ac7e430ccff4fd1831fd"
@@ -196,6 +196,12 @@
       "status": "approved_deferment",
       "answer": "macOS installed management artifact and real Keychain evidence block the current owner amendment; Ubuntu Secret Service/management and Windows DPAPI/management jobs are explicit follow-ups and are not claimed green",
       "approvedAt": "2026-08-27T19:23:06Z"
+    },
+    {
+      "id": "HOSTED-CEREMONY-01",
+      "status": "p0_owner_decision_required",
+      "answer": "the current I321 process-local verification-code contract and Worker best-effort browser launch cannot produce a Human-approved GitHub-hosted ceremony; PR115 is draft and must not merge as live-capable until I321 publishes exact successor bytes for an authorized expiring verification_uri_complete handoff or supplies a Human-reachable runner authority",
+      "approvedAt": "2026-08-27T19:52:00Z"
     }
   ],
   "operationalAuthorities": {
@@ -256,13 +262,14 @@
     "hostedMacOs": "pending"
   },
   "sourceBlockers": [
-    "hosted macOS management artifact and real Keychain job",
-    "G3 review and exact PR head receipt"
+    "I321 exact hosted Human device-ceremony successor contract or alternative runner authority",
+    "G3 resubmission and review after ceremony TDD"
   ],
   "operationalBlockers": [
     "interactive npm-2FA or separately reviewed non-OIDC latest-promotion authority",
     "I336 current-run private plan and receipt artifact sink",
     "live protected device-flow approval and staging read",
+    "Human-reachable hosted device verification handoff under exact owner authority",
     "deferred Ubuntu Secret Service/management and Windows DPAPI/management follow-up qualification"
   ]
 }
