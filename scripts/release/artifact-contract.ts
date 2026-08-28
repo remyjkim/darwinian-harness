@@ -6,6 +6,7 @@ import { realpath } from "node:fs/promises";
 import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import * as tar from "tar";
 import {
   parsePackagedBuildIdentity,
@@ -510,6 +511,28 @@ export async function runInstalledArtifactSmokes(
     await assertEmptyDirectories(quarantine);
     passed.push(smoke.join(" "));
   }
+  const installedPackageRoot = await realpath(resolve(dirname(bin), ".."));
+  if (
+    installedPackageRoot !== resolvedPrefix &&
+    !installedPackageRoot.startsWith(`${resolvedPrefix}${sep}`)
+  ) throw new ReleaseArtifactError("installed package root resolves outside the clean prefix");
+  const authority = await run([
+    process.execPath,
+    fileURLToPath(new URL("./phase-a-installed-verifier.ts", import.meta.url)),
+    installedPackageRoot,
+  ], { cwd: project, env });
+  let authorityResult: unknown;
+  try {
+    authorityResult = JSON.parse(authority.stdout);
+  } catch {
+    throw new ReleaseArtifactError("installed Phase-A authority verification failed");
+  }
+  if (
+    authority.exitCode !== 0 || authority.stderr !== "" ||
+    JSON.stringify(authorityResult) !== JSON.stringify({ portableVectors: 38, portVectors: 66 })
+  ) throw new ReleaseArtifactError("installed Phase-A authority verification failed");
+  await assertEmptyDirectories(quarantine);
+  passed.push("I321 Phase-A installed authorities");
   const qualificationSmoke = [
     "__internal", "qualify-staging-community",
     "--plan-file", join(project, "missing-private-plan.json"),
