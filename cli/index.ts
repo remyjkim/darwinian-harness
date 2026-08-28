@@ -143,6 +143,7 @@ import { StatusCommand } from "./commands/status";
 import { WriteCommand } from "./commands/write";
 import { ExportSessionsCommand } from "./commands/export/sessions";
 import { ConfigGetCommand, ConfigSetCommand } from "./commands/config";
+import { QualifyStagingCommunityCommand } from "./commands/internal/qualify-staging-community";
 
 const cli = new Cli({
   binaryLabel: "drwn",
@@ -282,6 +283,7 @@ cli.register(RefreshCommand);
 cli.register(WhoamiCommand);
 cli.register(HookCardUsageCommand);
 cli.register(HookSkillMarkerCommand);
+cli.register(QualifyStagingCommunityCommand);
 cli.register(Builtins.HelpCommand);
 cli.register(Builtins.VersionCommand);
 
@@ -289,10 +291,11 @@ const argv = process.argv.slice(2);
 // Hooks run inside arbitrary projects (no drwn checkout / env) and must stay silent and
 // non-fatal: skip repo-root validation and never write to stderr or set a failing exit code.
 const isHookInvocation = argv[0] === "hook";
+const isQualificationInvocation = argv[0] === "__internal" && argv[1] === "qualify-staging-community";
 const context = createAgentsContext();
 
 try {
-  if (!isHookInvocation) {
+  if (!isHookInvocation && !isQualificationInvocation) {
     validateRepoRoot(context.repoRoot);
   }
   await cli.runExit(argv, context);

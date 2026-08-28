@@ -12,7 +12,7 @@ import {
 import { refreshStoredCredential } from "../auth/resolve-token";
 import type { ResolvedAuth } from "../auth/resolve-token";
 import { DRWN_VERSION } from "../version";
-import { validateManagementHeaders, type ManagementJsonObject, type ManagementJsonValue } from "./contracts";
+import { managementContract, validateManagementHeaders, type ManagementJsonObject, type ManagementJsonValue } from "./contracts";
 import { parseManagementPublicError, type ManagementPublicError } from "./errors";
 import {
   indeterminateManagementResult,
@@ -23,6 +23,7 @@ import {
 import { managementRoutes, resolveManagementRoute, type ManagementRouteKey } from "./routes";
 import { parseRouteRequest, parseRouteSuccess } from "./schemas";
 import { readSafeManagementJson } from "./response-safety";
+import { validateDeploymentBundleHeaders } from "./deployment-bundle";
 
 const MAX_TYPED_RETRIES = 2;
 const MAX_RETRY_DELAY_MS = 5_000;
@@ -30,9 +31,16 @@ const MAX_RETRY_DELAY_MS = 5_000;
 export interface ManagementRequestInput {
   routeKey: ManagementRouteKey;
   request: ManagementJsonObject;
+  rawBody?: ManagementRawBody;
   credentialsPath: string;
   env: Record<string, string | undefined>;
   keychainBackend?: KeychainBackend;
+}
+
+export interface ManagementRawBody {
+  mediaType: "application/vnd.darwinian.worker-deploy-bundle.v1+tar";
+  byteLength: number;
+  createBody: () => NonNullable<RequestInit["body"]> | Promise<NonNullable<RequestInit["body"]>>;
 }
 
 export interface ManagementRefreshInput {
@@ -58,6 +66,7 @@ interface PreparedManagementRequest {
   url: string;
   method: string;
   bodyText?: string;
+  rawBody?: ManagementRawBody;
 }
 
 function canonicalize(value: ManagementJsonValue): ManagementJsonValue {
@@ -79,6 +88,7 @@ function prepareRequest(
   routeKey: ManagementRouteKey,
   candidate: ManagementJsonObject,
   profile: CliAuthProfile,
+  rawBody?: ManagementRawBody,
 ): PreparedManagementRequest {
   const request = parseRouteRequest(routeKey, candidate);
   if (typeof request.requestId !== "string") throw new Error("admitted management request has no requestId");
@@ -91,7 +101,25 @@ function prepareRequest(
   const wireEntries = Object.entries(request).filter(([key]) => key !== "requestId" && !variables.includes(key));
   const url = new URL(resolved.path, profile.apiOrigin);
   let bodyText: string | undefined;
-  if (route.method === "GET") {
+  if (route.requestTransport?.kind === "raw-body") {
+    const contract = managementContract.rawBodyContracts.DeterministicWorkerDeployBundleV1;
+    if (
+      rawBody === undefined ||
+      rawBody.mediaType !== contract.mediaType ||
+      rawBody.byteLength !== request.byteLength ||
+      rawBody.byteLength < contract.contentLength.minimum ||
+      rawBody.byteLength > contract.contentLength.maximum ||
+      wireEntries.length !== 1 || wireEntries[0]?.[0] !== "byteLength"
+    ) {
+      throw new Error("admitted raw management request does not match its body contract");
+    }
+    validateDeploymentBundleHeaders({
+      "Content-Length": String(rawBody.byteLength),
+      "Content-Type": rawBody.mediaType,
+    });
+  } else if (rawBody !== undefined) {
+    throw new Error("raw body is not allowed for this management route");
+  } else if (route.method === "GET") {
     for (const [key, value] of wireEntries.sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
       if (value === null) continue;
       if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
@@ -109,6 +137,7 @@ function prepareRequest(
     url: url.href,
     method: route.method,
     ...(bodyText === undefined ? {} : { bodyText }),
+    ...(rawBody === undefined ? {} : { rawBody }),
   });
 }
 
@@ -140,7 +169,7 @@ export async function executeManagementRequest(
   dependencies: ManagementTransportDependencies = {},
 ): Promise<Readonly<DrwnManagementResult>> {
   const profile = drwnCliProfile(input.env);
-  const prepared = prepareRequest(input.routeKey, input.request, profile);
+  const prepared = prepareRequest(input.routeKey, input.request, profile, input.rawBody);
   const fetcher = dependencies.fetcher ?? fetch;
   const auth = await (dependencies.resolveAuth ?? resolveDelegationReadyToken)({
     credentialsPath: input.credentialsPath,
@@ -170,13 +199,18 @@ export async function executeManagementRequest(
     });
     const headers = new Headers(requiredHeaders);
     if (prepared.bodyText !== undefined) headers.set("content-type", "application/json");
+    if (prepared.rawBody !== undefined) {
+      headers.set("content-type", prepared.rawBody.mediaType);
+      headers.set("content-length", String(prepared.rawBody.byteLength));
+    }
 
     let response: Response;
     try {
+      const body = prepared.rawBody === undefined ? prepared.bodyText : await prepared.rawBody.createBody();
       response = await fetcher(prepared.url, {
         method: prepared.method,
         headers,
-        ...(prepared.bodyText === undefined ? {} : { body: prepared.bodyText }),
+        ...(body === undefined ? {} : { body }),
       });
     } catch {
       return indeterminateManagementResult(

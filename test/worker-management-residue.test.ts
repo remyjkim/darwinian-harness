@@ -2,7 +2,7 @@
 // ABOUTME: Legacy paths remain only in the frozen negative contract and explicit 410 rejection boundary.
 
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
@@ -55,7 +55,14 @@ test("only the pinned negative contract and explicit path rejection retain the r
     "test/commands-worker-chat.test.ts",
     "test/worker-management-residue.test.ts",
   ]);
-  const proc = Bun.spawnSync(["rg", "-l", ["/api/", "minds"].join(""), "cli", "registry", "test"], { cwd: root });
-  const paths = proc.stdout.toString().trim().split("\n").filter(Boolean);
+  const paths: string[] = [];
+  const scan = (relative: string): void => {
+    for (const entry of readdirSync(join(root, relative), { withFileTypes: true })) {
+      const child = join(relative, entry.name).replace(/\\/g, "/");
+      if (entry.isDirectory()) scan(child);
+      else if (entry.isFile() && readFileSync(join(root, child)).includes(["/api/", "minds"].join(""))) paths.push(child);
+    }
+  };
+  for (const directory of ["cli", "registry", "test"]) scan(directory);
   expect(paths.filter((path) => !allowed.has(path))).toEqual([]);
 });

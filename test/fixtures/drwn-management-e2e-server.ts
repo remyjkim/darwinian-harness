@@ -1,12 +1,15 @@
 // ABOUTME: Provides contract-derived HTTPS behavior for the hermetic management Bash journey.
 // ABOUTME: Persists replay-safe public state while retaining no bearer, secret value, or response body.
 
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { rename, writeFile } from "node:fs/promises";
 import { parseRouteRequest } from "../../cli/core/management/schemas";
 import type { ManagementJsonObject } from "../../cli/core/management/contracts";
 import type { ManagementRouteKey } from "../../cli/core/management/routes";
+import {
+  assertDeploymentBundleBytes,
+  assertDeploymentBundleRequestIdentity,
+} from "../../cli/core/management/deployment-bundle";
 
 interface DeploymentState {
   deploymentId: string;
@@ -153,7 +156,24 @@ async function handle(request: Request): Promise<Response> {
   }
 
   let body: ManagementJsonObject = {};
-  if (request.method !== "GET") body = await request.json() as ManagementJsonObject;
+  let rawBundle: Buffer | undefined;
+  if (matched.routeKey === "deployment_artifacts.put") {
+    const contentLength = request.headers.get("Content-Length");
+    const contentType = request.headers.get("Content-Type");
+    const contentEncoding = request.headers.get("Content-Encoding");
+    if (contentType !== "application/vnd.darwinian.worker-deploy-bundle.v1+tar") state.headerErrors.push("Content-Type");
+    if (contentLength === null || !/^[1-9][0-9]*$/.test(contentLength)) state.headerErrors.push("Content-Length");
+    if (contentEncoding !== null) state.headerErrors.push("Content-Encoding");
+    if (state.headerErrors.length > 0) {
+      await persist();
+      return Response.json({ requestId, error: "validation_failed" }, { status: 400 });
+    }
+    rawBundle = Buffer.from(await request.arrayBuffer());
+    assertDeploymentBundleBytes(rawBundle);
+    body.byteLength = Number(contentLength);
+  } else if (request.method !== "GET") {
+    body = await request.json() as ManagementJsonObject;
+  }
   const candidate = parseRouteRequest(matched.routeKey, {
     requestId,
     ...matched.path,
@@ -192,10 +212,8 @@ async function handle(request: Request): Promise<Response> {
   }
   if (matched.routeKey === "deployment_artifacts.put") {
     const sha = String(candidate.artifactSha256);
-    const bytes = Buffer.from(String(candidate.payloadBase64), "base64");
-    if (bytes.byteLength !== candidate.byteLength || createHash("sha256").update(bytes).digest("hex") !== sha) {
-      throw new Error("deployment artifact digest mismatch");
-    }
+    const bytes = rawBundle!;
+    assertDeploymentBundleRequestIdentity(candidate, bytes);
     const existed = Object.hasOwn(state.artifacts, sha);
     state.artifacts[sha] = bytes.byteLength;
     await persist();

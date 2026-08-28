@@ -23,6 +23,7 @@ const jsonValueSchema: z.ZodType<ManagementJsonValue> = z.lazy(() => z.union([
 const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+const prefixedSha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const commitSchema = z.string().regex(/^[a-f0-9]{40}$/);
 const schemaRef = z.string().regex(/^#\/schemas\/[A-Za-z][A-Za-z0-9]*$/);
 const routeKeySchema = z.string().regex(/^[a-z]+(?:[_.][a-z]+)*$/);
@@ -60,9 +61,10 @@ const lockSchema = z.object({
   sha256: sha256Schema,
   routeCount: z.literal(13),
   positiveVectorCount: z.literal(13),
-  negativeVectorCount: z.literal(32),
+  negativeVectorCount: z.literal(47),
   semanticVectorCount: z.literal(3),
-  schemaCount: z.literal(63),
+  schemaCount: z.literal(62),
+  rawBodyContractCount: z.literal(1),
   wireErrorCodeCount: z.literal(9),
   clientErrorCodeCount: z.literal(10),
 }).strict();
@@ -106,6 +108,16 @@ const routeSchema = z.object({
   authority: authoritySchema,
   mutation: z.boolean(),
   requestSchema: schemaRef,
+  requestTransport: z.object({
+    kind: z.literal("raw-body"),
+    bodyContract: z.literal("#/rawBodyContracts/DeterministicWorkerDeployBundleV1"),
+    contextBindings: z.object({
+      requestId: z.literal("header.X-Request-Id"),
+      deployedWorkerId: z.literal("path.deployedWorkerId"),
+      artifactSha256: z.literal("path.artifactSha256"),
+      byteLength: z.literal("header.Content-Length"),
+    }).strict(),
+  }).strict().optional(),
   successSchema: schemaRef,
   failureSchema: schemaRef,
 }).strict();
@@ -113,13 +125,19 @@ const routeSchema = z.object({
 const positiveVectorSchema = z.object({
   routeKey: routeKeySchema,
   request: jsonObjectSchema,
+  bodyFixture: z.object({
+    encoding: z.literal("base64"),
+    bytesBase64: z.string().min(1),
+    byteLength: z.number().int().positive(),
+    sha256: sha256Schema,
+  }).strict().optional(),
   success: jsonObjectSchema,
 }).strict();
 
 const negativeVectorSchema = z.object({
   caseId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   routeKey: routeKeySchema,
-  surface: z.enum(["request", "response", "header", "path"]),
+  surface: z.enum(["request", "response", "header", "path", "body", "provider"]),
   candidate: jsonObjectSchema,
   expectedClientError: clientErrorCodeSchema,
 }).strict();
@@ -144,6 +162,11 @@ const contractSchema = z.object({
     i336ArchitectureCommit: commitSchema,
     i321CandidateCommit: commitSchema,
     workerArchitectureCommit: commitSchema,
+    i330V132Commit: commitSchema,
+    i330V132Sha256: prefixedSha256Schema,
+    i330V132G2Commit: commitSchema,
+    route13ArchitectureSha256: prefixedSha256Schema,
+    route13DecisionRequest: z.literal("i336-20260826-route13-deterministic-streamed-bundle"),
   }).strict(),
   enums: z.object({
     environment: z.tuple([z.literal("development"), z.literal("staging"), z.literal("production")]),
@@ -185,14 +208,70 @@ const contractSchema = z.object({
     mutationIdempotencyHeader: z.literal("X-Request-Id"),
   }).strict(),
   artifactStaging: z.object({
-    maxPayloadBytes: z.literal(37_748_736),
+    minBundleBytes: z.literal(3_072),
+    maxBundleBytes: z.literal(29_362_176),
+    maxManifestBytes: z.literal(3_145_728),
+    maxStoreBytes: z.literal(26_214_400),
     artifactRefPrefix: z.literal("deployment_artifact:sha256:"),
     requestIdDerivation: z.literal("uuidv4-from-artifact-sha256-first-16-bytes"),
-    storage: z.literal("target-scoped-create-if-absent-exact-byte-match"),
-    payloadContract: z.literal("canonical-worker-deploy-payload-v1-json"),
+    storage: z.literal("target-scoped-create-if-absent-verified-bundle-match"),
+    payloadContract: z.literal("deterministic-worker-deploy-bundle-v1-ustar"),
+    sameAttemptExistingBeforeValidationEof: z.literal("forbidden"),
+    conditionalCreateRace: z.literal("temporarily-unavailable-retry-same-request-fresh-identical-file-stream"),
+    existingResult: z.literal("fresh-attempt-complete-stream-validation-and-stored-object-readback"),
+  }).strict(),
+  rawBodyContracts: z.object({
+    DeterministicWorkerDeployBundleV1: z.object({
+      mediaType: z.literal("application/vnd.darwinian.worker-deploy-bundle.v1+tar"),
+      contentEncoding: z.literal("forbidden"),
+      contentLength: z.object({
+        required: z.literal(true),
+        minimum: z.literal(3_072),
+        maximum: z.literal(29_362_176),
+      }).strict(),
+      digestBinding: z.literal("path.artifactSha256"),
+      format: z.literal("deterministic-ustar-v1"),
+      entries: z.tuple([
+        z.object({
+          path: z.literal("manifest.json"), order: z.literal(1), type: z.literal("regular-file"),
+          minimumBytes: z.literal(1), maximumBytes: z.literal(3_145_728),
+          contentContract: z.literal("canonical-worker-deploy-bundle-manifest-v1-json"),
+        }).strict(),
+        z.object({
+          path: z.literal("store.tar"), order: z.literal(2), type: z.literal("regular-file"),
+          minimumBytes: z.literal(1), maximumBytes: z.literal(26_214_400),
+          contentContract: z.literal("deterministic-drwn-store-export-tar"),
+        }).strict(),
+      ]),
+      manifestContract: z.object({
+        schema: z.literal("darwinian.worker-deploy-bundle-manifest.v1"),
+        canonicalization: z.literal("canonical-json/v1"),
+        requiredTopLevelFields: z.tuple([
+          z.literal("config"), z.literal("contractVersion"), z.literal("entrypoint"),
+          z.literal("governance"), z.literal("lockfile"), z.literal("materialization"),
+          z.literal("schema"), z.literal("storeExport"),
+        ]),
+        storeExport: z.object({
+          requiredFields: z.tuple([
+            z.literal("byteLength"), z.literal("compression"), z.literal("encoding"),
+            z.literal("entry"), z.literal("kind"), z.literal("sha256"),
+          ]),
+          kind: z.literal("drwn-store-export-tar"),
+          compression: z.literal("none"),
+          encoding: z.literal("bundle-entry"),
+          entry: z.literal("store.tar"),
+        }).strict(),
+        forbiddenFields: z.tuple([z.literal("bytesBase64"), z.literal("payloadBase64")]),
+      }).strict(),
+      headerPolicy: z.object({
+        uid: z.literal(0), gid: z.literal(0), mtime: z.literal(0), mode: z.literal("0644"),
+        uname: z.literal(""), gname: z.literal(""), extensions: z.literal("forbidden"),
+        terminalZeroBlocks: z.literal(2), extraEntries: z.literal("forbidden"),
+      }).strict(),
+    }).strict(),
   }).strict(),
   routes: z.array(routeSchema).length(13),
-  schemas: z.record(z.string(), jsonObjectSchema).refine((value) => Object.keys(value).length === 63),
+  schemas: z.record(z.string(), jsonObjectSchema).refine((value) => Object.keys(value).length === 62),
   errors: z.object({
     wireCodes: z.array(wireErrorCodeSchema).length(9),
     clientCodes: z.array(clientErrorCodeSchema).length(10),
@@ -204,7 +283,7 @@ const contractSchema = z.object({
   semanticVectors: z.array(semanticVectorSchema).length(3),
   vectors: z.object({
     positive: z.array(positiveVectorSchema).length(13),
-    negative: z.array(negativeVectorSchema).length(32),
+    negative: z.array(negativeVectorSchema).length(47),
   }).strict(),
 }).strict();
 
@@ -516,6 +595,9 @@ function assertInventories(contract: ManagementContract, lock: ManagementContrac
     ) {
       throw invalidContract(`Management route ${route.routeKey} refers to an unknown schema`);
     }
+    if ((route.routeKey === "deployment_artifacts.put") !== (route.requestTransport?.kind === "raw-body")) {
+      throw invalidContract("Only deployment_artifacts.put may declare the frozen raw-body transport");
+    }
   }
   if (contract.vectors.positive.some((vector) => !routeKeys.includes(vector.routeKey))) {
     throw invalidContract("A positive management vector refers to an unknown route");
@@ -534,6 +616,7 @@ function assertInventories(contract: ManagementContract, lock: ManagementContrac
     negativeVectorCount: contract.vectors.negative.length,
     semanticVectorCount: contract.semanticVectors.length,
     schemaCount: Object.keys(contract.schemas).length,
+    rawBodyContractCount: Object.keys(contract.rawBodyContracts).length,
     wireErrorCodeCount: contract.errors.wireCodes.length,
     clientErrorCodeCount: contract.errors.clientCodes.length,
   };
@@ -595,16 +678,6 @@ export function parseManagementRequest(routeKey: string, candidate: unknown): un
   const result = managementSchemas[schemaNameFromRef(route.requestSchema)]!.safeParse(candidate);
   if (!result.success) {
     throw new DrwnError("VALIDATION_FAILED", `Invalid request for management route ${routeKey}`, undefined, result.error);
-  }
-  if (routeKey === "deployment_artifacts.put") {
-    const request = result.data as ManagementJsonObject;
-    const payload = Buffer.from(String(request.payloadBase64), "base64");
-    if (
-      payload.byteLength !== request.byteLength ||
-      createHash("sha256").update(payload).digest("hex") !== request.artifactSha256
-    ) {
-      throw new DrwnError("VALIDATION_FAILED", "Invalid deployment artifact payload identity.");
-    }
   }
   return result.data;
 }
