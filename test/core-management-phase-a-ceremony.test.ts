@@ -149,6 +149,30 @@ describe("I321 Phase-A hidden ceremony", () => {
     expect(deviceCalls).toBe(0);
   });
 
+  test("refuses a private notice path that aliases either public receipt before auth", async () => {
+    let deviceCalls = 0;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/i321-cli-management-phase-a-plan.json",
+      approvalNoticePath: "/runner/public/i321-cli-management-readiness.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, {
+      preflightOutputs: async () => undefined,
+      preflightApprovalNotice: async () => undefined,
+      readPlan: async () => plan,
+      runDeviceFlow: async () => {
+        deviceCalls += 1;
+        throw new Error("must not authorize");
+      },
+    })).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+    expect(deviceCalls).toBe(0);
+  });
+
   test("refuses unsafe public output paths before device authorization", async () => {
     let deviceCalls = 0;
     const module = await import("../cli/core/management/phase-a-ceremony");

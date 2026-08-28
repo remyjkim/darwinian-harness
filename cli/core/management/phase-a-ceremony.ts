@@ -182,6 +182,13 @@ export async function executeI321PhaseACeremony(
 ): Promise<void> {
   try {
     const now = dependencies.now ?? Date.now;
+    const rolePaths = [
+      input.planPath,
+      input.approvalNoticePath,
+      input.readinessOutputPath,
+      input.communityOutputPath,
+    ].map((rolePath) => resolve(rolePath));
+    if (new Set(rolePaths).size !== rolePaths.length) refusal();
     parseI321PhaseAAdapterOrigin(input.adapterOrigin);
     await (dependencies.preflightOutputs ?? preflightI321PhaseAPublicReceiptPaths)({
       runnerTemp: input.runnerTemp,

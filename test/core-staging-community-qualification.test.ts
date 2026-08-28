@@ -2,13 +2,14 @@
 // ABOUTME: D52 public receipt projection and output pairing are covered by dedicated Phase-A tests.
 
 import { describe, expect, test } from "bun:test";
-import { link, lstat, mkdtemp, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdtemp, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   cleanupStagingDeviceApprovalNotice,
   parseStagingDeviceApprovalNotice,
+  preflightStagingDeviceApprovalNoticePath,
   publishStagingDeviceApprovalNotice,
   stagingCommunityContract,
 } from "../cli/core/management/staging-community-qualification";
@@ -67,6 +68,19 @@ describe("staging device approval notice", () => {
 });
 
 describe("staging device approval notice files", () => {
+  test("requires owner mode-0700 RUNNER_TEMP and immediate parent before auth", async () => {
+    const runnerTemp = await realpath(await mkdtemp(join(tmpdir(), "drwn-staging-notice-mode-")));
+    const path = join(runnerTemp, "approval-notice.json");
+    try {
+      await chmod(runnerTemp, 0o755);
+      await expect(preflightStagingDeviceApprovalNoticePath(path, { runnerTemp })).rejects.toMatchObject({
+        code: "STAGING_DEVICE_APPROVAL_NOTICE_FILE_INVALID",
+      });
+    } finally {
+      await rm(runnerTemp, { recursive: true, force: true });
+    }
+  });
+
   test("publishes and cleans one create-only mode-0600 approval notice under RUNNER_TEMP", async () => {
     const runnerTemp = await realpath(await mkdtemp(join(tmpdir(), "drwn-staging-approval-runner-")));
     const outside = await realpath(await mkdtemp(join(tmpdir(), "drwn-staging-approval-outside-")));

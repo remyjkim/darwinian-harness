@@ -255,7 +255,10 @@ async function assertApprovalNoticePath(path: string, runnerTemp: string): Promi
   const canonicalRunner = await realpath(runnerTemp);
   if (canonicalRunner !== resolve(runnerTemp)) throw approvalNoticeFileError();
   const runnerMetadata = await lstat(canonicalRunner);
-  if (!runnerMetadata.isDirectory() || runnerMetadata.isSymbolicLink() || !ownerMatches(runnerMetadata.uid)) {
+  if (
+    !runnerMetadata.isDirectory() || runnerMetadata.isSymbolicLink() ||
+    (runnerMetadata.mode & 0o777) !== 0o700 || !ownerMatches(runnerMetadata.uid)
+  ) {
     throw approvalNoticeFileError();
   }
   const resolvedPath = resolve(path);
@@ -264,7 +267,10 @@ async function assertApprovalNoticePath(path: string, runnerTemp: string): Promi
   const parent = dirname(resolvedPath);
   if (await realpath(parent) !== resolve(parent)) throw approvalNoticeFileError();
   const parentMetadata = await lstat(parent);
-  if (!parentMetadata.isDirectory() || parentMetadata.isSymbolicLink() || !ownerMatches(parentMetadata.uid)) {
+  if (
+    !parentMetadata.isDirectory() || parentMetadata.isSymbolicLink() ||
+    (parentMetadata.mode & 0o777) !== 0o700 || !ownerMatches(parentMetadata.uid)
+  ) {
     throw approvalNoticeFileError();
   }
   return { path: resolvedPath, parent };
