@@ -50,9 +50,14 @@ describe("release package member qualification", () => {
     for (const member of [
       "cli/core/management/deployment-bundle.ts",
       "cli/core/management/staging-community-qualification.ts",
+      "cli/core/management/phase-a.ts",
       "cli/commands/internal/qualify-staging-community.ts",
       "cli/generated/dah-staging-slot-community-contract-lock.json",
+      "cli/generated/dah-cli-management-phase-a-lock.json",
       "registry/contracts/staging-slot-community.v1/contract.json",
+      "registry/contracts/cli-management-phase-a.v1/contract.json",
+      "registry/contracts/cli-management-phase-a.v1/executor.mjs",
+      "registry/contracts/cli-management-phase-a.v1/manifest.json",
     ]) expect(REQUIRED_RELEASE_MEMBERS as readonly string[]).toContain(member);
   });
 

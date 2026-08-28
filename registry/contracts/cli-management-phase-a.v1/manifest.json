@@ -1,0 +1,12 @@
+{
+  "schema": "cl.dah.cli-management-phase-a-artifact-manifest.v1",
+  "schemaVersion": 1,
+  "sourceAuthority": "containing_git_commit",
+  "contractFile": "contract.json",
+  "contractSha256": "c7c66461c9dfc37069691f36826e1ac9e20d59412745a81941cff9de42d5a601",
+  "contractBytes": 12103,
+  "executorFile": "executor.mjs",
+  "executorSha256": "074be4206780d60e605ca222ae3311605cc00cfe8c593625a93f7954e76c9e0d",
+  "executorBytes": 291541,
+  "vectorCount": 38
+}
