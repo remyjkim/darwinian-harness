@@ -1,5 +1,5 @@
-// ABOUTME: Proves the hidden staging qualification command keeps auth/read authority process-local.
-// ABOUTME: The only durable output is one create-only mode-0600 public I321 receipt.
+// ABOUTME: Proves the hidden D52 command delegates one ceremony and keeps authority process-local.
+// ABOUTME: The only durable outputs are the paired create-only mode-0600 I321 receipts.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { Builtins, Cli } from "clipanion";
@@ -32,19 +32,42 @@ async function fixture() {
   tempRoots.push(value.root);
   const planPath = join(root, "qualification-plan.json");
   const outputPath = join(root, "i321-staging-slot-community.json");
+  const readinessOutputPath = join(root, "i321-cli-management-readiness.json");
+  const communityOutputPath = join(root, "i321-staging-slot-community.json");
   const noticePath = join(root, "approval-notice.json");
   await writeFile(planPath, `${JSON.stringify({
-    schema: "cl.drwn.staging-slot-community-plan.v1",
-    organizationId: "org_qualification_fixture",
-    receipt: stagingCommunityContract.currentRunPlan,
+    schema: "cl.dah.cli-management-phase-a-plan.v1",
+    environmentId: "staging-1",
+    sourceCommitSha: "a".repeat(40),
+    qualificationRunId: "11111111-1111-4111-8111-111111111111",
+    contractSha256: "c7c66461c9dfc37069691f36826e1ac9e20d59412745a81941cff9de42d5a601",
+    providerPolicyVersion: `sha256:${"b".repeat(64)}`,
+    relayUrl: "wss://kc.communities.buzz.xyz",
+    httpsBase: "https://kc.communities.buzz.xyz",
+    workflow: {
+      repository: "curation-labs/darwinian-services",
+      runId: 33181185126,
+      runAttempt: 1,
+    },
   })}\n`, { mode: 0o600 });
-  return { ...value, planPath, outputPath, noticePath };
+  return {
+    ...value,
+    planPath,
+    outputPath,
+    readinessOutputPath,
+    communityOutputPath,
+    noticePath,
+  };
 }
 
 type TestDeps = NonNullable<typeof QualifyStagingCommunityCommand.testDeps>;
 
 function defaultDependencies(state: { requests: Request[] }): TestDeps {
   return {
+    executeCeremony: async (input) => {
+      await writeFile(input.readinessOutputPath, '{"schema":"cl.dah.cli-management-readiness.v1"}\n', { mode: 0o600 });
+      await writeFile(input.communityOutputPath, '{"schema":"cl.dah.staging-slot-community.v1"}\n', { mode: 0o600 });
+    },
     runDeviceFlow: async (input) => {
       expect(input.profile.cloudProfileId).toBe("staging");
       await input.onUserAction({
@@ -106,23 +129,49 @@ afterEach(async () => {
 });
 
 describe("hidden staging Community qualification command", () => {
-  test("runs one process-local device flow/read and writes only the public mode-0600 receipt", async () => {
+  test("accepts only the composite Phase-A invocation and delegates every exact path", async () => {
+    const calls: unknown[] = [];
     const result = await run((f) => [
       "__internal", "qualify-staging-community",
       "--plan-file", f.planPath,
       "--approval-notice-file", f.noticePath,
-      "--output-file", f.outputPath,
+      "--phase-a-adapter-origin", "http://127.0.0.1:8787",
+      "--readiness-output-file", f.readinessOutputPath,
+      "--community-output-file", f.communityOutputPath,
+    ], {
+      executeCeremony: async (input: unknown) => { calls.push(input); },
+    } as unknown as Partial<TestDeps>);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    expect(calls).toEqual([{
+      planPath: result.planPath,
+      approvalNoticePath: result.noticePath,
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: result.readinessOutputPath,
+      communityOutputPath: result.communityOutputPath,
+      runnerTemp: result.root,
+    }]);
+  });
+
+  test("writes only the paired public mode-0600 receipts", async () => {
+    const result = await run((f) => [
+      "__internal", "qualify-staging-community",
+      "--plan-file", f.planPath,
+      "--approval-notice-file", f.noticePath,
+      "--phase-a-adapter-origin", "http://127.0.0.1:8787",
+      "--readiness-output-file", f.readinessOutputPath,
+      "--community-output-file", f.communityOutputPath,
     ]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("");
-    expect(result.requests).toHaveLength(1);
-    expect(result.requests[0]!.method).toBe("GET");
-    expect(new URL(result.requests[0]!.url).pathname).toBe("/api/organizations/org_qualification_fixture");
-    expect((await lstat(result.outputPath)).mode & 0o777).toBe(0o600);
+    expect(result.requests).toHaveLength(0);
+    expect((await lstat(result.readinessOutputPath)).mode & 0o777).toBe(0o600);
+    expect((await lstat(result.communityOutputPath)).mode & 0o777).toBe(0o600);
     await expect(lstat(result.noticePath)).rejects.toMatchObject({ code: "ENOENT" });
-    const publicBytes = await readFile(result.outputPath, "utf8");
-    expect(JSON.parse(publicBytes)).toEqual(stagingCommunityContract.vectors[0]!.expectedReceipt);
+    const publicBytes = `${await readFile(result.readinessOutputPath, "utf8")}${await readFile(result.communityOutputPath, "utf8")}`;
     expect(`${result.stdout}${result.stderr}${publicBytes}`).not.toMatch(/ACCESS_TOKEN|REFRESH_TOKEN|human-sentinel|VERIFY-SENTINEL|organizationId|displayName|headerPairs/i);
     await expect(lstat(join(result.agentsDir, "drwn", "credentials.json"))).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(join(result.agentsDir, "drwn", "cloud-context.json"))).rejects.toMatchObject({ code: "ENOENT" });
@@ -133,32 +182,33 @@ describe("hidden staging Community qualification command", () => {
       "__internal", "qualify-staging-community",
       "--plan-file", f.planPath,
       "--approval-notice-file", f.noticePath,
-      "--output-file", f.outputPath,
+      "--phase-a-adapter-origin", "http://127.0.0.1:8787",
+      "--readiness-output-file", f.readinessOutputPath,
+      "--community-output-file", f.communityOutputPath,
     ], {
-      fetcher: (async () => new Response(JSON.stringify(stagingCommunityContract.baseResponse.body), { status: 200, headers: {
-        "content-type": "application/json", "x-dah-buzz-community-id": "HOSTILE_COMMUNITY_SENTINEL",
-        "x-dah-organization-read-sha256": "7a0810d23c9ad22dbd64e0b68c100de45c8cfc11f3e945f40f96fae99351ad1b",
-      } })) as unknown as typeof fetch,
+      executeCeremony: async () => { throw new Error("HOSTILE_COMMUNITY_SENTINEL"); },
     });
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
-    await expect(lstat(result.outputPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(result.readinessOutputPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(result.communityOutputPath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.stderr).not.toMatch(/HOSTILE|ACCESS|REFRESH|VERIFY|organization/i);
   });
 
-  test("binds the authorized response request ID to the current invocation", async () => {
+  test("hard-removes the legacy output-file grammar before effects", async () => {
+    let effects = 0;
     const result = await run((f) => [
       "__internal", "qualify-staging-community",
       "--plan-file", f.planPath,
       "--approval-notice-file", f.noticePath,
       "--output-file", f.outputPath,
     ], {
-      requestId: () => "99999999-9999-4999-8999-999999999999",
+      executeCeremony: async () => { effects += 1; },
     });
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).not.toBe(0);
+    expect(effects).toBe(0);
     await expect(lstat(result.outputPath)).rejects.toMatchObject({ code: "ENOENT" });
-    expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
   });
 
   test("stays out of public help and rejects operator authority flags before auth", async () => {
@@ -175,7 +225,9 @@ describe("hidden staging Community qualification command", () => {
         "__internal", "qualify-staging-community",
         "--plan-file", f.planPath,
         "--approval-notice-file", f.noticePath,
-        "--output-file", f.outputPath,
+        "--phase-a-adapter-origin", "http://127.0.0.1:8787",
+        "--readiness-output-file", f.readinessOutputPath,
+        "--community-output-file", f.communityOutputPath,
         flag, "forbidden",
       ], overrides);
       expect(result.exitCode).not.toBe(0);
@@ -189,17 +241,19 @@ describe("hidden staging Community qualification command", () => {
       "__internal", "qualify-staging-community",
       "--plan-file", f.planPath,
       "--approval-notice-file", f.noticePath,
-      "--output-file", f.outputPath,
+      "--phase-a-adapter-origin", "http://127.0.0.1:8787",
+      "--readiness-output-file", f.readinessOutputPath,
+      "--community-output-file", f.communityOutputPath,
     ], {
       env: {},
-      readPlan: async () => { effects += 1; throw new Error("must not read"); },
-      runDeviceFlow: async () => { effects += 1; throw new Error("must not authorize"); },
+      executeCeremony: async () => { effects += 1; throw new Error("must not execute"); },
     });
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
     expect(effects).toBe(0);
     await expect(lstat(result.noticePath)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(lstat(result.outputPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(result.readinessOutputPath)).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(result.communityOutputPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

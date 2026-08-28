@@ -273,7 +273,9 @@ describe("installed artifact smokes", () => {
     expect(qualification?.command).toContain("__internal");
     expect(qualification?.command).toContain("--plan-file");
     expect(qualification?.command).toContain("--approval-notice-file");
-    expect(qualification?.command).toContain("--output-file");
+    expect(qualification?.command).toContain("--phase-a-adapter-origin");
+    expect(qualification?.command).toContain("--readiness-output-file");
+    expect(qualification?.command).toContain("--community-output-file");
     expect(qualification?.command).toContain(join(root, "smoke", "runner-temp", "approval-notice.json"));
   });
 

@@ -46,6 +46,11 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "cli/core/management/deployment-bundle.ts",
   "cli/core/management/staging-community-qualification.ts",
   "cli/core/management/phase-a.ts",
+  "cli/core/management/phase-a-port-wire.ts",
+  "cli/core/management/phase-a-port-client.ts",
+  "cli/core/management/phase-a-qualification.ts",
+  "cli/core/management/phase-a-output.ts",
+  "cli/core/management/phase-a-ceremony.ts",
   "cli/commands/internal/qualify-staging-community.ts",
   "cli/generated/drwn-management-contract-lock.json",
   "cli/generated/dah-staging-slot-community-contract-lock.json",
@@ -509,7 +514,9 @@ export async function runInstalledArtifactSmokes(
     "__internal", "qualify-staging-community",
     "--plan-file", join(project, "missing-private-plan.json"),
     "--approval-notice-file", join(runnerTemp, "approval-notice.json"),
-    "--output-file", join(project, "i321-staging-slot-community.json"),
+    "--phase-a-adapter-origin", "http://127.0.0.1:1",
+    "--readiness-output-file", join(runnerTemp, "i321-cli-management-readiness.json"),
+    "--community-output-file", join(runnerTemp, "i321-staging-slot-community.json"),
   ];
   const qualification = await run([bin, ...qualificationSmoke], { cwd: project, env });
   if (

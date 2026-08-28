@@ -58,6 +58,11 @@ describe("I321 D52 Phase-A port-wire companion authority", () => {
 
   test("requires every companion authority member in the release tar", () => {
     expect(REQUIRED_RELEASE_MEMBERS).toEqual(expect.arrayContaining([
+      "cli/core/management/phase-a-port-wire.ts",
+      "cli/core/management/phase-a-port-client.ts",
+      "cli/core/management/phase-a-qualification.ts",
+      "cli/core/management/phase-a-output.ts",
+      "cli/core/management/phase-a-ceremony.ts",
       "cli/generated/dah-cli-management-phase-a-port-wire-lock.json",
       "registry/contracts/cli-management-phase-a-port-wire.v1/contract.json",
       "registry/contracts/cli-management-phase-a-port-wire.v1/projector.mjs",

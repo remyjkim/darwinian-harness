@@ -89,7 +89,9 @@ describe("drwn command help", () => {
         "__internal", "qualify-staging-community",
         "--plan-file", join(root, "missing-plan.json"),
         "--approval-notice-file", join(root, "approval-notice.json"),
-        "--output-file", join(root, "i321-staging-slot-community.json"),
+        "--phase-a-adapter-origin", "http://127.0.0.1:1",
+        "--readiness-output-file", join(root, "i321-cli-management-readiness.json"),
+        "--community-output-file", join(root, "i321-staging-slot-community.json"),
       ], {
         cwd: root,
         stdin: "ignore",
