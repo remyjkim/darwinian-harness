@@ -3,6 +3,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { chmod, link, lstat, mkdtemp, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -263,13 +264,19 @@ describe("staging Community private files", () => {
       await expect(lstat(path)).rejects.toMatchObject({ code: "ENOENT" });
       await cleanupStagingDeviceApprovalNotice(identity, { runnerTemp });
 
-      const second = await publishStagingDeviceApprovalNotice(path, notice, options);
+      const second = await publishStagingDeviceApprovalNotice(path, notice, options) as Awaited<ReturnType<typeof publishStagingDeviceApprovalNotice>> & {
+        handle: FileHandle;
+      };
+      const heldMetadata = await second.handle.stat({ bigint: true });
       await unlink(path);
-      await writeFile(path, "replacement\n", { mode: 0o600 });
+      await writeFile(path, before, { mode: 0o600 });
+      const replacementMetadata = await lstat(path, { bigint: true });
+      expect([replacementMetadata.dev, replacementMetadata.ino]).not.toEqual([heldMetadata.dev, heldMetadata.ino]);
       await expect(cleanupStagingDeviceApprovalNotice(second, { runnerTemp })).rejects.toMatchObject({
         code: "STAGING_DEVICE_APPROVAL_NOTICE_FILE_INVALID",
       });
-      expect(await readFile(path, "utf8")).toBe("replacement\n");
+      expect(await readFile(path)).toEqual(before);
+      await expect(second.handle.stat()).rejects.toMatchObject({ code: "EBADF" });
     } finally {
       await rm(runnerTemp, { recursive: true, force: true });
       await rm(outside, { recursive: true, force: true });
@@ -300,6 +307,30 @@ describe("staging Community private files", () => {
     } finally {
       await rm(canonical, { recursive: true, force: true });
       await rm(aliasRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("preserves and refuses same-inode notice mutation before cleanup", async () => {
+    const runnerTemp = await realpath(await mkdtemp(join(tmpdir(), "drwn-staging-approval-mutation-")));
+    const path = join(runnerTemp, "approval-notice.json");
+    const notice = stagingCommunityContract.deviceApproval.vectors.find(({ expected }) => expected === "notice")!.candidate;
+    try {
+      const lease = await publishStagingDeviceApprovalNotice(path, notice, {
+        runnerTemp,
+        qualificationRunId: String(notice.qualificationRunId),
+        now: Date.parse(stagingCommunityContract.deviceApproval.validationTime),
+      });
+      const mutation = Buffer.from(await readFile(path));
+      mutation[0] = mutation[0] === 0x7b ? 0x5b : 0x7b;
+      await writeFile(path, mutation, { mode: 0o600 });
+
+      await expect(cleanupStagingDeviceApprovalNotice(lease, { runnerTemp })).rejects.toMatchObject({
+        code: "STAGING_DEVICE_APPROVAL_NOTICE_FILE_INVALID",
+      });
+      expect(await readFile(path)).toEqual(mutation);
+      await expect(lease.handle.stat()).rejects.toMatchObject({ code: "EBADF" });
+    } finally {
+      await rm(runnerTemp, { recursive: true, force: true });
     }
   });
 

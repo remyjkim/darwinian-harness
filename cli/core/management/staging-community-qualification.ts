@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { link, lstat, open, readFile, realpath, unlink } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
@@ -170,8 +171,12 @@ export type StagingCommunityReceipt = z.infer<typeof publicReceiptSchema>;
 export type StagingDeviceApprovalNotice = z.infer<typeof stagingDeviceApprovalNoticeSchema>;
 export interface StagingDeviceApprovalNoticeFileIdentity {
   path: string;
-  dev: number;
-  ino: number;
+  handle: FileHandle;
+  dev: bigint;
+  ino: bigint;
+  byteLength: number;
+  sha256: string;
+  closed: boolean;
 }
 
 export interface ExecuteStagingCommunityQualificationInput {
@@ -310,10 +315,13 @@ export async function publishStagingDeviceApprovalNotice(
   options: { runnerTemp: string; qualificationRunId: string; now: number },
 ): Promise<Readonly<StagingDeviceApprovalNoticeFileIdentity>> {
   let temporaryPath: string | undefined;
-  let temporaryIdentity: { dev: number; ino: number } | undefined;
+  let temporaryIdentity: { dev: bigint; ino: bigint } | undefined;
   let finalPath: string | undefined;
+  let handle: FileHandle | undefined;
   try {
     const notice = parseStagingDeviceApprovalNotice(candidate, options);
+    const bytes = Buffer.from(`${canonicalJson(notice)}\n`, "utf8");
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
     const safe = await assertApprovalNoticePath(path, options.runnerTemp);
     finalPath = safe.path;
     try {
@@ -323,33 +331,47 @@ export async function publishStagingDeviceApprovalNotice(
       if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
     }
     temporaryPath = join(safe.parent, `.staging-device-approval.${crypto.randomUUID()}.tmp`);
-    const handle = await open(temporaryPath, "wx", 0o600);
+    handle = await open(temporaryPath, "wx+", 0o600);
     try {
-      await handle.writeFile(Buffer.from(`${canonicalJson(notice)}\n`, "utf8"));
+      await handle.writeFile(bytes);
       await handle.sync();
-    } finally {
-      await handle.close();
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      handle = undefined;
+      throw error;
     }
-    const temporaryMetadata = await lstat(temporaryPath);
+    const temporaryMetadata = await handle.stat({ bigint: true });
     temporaryIdentity = { dev: temporaryMetadata.dev, ino: temporaryMetadata.ino };
     if (
-      !temporaryMetadata.isFile() || temporaryMetadata.isSymbolicLink() || temporaryMetadata.nlink !== 1 ||
-      (temporaryMetadata.mode & 0o777) !== 0o600 || !ownerMatches(temporaryMetadata.uid)
+      !temporaryMetadata.isFile() || temporaryMetadata.isSymbolicLink() || temporaryMetadata.nlink !== 1n ||
+      (temporaryMetadata.mode & 0o777n) !== 0o600n || !ownerMatches(temporaryMetadata.uid) ||
+      temporaryMetadata.size !== BigInt(bytes.byteLength)
     ) throw approvalNoticeFileError();
     await link(temporaryPath, safe.path);
     await unlink(temporaryPath);
     temporaryPath = undefined;
-    const finalMetadata = await lstat(safe.path);
+    const finalMetadata = await lstat(safe.path, { bigint: true });
     if (
-      !finalMetadata.isFile() || finalMetadata.isSymbolicLink() || finalMetadata.nlink !== 1 ||
-      (finalMetadata.mode & 0o777) !== 0o600 || !ownerMatches(finalMetadata.uid) ||
+      !finalMetadata.isFile() || finalMetadata.isSymbolicLink() || finalMetadata.nlink !== 1n ||
+      (finalMetadata.mode & 0o777n) !== 0o600n || !ownerMatches(finalMetadata.uid) ||
       finalMetadata.dev !== temporaryIdentity.dev || finalMetadata.ino !== temporaryIdentity.ino
     ) throw approvalNoticeFileError();
-    return deepFreeze({ path: safe.path, dev: finalMetadata.dev, ino: finalMetadata.ino });
+    const lease: StagingDeviceApprovalNoticeFileIdentity = {
+      path: safe.path,
+      handle,
+      dev: finalMetadata.dev,
+      ino: finalMetadata.ino,
+      byteLength: bytes.byteLength,
+      sha256,
+      closed: false,
+    };
+    handle = undefined;
+    return Object.seal(lease);
   } catch {
+    if (handle !== undefined) await handle.close().catch(() => undefined);
     if (temporaryPath !== undefined) await unlink(temporaryPath).catch(() => undefined);
     if (finalPath !== undefined && temporaryIdentity !== undefined) {
-      const current = await lstat(finalPath).catch(() => null);
+      const current = await lstat(finalPath, { bigint: true }).catch(() => null);
       if (current?.dev === temporaryIdentity.dev && current.ino === temporaryIdentity.ino) {
         await unlink(finalPath).catch(() => undefined);
       }
@@ -358,22 +380,52 @@ export async function publishStagingDeviceApprovalNotice(
   }
 }
 
-export async function cleanupStagingDeviceApprovalNotice(
+async function closeStagingDeviceApprovalNoticeLease(
+  identity: StagingDeviceApprovalNoticeFileIdentity,
+): Promise<void> {
+  if (identity.closed) return;
+  identity.closed = true;
+  try {
+    await identity.handle.close();
+  } catch {
+    throw approvalNoticeFileError();
+  }
+}
+
+async function readStagingDeviceApprovalNoticeLeaseBytes(
   identity: Readonly<StagingDeviceApprovalNoticeFileIdentity>,
+): Promise<Buffer> {
+  const bytes = Buffer.alloc(identity.byteLength);
+  let offset = 0;
+  while (offset < bytes.byteLength) {
+    const result = await identity.handle.read(bytes, offset, bytes.byteLength - offset, offset);
+    if (result.bytesRead === 0) throw approvalNoticeFileError();
+    offset += result.bytesRead;
+  }
+  return bytes;
+}
+
+export async function cleanupStagingDeviceApprovalNotice(
+  identity: StagingDeviceApprovalNoticeFileIdentity,
   options: { runnerTemp: string },
 ): Promise<void> {
   try {
     const safe = await assertApprovalNoticePath(identity.path, options.runnerTemp);
-    const current = await lstat(safe.path).catch((error) => {
+    const current = await lstat(safe.path, { bigint: true }).catch((error) => {
       if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return null;
       throw error;
     });
     if (current === null) return;
+    const held = await identity.handle.stat({ bigint: true });
     if (
-      !current.isFile() || current.isSymbolicLink() || current.nlink !== 1 ||
-      (current.mode & 0o777) !== 0o600 || !ownerMatches(current.uid) ||
-      current.dev !== identity.dev || current.ino !== identity.ino
+      !current.isFile() || current.isSymbolicLink() || current.nlink !== 1n ||
+      (current.mode & 0o777n) !== 0o600n || !ownerMatches(current.uid) ||
+      held.dev !== identity.dev || held.ino !== identity.ino ||
+      current.dev !== held.dev || current.ino !== held.ino ||
+      current.size !== BigInt(identity.byteLength) || held.size !== BigInt(identity.byteLength)
     ) throw approvalNoticeFileError();
+    const bytes = await readStagingDeviceApprovalNoticeLeaseBytes(identity);
+    if (createHash("sha256").update(bytes).digest("hex") !== identity.sha256) throw approvalNoticeFileError();
     await unlink(safe.path);
     try {
       await lstat(safe.path);
@@ -384,6 +436,8 @@ export async function cleanupStagingDeviceApprovalNotice(
   } catch (error) {
     if (error instanceof DrwnError && error.code === "STAGING_DEVICE_APPROVAL_NOTICE_FILE_INVALID") throw error;
     throw approvalNoticeFileError();
+  } finally {
+    await closeStagingDeviceApprovalNoticeLease(identity);
   }
 }
 
@@ -393,8 +447,8 @@ function privateFileError(code: "STAGING_COMMUNITY_PLAN_INVALID" | "STAGING_COMM
     : "The staging qualification output path is invalid.");
 }
 
-function ownerMatches(uid: number): boolean {
-  return typeof process.getuid !== "function" || uid === process.getuid();
+function ownerMatches(uid: number | bigint): boolean {
+  return typeof process.getuid !== "function" || BigInt(uid) === BigInt(process.getuid());
 }
 
 export async function readStagingCommunityPrivatePlan(path: string): Promise<Readonly<StagingCommunityPrivatePlan>> {
