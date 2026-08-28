@@ -39,6 +39,9 @@ describe("I321 Phase-A hidden ceremony", () => {
       preflightOutputs: async () => {
         events.push("outputs-preflight");
       },
+      preflightApprovalNotice: async () => {
+        events.push("notice-preflight");
+      },
       runDeviceFlow: async (input) => {
         events.push("device");
         await input.onUserAction({
@@ -88,6 +91,7 @@ describe("I321 Phase-A hidden ceremony", () => {
 
     expect(events).toEqual([
       "outputs-preflight",
+      "notice-preflight",
       "plan",
       "device",
       "notice-publish",
@@ -108,6 +112,32 @@ describe("I321 Phase-A hidden ceremony", () => {
       communityOutputPath: "/runner/public/i321-staging-slot-community.json",
       runnerTemp: "/runner",
     }, {
+      readPlan: async () => plan,
+      runDeviceFlow: async () => {
+        deviceCalls += 1;
+        throw new Error("must not authorize");
+      },
+    })).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+    expect(deviceCalls).toBe(0);
+  });
+
+  test("refuses an unsafe approval notice path before device authorization", async () => {
+    let deviceCalls = 0;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/i321-cli-management-phase-a-plan.json",
+      approvalNoticePath: "/outside/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, {
+      preflightOutputs: async () => undefined,
+      preflightApprovalNotice: async () => {
+        throw new Error("unsafe notice path");
+      },
       readPlan: async () => plan,
       runDeviceFlow: async () => {
         deviceCalls += 1;

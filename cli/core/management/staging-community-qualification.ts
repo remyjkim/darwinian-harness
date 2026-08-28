@@ -270,6 +270,28 @@ async function assertApprovalNoticePath(path: string, runnerTemp: string): Promi
   return { path: resolvedPath, parent };
 }
 
+export async function preflightStagingDeviceApprovalNoticePath(
+  path: string,
+  options: { runnerTemp: string },
+): Promise<void> {
+  try {
+    const safe = await assertApprovalNoticePath(path, options.runnerTemp);
+    try {
+      await lstat(safe.path);
+      throw approvalNoticeFileError();
+    } catch (error) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+  } catch (error) {
+    if (error instanceof DrwnError && error.code === "STAGING_DEVICE_APPROVAL_NOTICE_FILE_INVALID") {
+      throw error;
+    }
+    throw approvalNoticeFileError();
+  }
+}
+
 export async function publishStagingDeviceApprovalNotice(
   path: string,
   candidate: unknown,

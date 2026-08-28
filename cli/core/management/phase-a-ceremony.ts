@@ -2,13 +2,14 @@
 // ABOUTME: Keeps the grant and notice process-local, then commits only the two public files.
 
 import { lstat, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { runDeviceFlow, type RunDeviceFlowInput } from "../auth/device-flow";
 import { drwnCliProfile } from "../auth/profile";
 import { DrwnError } from "../errors";
 import {
   cleanupStagingDeviceApprovalNotice,
+  preflightStagingDeviceApprovalNoticePath,
   publishStagingDeviceApprovalNotice,
   stagingCommunityContract,
 } from "./staging-community-qualification";
@@ -80,7 +81,14 @@ export interface I321PhaseACeremonyDependencies {
   preflightOutputs?: (
     input: PreflightI321PhaseAPublicReceiptPathsInput,
   ) => Promise<void>;
-  readPlan?: (path: string) => Promise<I321PhaseAPlan>;
+  preflightApprovalNotice?: (
+    path: string,
+    options: { runnerTemp: string },
+  ) => Promise<void>;
+  readPlan?: (
+    path: string,
+    options: { runnerTemp: string },
+  ) => Promise<I321PhaseAPlan>;
   runDeviceFlow?: (input: RunDeviceFlowInput) => Promise<DeviceCredential>;
   publishApprovalNotice?: (
     path: string,
@@ -108,9 +116,40 @@ function ownerMatches(uid: number): boolean {
   return typeof process.getuid !== "function" || uid === process.getuid();
 }
 
-export async function readI321PhaseAPlan(path: string): Promise<I321PhaseAPlan> {
+export async function readI321PhaseAPlan(
+  path: string,
+  options: { runnerTemp: string },
+): Promise<I321PhaseAPlan> {
   try {
-    if (!isAbsolute(path) || await realpath(path) !== resolve(path)) refusal();
+    if (
+      !isAbsolute(path) ||
+      !isAbsolute(options.runnerTemp) ||
+      basename(path) !== "i321-cli-management-phase-a-plan.json"
+    ) refusal();
+    const runnerRoot = await realpath(options.runnerTemp);
+    if (runnerRoot !== resolve(options.runnerTemp)) refusal();
+    const runnerMetadata = await lstat(runnerRoot);
+    if (
+      !runnerMetadata.isDirectory() ||
+      runnerMetadata.isSymbolicLink() ||
+      (runnerMetadata.mode & 0o777) !== 0o700 ||
+      !ownerMatches(runnerMetadata.uid)
+    ) refusal();
+    const resolvedPath = resolve(path);
+    const child = relative(runnerRoot, resolvedPath);
+    if (child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) {
+      refusal();
+    }
+    const parent = dirname(resolvedPath);
+    if (await realpath(parent) !== resolve(parent)) refusal();
+    const parentMetadata = await lstat(parent);
+    if (
+      !parentMetadata.isDirectory() ||
+      parentMetadata.isSymbolicLink() ||
+      (parentMetadata.mode & 0o777) !== 0o700 ||
+      !ownerMatches(parentMetadata.uid) ||
+      await realpath(path) !== resolvedPath
+    ) refusal();
     const before = await lstat(path);
     if (
       !before.isFile() ||
@@ -149,8 +188,14 @@ export async function executeI321PhaseACeremony(
       readinessPath: input.readinessOutputPath,
       communityPath: input.communityOutputPath,
     });
+    await (dependencies.preflightApprovalNotice ??
+      preflightStagingDeviceApprovalNoticePath)(input.approvalNoticePath, {
+        runnerTemp: input.runnerTemp,
+      });
     const admittedPlan = planSchema.parse(
-      await (dependencies.readPlan ?? readI321PhaseAPlan)(input.planPath),
+      await (dependencies.readPlan ?? readI321PhaseAPlan)(input.planPath, {
+        runnerTemp: input.runnerTemp,
+      }),
     );
     const profile = drwnCliProfile({ DRWN_CLOUD_PROFILE: "staging" });
     let noticeIdentity: unknown;
