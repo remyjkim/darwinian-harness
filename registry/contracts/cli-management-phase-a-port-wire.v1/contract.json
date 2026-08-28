@@ -1,0 +1,604 @@
+{
+  "schema": "cl.dah.cli-management-phase-a-port-wire.v1",
+  "schemaVersion": 1,
+  "authority": {
+    "owner": "I321",
+    "predecessorContractSha256": "c7c66461c9dfc37069691f36826e1ac9e20d59412745a81941cff9de42d5a601",
+    "predecessorExecutorSha256": "074be4206780d60e605ca222ae3311605cc00cfe8c593625a93f7954e76c9e0d",
+    "approvalNoticeArtifactSha256": "141f45e8e54e1c248558b6b41853e6f8fb4d0e9910e4d2ad5fab4069136ab83c",
+    "publicRoute": null
+  },
+  "transport": {
+    "listener": "loopback_current_run_only",
+    "method": "POST",
+    "executePath": "/v1/phase-a/execute",
+    "cleanupPath": "/v1/phase-a/cleanup",
+    "executeTimeoutMs": 15000,
+    "cleanupTimeoutMs": 5000,
+    "maxResponseBytes": 65536,
+    "maxAuthorizationHeaderBytes": 16384,
+    "successStatus": 200,
+    "responseMediaType": "application/json",
+    "responseMediaTypeParameters": "forbidden",
+    "responseContentEncoding": "absent",
+    "redirect": "error",
+    "contentLengthWhenPresent": "canonical_bounded_exact_received_bytes",
+    "responseEncoding": "fatal_utf8",
+    "transparentRetries": 0,
+    "requiredHeadersByMode": {
+      "execute": [
+        "authorization",
+        "x-drwn-protocol",
+        "x-drwn-version",
+        "x-i321-qualification-run-id",
+        "x-request-id"
+      ],
+      "normalCleanup": [
+        "authorization",
+        "x-drwn-protocol",
+        "x-drwn-version",
+        "x-i321-qualification-run-id",
+        "x-request-id"
+      ],
+      "failSafeCleanup": [
+        "x-drwn-protocol",
+        "x-drwn-version",
+        "x-i321-qualification-run-id",
+        "x-request-id",
+        "x-i321-adapter-process-generation"
+      ]
+    }
+  },
+  "adapter": {
+    "originFlag": "--phase-a-adapter-origin",
+    "originGrammar": "http://127.0.0.1:<canonical-decimal-port-1..65535>",
+    "readiness": {
+      "path": "/__ready",
+      "status": 204,
+      "body": "empty",
+      "contentLength": 0,
+      "contentType": "absent",
+      "contentEncoding": "absent",
+      "attempts": 100,
+      "intervalMs": 100,
+      "deadlineMs": 10000
+    },
+    "bindings": [
+      {
+        "binding": "DAH_PHASE_A_QUALIFICATION",
+        "service": "darwinian-auth-hub-staging-1",
+        "entrypoint": "DahPhaseAQualificationApi"
+      },
+      {
+        "binding": "SERVICES_WEB_PHASE_A_QUALIFICATION",
+        "service": "services-web-staging-1",
+        "entrypoint": "ServicesWebPhaseAQualificationApi"
+      }
+    ],
+    "entrypointMethods": [
+      "executePhaseA",
+      "readPhaseAAggregates",
+      "cleanupPhaseA",
+      "failSafeCleanupPhaseA"
+    ]
+  },
+  "authorization": {
+    "header": "Authorization",
+    "scheme": "Bearer",
+    "producer": "worker_same_run_device_grant",
+    "privateRpcArgumentByMode": {
+      "execute": "authorizationBearer",
+      "aggregate": "authorizationBearer",
+      "normalCleanup": "authorizationBearer",
+      "failSafeCleanup": null
+    },
+    "firstUseBinding": [
+      "qualificationRunId",
+      "sourceCommitSha",
+      "bearerDigest",
+      "humanActor",
+      "adapterProcessGeneration"
+    ],
+    "replayKey": "x-request-id",
+    "rawBearerRetention": "none",
+    "failSafeAuthority": "platform_authenticated_launch_controller_plus_run_source_request_generation",
+    "forbiddenSurfaces": [
+      "argv",
+      "environment",
+      "body",
+      "query",
+      "cookie",
+      "referrer",
+      "file_or_fifo",
+      "stdout_stderr",
+      "log_trace_exception",
+      "artifact_cache_context_receipt"
+    ]
+  },
+  "localOperationOrder": [
+    {
+      "operation": "fresh_login"
+    },
+    {
+      "operation": "displayed_consent"
+    }
+  ],
+  "remoteOperationOrder": [
+    {
+      "operation": "version_readback",
+      "component": "auth_hub"
+    },
+    {
+      "operation": "version_readback",
+      "component": "services_web"
+    },
+    {
+      "operation": "api_management_family_separation"
+    },
+    {
+      "operation": "organizations_list",
+      "eligibility": "active_management"
+    },
+    {
+      "operation": "organizations_read",
+      "organizationId": "executor_selected_exactly_one"
+    },
+    {
+      "operation": "cross_organization_denial"
+    },
+    {
+      "operation": "direct_origin_denial"
+    },
+    {
+      "operation": "changed_binding_denial"
+    },
+    {
+      "operation": "replay_denial"
+    },
+    {
+      "operation": "expired_denial"
+    },
+    {
+      "operation": "legacy_route_410"
+    },
+    {
+      "operation": "unsupported_protocol_426"
+    }
+  ],
+  "cleanupStateMachine": {
+    "states": [
+      "pending",
+      "normal_inflight",
+      "fail_safe_inflight",
+      "complete",
+      "terminal_failure"
+    ],
+    "initial": "pending",
+    "transitions": {
+      "pending": [
+        "normal_inflight",
+        "fail_safe_inflight"
+      ],
+      "normal_inflight": [
+        "complete",
+        "terminal_failure"
+      ],
+      "fail_safe_inflight": [
+        "complete",
+        "terminal_failure"
+      ],
+      "complete": [],
+      "terminal_failure": []
+    },
+    "oneOwnerCall": true,
+    "inflightBehavior": "join_same_promise",
+    "completeBehavior": "already_clean_no_owner_call",
+    "duplicateWorkerCleanup": "refuse_before_owner_call",
+    "deadlineMs": 5000,
+    "terminalFailureOutput": "none",
+    "teardownOrder": "cleanup_terminal_refusal_or_timeout_before_listener_process"
+  },
+  "operationOwners": {
+    "version_readback": "matching_i321_named_entrypoint",
+    "fresh_login": "worker_process_local_device_grant_no_http",
+    "displayed_consent": "worker_process_local_notice_and_grant_no_http",
+    "api_management_family_separation": "services_web_private_qualification_entrypoint",
+    "organizations_list": "services_web_broker_plus_dah_private_management",
+    "organizations_read": "services_web_broker_plus_dah_private_management",
+    "cross_organization_denial": "i321_private_qualification_entrypoints",
+    "direct_origin_denial": "dah_private_qualification_entrypoint",
+    "changed_binding_denial": "i321_private_qualification_entrypoints",
+    "replay_denial": "i321_private_qualification_entrypoints",
+    "expired_denial": "i321_private_qualification_entrypoints",
+    "legacy_route_410": "services_web_private_qualification_entrypoint",
+    "unsupported_protocol_426": "services_web_private_qualification_entrypoint",
+    "cleanup_normal": "cleanupPhaseA_once",
+    "cleanup_fail_safe_while_pending": "failSafeCleanupPhaseA_once_no_public_output"
+  },
+  "outputs": {
+    "readiness": {
+      "flag": "--readiness-output-file",
+      "basename": "i321-cli-management-readiness.json",
+      "schema": "cl.dah.cli-management-readiness.v1"
+    },
+    "community": {
+      "flag": "--community-output-file",
+      "basename": "i321-staging-slot-community.json",
+      "schema": "cl.dah.staging-slot-community.v1"
+    },
+    "encoding": "canonical_json_utf8_plus_one_newline",
+    "behavior": "both_after_cleanup_or_neither"
+  },
+  "refusalCode": "phase_a_port_wire_invalid",
+  "vectors": [
+    {
+      "caseId": "positive_local_01",
+      "expected": "process_local_observation",
+      "request": {
+        "operation": "fresh_login"
+      }
+    },
+    {
+      "caseId": "positive_local_02",
+      "expected": "process_local_observation",
+      "request": {
+        "operation": "displayed_consent"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_01",
+      "expected": "observation",
+      "request": {
+        "operation": "version_readback",
+        "component": "auth_hub"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_02",
+      "expected": "observation",
+      "request": {
+        "operation": "version_readback",
+        "component": "services_web"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_03",
+      "expected": "observation",
+      "request": {
+        "operation": "api_management_family_separation"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_04",
+      "expected": "observation",
+      "request": {
+        "operation": "organizations_list",
+        "eligibility": "active_management"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_05",
+      "expected": "observation",
+      "request": {
+        "operation": "organizations_read",
+        "organizationId": "executor_selected_exactly_one"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_06",
+      "expected": "observation",
+      "request": {
+        "operation": "cross_organization_denial"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_07",
+      "expected": "observation",
+      "request": {
+        "operation": "direct_origin_denial"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_08",
+      "expected": "observation",
+      "request": {
+        "operation": "changed_binding_denial"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_09",
+      "expected": "observation",
+      "request": {
+        "operation": "replay_denial"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_10",
+      "expected": "observation",
+      "request": {
+        "operation": "expired_denial"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_11",
+      "expected": "observation",
+      "request": {
+        "operation": "legacy_route_410"
+      }
+    },
+    {
+      "caseId": "positive_remote_call_12",
+      "expected": "observation",
+      "request": {
+        "operation": "unsupported_protocol_426"
+      }
+    },
+    {
+      "caseId": "positive_cleanup_normal",
+      "expected": "cleanup",
+      "authorization": "same_run_human_bearer_required",
+      "request": {
+        "schema": "cl.dah.cli-management-phase-a-port-cleanup-request.v1",
+        "cleanupMode": "normal"
+      }
+    },
+    {
+      "caseId": "positive_cleanup_fail_safe_while_pending",
+      "expected": "cleanup_without_public_output",
+      "authorization": "launch_bound_controller_no_human_bearer",
+      "request": {
+        "schema": "cl.dah.cli-management-phase-a-port-cleanup-request.v1",
+        "cleanupMode": "fail_safe"
+      }
+    },
+    {
+      "caseId": "positive_two_public_receipts",
+      "expected": "readiness_and_community_bytes"
+    },
+    {
+      "caseId": "hostile_local_operation_sent_over_http",
+      "expected": "refuse_no_public_output",
+      "failure": "local_operation_sent_over_http"
+    },
+    {
+      "caseId": "hostile_wrong_method",
+      "expected": "refuse_no_public_output",
+      "failure": "wrong_method"
+    },
+    {
+      "caseId": "hostile_wrong_path",
+      "expected": "refuse_no_public_output",
+      "failure": "wrong_path"
+    },
+    {
+      "caseId": "hostile_missing_authorization",
+      "expected": "refuse_no_public_output",
+      "failure": "missing_authorization"
+    },
+    {
+      "caseId": "hostile_normal_cleanup_missing_bearer",
+      "expected": "refuse_no_public_output",
+      "failure": "normal_cleanup_missing_bearer"
+    },
+    {
+      "caseId": "hostile_fail_safe_cleanup_bearer_present",
+      "expected": "refuse_no_public_output",
+      "failure": "fail_safe_cleanup_bearer_present"
+    },
+    {
+      "caseId": "hostile_fail_safe_foreign_process_generation",
+      "expected": "refuse_no_public_output",
+      "failure": "fail_safe_foreign_process_generation"
+    },
+    {
+      "caseId": "hostile_duplicate_authorization",
+      "expected": "refuse_no_public_output",
+      "failure": "duplicate_authorization"
+    },
+    {
+      "caseId": "hostile_folded_authorization",
+      "expected": "refuse_no_public_output",
+      "failure": "folded_authorization"
+    },
+    {
+      "caseId": "hostile_authorization_in_body",
+      "expected": "refuse_no_public_output",
+      "failure": "authorization_in_body"
+    },
+    {
+      "caseId": "hostile_authorization_too_large",
+      "expected": "refuse_no_public_output",
+      "failure": "authorization_too_large"
+    },
+    {
+      "caseId": "hostile_changed_bearer",
+      "expected": "refuse_no_public_output",
+      "failure": "changed_bearer"
+    },
+    {
+      "caseId": "hostile_wrong_protocol",
+      "expected": "refuse_no_public_output",
+      "failure": "wrong_protocol"
+    },
+    {
+      "caseId": "hostile_wrong_worker_version",
+      "expected": "refuse_no_public_output",
+      "failure": "wrong_worker_version"
+    },
+    {
+      "caseId": "hostile_wrong_qualification_run",
+      "expected": "refuse_no_public_output",
+      "failure": "wrong_qualification_run"
+    },
+    {
+      "caseId": "hostile_wrong_request_id",
+      "expected": "refuse_no_public_output",
+      "failure": "wrong_request_id"
+    },
+    {
+      "caseId": "hostile_unknown_operation",
+      "expected": "refuse_no_public_output",
+      "failure": "unknown_operation"
+    },
+    {
+      "caseId": "hostile_operation_order_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "operation_order_drift"
+    },
+    {
+      "caseId": "hostile_request_extra_field",
+      "expected": "refuse_no_public_output",
+      "failure": "request_extra_field"
+    },
+    {
+      "caseId": "hostile_response_extra_field",
+      "expected": "refuse_no_public_output",
+      "failure": "response_extra_field"
+    },
+    {
+      "caseId": "hostile_response_operation_mismatch",
+      "expected": "refuse_no_public_output",
+      "failure": "response_operation_mismatch"
+    },
+    {
+      "caseId": "hostile_response_status_mismatch",
+      "expected": "refuse_no_public_output",
+      "failure": "response_status_mismatch"
+    },
+    {
+      "caseId": "hostile_response_content_type_invalid",
+      "expected": "refuse_no_public_output",
+      "failure": "response_content_type_invalid"
+    },
+    {
+      "caseId": "hostile_response_content_type_parameter",
+      "expected": "refuse_no_public_output",
+      "failure": "response_content_type_parameter"
+    },
+    {
+      "caseId": "hostile_response_content_encoding_present",
+      "expected": "refuse_no_public_output",
+      "failure": "response_content_encoding_present"
+    },
+    {
+      "caseId": "hostile_response_redirect",
+      "expected": "refuse_no_public_output",
+      "failure": "response_redirect"
+    },
+    {
+      "caseId": "hostile_response_content_length_noncanonical",
+      "expected": "refuse_no_public_output",
+      "failure": "response_content_length_noncanonical"
+    },
+    {
+      "caseId": "hostile_response_content_length_mismatch",
+      "expected": "refuse_no_public_output",
+      "failure": "response_content_length_mismatch"
+    },
+    {
+      "caseId": "hostile_response_utf8_invalid",
+      "expected": "refuse_no_public_output",
+      "failure": "response_utf8_invalid"
+    },
+    {
+      "caseId": "hostile_response_too_large",
+      "expected": "refuse_no_public_output",
+      "failure": "response_too_large"
+    },
+    {
+      "caseId": "hostile_execute_timeout",
+      "expected": "refuse_no_public_output",
+      "failure": "execute_timeout"
+    },
+    {
+      "caseId": "hostile_cleanup_timeout",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_timeout"
+    },
+    {
+      "caseId": "hostile_cleanup_duplicate_worker_request",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_duplicate_worker_request"
+    },
+    {
+      "caseId": "hostile_cleanup_reused_request_id",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_reused_request_id"
+    },
+    {
+      "caseId": "hostile_cleanup_second_owner_call",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_second_owner_call"
+    },
+    {
+      "caseId": "hostile_cleanup_teardown_before_terminal",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_teardown_before_terminal"
+    },
+    {
+      "caseId": "hostile_cleanup_fail_safe_refused",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_fail_safe_refused"
+    },
+    {
+      "caseId": "hostile_cleanup_unknown",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_unknown"
+    },
+    {
+      "caseId": "hostile_cleanup_nonzero",
+      "expected": "refuse_no_public_output",
+      "failure": "cleanup_nonzero"
+    },
+    {
+      "caseId": "hostile_readiness_digest_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "readiness_digest_drift"
+    },
+    {
+      "caseId": "hostile_organization_read_digest_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "organization_read_digest_drift"
+    },
+    {
+      "caseId": "hostile_source_commit_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "source_commit_drift"
+    },
+    {
+      "caseId": "hostile_qualification_run_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "qualification_run_drift"
+    },
+    {
+      "caseId": "hostile_provider_authority_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "provider_authority_drift"
+    },
+    {
+      "caseId": "hostile_observed_at_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "observed_at_drift"
+    },
+    {
+      "caseId": "hostile_authority_field_leak",
+      "expected": "refuse_no_public_output",
+      "failure": "authority_field_leak"
+    },
+    {
+      "caseId": "hostile_partial_output",
+      "expected": "refuse_no_public_output",
+      "failure": "partial_output"
+    },
+    {
+      "caseId": "hostile_combined_output",
+      "expected": "refuse_no_public_output",
+      "failure": "combined_output"
+    },
+    {
+      "caseId": "hostile_cross_run_output",
+      "expected": "refuse_no_public_output",
+      "failure": "cross_run_output"
+    }
+  ]
+}
