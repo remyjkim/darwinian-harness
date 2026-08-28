@@ -29,7 +29,7 @@ function refusal(): never {
   );
 }
 
-function parseAdapterOrigin(candidate: string): string {
+export function parseI321PhaseAAdapterOrigin(candidate: string): string {
   try {
     const parsed = new URL(candidate);
     if (
@@ -118,7 +118,7 @@ export async function createI321PhaseACompositePort(
   input: CreateI321PhaseACompositePortInput,
 ): Promise<I321ManagementPhaseAPort> {
   try {
-    const origin = parseAdapterOrigin(input.adapterOrigin);
+    const origin = parseI321PhaseAAdapterOrigin(input.adapterOrigin);
     if (
       !uuidV4Pattern.test(input.qualificationRunId) ||
       !bearerPattern.test(input.accessToken) ||
