@@ -13,15 +13,14 @@ const lockSchema = z.object({
   schema: z.literal("dah.cli-management-phase-a-port-wire-contract-lock"),
   schemaVersion: z.literal(1),
   servicesRepository: z.literal("curation-labs/darwinian-services"),
-  sourceCommit: z.literal("79a43d5d8a4cbaa4b88794953c4e59be51dec78d"),
-  mergedMainCommit: z.literal("1564ceac28425d37351a6380b233e93b6e720ee4"),
-  contractSha256: z.literal("2ac7761d30b3fa33fddf407ab55b598e284beb6def7707bb8df5e6f0b4066647"),
+  sourceCommit: z.literal("d0156761c19f4e7dc5a63914a1117f298b535c37"),
+  contractSha256: z.literal("4a62e76ebf5f4d8ffc5f5891a0939165e1aa7bb22ad3916aff5f3ced32cbce7a"),
   projectorSha256: z.literal("157eb03e7dde2ef6f816781e173a415373657382757bfdb568dc0dab9df5622a"),
-  manifestSha256: z.literal("9d62e76cd8317647e833ab01197ab1eba8f5a10ec4f47662a131c3fe080b7277"),
-  readmeSha256: z.literal("c4ee5ddb786cc6b9d3cd9f8a660e0741dbe7e2d8756acd181aac57b46623aa6d"),
-  vectorCount: z.literal(66),
+  manifestSha256: z.literal("90bc380b54f277bc5179a6060609b99e76024e97b4bd871bab615e59332b0378"),
+  readmeSha256: z.literal("855ea78eb51ae7bc2d6d63a86a9e1b28c1d05f6a05ecca72c8ed0815c3283bc8"),
+  vectorCount: z.literal(67),
   positiveVectorCount: z.literal(17),
-  hostileVectorCount: z.literal(49),
+  hostileVectorCount: z.literal(50),
 }).strict();
 
 const manifestSchema = z.object({
@@ -37,9 +36,13 @@ const manifestSchema = z.object({
   localOperationCount: z.literal(2),
   remoteOperationCallCount: z.literal(12),
   cleanupStateCount: z.literal(5),
-  vectorCount: z.literal(66),
+  vectorCount: z.literal(67),
   positiveVectorCount: z.literal(17),
-  hostileVectorCount: z.literal(49),
+  hostileVectorCount: z.literal(50),
+  qualificationIdentityContractSha256: z.literal("1dbde33ab10d12f31ee9581984cb37c88a9363da2af1518402e62546f582b0b6"),
+  qualificationIdentityManifestSha256: z.literal("d5ba47199320b282e2938f80e56ccb55fc9618d57e27114fbc219bea2094a995"),
+  qualificationIdentityVectorsSha256: z.literal("dc4580b5cddc8d5a493c14e29f6211cb7c2389fc5e658a963683c3a24ac3f4be"),
+  approvalNoticeArtifactSha256: z.literal("40755caf06cc7c61bf302768eb20e8f41254d47868ee3515f4beee5af2afa8c7"),
 }).strict();
 
 const contractSchema = z.object({
@@ -58,7 +61,7 @@ const contractSchema = z.object({
   cleanupStateMachine: z.object({
     states: z.array(z.string()).length(5),
   }).passthrough(),
-  vectors: z.array(z.unknown()).length(66),
+  vectors: z.array(z.unknown()).length(67),
 }).passthrough();
 
 export interface I321PhaseAPortWireProjector {

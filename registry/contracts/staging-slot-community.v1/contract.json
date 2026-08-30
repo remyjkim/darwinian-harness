@@ -41,7 +41,8 @@
     "handoffFileCleanup": "erase_handoff_file_on_every_outcome",
     "actionsNoticeRetention": "private_run_log_normal_retention_inert_after_expiry",
     "forbiddenPersistence": "never_artifact_cache_receipt_or_cloud_context",
-    "authorizedOrigin": "https://auth-staging-main.darwinian.dev",
+    "qualificationIdentityContractSha256": "1dbde33ab10d12f31ee9581984cb37c88a9363da2af1518402e62546f582b0b6",
+    "authorizedOrigin": "https://auth-staging-1.darwinian.dev",
     "approvalPath": "/device",
     "maximumVerificationUriBytes": 2048,
     "maximumLifetimeSeconds": 3600,
@@ -53,7 +54,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -63,7 +64,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "http://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "http://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -73,7 +74,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://user:password@auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://user:password@auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -83,7 +84,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH#fragment",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH#fragment",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -98,12 +99,22 @@
         }
       },
       {
+        "name": "staging_main_origin_refuses",
+        "expected": "refuse_no_output",
+        "candidate": {
+          "schema": "cl.drwn.staging-device-approval-notice.v1",
+          "qualificationRunId": "33333333-3333-4333-8333-333333333333",
+          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "expiresAt": "2026-08-27T17:10:00.000Z"
+        }
+      },
+      {
         "name": "wrong_approval_path_refuses",
         "expected": "refuse_no_output",
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/not-device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/not-device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -113,7 +124,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v2",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -122,7 +133,7 @@
         "expected": "refuse_no_output",
         "candidate": {
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -131,7 +142,7 @@
         "expected": "refuse_no_output",
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -150,7 +161,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH"
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH"
         }
       },
       {
@@ -159,7 +170,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -169,7 +180,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -179,7 +190,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH&user_code=IJKL-MNOP",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH&user_code=IJKL-MNOP",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -189,7 +200,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH&next=forbidden",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH&next=forbidden",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -199,7 +210,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH&access_token=forbidden",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH&access_token=forbidden",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -209,7 +220,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH%0A%3A%3Aerror%3A%3Ainjected",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH%0A%3A%3Aerror%3A%3Ainjected",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -219,7 +230,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:05:00.000Z"
         }
       },
@@ -229,7 +240,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T16:55:00.000Z"
         }
       },
@@ -239,7 +250,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:04:59.000Z"
         }
       },
@@ -249,7 +260,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T18:05:01.000Z"
         }
       },
@@ -259,7 +270,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "44444444-4444-4444-8444-444444444444",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z"
         }
       },
@@ -269,7 +280,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z",
           "noticeDigestSha256": "0000000000000000000000000000000000000000000000000000000000000000"
         }
@@ -280,7 +291,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z",
           "userCode": "ABCD-EFGH"
         }
@@ -291,7 +302,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z",
           "deviceCode": "forbidden"
         }
@@ -302,7 +313,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z",
           "accessToken": "forbidden"
         }
@@ -313,7 +324,7 @@
         "candidate": {
           "schema": "cl.drwn.staging-device-approval-notice.v1",
           "qualificationRunId": "33333333-3333-4333-8333-333333333333",
-          "verificationUriComplete": "https://auth-staging-main.darwinian.dev/device?user_code=ABCD-EFGH",
+          "verificationUriComplete": "https://auth-staging-1.darwinian.dev/device?user_code=ABCD-EFGH",
           "expiresAt": "2026-08-27T17:10:00.000Z",
           "organizationId": "org_forbidden"
         }

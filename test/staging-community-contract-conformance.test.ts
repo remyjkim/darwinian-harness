@@ -1,4 +1,4 @@
-// ABOUTME: Pins the exact merged I321 staging Community interoperability artifact in the Worker package.
+// ABOUTME: Pins the exact reviewed I321 staging Community interoperability artifact in the Worker package.
 // ABOUTME: Freezes the 14-vector ceremony, authority headers, public receipt, and non-retention boundaries.
 
 import { describe, expect, test } from "bun:test";
@@ -9,14 +9,14 @@ import { join } from "node:path";
 const packageRoot = join(import.meta.dir, "..");
 const contractPath = join(packageRoot, "registry", "contracts", "staging-slot-community.v1", "contract.json");
 const lockPath = join(packageRoot, "cli", "generated", "dah-staging-slot-community-contract-lock.json");
-const expectedSha256 = "141f45e8e54e1c248558b6b41853e6f8fb4d0e9910e4d2ad5fab4069136ab83c";
+const expectedSha256 = "40755caf06cc7c61bf302768eb20e8f41254d47868ee3515f4beee5af2afa8c7";
 
 function artifact(): Record<string, any> {
   return JSON.parse(readFileSync(contractPath, "utf8"));
 }
 
 describe("I321 staging Community contract", () => {
-  test("vendors the exact merged I321 bytes and immutable authority lock", () => {
+  test("vendors the exact reviewed I321 bytes and immutable authority lock", () => {
     expect(existsSync(contractPath)).toBe(true);
     expect(existsSync(lockPath)).toBe(true);
     const bytes = readFileSync(contractPath);
@@ -25,15 +25,14 @@ describe("I321 staging Community contract", () => {
       schema: "dah.staging-slot-community-contract-lock",
       schemaVersion: 1,
       servicesRepository: "curation-labs/darwinian-services",
-      sourceCommit: "df219967d0f11822f3f642602f59e372ad1e4d6a",
-      mergedMainCommit: "ed5a40c95947eb4def084bc88a5c4cac9805beb5",
+      sourceCommit: "d0156761c19f4e7dc5a63914a1117f298b535c37",
       sha256: expectedSha256,
       vectorCount: 14,
       positiveVectorCount: 1,
       hostileVectorCount: 13,
-      deviceApprovalVectorCount: 27,
+      deviceApprovalVectorCount: 28,
       deviceApprovalPositiveVectorCount: 1,
-      deviceApprovalHostileVectorCount: 26,
+      deviceApprovalHostileVectorCount: 27,
     });
   });
 
@@ -71,23 +70,28 @@ describe("I321 staging Community contract", () => {
     ]);
   });
 
-  test("freezes the exact four-field approval notice and all twenty-six hostile vectors", () => {
+  test("freezes the exact four-field approval notice and all twenty-seven hostile vectors", () => {
     const approval = artifact().deviceApproval;
     expect({ ...approval, vectors: undefined }).toMatchObject({
       schema: "cl.drwn.staging-device-approval-notice-contract.v1",
       noticeSchema: "cl.drwn.staging-device-approval-notice.v1",
-      authorizedOrigin: "https://auth-staging-main.darwinian.dev",
+      qualificationIdentityContractSha256: "1dbde33ab10d12f31ee9581984cb37c88a9363da2af1518402e62546f582b0b6",
+      authorizedOrigin: "https://auth-staging-1.darwinian.dev",
       approvalPath: "/device",
       maximumVerificationUriBytes: 2_048,
       maximumLifetimeSeconds: 3_600,
     });
-    expect(approval.vectors).toHaveLength(27);
+    expect(approval.vectors).toHaveLength(28);
     expect(approval.vectors.filter(({ expected }: any) => expected === "notice")).toHaveLength(1);
-    expect(approval.vectors.filter(({ expected }: any) => expected === "refuse_no_output")).toHaveLength(26);
+    expect(approval.vectors.filter(({ expected }: any) => expected === "refuse_no_output")).toHaveLength(27);
     expect(Object.keys(approval.vectors[0].candidate)).toEqual([
       "schema", "qualificationRunId", "verificationUriComplete", "expiresAt",
     ]);
     expect(approval.vectors.some(({ candidate }: any) => Object.hasOwn(candidate, "noticeDigestSha256"))).toBe(true);
+    expect(approval.vectors).toContainEqual(expect.objectContaining({
+      name: "staging_main_origin_refuses",
+      expected: "refuse_no_output",
+    }));
   });
 
   test("contains one exact receipt and thirteen refuse-no-output vectors", () => {

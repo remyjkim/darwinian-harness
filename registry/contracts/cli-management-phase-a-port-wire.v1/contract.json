@@ -5,7 +5,10 @@
     "owner": "I321",
     "predecessorContractSha256": "c7c66461c9dfc37069691f36826e1ac9e20d59412745a81941cff9de42d5a601",
     "predecessorExecutorSha256": "074be4206780d60e605ca222ae3311605cc00cfe8c593625a93f7954e76c9e0d",
-    "approvalNoticeArtifactSha256": "141f45e8e54e1c248558b6b41853e6f8fb4d0e9910e4d2ad5fab4069136ab83c",
+    "qualificationIdentityContractSha256": "1dbde33ab10d12f31ee9581984cb37c88a9363da2af1518402e62546f582b0b6",
+    "qualificationIdentityManifestSha256": "d5ba47199320b282e2938f80e56ccb55fc9618d57e27114fbc219bea2094a995",
+    "qualificationIdentityVectorsSha256": "dc4580b5cddc8d5a493c14e29f6211cb7c2389fc5e658a963683c3a24ac3f4be",
+    "approvalNoticeArtifactSha256": "40755caf06cc7c61bf302768eb20e8f41254d47868ee3515f4beee5af2afa8c7",
     "publicRoute": null
   },
   "transport": {
@@ -599,6 +602,11 @@
       "caseId": "hostile_cross_run_output",
       "expected": "refuse_no_public_output",
       "failure": "cross_run_output"
+    },
+    {
+      "caseId": "hostile_qualification_identity_drift",
+      "expected": "refuse_no_public_output",
+      "failure": "qualification_identity_drift"
     }
   ]
 }

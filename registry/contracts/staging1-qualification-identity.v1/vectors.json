@@ -1,0 +1,453 @@
+[
+  {
+    "name": "exact_staging_1_tuple_is_the_only_identity",
+    "expected": "identity",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "wrong_schema_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v2",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_environment_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-main",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_auth_hub_origin_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-main.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_issuer_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-main.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_jwks_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-main.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_resource_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_api_origin_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_web_origin_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-main.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "staging_main_approval_origin_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-main.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "wrong_client_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "services-web",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "extra_profile_scope_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "scope_expansion_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate",
+        "dah:management"
+      ]
+    }
+  },
+  {
+    "name": "scope_reorder_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "dah:management.delegate",
+        "offline_access",
+        "email",
+        "openid"
+      ]
+    }
+  },
+  {
+    "name": "multi_issuer_fallback_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ],
+      "acceptedIssuers": [
+        "https://auth-staging-1.darwinian.dev/api/auth",
+        "https://auth-staging-main.darwinian.dev/api/auth"
+      ]
+    }
+  },
+  {
+    "name": "bearer_field_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ],
+      "bearer": "forbidden"
+    }
+  },
+  {
+    "name": "human_field_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ],
+      "humanUserId": "forbidden"
+    }
+  },
+  {
+    "name": "organization_field_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ],
+      "organizationId": "forbidden"
+    }
+  },
+  {
+    "name": "arbitrary_profile_field_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ],
+      "profilePath": "/tmp/forbidden.json"
+    }
+  },
+  {
+    "name": "arbitrary_endpoint_field_refuses",
+    "expected": "refuse",
+    "candidate": {
+      "schema": "cl.dah.staging1-qualification-identity.v1",
+      "environmentId": "staging-1",
+      "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "apiOrigin": "https://api-staging-1.darwinian.dev",
+      "webOrigin": "https://foundry-staging-1.darwinian.dev",
+      "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+      "clientId": "drwn-cli",
+      "requestedScopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ],
+      "endpointOverride": "https://attacker.example"
+    }
+  }
+]

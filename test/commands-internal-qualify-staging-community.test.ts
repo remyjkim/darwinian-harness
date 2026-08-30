@@ -14,7 +14,7 @@ import { cleanupTempRoots, scaffoldCliFixture } from "./helpers";
 const tempRoots: string[] = [];
 const tokenSentinel = "ACCESS_TOKEN_SENTINEL_QUALIFICATION";
 const refreshSentinel = "REFRESH_TOKEN_SENTINEL_QUALIFICATION";
-const verificationSentinel = "https://auth-staging-main.darwinian.dev/device?user_code=VERIFY-SENTINEL";
+const verificationSentinel = "https://auth-staging-1.darwinian.dev/device?user_code=VERIFY-SENTINEL";
 
 class CaptureStream extends Writable {
   chunks: Buffer[] = [];
@@ -220,7 +220,21 @@ describe("hidden staging Community qualification command", () => {
     const help = await run(["--help"], overrides);
     expect(help.exitCode).toBe(0);
     expect(help.stdout).not.toContain("qualify-staging-community");
-    for (const flag of ["--community-id", "--relay-url", "--https-base", "--provider-policy"]) {
+    for (const flag of [
+      "--community-id",
+      "--relay-url",
+      "--https-base",
+      "--provider-policy",
+      "--cloud-profile",
+      "--cloud-profile-file",
+      "--auth-hub-origin",
+      "--issuer",
+      "--jwks-url",
+      "--resource",
+      "--api-origin",
+      "--web-origin",
+      "--approval-origin",
+    ]) {
       const result = await run((f) => [
         "__internal", "qualify-staging-community",
         "--plan-file", f.planPath,
@@ -233,6 +247,37 @@ describe("hidden staging Community qualification command", () => {
       expect(result.exitCode).not.toBe(0);
     }
     expect(effects).toBe(0);
+  });
+
+  test("rejects inherited public profile selectors and endpoint overrides before the ceremony", async () => {
+    const inheritedEnvironment: Array<[string, string]> = [
+      ["DRWN_CLOUD_PROFILE", "staging"],
+      ["DRWN_CLOUD_PROFILE_FILE", "/tmp/hostile-profile.json"],
+      ["DRWN_DAH_HUB_URL", "https://auth-staging-main.darwinian.dev"],
+      ["DRWN_DAH_RESOURCE", "https://api.darwinian.dev"],
+    ];
+
+    for (const [name, value] of inheritedEnvironment) {
+      let ceremonyCalls = 0;
+      const result = await run((f) => [
+        "__internal", "qualify-staging-community",
+        "--plan-file", f.planPath,
+        "--approval-notice-file", f.noticePath,
+        "--phase-a-adapter-origin", "http://127.0.0.1:8787",
+        "--readiness-output-file", f.readinessOutputPath,
+        "--community-output-file", f.communityOutputPath,
+      ], {
+        env: { RUNNER_TEMP: "/tmp", [name]: value },
+        executeCeremony: async () => {
+          ceremonyCalls += 1;
+        },
+      });
+
+      expect(result.exitCode, name).toBe(1);
+      expect(result.stdout, name).toBe("");
+      expect(result.stderr, name).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+      expect(ceremonyCalls, name).toBe(0);
+    }
   });
 
   test("refuses a missing RUNNER_TEMP before reading the plan or starting device authorization", async () => {

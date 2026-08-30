@@ -2,6 +2,9 @@
 // ABOUTME: Proves one device grant and notice lifecycle precede owner execution without legacy REST reads.
 
 import { describe, expect, test } from "bun:test";
+import type {
+  I321PhaseACeremonyDependencies,
+} from "../cli/core/management/phase-a-ceremony";
 
 const plan = {
   schema: "cl.dah.cli-management-phase-a-plan.v1",
@@ -18,6 +21,45 @@ const plan = {
     runAttempt: 1,
   },
 } as const;
+
+const staging1QualificationIdentity = Object.freeze({
+  schema: "cl.dah.staging1-qualification-identity.v1",
+  environmentId: "staging-1",
+  authHubOrigin: "https://auth-staging-1.darwinian.dev",
+  issuer: "https://auth-staging-1.darwinian.dev/api/auth",
+  jwksUrl: "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+  resource: "https://api-staging-1.darwinian.dev",
+  apiOrigin: "https://api-staging-1.darwinian.dev",
+  webOrigin: "https://foundry-staging-1.darwinian.dev",
+  approvalOrigin: "https://auth-staging-1.darwinian.dev",
+  clientId: "drwn-cli",
+  requestedScopes: Object.freeze([
+    "openid",
+    "email",
+    "offline_access",
+    "dah:management.delegate",
+  ]),
+});
+
+type V144CeremonyDependencies = I321PhaseACeremonyDependencies & {
+  loadQualificationIdentity?: () => unknown;
+};
+
+function redDependencies(
+  identity: unknown,
+  onDeviceFlow: (profile: unknown) => void,
+): V144CeremonyDependencies {
+  return {
+    preflightOutputs: async () => undefined,
+    preflightApprovalNotice: async () => undefined,
+    readPlan: async () => plan,
+    loadQualificationIdentity: () => identity,
+    runDeviceFlow: async ({ profile }) => {
+      onDeviceFlow(profile);
+      throw new Error("RED probe ends before Human authorization");
+    },
+  };
+}
 
 describe("I321 Phase-A hidden ceremony", () => {
   test("runs one grant, cleans its notice, executes owner bytes, and writes the output pair", async () => {
@@ -45,7 +87,7 @@ describe("I321 Phase-A hidden ceremony", () => {
       runDeviceFlow: async (input) => {
         events.push("device");
         await input.onUserAction({
-          verification_uri_complete: "https://auth-staging-main.darwinian.dev/device?user_code=ABCD",
+          verification_uri_complete: "https://auth-staging-1.darwinian.dev/device?user_code=ABCD",
           user_code: "ABCD",
           expires_at: "2030-08-27T17:10:00.000Z",
         });
@@ -99,6 +141,71 @@ describe("I321 Phase-A hidden ceremony", () => {
       "owner-execute",
       "outputs",
     ]);
+  });
+
+  test("uses the admitted hidden staging-1 identity instead of the public staging profile", async () => {
+    let observedProfile: Record<string, unknown> | undefined;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/plan.json",
+      approvalNoticePath: "/runner/private/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, redDependencies(staging1QualificationIdentity, (profile) => {
+      observedProfile = profile as Record<string, unknown>;
+    }) as I321PhaseACeremonyDependencies)).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+
+    expect(observedProfile).toMatchObject({
+      hubOrigin: staging1QualificationIdentity.authHubOrigin,
+      issuer: staging1QualificationIdentity.issuer,
+      resource: staging1QualificationIdentity.resource,
+      apiOrigin: staging1QualificationIdentity.apiOrigin,
+      webOrigin: staging1QualificationIdentity.webOrigin,
+      clientId: staging1QualificationIdentity.clientId,
+      scope: staging1QualificationIdentity.requestedScopes.join(" "),
+    });
+    expect(observedProfile).not.toMatchObject({
+      hubOrigin: "https://auth-staging-main.darwinian.dev",
+      apiOrigin: "https://api-staging-main.darwinian.dev",
+    });
+  });
+
+  test("refuses non-staging-1 and single-field tuple drift before device authorization", async () => {
+    const candidates: Array<[string, Record<string, unknown>]> = [
+      ["environment", { ...staging1QualificationIdentity, environmentId: "staging-main" }],
+      ["Auth Hub", { ...staging1QualificationIdentity, authHubOrigin: "https://auth-staging-main.darwinian.dev" }],
+      ["issuer", { ...staging1QualificationIdentity, issuer: "https://auth-staging-main.darwinian.dev/api/auth" }],
+      ["JWKS", { ...staging1QualificationIdentity, jwksUrl: "https://auth-staging-main.darwinian.dev/api/auth/jwks" }],
+      ["resource", { ...staging1QualificationIdentity, resource: "https://api.darwinian.dev" }],
+      ["API", { ...staging1QualificationIdentity, apiOrigin: "https://api-staging-main.darwinian.dev" }],
+      ["Web", { ...staging1QualificationIdentity, webOrigin: "https://foundry-staging-main.darwinian.dev" }],
+      ["approval", { ...staging1QualificationIdentity, approvalOrigin: "https://auth-staging-main.darwinian.dev" }],
+      ["client", { ...staging1QualificationIdentity, clientId: "hostile-client" }],
+      ["scope", { ...staging1QualificationIdentity, requestedScopes: ["openid"] }],
+    ];
+    const module = await import("../cli/core/management/phase-a-ceremony");
+
+    for (const [field, identity] of candidates) {
+      let deviceCalls = 0;
+      await expect(module.executeI321PhaseACeremony({
+        planPath: "/runner/private/plan.json",
+        approvalNoticePath: "/runner/private/notice.json",
+        adapterOrigin: "http://127.0.0.1:8787",
+        readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+        communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+        runnerTemp: "/runner",
+      }, redDependencies(identity, () => {
+        deviceCalls += 1;
+      }) as I321PhaseACeremonyDependencies), field).rejects.toMatchObject({
+        code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+      });
+      expect(deviceCalls, field).toBe(0);
+    }
   });
 
   test("refuses a noncanonical adapter origin before device authorization", async () => {

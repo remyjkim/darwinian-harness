@@ -19,8 +19,8 @@ describe("staging device approval notice", () => {
   const expectedRunId = "33333333-3333-4333-8333-333333333333";
   const validationTime = Date.parse(approval.validationTime);
 
-  test("executes the exact one-positive and twenty-six-hostile owner vectors", () => {
-    expect(approval.vectors).toHaveLength(27);
+  test("executes the exact one-positive and twenty-seven-hostile owner vectors", () => {
+    expect(approval.vectors).toHaveLength(28);
     for (const vector of approval.vectors) {
       const action = () => parseStagingDeviceApprovalNotice(vector.candidate, {
         qualificationRunId: expectedRunId,

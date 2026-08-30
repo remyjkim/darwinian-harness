@@ -5,7 +5,6 @@ import { lstat, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { runDeviceFlow, type RunDeviceFlowInput } from "../auth/device-flow";
-import { drwnCliProfile } from "../auth/profile";
 import { DrwnError } from "../errors";
 import {
   cleanupStagingDeviceApprovalNotice,
@@ -25,6 +24,10 @@ import {
   type PreflightI321PhaseAPublicReceiptPathsInput,
   type WriteI321PhaseAPublicReceiptsInput,
 } from "./phase-a-output";
+import {
+  loadStaging1QualificationIdentity,
+  staging1QualificationCliProfile,
+} from "./staging1-qualification-identity";
 
 const planSchema = z.object({
   schema: z.literal("cl.dah.cli-management-phase-a-plan.v1"),
@@ -89,6 +92,7 @@ export interface I321PhaseACeremonyDependencies {
     path: string,
     options: { runnerTemp: string },
   ) => Promise<I321PhaseAPlan>;
+  loadQualificationIdentity?: () => unknown;
   runDeviceFlow?: (input: RunDeviceFlowInput) => Promise<DeviceCredential>;
   publishApprovalNotice?: (
     path: string,
@@ -204,7 +208,9 @@ export async function executeI321PhaseACeremony(
         runnerTemp: input.runnerTemp,
       }),
     );
-    const profile = drwnCliProfile({ DRWN_CLOUD_PROFILE: "staging" });
+    const profile = staging1QualificationCliProfile(
+      (dependencies.loadQualificationIdentity ?? loadStaging1QualificationIdentity)(),
+    );
     let noticeIdentity: unknown;
     let credential: DeviceCredential | undefined;
     let flowFailed = false;

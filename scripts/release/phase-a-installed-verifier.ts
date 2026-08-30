@@ -251,8 +251,8 @@ async function main(): Promise<void> {
   };
   const authority = await loader.loadI321PhaseAPortWireAuthority();
   if (
-    authority.contract.vectors.length !== 66 ||
-    new Set(authority.contract.vectors.map(({ caseId }) => caseId)).size !== 66
+    authority.contract.vectors.length !== 67 ||
+    new Set(authority.contract.vectors.map(({ caseId }) => caseId)).size !== 67
   ) throw new Error("port vector inventory invalid");
   const projector = authority.projector as Record<string, unknown> & {
     I321_PHASE_A_LOCAL_OPERATION_ORDER_V1: unknown[];
@@ -273,7 +273,32 @@ async function main(): Promise<void> {
       cleanupMode,
     });
   }
-  process.stdout.write(`${JSON.stringify({ portableVectors: 38, portVectors: 66 })}\n`);
+  const identityLoader = await import(pathToFileURL(join(
+    packageRoot,
+    "cli",
+    "core",
+    "management",
+    "staging1-qualification-identity.ts",
+  )).href) as {
+    loadStaging1QualificationIdentity(): Record<string, unknown>;
+    staging1QualificationCliProfile(): Record<string, unknown>;
+  };
+  const identity = identityLoader.loadStaging1QualificationIdentity();
+  const profile = identityLoader.staging1QualificationCliProfile();
+  if (
+    identity.environmentId !== "staging-1" ||
+    identity.jwksUrl !== "https://auth-staging-1.darwinian.dev/api/auth/jwks" ||
+    profile.hubOrigin !== identity.authHubOrigin ||
+    profile.issuer !== identity.issuer ||
+    profile.resource !== identity.resource ||
+    profile.apiOrigin !== identity.apiOrigin ||
+    profile.webOrigin !== identity.webOrigin
+  ) throw new Error("qualification identity inventory invalid");
+  process.stdout.write(`${JSON.stringify({
+    portableVectors: 38,
+    portVectors: 67,
+    qualificationIdentityVectors: 20,
+  })}\n`);
 }
 
 if (import.meta.main) {

@@ -22,10 +22,10 @@ const lockPath = join(
 );
 
 const expected = {
-  "contract.json": "2ac7761d30b3fa33fddf407ab55b598e284beb6def7707bb8df5e6f0b4066647",
+  "contract.json": "4a62e76ebf5f4d8ffc5f5891a0939165e1aa7bb22ad3916aff5f3ced32cbce7a",
   "projector.mjs": "157eb03e7dde2ef6f816781e173a415373657382757bfdb568dc0dab9df5622a",
-  "manifest.json": "9d62e76cd8317647e833ab01197ab1eba8f5a10ec4f47662a131c3fe080b7277",
-  "README.md": "c4ee5ddb786cc6b9d3cd9f8a660e0741dbe7e2d8756acd181aac57b46623aa6d",
+  "manifest.json": "90bc380b54f277bc5179a6060609b99e76024e97b4bd871bab615e59332b0378",
+  "README.md": "855ea78eb51ae7bc2d6d63a86a9e1b28c1d05f6a05ecca72c8ed0815c3283bc8",
 } as const;
 
 describe("I321 D52 Phase-A port-wire companion authority", () => {
@@ -38,21 +38,20 @@ describe("I321 D52 Phase-A port-wire companion authority", () => {
     }
   });
 
-  test("pins the reviewed source, merged main authority, hashes, and vector counts", async () => {
+  test("pins the reviewed source, hashes, and vector counts", async () => {
     expect(await Bun.file(lockPath).exists()).toBe(true);
     expect(JSON.parse(await readFile(lockPath, "utf8"))).toEqual({
       schema: "dah.cli-management-phase-a-port-wire-contract-lock",
       schemaVersion: 1,
       servicesRepository: "curation-labs/darwinian-services",
-      sourceCommit: "79a43d5d8a4cbaa4b88794953c4e59be51dec78d",
-      mergedMainCommit: "1564ceac28425d37351a6380b233e93b6e720ee4",
+      sourceCommit: "d0156761c19f4e7dc5a63914a1117f298b535c37",
       contractSha256: expected["contract.json"],
       projectorSha256: expected["projector.mjs"],
       manifestSha256: expected["manifest.json"],
       readmeSha256: expected["README.md"],
-      vectorCount: 66,
+      vectorCount: 67,
       positiveVectorCount: 17,
-      hostileVectorCount: 49,
+      hostileVectorCount: 50,
     });
   });
 

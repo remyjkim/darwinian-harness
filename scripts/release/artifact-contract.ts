@@ -46,6 +46,7 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "cli/core/management/deployment-artifacts.ts",
   "cli/core/management/deployment-bundle.ts",
   "cli/core/management/staging-community-qualification.ts",
+  "cli/core/management/staging1-qualification-identity.ts",
   "cli/core/management/phase-a.ts",
   "cli/core/management/phase-a-port-wire.ts",
   "cli/core/management/phase-a-port-client.ts",
@@ -55,10 +56,15 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "cli/commands/internal/qualify-staging-community.ts",
   "cli/generated/drwn-management-contract-lock.json",
   "cli/generated/dah-staging-slot-community-contract-lock.json",
+  "cli/generated/dah-staging1-qualification-identity-contract-lock.json",
   "cli/generated/dah-cli-management-phase-a-lock.json",
   "cli/generated/dah-cli-management-phase-a-port-wire-lock.json",
   "registry/contracts/deployed-worker.v1/contract.json",
   "registry/contracts/staging-slot-community.v1/contract.json",
+  "registry/contracts/staging1-qualification-identity.v1/contract.json",
+  "registry/contracts/staging1-qualification-identity.v1/manifest.json",
+  "registry/contracts/staging1-qualification-identity.v1/vectors.json",
+  "registry/contracts/staging1-qualification-identity.v1/README.md",
   "registry/contracts/cli-management-phase-a.v1/contract.json",
   "registry/contracts/cli-management-phase-a.v1/executor.mjs",
   "registry/contracts/cli-management-phase-a.v1/manifest.json",
@@ -529,7 +535,11 @@ export async function runInstalledArtifactSmokes(
   }
   if (
     authority.exitCode !== 0 || authority.stderr !== "" ||
-    JSON.stringify(authorityResult) !== JSON.stringify({ portableVectors: 38, portVectors: 66 })
+    JSON.stringify(authorityResult) !== JSON.stringify({
+      portableVectors: 38,
+      portVectors: 67,
+      qualificationIdentityVectors: 20,
+    })
   ) throw new ReleaseArtifactError("installed Phase-A authority verification failed");
   await assertEmptyDirectories(quarantine);
   passed.push("I321 Phase-A installed authorities");

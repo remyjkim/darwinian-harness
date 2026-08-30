@@ -50,11 +50,17 @@ describe("release package member qualification", () => {
     for (const member of [
       "cli/core/management/deployment-bundle.ts",
       "cli/core/management/staging-community-qualification.ts",
+      "cli/core/management/staging1-qualification-identity.ts",
       "cli/core/management/phase-a.ts",
       "cli/commands/internal/qualify-staging-community.ts",
       "cli/generated/dah-staging-slot-community-contract-lock.json",
+      "cli/generated/dah-staging1-qualification-identity-contract-lock.json",
       "cli/generated/dah-cli-management-phase-a-lock.json",
       "registry/contracts/staging-slot-community.v1/contract.json",
+      "registry/contracts/staging1-qualification-identity.v1/contract.json",
+      "registry/contracts/staging1-qualification-identity.v1/manifest.json",
+      "registry/contracts/staging1-qualification-identity.v1/vectors.json",
+      "registry/contracts/staging1-qualification-identity.v1/README.md",
       "registry/contracts/cli-management-phase-a.v1/contract.json",
       "registry/contracts/cli-management-phase-a.v1/executor.mjs",
       "registry/contracts/cli-management-phase-a.v1/manifest.json",
@@ -250,7 +256,7 @@ describe("installed artifact smokes", () => {
       if (command.some((value) => value.endsWith("phase-a-installed-verifier.ts"))) {
         return {
           exitCode: 0,
-          stdout: '{"portableVectors":38,"portVectors":66}\n',
+          stdout: '{"portableVectors":38,"portVectors":67,"qualificationIdentityVectors":20}\n',
           stderr: "",
         };
       }

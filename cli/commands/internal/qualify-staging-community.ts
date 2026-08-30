@@ -13,6 +13,13 @@ type QualificationCommandDependencies = I321PhaseACeremonyDependencies & {
   executeCeremony?: typeof executeI321PhaseACeremony;
 };
 
+const FORBIDDEN_PROFILE_ENV = [
+  "DRWN_CLOUD_PROFILE",
+  "DRWN_CLOUD_PROFILE_FILE",
+  "DRWN_DAH_HUB_URL",
+  "DRWN_DAH_RESOURCE",
+] as const;
+
 // Intentionally has no `static usage`: this is an I336 qualification seam, not public CLI surface.
 export class QualifyStagingCommunityCommand extends BaseCommand {
   static override paths = [["__internal", "qualify-staging-community"]];
@@ -27,7 +34,11 @@ export class QualifyStagingCommunityCommand extends BaseCommand {
   async execute(): Promise<number> {
     const dependencies = QualifyStagingCommunityCommand.testDeps ?? {};
     try {
-      const runnerTemp = (dependencies.env ?? process.env).RUNNER_TEMP;
+      const env = dependencies.env ?? process.env;
+      if (FORBIDDEN_PROFILE_ENV.some((name) => env[name] !== undefined)) {
+        throw new Error("qualification profile override refused");
+      }
+      const runnerTemp = env.RUNNER_TEMP;
       if (typeof runnerTemp !== "string" || runnerTemp.length === 0) throw new Error("runner temp unavailable");
       await (dependencies.executeCeremony ?? executeI321PhaseACeremony)({
         planPath: this.planPath,
