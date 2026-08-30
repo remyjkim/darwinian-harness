@@ -327,7 +327,7 @@ async function main(): Promise<void> {
   ) as Array<{ expected: string }>;
   if (
     interoperabilityLock.sourceCommit !==
-      "f2972b0abb46dcc8ffbc562e1323774a767ef093" ||
+      "fe610873210153ced057047a8069cb8eaf94f27e" ||
     interoperabilityLock.contractSha256 !==
       createHash("sha256").update(interoperabilityContractBytes).digest("hex") ||
     interoperabilityLock.manifestSha256 !==
