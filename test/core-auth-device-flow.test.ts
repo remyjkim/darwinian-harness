@@ -33,7 +33,11 @@ function fakeJwt(issuer: string, overrides: Record<string, unknown> = {}): strin
   })}.sig`;
 }
 
-function nativeFetcher(options: { pending?: number; terminalError?: string } = {}): {
+function nativeFetcher(options: {
+  pending?: number;
+  terminalError?: string;
+  requireConsent?: boolean;
+} = {}): {
   fetcher: typeof fetch;
   requests: Array<{ url: string; method: string; body: string }>;
 } {
@@ -62,7 +66,26 @@ function nativeFetcher(options: { pending?: number; terminalError?: string } = {
       return Response.json({ access_token: "opaque-device-session" });
     }
     if (parsed.pathname === "/api/auth/oauth2/authorize") {
+      if (options.requireConsent) {
+        const consent = new URL("/oauth-consent", parsed.origin);
+        consent.search = parsed.search;
+        return Response.json({ redirect: true, url: consent.href });
+      }
       return Response.json({ code: "authorization-code" });
+    }
+    if (parsed.pathname === "/api/auth/oauth2/consent") {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        accept?: unknown;
+        oauth_query?: unknown;
+      };
+      if (body.accept !== true || typeof body.oauth_query !== "string") {
+        return Response.json({ error: "invalid_consent" }, { status: 400 });
+      }
+      const query = new URLSearchParams(body.oauth_query);
+      const redirect = new URL(query.get("redirect_uri") ?? "http://127.0.0.1/callback");
+      redirect.searchParams.set("code", "authorization-code");
+      redirect.searchParams.set("state", query.get("state") ?? "");
+      return Response.json({ redirect: true, url: redirect.href });
     }
     if (parsed.pathname === "/api/auth/oauth2/token") {
       return Response.json({
@@ -155,6 +178,65 @@ describe("runDeviceFlow", () => {
     releaseNotice();
     await flow;
     expect(requests.map(({ url }) => new URL(url).pathname)).toContain("/api/auth/device/token");
+  });
+
+  test("completes the provider consent ceremony with the approved device-session bearer", async () => {
+    const profile = drwnCliProfile({});
+    const { fetcher, requests } = nativeFetcher({ requireConsent: true });
+
+    await expect(runDeviceFlow({
+      profile,
+      fetcher,
+      sleep: async () => {},
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
+      onUserAction: () => {},
+    })).resolves.toMatchObject({ clientId: "drwn-cli", resource: profile.resource });
+
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/device/code",
+      "/api/auth/device/token",
+      "/api/auth/oauth2/authorize",
+      "/api/auth/oauth2/consent",
+      "/api/auth/oauth2/token",
+    ]);
+    const consent = JSON.parse(requests[3]!.body) as {
+      accept: boolean;
+      oauth_query: string;
+    };
+    expect(consent.accept).toBe(true);
+    const query = new URLSearchParams(consent.oauth_query);
+    expect(query.get("client_id")).toBe("drwn-cli");
+    expect(query.get("resource")).toBe(profile.resource);
+    expect(query.get("state")).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test("refuses cross-origin or state-substituted consent completion", async () => {
+    const profile = drwnCliProfile({});
+    for (const hostile of ["cross-origin", "wrong-state"] as const) {
+      const base = nativeFetcher({ requireConsent: true });
+      const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+        const response = await base.fetcher(input, init);
+        if (new URL(String(input)).pathname !== "/api/auth/oauth2/consent") return response;
+        const body = JSON.parse(String(init?.body ?? "{}")) as { oauth_query: string };
+        const query = new URLSearchParams(body.oauth_query);
+        const redirect = new URL(hostile === "cross-origin"
+          ? "https://foreign.example.test/callback"
+          : profile.redirectUri);
+        redirect.searchParams.set("code", "authorization-code");
+        redirect.searchParams.set("state", hostile === "wrong-state"
+          ? crypto.randomUUID()
+          : query.get("state") ?? "");
+        return Response.json({ redirect: true, url: redirect.href });
+      }) as typeof fetch;
+      await expect(runDeviceFlow({
+        profile,
+        fetcher,
+        sleep: async () => {},
+        now: () => (IAT + 1) * 1000,
+        onUserAction: () => {},
+      })).rejects.toThrow();
+    }
   });
 
   test("rejects a successful final token without exact delegation readiness before credential creation", async () => {

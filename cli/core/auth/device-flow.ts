@@ -9,6 +9,7 @@ import { assertDelegationReadyClaims } from "./delegation-readiness";
 const DEVICE_CODE_PATH = "/api/auth/device/code";
 const DEVICE_TOKEN_PATH = "/api/auth/device/token";
 const AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
+const CONSENT_PATH = "/api/auth/oauth2/consent";
 const TOKEN_PATH = "/api/auth/oauth2/token";
 const MAX_FUTURE_IAT_SKEW_MS = 60_000;
 const MAX_DEVICE_FLOW_SECONDS = 3_600;
@@ -211,6 +212,7 @@ export async function exchangeDeviceSession(
   fetcher: typeof fetch = fetch,
 ): Promise<TokenBundle> {
   const pkce = await createPkcePair();
+  const state = crypto.randomUUID();
   const authorizeUrl = new URL(AUTHORIZE_PATH, profile.hubOrigin);
   authorizeUrl.searchParams.set("client_id", profile.clientId);
   authorizeUrl.searchParams.set("response_type", "code");
@@ -219,18 +221,59 @@ export async function exchangeDeviceSession(
   authorizeUrl.searchParams.set("resource", profile.resource);
   authorizeUrl.searchParams.set("code_challenge", pkce.challenge);
   authorizeUrl.searchParams.set("code_challenge_method", pkce.method);
+  authorizeUrl.searchParams.set("state", state);
 
   const authorize = await fetcher(authorizeUrl.href, {
     method: "GET",
     headers: { authorization: `Bearer ${deviceSessionBearer}`, accept: "application/json" },
+    redirect: "manual",
   });
   if (!authorize.ok) throw new Error(`DAH authorize request failed (${authorize.status}).`);
   const authorizeBody = (await authorize.json()) as Record<string, unknown>;
-  const code = typeof authorizeBody.code === "string"
+  let nextUrl: URL | undefined;
+  if (typeof authorizeBody.url === "string") {
+    try { nextUrl = new URL(authorizeBody.url, profile.hubOrigin); }
+    catch { throw new Error("DAH authorize response did not include code."); }
+  }
+  let code = typeof authorizeBody.code === "string"
     ? authorizeBody.code
-    : typeof authorizeBody.url === "string"
-      ? new URL(authorizeBody.url).searchParams.get("code")
-      : null;
+    : nextUrl?.searchParams.get("code") ?? null;
+  if (!code && nextUrl) {
+    const consentUrl = nextUrl;
+    const hub = new URL(profile.hubOrigin);
+    if (
+      consentUrl.origin !== hub.origin ||
+      consentUrl.pathname !== "/oauth-consent" ||
+      consentUrl.hash !== "" ||
+      consentUrl.search === ""
+    ) throw new Error("DAH authorize response did not include code.");
+    const consent = await fetcher(new URL(CONSENT_PATH, profile.hubOrigin).href, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${deviceSessionBearer}`,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({ accept: true, oauth_query: consentUrl.search.slice(1) }),
+      redirect: "manual",
+    });
+    if (!consent.ok) throw new Error(`DAH consent request failed (${consent.status}).`);
+    const consentBody = (await consent.json()) as Record<string, unknown>;
+    if (consentBody.redirect !== true || typeof consentBody.url !== "string") {
+      throw new Error("DAH consent response did not include redirect.");
+    }
+    const completed = new URL(consentBody.url, profile.hubOrigin);
+    const callback = new URL(profile.redirectUri);
+    if (
+      completed.origin !== callback.origin ||
+      completed.pathname !== callback.pathname ||
+      completed.username !== "" || completed.password !== "" || completed.hash !== "" ||
+      completed.searchParams.getAll("state").length !== 1 ||
+      completed.searchParams.get("state") !== state ||
+      completed.searchParams.getAll("code").length !== 1
+    ) throw new Error("DAH consent response was invalid.");
+    code = completed.searchParams.get("code");
+  }
   if (!code) throw new Error("DAH authorize response did not include code.");
 
   const tokenBody = await postForm(fetcher, new URL(TOKEN_PATH, profile.hubOrigin).href, {

@@ -83,6 +83,9 @@ describe("assertDelegationReadyClaims", () => {
       decodeJwtClaims(token({ scope: "dah:management.delegate offline_access email openid" })),
       profile,
     )).toBeDefined();
+    expect(assertDelegationReadyClaims(decodeJwtClaims(token({
+      aud: [profile.resource, `${profile.issuer}/oauth2/userinfo`],
+    })), profile)).toBeDefined();
   });
 
   test("rejects scp-only, duplicate, added, dropped, or malformed scope claims", () => {
