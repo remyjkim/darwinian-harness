@@ -164,6 +164,27 @@ describe("organization management commands", () => {
     });
   });
 
+  test("ordinary org JSON and cloud context remain authority-header free", async () => {
+    const communitySentinel = "community-authority-must-not-project";
+    const digestSentinel = "a".repeat(64);
+    const result = await runOrg(["org", "use", "org_acme", "--json"], (async (_input, init) => {
+      const requestId = new Headers(init?.headers).get("x-request-id")!;
+      return Response.json({
+        requestId,
+        organization: { organizationId: "org_acme", displayName: "Acme", revision: 7 },
+      }, { headers: {
+        "x-dah-buzz-community-id": communitySentinel,
+        "x-dah-organization-read-sha256": digestSentinel,
+        "cf-ray": "ordinary-routing-metadata",
+      } });
+    }) as typeof fetch, { requestIds: [requestIds[1]!] });
+    expect(result.exitCode).toBe(0);
+    const context = await readFile(`${result.fixture.homeDir}/.agents/drwn/cloud-context.json`, "utf8");
+    expect(`${result.stdout}${result.stderr}${context}`).not.toContain(communitySentinel);
+    expect(`${result.stdout}${result.stderr}${context}`).not.toContain(digestSentinel);
+    expect(`${result.stdout}${result.stderr}${context}`).not.toContain("x-dah-");
+  });
+
   test("org use refusal leaves local context absent and never reflects the candidate ID", async () => {
     const requestId = requestIds[1]!;
     const result = await runOrg(["org", "use", "org_hidden"], (async () => response({

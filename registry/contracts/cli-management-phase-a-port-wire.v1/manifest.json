@@ -1,0 +1,21 @@
+{
+  "schema": "cl.dah.cli-management-phase-a-port-wire-artifact-manifest.v1",
+  "schemaVersion": 1,
+  "sourceAuthority": "containing_git_commit",
+  "contractFile": "contract.json",
+  "contractSha256": "4a62e76ebf5f4d8ffc5f5891a0939165e1aa7bb22ad3916aff5f3ced32cbce7a",
+  "contractBytes": 17927,
+  "projectorFile": "projector.mjs",
+  "projectorSha256": "157eb03e7dde2ef6f816781e173a415373657382757bfdb568dc0dab9df5622a",
+  "projectorBytes": 291718,
+  "localOperationCount": 2,
+  "remoteOperationCallCount": 12,
+  "cleanupStateCount": 5,
+  "vectorCount": 67,
+  "positiveVectorCount": 17,
+  "hostileVectorCount": 50,
+  "qualificationIdentityContractSha256": "1dbde33ab10d12f31ee9581984cb37c88a9363da2af1518402e62546f582b0b6",
+  "qualificationIdentityManifestSha256": "d5ba47199320b282e2938f80e56ccb55fc9618d57e27114fbc219bea2094a995",
+  "qualificationIdentityVectorsSha256": "dc4580b5cddc8d5a493c14e29f6211cb7c2389fc5e658a963683c3a24ac3f4be",
+  "approvalNoticeArtifactSha256": "40755caf06cc7c61bf302768eb20e8f41254d47868ee3515f4beee5af2afa8c7"
+}

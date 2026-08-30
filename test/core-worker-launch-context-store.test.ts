@@ -106,7 +106,7 @@ test("concurrent identical publishers produce one final context and one verified
   const results = await Promise.all([store.publishWorkerLaunchContext(options()), store.publishWorkerLaunchContext(options())]);
 
   expect(results.map((result: { reused: boolean }) => result.reused).sort()).toEqual([false, true]);
-  expect(await readdir(input.plan.plannedArtifactDir)).toEqual(["codex", "manifest.json", "publication.json", "receipt.json"]);
+  expect((await readdir(input.plan.plannedArtifactDir)).sort()).toEqual(["codex", "manifest.json", "publication.json", "receipt.json"]);
 });
 
 test("a failure before rename exposes no final context and cleans its own stage", async () => {

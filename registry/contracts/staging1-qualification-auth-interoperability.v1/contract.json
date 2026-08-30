@@ -1,0 +1,29 @@
+{
+  "schema": "cl.dah.staging1-qualification-auth-interoperability.v1",
+  "schemaVersion": 1,
+  "environmentId": "staging-1",
+  "authorize": {
+    "acceptedModes": [
+      "direct_code",
+      "explicit_consent"
+    ],
+    "consentPath": "/oauth-consent",
+    "consentEndpointPath": "/api/auth/oauth2/consent",
+    "redirectUri": "http://127.0.0.1/callback",
+    "requireMatchingState": true
+  },
+  "accessToken": {
+    "clientId": "drwn-cli",
+    "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+    "resource": "https://api-staging-1.darwinian.dev",
+    "userinfoAudience": "https://auth-staging-1.darwinian.dev/api/auth/oauth2/userinfo",
+    "requestedScopes": [
+      "openid",
+      "email",
+      "offline_access",
+      "dah:management.delegate"
+    ],
+    "exactAudienceSet": true,
+    "exactScopeSet": true
+  }
+}

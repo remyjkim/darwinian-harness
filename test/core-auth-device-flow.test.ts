@@ -6,6 +6,7 @@ import {
   AuthRemoteOperationError,
   refreshToken,
   revokeToken,
+  runQualificationDeviceFlow,
   runDeviceFlow,
   type RevokeTokenResult,
 } from "../cli/core/auth/device-flow";
@@ -33,7 +34,11 @@ function fakeJwt(issuer: string, overrides: Record<string, unknown> = {}): strin
   })}.sig`;
 }
 
-function nativeFetcher(options: { pending?: number; terminalError?: string } = {}): {
+function nativeFetcher(options: {
+  pending?: number;
+  terminalError?: string;
+  requireConsent?: boolean;
+} = {}): {
   fetcher: typeof fetch;
   requests: Array<{ url: string; method: string; body: string }>;
 } {
@@ -62,7 +67,26 @@ function nativeFetcher(options: { pending?: number; terminalError?: string } = {
       return Response.json({ access_token: "opaque-device-session" });
     }
     if (parsed.pathname === "/api/auth/oauth2/authorize") {
+      if (options.requireConsent) {
+        const consent = new URL("/oauth-consent", parsed.origin);
+        consent.search = parsed.search;
+        return Response.json({ redirect: true, url: consent.href });
+      }
       return Response.json({ code: "authorization-code" });
+    }
+    if (parsed.pathname === "/api/auth/oauth2/consent") {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        accept?: unknown;
+        oauth_query?: unknown;
+      };
+      if (body.accept !== true || typeof body.oauth_query !== "string") {
+        return Response.json({ error: "invalid_consent" }, { status: 400 });
+      }
+      const query = new URLSearchParams(body.oauth_query);
+      const redirect = new URL(query.get("redirect_uri") ?? "http://127.0.0.1/callback");
+      redirect.searchParams.set("code", "authorization-code");
+      redirect.searchParams.set("state", query.get("state") ?? "");
+      return Response.json({ redirect: true, url: redirect.href });
     }
     if (parsed.pathname === "/api/auth/oauth2/token") {
       return Response.json({
@@ -79,7 +103,7 @@ function nativeFetcher(options: { pending?: number; terminalError?: string } = {
 describe("runDeviceFlow", () => {
   test("runs only the native DAH flow and creates an exact generation-1 v3 credential", async () => {
     const profile = drwnCliProfile({});
-    const actions: Array<{ verification_uri_complete: string; user_code: string }> = [];
+    const actions: Array<Record<string, string>> = [];
     const slept: number[] = [];
     const { fetcher, requests } = nativeFetcher({ pending: 1 });
 
@@ -109,6 +133,7 @@ describe("runDeviceFlow", () => {
     expect(actions).toEqual([{
       verification_uri_complete: "https://app.test/device?user_code=ABCD",
       user_code: "ABCD",
+      expires_at: new Date((IAT + 1) * 1000 + 600_000).toISOString(),
     }]);
     expect(slept).toEqual([1000, 1000]);
     expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
@@ -124,6 +149,95 @@ describe("runDeviceFlow", () => {
     });
     const authorize = new URL(requests[3]!.url);
     expect(authorize.searchParams.get("scope")).toBe("openid email offline_access dah:management.delegate");
+  });
+
+  test("awaits the approval notice callback before polling and shares the exact poll expiry", async () => {
+    const profile = drwnCliProfile({});
+    const { fetcher, requests } = nativeFetcher();
+    let releaseNotice!: () => void;
+    const noticeGate = new Promise<void>((resolve) => { releaseNotice = resolve; });
+    let notice: Record<string, string> | undefined;
+    const flow = runDeviceFlow({
+      profile,
+      fetcher,
+      sleep: async () => {},
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
+      onUserAction: async (info) => {
+        notice = info as unknown as Record<string, string>;
+        await noticeGate;
+      },
+    });
+
+    await Bun.sleep(0);
+    expect(requests.map(({ url }) => new URL(url).pathname)).toEqual(["/api/auth/device/code"]);
+    expect(notice).toEqual({
+      verification_uri_complete: "https://app.test/device?user_code=ABCD",
+      user_code: "ABCD",
+      expires_at: new Date((IAT + 1) * 1000 + 600_000).toISOString(),
+    });
+    releaseNotice();
+    await flow;
+    expect(requests.map(({ url }) => new URL(url).pathname)).toContain("/api/auth/device/token");
+  });
+
+  test("completes the provider consent ceremony with the approved device-session bearer", async () => {
+    const profile = drwnCliProfile({});
+    const { fetcher, requests } = nativeFetcher({ requireConsent: true });
+
+    await expect(runDeviceFlow({
+      profile,
+      fetcher,
+      sleep: async () => {},
+      now: () => (IAT + 1) * 1000,
+      randomUUID: () => UUID,
+      onUserAction: () => {},
+    })).resolves.toMatchObject({ clientId: "drwn-cli", resource: profile.resource });
+
+    expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
+      "/api/auth/device/code",
+      "/api/auth/device/token",
+      "/api/auth/oauth2/authorize",
+      "/api/auth/oauth2/consent",
+      "/api/auth/oauth2/token",
+    ]);
+    const consent = JSON.parse(requests[3]!.body) as {
+      accept: boolean;
+      oauth_query: string;
+    };
+    expect(consent.accept).toBe(true);
+    const query = new URLSearchParams(consent.oauth_query);
+    expect(query.get("client_id")).toBe("drwn-cli");
+    expect(query.get("resource")).toBe(profile.resource);
+    expect(query.get("state")).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test("refuses cross-origin or state-substituted consent completion", async () => {
+    const profile = drwnCliProfile({});
+    for (const hostile of ["cross-origin", "wrong-state"] as const) {
+      const base = nativeFetcher({ requireConsent: true });
+      const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+        const response = await base.fetcher(input, init);
+        if (new URL(String(input)).pathname !== "/api/auth/oauth2/consent") return response;
+        const body = JSON.parse(String(init?.body ?? "{}")) as { oauth_query: string };
+        const query = new URLSearchParams(body.oauth_query);
+        const redirect = new URL(hostile === "cross-origin"
+          ? "https://foreign.example.test/callback"
+          : profile.redirectUri);
+        redirect.searchParams.set("code", "authorization-code");
+        redirect.searchParams.set("state", hostile === "wrong-state"
+          ? crypto.randomUUID()
+          : query.get("state") ?? "");
+        return Response.json({ redirect: true, url: redirect.href });
+      }) as typeof fetch;
+      await expect(runDeviceFlow({
+        profile,
+        fetcher,
+        sleep: async () => {},
+        now: () => (IAT + 1) * 1000,
+        onUserAction: () => {},
+      })).rejects.toThrow();
+    }
   });
 
   test("rejects a successful final token without exact delegation readiness before credential creation", async () => {
@@ -293,6 +407,59 @@ describe("runDeviceFlow", () => {
       })).rejects.toThrow("DAH device authorization response is invalid");
       expect(polls).toBe(0);
       expect(actions).toBe(0);
+    }
+  });
+
+  test("classifies the three hidden-qualification auth stages without reflecting causes", async () => {
+    const profile = drwnCliProfile({});
+    const sentinel = "HOSTILE_AUTH_STAGE_SENTINEL";
+    const baseConsent = nativeFetcher();
+    const baseToken = nativeFetcher();
+    const scenarios: Array<{ stage: string; fetcher: typeof fetch }> = [
+      {
+        stage: "device_authorization_failed",
+        fetcher: (async () => { throw new Error(sentinel); }) as unknown as typeof fetch,
+      },
+      {
+        stage: "oauth_consent_failed",
+        fetcher: (async (input, init) => {
+          if (new URL(String(input)).pathname === "/api/auth/oauth2/authorize") {
+            return new Response(sentinel, { status: 503 });
+          }
+          return baseConsent.fetcher(input, init);
+        }) as typeof fetch,
+      },
+      {
+        stage: "access_token_validation_failed",
+        fetcher: (async (input, init) => {
+          if (new URL(String(input)).pathname === "/api/auth/oauth2/token") {
+            return Response.json({
+              access_token: fakeJwt(profile.issuer, { aud: "https://foreign.example" }),
+              refresh_token: "synthetic-refresh",
+              expires_in: 900,
+            });
+          }
+          return baseToken.fetcher(input, init);
+        }) as typeof fetch,
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      try {
+        await runQualificationDeviceFlow({
+          profile,
+          fetcher: scenario.fetcher,
+          sleep: async () => {},
+          now: () => (IAT + 1) * 1000,
+          randomUUID: () => UUID,
+          onUserAction: () => {},
+        });
+        throw new Error("stage unexpectedly succeeded");
+      } catch (error) {
+        expect(error, scenario.stage).toMatchObject({ stage: scenario.stage });
+        expect(String(error), scenario.stage).not.toContain(sentinel);
+        expect(JSON.stringify(error), scenario.stage).not.toContain(sentinel);
+      }
     }
   });
 

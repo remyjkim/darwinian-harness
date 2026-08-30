@@ -3,13 +3,14 @@
   "schemaVersion": 1,
   "protocol": "deployed-worker.v1",
   "servicesRepository": "curation-labs/darwinian-services",
-  "sourceCommit": "5920f2c763f6afae3768286692df75489274006f",
-  "sha256": "1534f85fe8d9079eb1c6c3cc9cf34477fb7cd19973247f31f4b98df0ed9bc3b2",
+  "sourceCommit": "c6fa3e60bd90f74c3967e609722cb900f996b5b8",
+  "sha256": "6dcba2f6dbce453ad408f357645687cc66e1b5d5bfbdb5fd47b529a8dc952c80",
   "routeCount": 13,
   "positiveVectorCount": 13,
-  "negativeVectorCount": 32,
+  "negativeVectorCount": 47,
   "semanticVectorCount": 3,
-  "schemaCount": 63,
+  "schemaCount": 62,
+  "rawBodyContractCount": 1,
   "wireErrorCodeCount": 9,
   "clientErrorCodeCount": 10
 }

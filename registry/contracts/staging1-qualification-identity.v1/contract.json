@@ -1,0 +1,18 @@
+{
+  "schema": "cl.dah.staging1-qualification-identity.v1",
+  "environmentId": "staging-1",
+  "authHubOrigin": "https://auth-staging-1.darwinian.dev",
+  "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+  "jwksUrl": "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+  "resource": "https://api-staging-1.darwinian.dev",
+  "apiOrigin": "https://api-staging-1.darwinian.dev",
+  "webOrigin": "https://foundry-staging-1.darwinian.dev",
+  "approvalOrigin": "https://auth-staging-1.darwinian.dev",
+  "clientId": "drwn-cli",
+  "requestedScopes": [
+    "openid",
+    "email",
+    "offline_access",
+    "dah:management.delegate"
+  ]
+}

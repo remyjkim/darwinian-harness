@@ -49,6 +49,16 @@ function isBoundedHumanSubject(value: unknown): value is string {
     !/[\s\u0000-\u001f\u007f]/u.test(value);
 }
 
+function hasExactDelegationAudience(value: unknown, profile: CliAuthProfile): boolean {
+  if (value === profile.resource) return true;
+  if (!Array.isArray(value) || value.length !== 2 ||
+    value.some((audience) => typeof audience !== "string")) return false;
+  const audiences = new Set(value as string[]);
+  return audiences.size === 2 &&
+    audiences.has(profile.resource) &&
+    audiences.has(`${profile.issuer}/oauth2/userinfo`);
+}
+
 export function assertDelegationReadyClaims(
   claims: JwtClaims,
   profile: CliAuthProfile,
@@ -60,7 +70,7 @@ export function assertDelegationReadyClaims(
     const expiry = claims.exp;
     if (
       claims.iss !== profile.issuer ||
-      claims.aud !== profile.resource ||
+      !hasExactDelegationAudience(claims.aud, profile) ||
       claims.azp !== profile.clientId ||
       !isBoundedHumanSubject(claims.sub) ||
       claims.scp !== undefined ||

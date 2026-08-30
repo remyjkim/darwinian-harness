@@ -1,0 +1,14 @@
+{
+  "schema": "cl.dah.staging1-qualification-identity-artifact-manifest.v1",
+  "schemaVersion": 1,
+  "sourceAuthority": "containing_git_commit",
+  "contractFile": "contract.json",
+  "contractSha256": "1dbde33ab10d12f31ee9581984cb37c88a9363da2af1518402e62546f582b0b6",
+  "contractBytes": 637,
+  "vectorsFile": "vectors.json",
+  "vectorsSha256": "dc4580b5cddc8d5a493c14e29f6211cb7c2389fc5e658a963683c3a24ac3f4be",
+  "vectorsBytes": 16419,
+  "vectorCount": 20,
+  "positiveVectorCount": 1,
+  "hostileVectorCount": 19
+}

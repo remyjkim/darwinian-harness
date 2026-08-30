@@ -31,7 +31,8 @@ export XDG_CONFIG_HOME="$E2E_ROOT/xdg"
 export DRWN_CLOUD_PROFILE=local
 export DRWN_CLOUD_PROFILE_FILE="$E2E_ROOT/cloud-profile.json"
 export NODE_TLS_REJECT_UNAUTHORIZED=0
-mkdir -p "$HOME" "$AGENTS_DIR" "$XDG_CONFIG_HOME" "$E2E_ROOT/project" "$E2E_ROOT/cards"
+export RUNNER_TEMP="$E2E_ROOT/runner-temp"
+mkdir -p "$HOME" "$AGENTS_DIR" "$XDG_CONFIG_HOME" "$E2E_ROOT/project" "$E2E_ROOT/cards" "$RUNNER_TEMP"
 
 if [[ -z "${DRWN_E2E_BIN:-}" ]]; then
   DRWN_E2E_BIN="$E2E_ROOT/drwn-source"
@@ -120,6 +121,26 @@ run_drwn worker deploy --help >/dev/null
 run_drwn worker retire --help >/dev/null
 HELP_STATE_AFTER="$(find "$E2E_ROOT" -type f -print0 | sort -z | xargs -0 shasum -a 256)"
 [[ "$HELP_STATE_BEFORE" == "$HELP_STATE_AFTER" ]] || fail "management help mutated isolated state"
+
+QUALIFICATION_READINESS="$RUNNER_TEMP/i321-cli-management-readiness.json"
+QUALIFICATION_COMMUNITY="$RUNNER_TEMP/i321-staging-slot-community.json"
+QUALIFICATION_NOTICE="$RUNNER_TEMP/i321-device-approval-notice.json"
+set +e
+QUALIFICATION_STDOUT="$(run_drwn __internal qualify-staging-community \
+  --plan-file "$E2E_ROOT/missing-private-plan.json" \
+  --approval-notice-file "$QUALIFICATION_NOTICE" \
+  --phase-a-adapter-origin "http://127.0.0.1:1" \
+  --readiness-output-file "$QUALIFICATION_READINESS" \
+  --community-output-file "$QUALIFICATION_COMMUNITY" \
+  2>"$E2E_ROOT/qualification.stderr")"
+QUALIFICATION_STATUS=$?
+set -e
+[[ "$QUALIFICATION_STATUS" -ne 0 ]] || fail "missing qualification plan unexpectedly succeeded"
+[[ -z "$QUALIFICATION_STDOUT" ]] || fail "qualification refusal wrote stdout"
+[[ "$(cat "$E2E_ROOT/qualification.stderr")" == "STAGING_COMMUNITY_QUALIFICATION_FAILED:phase_a_execution_failed" ]] || fail "qualification refusal was not fixed and redacted"
+assert_file_absent "$QUALIFICATION_READINESS"
+assert_file_absent "$QUALIFICATION_COMMUNITY"
+assert_file_absent "$QUALIFICATION_NOTICE"
 
 start_server 1
 ORG_LIST="$(run_drwn org list --json)"

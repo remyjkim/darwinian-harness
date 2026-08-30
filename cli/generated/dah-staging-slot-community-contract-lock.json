@@ -1,0 +1,13 @@
+{
+  "schema": "dah.staging-slot-community-contract-lock",
+  "schemaVersion": 1,
+  "servicesRepository": "curation-labs/darwinian-services",
+  "sourceCommit": "d0156761c19f4e7dc5a63914a1117f298b535c37",
+  "sha256": "40755caf06cc7c61bf302768eb20e8f41254d47868ee3515f4beee5af2afa8c7",
+  "vectorCount": 14,
+  "positiveVectorCount": 1,
+  "hostileVectorCount": 13,
+  "deviceApprovalVectorCount": 28,
+  "deviceApprovalPositiveVectorCount": 1,
+  "deviceApprovalHostileVectorCount": 27
+}

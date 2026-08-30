@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { drwnCliProfile } from "../cli/core/auth/profile";
 import type { CliDahCredentialFileV3 } from "../cli/core/auth/credentials";
 import { executeManagementRequest } from "../cli/core/management/transport";
+import { managementContract } from "../cli/core/management/contracts";
 import { DRWN_VERSION } from "../cli/core/version";
 
 const profile = drwnCliProfile({});
@@ -166,6 +167,54 @@ describe("executeManagementRequest", () => {
     expect(JSON.parse(bodies[0]!)).toEqual({ environment: "staging", name: "worker-alpha", organizationId: "org_acme" });
     expect(requestIds).toEqual([ids.register, ids.register]);
     expect(sleeps).toEqual([2_000]);
+  });
+
+  test("sends Route 13 as raw USTAR and opens a fresh identical body for typed retry", async () => {
+    const vector = managementContract.vectors.positive.find(({ routeKey }) => routeKey === "deployment_artifacts.put")!;
+    const expected = Buffer.from(vector.bodyFixture!.bytesBase64, "base64");
+    const bodies: NonNullable<RequestInit["body"]>[] = [];
+    const observed: Buffer[] = [];
+    const headers: Record<string, string>[] = [];
+    let calls = 0;
+    let bodyFactoryCalls = 0;
+    const result = await executeManagementRequest({
+      routeKey: "deployment_artifacts.put",
+      request: vector.request,
+      rawBody: {
+        mediaType: "application/vnd.darwinian.worker-deploy-bundle.v1+tar",
+        byteLength: expected.byteLength,
+        createBody: () => {
+          bodyFactoryCalls += 1;
+          const bytes = new Uint8Array(expected);
+          return new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(bytes); controller.close(); } });
+        },
+      },
+      credentialsPath: "/unused",
+      env: { DRWN_TOKEN: token() },
+    }, {
+      fetcher: (async (_input, init) => {
+        calls += 1;
+        bodies.push(init!.body!);
+        headers.push(Object.fromEntries(new Headers(init?.headers)));
+        observed.push(Buffer.from(await new Response(init!.body).arrayBuffer()));
+        if (calls === 1) return json(publicError(String(vector.request.requestId), "TEMPORARILY_UNAVAILABLE", true, 1), 503);
+        return json(vector.success);
+      }) as typeof fetch,
+      sleep: async () => {},
+      now: () => "2026-08-27T12:00:00.000Z",
+    });
+
+    expect(result.outcome).toBe("succeeded");
+    expect(bodyFactoryCalls).toBe(2);
+    expect(bodies[0]).not.toBe(bodies[1]);
+    expect(observed).toEqual([expected, expected]);
+    for (const sent of headers) {
+      expect(sent["content-type"]).toBe("application/vnd.darwinian.worker-deploy-bundle.v1+tar");
+      expect(sent["content-length"]).toBe("5120");
+      expect(sent).not.toHaveProperty("content-encoding");
+      expect(sent["x-request-id"]).toBe(String(vector.request.requestId));
+    }
+    expect(JSON.stringify(vector.request)).not.toContain("payloadBase64");
   });
 
   test("refreshes a stored bearer once on 401 and replays the same prepared request", async () => {

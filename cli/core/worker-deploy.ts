@@ -275,7 +275,7 @@ async function buildStoreExport(agentsDir: string, cards: CardLockEntry[], maxBy
   const tempDir = await mkdtemp(join(tmpdir(), "drwn-worker-deploy-"));
   const tarPath = join(tempDir, "store.tar");
   try {
-    await createStoreExportForLock(agentsDir, cards, tarPath);
+    await createStoreExportForLock(agentsDir, cards, tarPath, { noMtime: true });
     const bytes = await readFile(tarPath);
     if (bytes.byteLength > maxBytes) {
       throw new DrwnError(

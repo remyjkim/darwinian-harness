@@ -1,0 +1,400 @@
+// ABOUTME: Orchestrates one hidden D52 ceremony from strict plan through paired public outputs.
+// ABOUTME: Proves one device grant and notice lifecycle precede owner execution without legacy REST reads.
+
+import { describe, expect, test } from "bun:test";
+import type {
+  I321PhaseACeremonyDependencies,
+} from "../cli/core/management/phase-a-ceremony";
+
+const plan = {
+  schema: "cl.dah.cli-management-phase-a-plan.v1",
+  environmentId: "staging-1",
+  sourceCommitSha: "a".repeat(40),
+  qualificationRunId: "11111111-1111-4111-8111-111111111111",
+  contractSha256: "c7c66461c9dfc37069691f36826e1ac9e20d59412745a81941cff9de42d5a601",
+  providerPolicyVersion: `sha256:${"b".repeat(64)}`,
+  relayUrl: "wss://kc.communities.buzz.xyz",
+  httpsBase: "https://kc.communities.buzz.xyz",
+  workflow: {
+    repository: "curation-labs/darwinian-services",
+    runId: 33181185126,
+    runAttempt: 1,
+  },
+} as const;
+
+const staging1QualificationIdentity = Object.freeze({
+  schema: "cl.dah.staging1-qualification-identity.v1",
+  environmentId: "staging-1",
+  authHubOrigin: "https://auth-staging-1.darwinian.dev",
+  issuer: "https://auth-staging-1.darwinian.dev/api/auth",
+  jwksUrl: "https://auth-staging-1.darwinian.dev/api/auth/jwks",
+  resource: "https://api-staging-1.darwinian.dev",
+  apiOrigin: "https://api-staging-1.darwinian.dev",
+  webOrigin: "https://foundry-staging-1.darwinian.dev",
+  approvalOrigin: "https://auth-staging-1.darwinian.dev",
+  clientId: "drwn-cli",
+  requestedScopes: Object.freeze([
+    "openid",
+    "email",
+    "offline_access",
+    "dah:management.delegate",
+  ]),
+});
+
+type V144CeremonyDependencies = I321PhaseACeremonyDependencies & {
+  loadQualificationIdentity?: () => unknown;
+};
+
+function redDependencies(
+  identity: unknown,
+  onDeviceFlow: (profile: unknown) => void,
+): V144CeremonyDependencies {
+  return {
+    preflightOutputs: async () => undefined,
+    preflightApprovalNotice: async () => undefined,
+    readPlan: async () => plan,
+    loadQualificationIdentity: () => identity,
+    runDeviceFlow: async ({ profile }) => {
+      onDeviceFlow(profile);
+      throw new Error("RED probe ends before Human authorization");
+    },
+  };
+}
+
+function successfulDependencies(): I321PhaseACeremonyDependencies {
+  return {
+    now: () => Date.parse("2030-08-27T17:05:00.000Z"),
+    preflightOutputs: async () => undefined,
+    preflightApprovalNotice: async () => undefined,
+    readPlan: async () => plan,
+    runDeviceFlow: async (input) => {
+      await input.onUserAction({
+        verification_uri_complete:
+          "https://auth-staging-1.darwinian.dev/device?user_code=ABCD",
+        user_code: "ABCD",
+        expires_at: "2030-08-27T17:10:00.000Z",
+      });
+      return {
+        accessToken: "synthetic-access-token",
+        issuedAt: "2030-08-27T17:00:00.000Z",
+        expiresAt: "2030-08-27T17:15:00.000Z",
+      };
+    },
+    publishApprovalNotice: async () => ({ identity: "notice" }),
+    cleanupApprovalNotice: async () => undefined,
+    executeQualification: async () => ({
+      readiness: {},
+      community: {},
+      readinessBytes: new TextEncoder().encode("{}\n"),
+      communityBytes: new TextEncoder().encode("{}\n"),
+    }),
+    writeOutputs: async () => undefined,
+  };
+}
+
+describe("I321 Phase-A hidden ceremony", () => {
+  test("runs one grant, cleans its notice, executes owner bytes, and writes the output pair", async () => {
+    const events: string[] = [];
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    await module.executeI321PhaseACeremony({
+      planPath: "/runner/private/plan.json",
+      approvalNoticePath: "/runner/private/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, {
+      now: () => Date.parse("2030-08-27T17:05:00.000Z"),
+      readPlan: async () => {
+        events.push("plan");
+        return plan;
+      },
+      preflightOutputs: async () => {
+        events.push("outputs-preflight");
+      },
+      preflightApprovalNotice: async () => {
+        events.push("notice-preflight");
+      },
+      runDeviceFlow: async (input) => {
+        events.push("device");
+        await input.onUserAction({
+          verification_uri_complete: "https://auth-staging-1.darwinian.dev/device?user_code=ABCD",
+          user_code: "ABCD",
+          expires_at: "2030-08-27T17:10:00.000Z",
+        });
+        return {
+          accessToken: "secret-access-token",
+          issuedAt: "2030-08-27T17:00:00.000Z",
+          expiresAt: "2030-08-27T17:15:00.000Z",
+        };
+      },
+      publishApprovalNotice: async (_path, candidate) => {
+        events.push("notice-publish");
+        expect(candidate).toMatchObject({
+          qualificationRunId: plan.qualificationRunId,
+        });
+        return { identity: "notice" };
+      },
+      cleanupApprovalNotice: async () => {
+        events.push("notice-cleanup");
+      },
+      executeQualification: async (input) => {
+        events.push("owner-execute");
+        expect(input.plan).toEqual(plan);
+        expect(input.adapterOrigin).toBe("http://127.0.0.1:8787");
+        expect(input.credential.accessToken).toBe("secret-access-token");
+        return {
+          readiness: { schema: "cl.dah.cli-management-readiness.v1" },
+          community: { schema: "cl.dah.staging-slot-community.v1" },
+          readinessBytes: new TextEncoder().encode('{"readiness":true}\n'),
+          communityBytes: new TextEncoder().encode('{"community":true}\n'),
+        };
+      },
+      writeOutputs: async (input) => {
+        events.push("outputs");
+        expect(input.runnerTemp).toBe("/runner");
+        expect(input.readinessPath).toBe(
+          "/runner/public/i321-cli-management-readiness.json",
+        );
+        expect(input.communityPath).toBe(
+          "/runner/public/i321-staging-slot-community.json",
+        );
+      },
+    });
+
+    expect(events).toEqual([
+      "outputs-preflight",
+      "notice-preflight",
+      "plan",
+      "device",
+      "notice-publish",
+      "notice-cleanup",
+      "owner-execute",
+      "outputs",
+    ]);
+  });
+
+  test("preserves auth stages and classifies cleanup, execution, and public commit", async () => {
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    const stageModule = await import("../cli/core/qualification-stage");
+    const input = {
+      planPath: "/runner/private/plan.json",
+      approvalNoticePath: "/runner/private/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    };
+    const scenarios: Array<{
+      stage: string;
+      dependencies: I321PhaseACeremonyDependencies;
+    }> = [
+      {
+        stage: "oauth_consent_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          runDeviceFlow: async () => {
+            throw new stageModule.StagingQualificationStageError(
+              "oauth_consent_failed",
+            );
+          },
+        },
+      },
+      {
+        stage: "normal_cleanup_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          cleanupApprovalNotice: async () => {
+            throw new Error("hostile cleanup failure");
+          },
+        },
+      },
+      {
+        stage: "phase_a_execution_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          executeQualification: async () => {
+            throw new Error("hostile execution failure");
+          },
+        },
+      },
+      {
+        stage: "public_output_commit_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          writeOutputs: async () => {
+            throw new Error("hostile output failure");
+          },
+        },
+      },
+    ];
+    for (const scenario of scenarios) {
+      await expect(module.executeI321PhaseACeremony(
+        input,
+        scenario.dependencies,
+      )).rejects.toMatchObject({ stage: scenario.stage });
+    }
+  });
+
+  test("uses the admitted hidden staging-1 identity instead of the public staging profile", async () => {
+    let observedProfile: Record<string, unknown> | undefined;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/plan.json",
+      approvalNoticePath: "/runner/private/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, redDependencies(staging1QualificationIdentity, (profile) => {
+      observedProfile = profile as Record<string, unknown>;
+    }) as I321PhaseACeremonyDependencies)).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+
+    expect(observedProfile).toMatchObject({
+      hubOrigin: staging1QualificationIdentity.authHubOrigin,
+      issuer: staging1QualificationIdentity.issuer,
+      resource: staging1QualificationIdentity.resource,
+      apiOrigin: staging1QualificationIdentity.apiOrigin,
+      webOrigin: staging1QualificationIdentity.webOrigin,
+      clientId: staging1QualificationIdentity.clientId,
+      scope: staging1QualificationIdentity.requestedScopes.join(" "),
+    });
+    expect(observedProfile).not.toMatchObject({
+      hubOrigin: "https://auth-staging-main.darwinian.dev",
+      apiOrigin: "https://api-staging-main.darwinian.dev",
+    });
+  });
+
+  test("refuses non-staging-1 and single-field tuple drift before device authorization", async () => {
+    const candidates: Array<[string, Record<string, unknown>]> = [
+      ["environment", { ...staging1QualificationIdentity, environmentId: "staging-main" }],
+      ["Auth Hub", { ...staging1QualificationIdentity, authHubOrigin: "https://auth-staging-main.darwinian.dev" }],
+      ["issuer", { ...staging1QualificationIdentity, issuer: "https://auth-staging-main.darwinian.dev/api/auth" }],
+      ["JWKS", { ...staging1QualificationIdentity, jwksUrl: "https://auth-staging-main.darwinian.dev/api/auth/jwks" }],
+      ["resource", { ...staging1QualificationIdentity, resource: "https://api.darwinian.dev" }],
+      ["API", { ...staging1QualificationIdentity, apiOrigin: "https://api-staging-main.darwinian.dev" }],
+      ["Web", { ...staging1QualificationIdentity, webOrigin: "https://foundry-staging-main.darwinian.dev" }],
+      ["approval", { ...staging1QualificationIdentity, approvalOrigin: "https://auth-staging-main.darwinian.dev" }],
+      ["client", { ...staging1QualificationIdentity, clientId: "hostile-client" }],
+      ["scope", { ...staging1QualificationIdentity, requestedScopes: ["openid"] }],
+    ];
+    const module = await import("../cli/core/management/phase-a-ceremony");
+
+    for (const [field, identity] of candidates) {
+      let deviceCalls = 0;
+      await expect(module.executeI321PhaseACeremony({
+        planPath: "/runner/private/plan.json",
+        approvalNoticePath: "/runner/private/notice.json",
+        adapterOrigin: "http://127.0.0.1:8787",
+        readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+        communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+        runnerTemp: "/runner",
+      }, redDependencies(identity, () => {
+        deviceCalls += 1;
+      }) as I321PhaseACeremonyDependencies), field).rejects.toMatchObject({
+        code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+      });
+      expect(deviceCalls, field).toBe(0);
+    }
+  });
+
+  test("refuses a noncanonical adapter origin before device authorization", async () => {
+    let deviceCalls = 0;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/plan.json",
+      approvalNoticePath: "/runner/private/notice.json",
+      adapterOrigin: "https://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, {
+      readPlan: async () => plan,
+      runDeviceFlow: async () => {
+        deviceCalls += 1;
+        throw new Error("must not authorize");
+      },
+    })).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+    expect(deviceCalls).toBe(0);
+  });
+
+  test("refuses an unsafe approval notice path before device authorization", async () => {
+    let deviceCalls = 0;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/i321-cli-management-phase-a-plan.json",
+      approvalNoticePath: "/outside/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, {
+      preflightOutputs: async () => undefined,
+      preflightApprovalNotice: async () => {
+        throw new Error("unsafe notice path");
+      },
+      readPlan: async () => plan,
+      runDeviceFlow: async () => {
+        deviceCalls += 1;
+        throw new Error("must not authorize");
+      },
+    })).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+    expect(deviceCalls).toBe(0);
+  });
+
+  test("refuses a private notice path that aliases either public receipt before auth", async () => {
+    let deviceCalls = 0;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/i321-cli-management-phase-a-plan.json",
+      approvalNoticePath: "/runner/public/i321-cli-management-readiness.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, {
+      preflightOutputs: async () => undefined,
+      preflightApprovalNotice: async () => undefined,
+      readPlan: async () => plan,
+      runDeviceFlow: async () => {
+        deviceCalls += 1;
+        throw new Error("must not authorize");
+      },
+    })).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+    expect(deviceCalls).toBe(0);
+  });
+
+  test("refuses unsafe public output paths before device authorization", async () => {
+    let deviceCalls = 0;
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    await expect(module.executeI321PhaseACeremony({
+      planPath: "/runner/private/plan.json",
+      approvalNoticePath: "/runner/private/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/outside/i321-cli-management-readiness.json",
+      communityOutputPath: "/outside/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    }, {
+      preflightOutputs: async () => {
+        throw new Error("unsafe output path");
+      },
+      readPlan: async () => plan,
+      runDeviceFlow: async () => {
+        deviceCalls += 1;
+        throw new Error("must not authorize");
+      },
+    })).rejects.toMatchObject({
+      code: "STAGING_COMMUNITY_QUALIFICATION_INVALID",
+    });
+    expect(deviceCalls).toBe(0);
+  });
+});

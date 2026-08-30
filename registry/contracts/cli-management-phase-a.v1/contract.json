@@ -1,0 +1,453 @@
+{
+  "schema": "cl.dah.cli-management-phase-a-interoperability.v1",
+  "schemaVersion": 1,
+  "authority": {
+    "owner": "I321",
+    "sourcePackage": "@darwinian/dah-phase-a-executor",
+    "executorEntryPoint": "executeI321CliManagementPhaseAV1",
+    "planSchema": "cl.dah.cli-management-phase-a-plan.v1",
+    "processLocalResultSchema": "cl.dah.cli-management-phase-a-process-local-result.v1",
+    "readinessSchema": "cl.dah.cli-management-readiness.v1",
+    "canonicalization": "canonical-json/v1",
+    "organizationSelection": "exactly_one_active_management_eligible",
+    "processBoundary": "bearer_and_organization_process_local"
+  },
+  "plan": {
+    "requiredKeys": [
+      "schema",
+      "environmentId",
+      "sourceCommitSha",
+      "qualificationRunId",
+      "contractSha256",
+      "providerPolicyVersion",
+      "relayUrl",
+      "httpsBase",
+      "workflow"
+    ],
+    "forbiddenKeys": [
+      "organizationId",
+      "cliReadinessReceiptSha256",
+      "observedAt",
+      "authorization",
+      "accessToken",
+      "refreshToken",
+      "tokenJti",
+      "humanId"
+    ]
+  },
+  "operationOrder": [
+    {
+      "operation": "version_readback",
+      "component": "auth_hub"
+    },
+    {
+      "operation": "version_readback",
+      "component": "services_web"
+    },
+    {
+      "operation": "fresh_login"
+    },
+    {
+      "operation": "displayed_consent"
+    },
+    {
+      "operation": "api_management_family_separation"
+    },
+    {
+      "operation": "organizations_list",
+      "eligibility": "active_management"
+    },
+    {
+      "operation": "organizations_read",
+      "organizationId": "executor_selected_exactly_one"
+    },
+    {
+      "operation": "cross_organization_denial"
+    },
+    {
+      "operation": "direct_origin_denial"
+    },
+    {
+      "operation": "changed_binding_denial"
+    },
+    {
+      "operation": "replay_denial"
+    },
+    {
+      "operation": "expired_denial"
+    },
+    {
+      "operation": "legacy_route_410"
+    },
+    {
+      "operation": "unsupported_protocol_426"
+    }
+  ],
+  "refusalCodes": [
+    "plan_invalid",
+    "port_failed",
+    "version_readback_invalid",
+    "check_failed",
+    "organization_cardinality_invalid",
+    "organization_read_invalid",
+    "cleanup_invalid",
+    "receipt_invalid"
+  ],
+  "vectors": [
+    {
+      "name": "exact_success_emits_process_local_result",
+      "kind": "positive",
+      "expected": "result",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "contract_digest_mismatch_refuses",
+      "kind": "contract_digest_mismatch",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_organizationId",
+      "kind": "plan_extra_field",
+      "field": "organizationId",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_cliReadinessReceiptSha256",
+      "kind": "plan_extra_field",
+      "field": "cliReadinessReceiptSha256",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_observedAt",
+      "kind": "plan_extra_field",
+      "field": "observedAt",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_authorization",
+      "kind": "plan_extra_field",
+      "field": "authorization",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_accessToken",
+      "kind": "plan_extra_field",
+      "field": "accessToken",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_refreshToken",
+      "kind": "plan_extra_field",
+      "field": "refreshToken",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_tokenJti",
+      "kind": "plan_extra_field",
+      "field": "tokenJti",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "plan_forbids_humanId",
+      "kind": "plan_extra_field",
+      "field": "humanId",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "plan_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "zero_eligible_organizations_refuses_before_read",
+      "kind": "organization_cardinality",
+      "organizationCount": 0,
+      "expected": "refusal",
+      "refusalCode": "organization_cardinality_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "multiple_eligible_organizations_refuses_before_read",
+      "kind": "organization_cardinality",
+      "organizationCount": 2,
+      "expected": "refusal",
+      "refusalCode": "organization_cardinality_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_version_readback_auth_hub",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "version_readback",
+        "component": "auth_hub"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_version_readback_services_web",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "version_readback",
+        "component": "services_web"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_fresh_login",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "fresh_login"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_displayed_consent",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "displayed_consent"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_api_management_family_separation",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "api_management_family_separation"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_organizations_list",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "organizations_list",
+        "eligibility": "active_management"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_organizations_read",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "organizations_read",
+        "organizationId": "executor_selected_exactly_one"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_cross_organization_denial",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "cross_organization_denial"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_direct_origin_denial",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "direct_origin_denial"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_changed_binding_denial",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "changed_binding_denial"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_replay_denial",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "replay_denial"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_expired_denial",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "expired_denial"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_legacy_route_410",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "legacy_route_410"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "port_failure_unsupported_protocol_426",
+      "kind": "operation_failure",
+      "request": {
+        "operation": "unsupported_protocol_426"
+      },
+      "expected": "refusal",
+      "refusalCode": "port_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_temporarySessionsRemaining",
+      "kind": "cleanup_override",
+      "field": "temporarySessionsRemaining",
+      "value": 1,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_temporaryManagementGrantsRemaining",
+      "kind": "cleanup_override",
+      "field": "temporaryManagementGrantsRemaining",
+      "value": 1,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_unconsumedOboJtisRemaining",
+      "kind": "cleanup_override",
+      "field": "unconsumedOboJtisRemaining",
+      "value": 1,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_domainMutationsCreated",
+      "kind": "cleanup_override",
+      "field": "domainMutationsCreated",
+      "value": 1,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_maintenanceCommandsCreated",
+      "kind": "cleanup_override",
+      "field": "maintenanceCommandsCreated",
+      "value": 1,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_queueMessagesCreated",
+      "kind": "cleanup_override",
+      "field": "queueMessagesCreated",
+      "value": 1,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_providerMutationsCreated",
+      "kind": "cleanup_override",
+      "field": "providerMutationsCreated",
+      "value": 1,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "cleanup_refuses_auditRecordsVerified",
+      "kind": "cleanup_override",
+      "field": "auditRecordsVerified",
+      "value": 0,
+      "expected": "refusal",
+      "refusalCode": "cleanup_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "expired_current_run_login_refuses",
+      "kind": "fresh_login_override",
+      "override": {
+        "expiresAt": "2030-08-27T17:05:00.000Z"
+      },
+      "expected": "refusal",
+      "refusalCode": "check_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "stored_credential_restart_refuses",
+      "kind": "fresh_login_override",
+      "override": {
+        "storedCredentialUsed": true
+      },
+      "expected": "refusal",
+      "refusalCode": "check_failed",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "organization_read_digest_drift_refuses",
+      "kind": "organization_read_digest",
+      "evidenceDigestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected": "refusal",
+      "refusalCode": "organization_read_invalid",
+      "cleanupCalls": 1
+    },
+    {
+      "name": "operation_observation_authorization_leak_refuses",
+      "kind": "observation_leak",
+      "operation": "displayed_consent",
+      "field": "authorization",
+      "value": "forbidden",
+      "expected": "refusal",
+      "refusalCode": "check_failed",
+      "cleanupCalls": 1
+    }
+  ]
+}

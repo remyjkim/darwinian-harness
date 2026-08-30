@@ -1,0 +1,13 @@
+{
+  "schema": "dah.cli-management-phase-a-port-wire-contract-lock",
+  "schemaVersion": 1,
+  "servicesRepository": "curation-labs/darwinian-services",
+  "sourceCommit": "d0156761c19f4e7dc5a63914a1117f298b535c37",
+  "contractSha256": "4a62e76ebf5f4d8ffc5f5891a0939165e1aa7bb22ad3916aff5f3ced32cbce7a",
+  "projectorSha256": "157eb03e7dde2ef6f816781e173a415373657382757bfdb568dc0dab9df5622a",
+  "manifestSha256": "90bc380b54f277bc5179a6060609b99e76024e97b4bd871bab615e59332b0378",
+  "readmeSha256": "855ea78eb51ae7bc2d6d63a86a9e1b28c1d05f6a05ecca72c8ed0815c3283bc8",
+  "vectorCount": 67,
+  "positiveVectorCount": 17,
+  "hostileVectorCount": 50
+}
