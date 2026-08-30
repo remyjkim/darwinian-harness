@@ -7,6 +7,7 @@ import {
   executeI321PhaseACeremony,
   type I321PhaseACeremonyDependencies,
 } from "../../core/management/phase-a-ceremony";
+import { classifyStagingQualificationFailure } from "../../core/qualification-stage";
 
 type QualificationCommandDependencies = I321PhaseACeremonyDependencies & {
   env?: Record<string, string | undefined>;
@@ -49,8 +50,14 @@ export class QualifyStagingCommunityCommand extends BaseCommand {
         runnerTemp,
       }, dependencies);
       return 0;
-    } catch {
-      this.context.stderr.write("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+    } catch (error) {
+      const classified = classifyStagingQualificationFailure(
+        error,
+        "phase_a_execution_failed",
+      );
+      this.context.stderr.write(
+        `STAGING_COMMUNITY_QUALIFICATION_FAILED:${classified.stage}\n`,
+      );
       return 1;
     }
   }

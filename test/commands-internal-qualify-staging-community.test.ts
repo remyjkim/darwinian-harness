@@ -190,10 +190,49 @@ describe("hidden staging Community qualification command", () => {
     });
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+    expect(result.stderr).toBe(
+      "STAGING_COMMUNITY_QUALIFICATION_FAILED:phase_a_execution_failed\n",
+    );
     await expect(lstat(result.readinessOutputPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(result.communityOutputPath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(result.stderr).not.toMatch(/HOSTILE|ACCESS|REFRESH|VERIFY|organization/i);
+  });
+
+  test("emits only the closed stage code for every classified failure", async () => {
+    const stages = [
+      "device_authorization_failed",
+      "oauth_consent_failed",
+      "access_token_validation_failed",
+      "phase_a_execution_failed",
+      "normal_cleanup_failed",
+      "receipt_projection_failed",
+      "public_output_commit_failed",
+    ] as const;
+    const module = await import("../cli/core/qualification-stage").catch(() => ({}));
+    const StageError = (module as Record<string, unknown>).StagingQualificationStageError as
+      | (new (stage: typeof stages[number]) => Error)
+      | undefined;
+
+    for (const stage of stages) {
+      const result = await run((f) => [
+        "__internal", "qualify-staging-community",
+        "--plan-file", f.planPath,
+        "--approval-notice-file", f.noticePath,
+        "--phase-a-adapter-origin", "http://127.0.0.1:8787",
+        "--readiness-output-file", f.readinessOutputPath,
+        "--community-output-file", f.communityOutputPath,
+      ], {
+        executeCeremony: async () => {
+          throw StageError ? new StageError(stage) : new Error(stage);
+        },
+      });
+      expect(StageError, stage).toBeTypeOf("function");
+      expect(result.exitCode, stage).toBe(1);
+      expect(result.stdout, stage).toBe("");
+      expect(result.stderr, stage).toBe(
+        `STAGING_COMMUNITY_QUALIFICATION_FAILED:${stage}\n`,
+      );
+    }
   });
 
   test("hard-removes the legacy output-file grammar before effects", async () => {
@@ -275,7 +314,9 @@ describe("hidden staging Community qualification command", () => {
 
       expect(result.exitCode, name).toBe(1);
       expect(result.stdout, name).toBe("");
-      expect(result.stderr, name).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+      expect(result.stderr, name).toBe(
+        "STAGING_COMMUNITY_QUALIFICATION_FAILED:phase_a_execution_failed\n",
+      );
       expect(ceremonyCalls, name).toBe(0);
     }
   });
@@ -295,7 +336,9 @@ describe("hidden staging Community qualification command", () => {
     });
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+    expect(result.stderr).toBe(
+      "STAGING_COMMUNITY_QUALIFICATION_FAILED:phase_a_execution_failed\n",
+    );
     expect(effects).toBe(0);
     await expect(lstat(result.noticePath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(result.readinessOutputPath)).rejects.toMatchObject({ code: "ENOENT" });

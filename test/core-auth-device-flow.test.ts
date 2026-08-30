@@ -6,6 +6,7 @@ import {
   AuthRemoteOperationError,
   refreshToken,
   revokeToken,
+  runQualificationDeviceFlow,
   runDeviceFlow,
   type RevokeTokenResult,
 } from "../cli/core/auth/device-flow";
@@ -406,6 +407,59 @@ describe("runDeviceFlow", () => {
       })).rejects.toThrow("DAH device authorization response is invalid");
       expect(polls).toBe(0);
       expect(actions).toBe(0);
+    }
+  });
+
+  test("classifies the three hidden-qualification auth stages without reflecting causes", async () => {
+    const profile = drwnCliProfile({});
+    const sentinel = "HOSTILE_AUTH_STAGE_SENTINEL";
+    const baseConsent = nativeFetcher();
+    const baseToken = nativeFetcher();
+    const scenarios: Array<{ stage: string; fetcher: typeof fetch }> = [
+      {
+        stage: "device_authorization_failed",
+        fetcher: (async () => { throw new Error(sentinel); }) as unknown as typeof fetch,
+      },
+      {
+        stage: "oauth_consent_failed",
+        fetcher: (async (input, init) => {
+          if (new URL(String(input)).pathname === "/api/auth/oauth2/authorize") {
+            return new Response(sentinel, { status: 503 });
+          }
+          return baseConsent.fetcher(input, init);
+        }) as typeof fetch,
+      },
+      {
+        stage: "access_token_validation_failed",
+        fetcher: (async (input, init) => {
+          if (new URL(String(input)).pathname === "/api/auth/oauth2/token") {
+            return Response.json({
+              access_token: fakeJwt(profile.issuer, { aud: "https://foreign.example" }),
+              refresh_token: "synthetic-refresh",
+              expires_in: 900,
+            });
+          }
+          return baseToken.fetcher(input, init);
+        }) as typeof fetch,
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      try {
+        await runQualificationDeviceFlow({
+          profile,
+          fetcher: scenario.fetcher,
+          sleep: async () => {},
+          now: () => (IAT + 1) * 1000,
+          randomUUID: () => UUID,
+          onUserAction: () => {},
+        });
+        throw new Error("stage unexpectedly succeeded");
+      } catch (error) {
+        expect(error, scenario.stage).toMatchObject({ stage: scenario.stage });
+        expect(String(error), scenario.stage).not.toContain(sentinel);
+        expect(JSON.stringify(error), scenario.stage).not.toContain(sentinel);
+      }
     }
   });
 

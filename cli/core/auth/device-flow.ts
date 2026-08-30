@@ -5,6 +5,10 @@ import type { CliAuthProfile } from "./profile";
 import { assertJwtAudience, type JwtClaims } from "./jwt";
 import { assertCredentialV3, type CliDahCredentialFileV3 } from "./credentials";
 import { assertDelegationReadyClaims } from "./delegation-readiness";
+import {
+  classifyStagingQualificationFailure,
+  stagingQualificationFailure,
+} from "../qualification-stage";
 
 const DEVICE_CODE_PATH = "/api/auth/device/code";
 const DEVICE_TOKEN_PATH = "/api/auth/device/token";
@@ -52,6 +56,13 @@ interface DeviceAuthorization {
   verification_uri_complete?: string;
   expires_in: number;
   interval?: number;
+}
+
+class AccessTokenValidationFailure extends Error {
+  constructor(readonly publicError: unknown) {
+    super("DAH access token response is invalid.");
+    this.name = "AccessTokenValidationFailure";
+  }
 }
 
 export interface RunDeviceFlowInput {
@@ -195,9 +206,16 @@ async function createPkcePair(): Promise<{ verifier: string; challenge: string; 
 
 function tokenBundleFromResponse(body: Record<string, unknown>, profile: CliAuthProfile): TokenBundle {
   if (typeof body.access_token !== "string") {
-    throw new Error("DAH token response did not include access_token.");
+    throw new AccessTokenValidationFailure(
+      new Error("DAH token response did not include access_token."),
+    );
   }
-  const claims = assertJwtAudience(body.access_token, profile.resource, { issuer: profile.issuer });
+  let claims: JwtClaims;
+  try {
+    claims = assertJwtAudience(body.access_token, profile.resource, { issuer: profile.issuer });
+  } catch (error) {
+    throw new AccessTokenValidationFailure(error);
+  }
   return {
     access_token: body.access_token,
     refresh_token: typeof body.refresh_token === "string" ? body.refresh_token : undefined,
@@ -401,27 +419,71 @@ export function credentialFromTokens(
   return credential;
 }
 
-export async function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCredentialFileV3> {
+async function executeDeviceFlow(
+  input: RunDeviceFlowInput,
+  qualification: boolean,
+): Promise<CliDahCredentialFileV3> {
   const fetcher = input.fetcher ?? fetch;
   const sleep = input.sleep ?? defaultSleep;
   const now = input.now ?? Date.now;
-  const device = await startDeviceFlow(input.profile, fetcher);
-  const expiresAt = now() + device.expires_in * 1000;
-  await input.onUserAction({
-    verification_uri_complete: device.verification_uri_complete ?? device.verification_uri,
-    user_code: device.user_code,
-    expires_at: new Date(expiresAt).toISOString(),
-  });
-  const opaque = await pollDeviceToken(input.profile, fetcher, device, sleep, now, expiresAt);
-  const tokens = await exchangeDeviceSession(input.profile, opaque, fetcher);
-  assertDelegationReadyClaims(tokens.claims, input.profile, { nowSeconds: Math.floor(now() / 1000) });
+  let device: DeviceAuthorization;
+  let opaque: string;
   try {
+    device = await startDeviceFlow(input.profile, fetcher);
+    const expiresAt = now() + device.expires_in * 1000;
+    await input.onUserAction({
+      verification_uri_complete: device.verification_uri_complete ?? device.verification_uri,
+      user_code: device.user_code,
+      expires_at: new Date(expiresAt).toISOString(),
+    });
+    opaque = await pollDeviceToken(input.profile, fetcher, device, sleep, now, expiresAt);
+  } catch (error) {
+    if (qualification) {
+      throw classifyStagingQualificationFailure(error, "device_authorization_failed");
+    }
+    throw error;
+  }
+  let tokens: TokenBundle;
+  try {
+    tokens = await exchangeDeviceSession(input.profile, opaque, fetcher);
+  } catch (error) {
+    if (qualification) {
+      throw stagingQualificationFailure(
+        error instanceof AccessTokenValidationFailure
+          ? "access_token_validation_failed"
+          : "oauth_consent_failed",
+      );
+    }
+    if (error instanceof AccessTokenValidationFailure) {
+      throw error.publicError;
+    }
+    throw error;
+  }
+  try {
+    assertDelegationReadyClaims(tokens.claims, input.profile, {
+      nowSeconds: Math.floor(now() / 1000),
+    });
     return credentialFromTokens(input.profile, tokens, {
       credentialId: (input.randomUUID ?? (() => crypto.randomUUID()))(),
       generation: 1,
       now,
     });
-  } catch {
+  } catch (error) {
+    if (qualification) {
+      throw stagingQualificationFailure("access_token_validation_failed");
+    }
+    if (error instanceof AuthRemoteOperationError) throw error;
     throw new AuthRemoteOperationError("AUTH_RESPONSE_INVALID", "rejected", "2xx");
   }
+}
+
+export function runDeviceFlow(input: RunDeviceFlowInput): Promise<CliDahCredentialFileV3> {
+  return executeDeviceFlow(input, false);
+}
+
+/** Hidden qualification wrapper; public login continues to expose its established errors. */
+export function runQualificationDeviceFlow(
+  input: RunDeviceFlowInput,
+): Promise<CliDahCredentialFileV3> {
+  return executeDeviceFlow(input, true);
 }

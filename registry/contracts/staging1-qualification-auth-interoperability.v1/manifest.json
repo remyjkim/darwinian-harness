@@ -1,0 +1,14 @@
+{
+  "schema": "cl.dah.staging1-qualification-auth-interoperability-manifest.v1",
+  "schemaVersion": 1,
+  "sourceAuthority": "containing_git_commit",
+  "contractFile": "contract.json",
+  "contractBytes": 832,
+  "contractSha256": "3345f6b4715b145d9156824c5025d835eb6d348946beeb849701d8bd033d1803",
+  "vectorsFile": "vectors.json",
+  "vectorsBytes": 4337,
+  "vectorsSha256": "730633cea16a82663cf15e0b91ce545cce6f5b98ec88b8055874b6e0545b87f6",
+  "vectorCount": 11,
+  "acceptedVectorCount": 3,
+  "refusedVectorCount": 8
+}

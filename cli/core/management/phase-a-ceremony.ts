@@ -4,7 +4,10 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
-import { runDeviceFlow, type RunDeviceFlowInput } from "../auth/device-flow";
+import {
+  runQualificationDeviceFlow,
+  type RunDeviceFlowInput,
+} from "../auth/device-flow";
 import { DrwnError } from "../errors";
 import {
   cleanupStagingDeviceApprovalNotice,
@@ -28,6 +31,11 @@ import {
   loadStaging1QualificationIdentity,
   staging1QualificationCliProfile,
 } from "./staging1-qualification-identity";
+import {
+  classifyStagingQualificationFailure,
+  StagingQualificationStageError,
+  stagingQualificationFailure,
+} from "../qualification-stage";
 
 const planSchema = z.object({
   schema: z.literal("cl.dah.cli-management-phase-a-plan.v1"),
@@ -213,9 +221,9 @@ export async function executeI321PhaseACeremony(
     );
     let noticeIdentity: unknown;
     let credential: DeviceCredential | undefined;
-    let flowFailed = false;
+    let flowFailure: unknown;
     try {
-      credential = await (dependencies.runDeviceFlow ?? runDeviceFlow)({
+      credential = await (dependencies.runDeviceFlow ?? runQualificationDeviceFlow)({
         profile,
         fetcher: dependencies.fetcher ?? fetch,
         now,
@@ -237,8 +245,8 @@ export async function executeI321PhaseACeremony(
             );
         },
       });
-    } catch {
-      flowFailed = true;
+    } catch (error) {
+      flowFailure = error;
     }
 
     let cleanupFailed = false;
@@ -252,31 +260,46 @@ export async function executeI321PhaseACeremony(
         cleanupFailed = true;
       }
     }
-    if (flowFailed || cleanupFailed || credential === undefined || noticeIdentity === undefined) {
-      refusal();
+    if (cleanupFailed) {
+      throw stagingQualificationFailure("normal_cleanup_failed");
+    }
+    if (flowFailure !== undefined || credential === undefined || noticeIdentity === undefined) {
+      throw classifyStagingQualificationFailure(
+        flowFailure,
+        "device_authorization_failed",
+      );
     }
 
-    const projection = await (dependencies.executeQualification ??
-      executeI321PhaseAQualification)({
-        plan: admittedPlan,
-        adapterOrigin: input.adapterOrigin,
-        credential,
-        fetcher: dependencies.fetcher,
-        now,
-        requestId: dependencies.requestId,
-        receiptId: dependencies.receiptId,
+    let projection: I321PhaseAPublicProjection;
+    try {
+      projection = await (dependencies.executeQualification ??
+        executeI321PhaseAQualification)({
+          plan: admittedPlan,
+          adapterOrigin: input.adapterOrigin,
+          credential,
+          fetcher: dependencies.fetcher,
+          now,
+          requestId: dependencies.requestId,
+          receiptId: dependencies.receiptId,
+        });
+    } catch (error) {
+      throw classifyStagingQualificationFailure(error, "phase_a_execution_failed");
+    }
+    try {
+      await (dependencies.writeOutputs ?? writeI321PhaseAPublicReceipts)({
+        runnerTemp: input.runnerTemp,
+        readinessPath: input.readinessOutputPath,
+        communityPath: input.communityOutputPath,
+        readinessBytes: projection.readinessBytes,
+        communityBytes: projection.communityBytes,
       });
-    await (dependencies.writeOutputs ?? writeI321PhaseAPublicReceipts)({
-      runnerTemp: input.runnerTemp,
-      readinessPath: input.readinessOutputPath,
-      communityPath: input.communityOutputPath,
-      readinessBytes: projection.readinessBytes,
-      communityBytes: projection.communityBytes,
-    });
+    } catch {
+      throw stagingQualificationFailure("public_output_commit_failed");
+    }
   } catch (error) {
-    if (error instanceof DrwnError && error.code === "STAGING_COMMUNITY_QUALIFICATION_INVALID") {
+    if (error instanceof StagingQualificationStageError) {
       throw error;
     }
-    refusal();
+    throw classifyStagingQualificationFailure(error, "phase_a_execution_failed");
   }
 }

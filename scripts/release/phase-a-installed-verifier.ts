@@ -294,10 +294,57 @@ async function main(): Promise<void> {
     profile.apiOrigin !== identity.apiOrigin ||
     profile.webOrigin !== identity.webOrigin
   ) throw new Error("qualification identity inventory invalid");
+  const interoperabilityRoot = join(
+    packageRoot,
+    "registry",
+    "contracts",
+    "staging1-qualification-auth-interoperability.v1",
+  );
+  const interoperabilityLock = JSON.parse(await readFile(join(
+    packageRoot,
+    "cli",
+    "generated",
+    "dah-staging1-qualification-auth-interoperability-lock.json",
+  ), "utf8")) as Record<string, unknown>;
+  const interoperabilityContractBytes = await readFile(join(
+    interoperabilityRoot,
+    "contract.json",
+  ));
+  const interoperabilityManifestBytes = await readFile(join(
+    interoperabilityRoot,
+    "manifest.json",
+  ));
+  const interoperabilityVectorsBytes = await readFile(join(
+    interoperabilityRoot,
+    "vectors.json",
+  ));
+  const interoperabilityReadmeBytes = await readFile(join(
+    interoperabilityRoot,
+    "README.md",
+  ));
+  const interoperabilityVectors = JSON.parse(
+    interoperabilityVectorsBytes.toString("utf8"),
+  ) as Array<{ expected: string }>;
+  if (
+    interoperabilityLock.sourceCommit !==
+      "f2972b0abb46dcc8ffbc562e1323774a767ef093" ||
+    interoperabilityLock.contractSha256 !==
+      createHash("sha256").update(interoperabilityContractBytes).digest("hex") ||
+    interoperabilityLock.manifestSha256 !==
+      createHash("sha256").update(interoperabilityManifestBytes).digest("hex") ||
+    interoperabilityLock.vectorsSha256 !==
+      createHash("sha256").update(interoperabilityVectorsBytes).digest("hex") ||
+    interoperabilityLock.readmeSha256 !==
+      createHash("sha256").update(interoperabilityReadmeBytes).digest("hex") ||
+    interoperabilityVectors.length !== 11 ||
+    interoperabilityVectors.filter(({ expected }) => expected === "accept").length !== 3 ||
+    interoperabilityVectors.filter(({ expected }) => expected === "refuse").length !== 8
+  ) throw new Error("qualification auth interoperability inventory invalid");
   process.stdout.write(`${JSON.stringify({
     portableVectors: 38,
     portVectors: 67,
     qualificationIdentityVectors: 20,
+    qualificationAuthInteroperabilityVectors: 11,
   })}\n`);
 }
 

@@ -1,0 +1,167 @@
+[
+  {
+    "name": "direct_code_accepts",
+    "expected": "accept",
+    "kind": "authorize_response",
+    "candidate": {
+      "mode": "direct_code",
+      "codeCount": 1,
+      "stateMatches": true
+    }
+  },
+  {
+    "name": "explicit_consent_accepts",
+    "expected": "accept",
+    "kind": "consent_completion",
+    "candidate": {
+      "mode": "explicit_consent",
+      "consentOrigin": "https://auth-staging-1.darwinian.dev",
+      "consentPath": "/oauth-consent",
+      "completionPath": "/api/auth/oauth2/consent",
+      "approved": true
+    }
+  },
+  {
+    "name": "exact_native_audience_set_accepts",
+    "expected": "accept",
+    "kind": "access_token_claims",
+    "candidate": {
+      "clientId": "drwn-cli",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "audiences": [
+        "https://api-staging-1.darwinian.dev",
+        "https://auth-staging-1.darwinian.dev/api/auth/oauth2/userinfo"
+      ],
+      "scopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "foreign_consent_origin_refuses",
+    "expected": "refuse",
+    "kind": "consent_completion",
+    "candidate": {
+      "mode": "explicit_consent",
+      "consentOrigin": "https://auth-staging-main.darwinian.dev",
+      "consentPath": "/oauth-consent",
+      "completionPath": "/api/auth/oauth2/consent",
+      "approved": true
+    }
+  },
+  {
+    "name": "duplicate_code_refuses",
+    "expected": "refuse",
+    "kind": "authorize_response",
+    "candidate": {
+      "mode": "direct_code",
+      "codeCount": 2,
+      "stateMatches": true
+    }
+  },
+  {
+    "name": "state_mismatch_refuses",
+    "expected": "refuse",
+    "kind": "authorize_response",
+    "candidate": {
+      "mode": "direct_code",
+      "codeCount": 1,
+      "stateMatches": false
+    }
+  },
+  {
+    "name": "missing_resource_refuses",
+    "expected": "refuse",
+    "kind": "access_token_claims",
+    "candidate": {
+      "clientId": "drwn-cli",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "audiences": [
+        "https://api-staging-1.darwinian.dev",
+        "https://auth-staging-1.darwinian.dev/api/auth/oauth2/userinfo"
+      ],
+      "scopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "extra_audience_refuses",
+    "expected": "refuse",
+    "kind": "access_token_claims",
+    "candidate": {
+      "clientId": "drwn-cli",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "audiences": [
+        "https://api-staging-1.darwinian.dev",
+        "https://auth-staging-1.darwinian.dev/api/auth/oauth2/userinfo",
+        "https://api.darwinian.dev"
+      ],
+      "scopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate"
+      ]
+    }
+  },
+  {
+    "name": "missing_scope_refuses",
+    "expected": "refuse",
+    "kind": "access_token_claims",
+    "candidate": {
+      "clientId": "drwn-cli",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "audiences": [
+        "https://api-staging-1.darwinian.dev",
+        "https://auth-staging-1.darwinian.dev/api/auth/oauth2/userinfo"
+      ],
+      "scopes": [
+        "openid",
+        "email",
+        "offline_access"
+      ]
+    }
+  },
+  {
+    "name": "additional_scope_refuses",
+    "expected": "refuse",
+    "kind": "access_token_claims",
+    "candidate": {
+      "clientId": "drwn-cli",
+      "issuer": "https://auth-staging-1.darwinian.dev/api/auth",
+      "resource": "https://api-staging-1.darwinian.dev",
+      "audiences": [
+        "https://api-staging-1.darwinian.dev",
+        "https://auth-staging-1.darwinian.dev/api/auth/oauth2/userinfo"
+      ],
+      "scopes": [
+        "openid",
+        "email",
+        "offline_access",
+        "dah:management.delegate",
+        "dah:management"
+      ]
+    }
+  },
+  {
+    "name": "credential_field_refuses",
+    "expected": "refuse",
+    "kind": "authorize_response",
+    "candidate": {
+      "mode": "direct_code",
+      "codeCount": 1,
+      "stateMatches": true,
+      "authorizationBearer": null
+    }
+  }
+]

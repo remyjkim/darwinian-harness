@@ -101,7 +101,9 @@ describe("drwn command help", () => {
       });
       expect(await proc.exited).toBe(1);
       expect(await new Response(proc.stdout).text()).toBe("");
-      expect(await new Response(proc.stderr).text()).toBe("STAGING_COMMUNITY_QUALIFICATION_FAILED\n");
+      expect(await new Response(proc.stderr).text()).toBe(
+        "STAGING_COMMUNITY_QUALIFICATION_FAILED:phase_a_execution_failed\n",
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }

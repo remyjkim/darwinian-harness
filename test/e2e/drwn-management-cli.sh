@@ -137,7 +137,7 @@ QUALIFICATION_STATUS=$?
 set -e
 [[ "$QUALIFICATION_STATUS" -ne 0 ]] || fail "missing qualification plan unexpectedly succeeded"
 [[ -z "$QUALIFICATION_STDOUT" ]] || fail "qualification refusal wrote stdout"
-[[ "$(cat "$E2E_ROOT/qualification.stderr")" == "STAGING_COMMUNITY_QUALIFICATION_FAILED" ]] || fail "qualification refusal was not fixed and redacted"
+[[ "$(cat "$E2E_ROOT/qualification.stderr")" == "STAGING_COMMUNITY_QUALIFICATION_FAILED:phase_a_execution_failed" ]] || fail "qualification refusal was not fixed and redacted"
 assert_file_absent "$QUALIFICATION_READINESS"
 assert_file_absent "$QUALIFICATION_COMMUNITY"
 assert_file_absent "$QUALIFICATION_NOTICE"

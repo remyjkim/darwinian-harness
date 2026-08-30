@@ -53,10 +53,12 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "cli/core/management/phase-a-qualification.ts",
   "cli/core/management/phase-a-output.ts",
   "cli/core/management/phase-a-ceremony.ts",
+  "cli/core/qualification-stage.ts",
   "cli/commands/internal/qualify-staging-community.ts",
   "cli/generated/drwn-management-contract-lock.json",
   "cli/generated/dah-staging-slot-community-contract-lock.json",
   "cli/generated/dah-staging1-qualification-identity-contract-lock.json",
+  "cli/generated/dah-staging1-qualification-auth-interoperability-lock.json",
   "cli/generated/dah-cli-management-phase-a-lock.json",
   "cli/generated/dah-cli-management-phase-a-port-wire-lock.json",
   "registry/contracts/deployed-worker.v1/contract.json",
@@ -65,6 +67,10 @@ export const REQUIRED_RELEASE_MEMBERS = [
   "registry/contracts/staging1-qualification-identity.v1/manifest.json",
   "registry/contracts/staging1-qualification-identity.v1/vectors.json",
   "registry/contracts/staging1-qualification-identity.v1/README.md",
+  "registry/contracts/staging1-qualification-auth-interoperability.v1/contract.json",
+  "registry/contracts/staging1-qualification-auth-interoperability.v1/manifest.json",
+  "registry/contracts/staging1-qualification-auth-interoperability.v1/vectors.json",
+  "registry/contracts/staging1-qualification-auth-interoperability.v1/README.md",
   "registry/contracts/cli-management-phase-a.v1/contract.json",
   "registry/contracts/cli-management-phase-a.v1/executor.mjs",
   "registry/contracts/cli-management-phase-a.v1/manifest.json",
@@ -539,6 +545,7 @@ export async function runInstalledArtifactSmokes(
       portableVectors: 38,
       portVectors: 67,
       qualificationIdentityVectors: 20,
+      qualificationAuthInteroperabilityVectors: 11,
     })
   ) throw new ReleaseArtifactError("installed Phase-A authority verification failed");
   await assertEmptyDirectories(quarantine);
@@ -554,7 +561,8 @@ export async function runInstalledArtifactSmokes(
   const qualification = await run([bin, ...qualificationSmoke], { cwd: project, env });
   if (
     qualification.exitCode !== 1 || qualification.stdout !== "" ||
-    qualification.stderr !== "STAGING_COMMUNITY_QUALIFICATION_FAILED\n"
+    qualification.stderr !==
+      "STAGING_COMMUNITY_QUALIFICATION_FAILED:phase_a_execution_failed\n"
   ) throw new ReleaseArtifactError("installed hidden qualification refusal smoke failed");
   await assertEmptyDirectories(quarantine);
   passed.push("__internal qualify-staging-community refusal");

@@ -61,6 +61,37 @@ function redDependencies(
   };
 }
 
+function successfulDependencies(): I321PhaseACeremonyDependencies {
+  return {
+    now: () => Date.parse("2030-08-27T17:05:00.000Z"),
+    preflightOutputs: async () => undefined,
+    preflightApprovalNotice: async () => undefined,
+    readPlan: async () => plan,
+    runDeviceFlow: async (input) => {
+      await input.onUserAction({
+        verification_uri_complete:
+          "https://auth-staging-1.darwinian.dev/device?user_code=ABCD",
+        user_code: "ABCD",
+        expires_at: "2030-08-27T17:10:00.000Z",
+      });
+      return {
+        accessToken: "synthetic-access-token",
+        issuedAt: "2030-08-27T17:00:00.000Z",
+        expiresAt: "2030-08-27T17:15:00.000Z",
+      };
+    },
+    publishApprovalNotice: async () => ({ identity: "notice" }),
+    cleanupApprovalNotice: async () => undefined,
+    executeQualification: async () => ({
+      readiness: {},
+      community: {},
+      readinessBytes: new TextEncoder().encode("{}\n"),
+      communityBytes: new TextEncoder().encode("{}\n"),
+    }),
+    writeOutputs: async () => undefined,
+  };
+}
+
 describe("I321 Phase-A hidden ceremony", () => {
   test("runs one grant, cleans its notice, executes owner bytes, and writes the output pair", async () => {
     const events: string[] = [];
@@ -141,6 +172,68 @@ describe("I321 Phase-A hidden ceremony", () => {
       "owner-execute",
       "outputs",
     ]);
+  });
+
+  test("preserves auth stages and classifies cleanup, execution, and public commit", async () => {
+    const module = await import("../cli/core/management/phase-a-ceremony");
+    const stageModule = await import("../cli/core/qualification-stage");
+    const input = {
+      planPath: "/runner/private/plan.json",
+      approvalNoticePath: "/runner/private/notice.json",
+      adapterOrigin: "http://127.0.0.1:8787",
+      readinessOutputPath: "/runner/public/i321-cli-management-readiness.json",
+      communityOutputPath: "/runner/public/i321-staging-slot-community.json",
+      runnerTemp: "/runner",
+    };
+    const scenarios: Array<{
+      stage: string;
+      dependencies: I321PhaseACeremonyDependencies;
+    }> = [
+      {
+        stage: "oauth_consent_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          runDeviceFlow: async () => {
+            throw new stageModule.StagingQualificationStageError(
+              "oauth_consent_failed",
+            );
+          },
+        },
+      },
+      {
+        stage: "normal_cleanup_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          cleanupApprovalNotice: async () => {
+            throw new Error("hostile cleanup failure");
+          },
+        },
+      },
+      {
+        stage: "phase_a_execution_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          executeQualification: async () => {
+            throw new Error("hostile execution failure");
+          },
+        },
+      },
+      {
+        stage: "public_output_commit_failed",
+        dependencies: {
+          ...successfulDependencies(),
+          writeOutputs: async () => {
+            throw new Error("hostile output failure");
+          },
+        },
+      },
+    ];
+    for (const scenario of scenarios) {
+      await expect(module.executeI321PhaseACeremony(
+        input,
+        scenario.dependencies,
+      )).rejects.toMatchObject({ stage: scenario.stage });
+    }
   });
 
   test("uses the admitted hidden staging-1 identity instead of the public staging profile", async () => {

@@ -181,4 +181,51 @@ describe("Worker I321 Phase-A qualification", () => {
     expect(emitted).not.toContain("organizationId");
     expect(emitted).not.toContain("displayName");
   });
+
+  test("separates owner execution, normal cleanup, and receipt projection failures", async () => {
+    const module = await import("../cli/core/management/phase-a-qualification");
+    const input = {
+      plan: { qualificationRunId },
+      adapterOrigin: "http://127.0.0.1:8787",
+      credential: {
+        accessToken,
+        issuedAt: "2030-08-27T17:00:00.000Z",
+        expiresAt: "2030-08-27T17:15:00.000Z",
+      },
+    };
+    const successfulResult = {
+      organization,
+      authorizedOrganizationRead: authorizedOrganizationRead(),
+      readiness: { observedAt: "2030-08-27T17:05:00.000Z" },
+      communityAuthority: {},
+    };
+    const createPort = async () => ({
+      execute: async () => ({}),
+      cleanup: async () => ({}),
+    });
+    const execute = module.executeI321PhaseAQualification as unknown as (
+      candidate: typeof input,
+      dependencies: Record<string, unknown>,
+    ) => Promise<unknown>;
+
+    await expect(execute(input, {
+      createPort,
+      execute: async () => { throw new Error("hostile owner failure"); },
+    })).rejects.toMatchObject({ stage: "phase_a_execution_failed" });
+    await expect(execute(input, {
+      createPort: async () => ({
+        execute: async () => ({}),
+        cleanup: async () => { throw new Error("hostile cleanup failure"); },
+      }),
+      execute: async ({ port }: { port: { cleanup(): Promise<unknown> } }) => {
+        await port.cleanup();
+        return successfulResult;
+      },
+    })).rejects.toMatchObject({ stage: "normal_cleanup_failed" });
+    await expect(execute(input, {
+      createPort,
+      execute: async () => successfulResult,
+      project: async () => { throw new Error("hostile projection failure"); },
+    })).rejects.toMatchObject({ stage: "receipt_projection_failed" });
+  });
 });

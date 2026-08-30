@@ -1,0 +1,13 @@
+{
+  "schema": "dah.staging1-qualification-auth-interoperability-lock",
+  "schemaVersion": 1,
+  "servicesRepository": "curation-labs/darwinian-services",
+  "sourceCommit": "f2972b0abb46dcc8ffbc562e1323774a767ef093",
+  "readmeSha256": "1c40d4d6c9dd9a5aa93048b59e6949766a44513d5413d8f8accb877265508794",
+  "contractSha256": "3345f6b4715b145d9156824c5025d835eb6d348946beeb849701d8bd033d1803",
+  "manifestSha256": "8bcc0608d29df1c3e628b51a177b8f0bebcdebe79ef5e8f4406ba99978c81788",
+  "vectorsSha256": "730633cea16a82663cf15e0b91ce545cce6f5b98ec88b8055874b6e0545b87f6",
+  "vectorCount": 11,
+  "acceptedVectorCount": 3,
+  "refusedVectorCount": 8
+}
